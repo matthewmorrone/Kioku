@@ -22,8 +22,14 @@ final class LLMCorrectionUIState {
     // Subset of pendingLLMChangedLocations where only the furigana reading changed (surface unchanged).
     var pendingLLMChangedReadingLocations: Set<Int> = []
     var pendingLLMChangesByLocation: [Int: String] = [:]
-    // Full segment snapshot captured just before applying an LLM result, used to revert individual changes.
-    var preLLMSegmentEntries: [LLMSegmentEntry] = []
+    // The full proposed segmentation for the current pending correction. NOT applied to
+    // document.segmentEdges — corrections stay invisible in the actual text until confirmed.
+    // Confirming one location splices its slice of these edges into the document; confirming
+    // all applies the whole array. Empty when there's no pending correction.
+    var pendingLLMRebuiltEdges: [LatticeEdge] = []
+    // The reading each non-empty entry of pendingLLMRebuiltEdges should get once confirmed —
+    // aligned index-for-index with the non-empty-surface subset of pendingLLMRebuiltEdges.
+    var pendingLLMWorkingEntries: [LLMSegmentEntry] = []
     var hasPendingLLMChanges = false
 
     var llmChangePopoverText: String = ""
@@ -35,10 +41,13 @@ final class LLMCorrectionUIState {
     // Sparkles tapped mid-run: confirms before discarding the correction in progress.
     var isShowingLLMCancelConfirm = false
 
-    // True once an LLM correction has actually been applied to the currently-loaded note.
-    // Gates the "Re-run AI Correction?" confirm so it only warns about replacing prior
-    // corrections — not on the first run. Reset when a note loads or corrections are cleared.
-    // (Session-scoped: reloading a previously-corrected note starts fresh, so the first tap
-    // after reload runs without the warning.)
+    // True once an LLM correction has actually produced changes (pending or already confirmed)
+    // for the currently-loaded note. Gates the "Re-run AI Correction?" confirm so it only warns
+    // about replacing prior corrections — not on the first run. A merely-pending, unconfirmed
+    // correction doesn't route through that warning anyway: tapping sparkles while
+    // hasPendingLLMChanges is true confirms the pending proposal instead of starting a new run.
+    // Reset when a note loads or corrections are cleared. (Session-scoped: reloading a
+    // previously-corrected note starts fresh, so the first tap after reload runs without the
+    // warning.)
     var hasAppliedLLMCorrectionForCurrentNote = false
 }

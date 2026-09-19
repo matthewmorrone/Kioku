@@ -42,6 +42,14 @@ nonisolated enum SegmentationDemotions {
         "もした",  // rare 燃す past; almost always も + した (stem + emphatic も + した)
         "その物",  // spurious fusion; should be その + 物
         "したじゃ", // spurious deinflection span (した + じゃ); not a dict entry — should be した | じゃ | ない
+        "はい",    // "yes" wins over は + いつも when a hiragana run follows は
+        "はだ",    // "skin" wins over ほんとう + は + だきしめたい
+        "よい",    // "good" wins over よ + いま
+        "とさ",    // place name wins over と + ささやく
+        "がみ",
+        "にい",
+        "はく",
+        "んな",
     ]
 
     static let defaultRawValue: String = defaults.joined(separator: ",")

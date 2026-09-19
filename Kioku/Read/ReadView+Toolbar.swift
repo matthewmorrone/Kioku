@@ -91,7 +91,13 @@ extension ReadView {
         // overrides while AI changes are pending.
         let isEnabled = (document.hasManualSegmentationEdits || llmCorrection.hasPendingLLMChanges) && editModeScroll.isEditMode == false
         return Button {
-            resetSegmentationToComputed()
+            if llmCorrection.hasPendingLLMChanges {
+                // Nothing has been written to the document yet — just drop the proposal,
+                // without touching any manual segmentation edits made before it.
+                rejectAllPendingLLMChanges()
+            } else {
+                resetSegmentationToComputed()
+            }
         } label: {
             Group {
                 if llmCorrection.hasPendingLLMChanges {

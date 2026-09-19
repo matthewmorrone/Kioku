@@ -3,32 +3,51 @@
     {
       "name": "jmdict-eng",
       "type": "jmdict",
-      "path": "Kioku/Resources/jmdict-eng-3.6.2.json",
+      "path": "Resources/jmdict-eng-3.6.2.json",
       "required": true,
       "derived": false,
       "url": "https://github.com/scriptin/jmdict-simplified/releases/download/3.6.2%2B20260223124729/jmdict-eng-3.6.2%2B20260223124729.json.zip",
       "sha256": "1c6fb944f8e3a26d71c73bca8a024e0d5e34fea7a728842e162dc4bfc32850eb",
-      "provenance": "scriptin/jmdict-simplified release asset; local extracted file hash pinned"
+      "provenance": "scriptin/jmdict-simplified release asset; local extracted file hash pinned",
+      "fetch": {
+        "url": "https://github.com/scriptin/jmdict-simplified/releases/download/3.6.2%2B20260223124729/jmdict-eng-3.6.2%2B20260223124729.json.zip",
+        "format": "zip",
+        "member": "jmdict-eng-3.6.2.json",
+        "cacheName": "jmdict-eng-3.6.2+20260223124729.json.zip",
+        "archiveSha256": "69b8abdb05286a31dd48baf240099901708035c224e947f6b47e6853eb927477"
+      },
+      "materialize": true,
+      "feedsDictionary": true
     },
     {
       "name": "extras",
       "type": "supplemental-dictionary",
-      "path": "Kioku/Resources/extras.json",
+      "path": "Resources/extras.json",
       "required": false,
       "derived": false,
       "url": null,
       "sha256": null,
-      "provenance": "project-maintained supplemental dictionary entries"
+      "provenance": "project-maintained supplemental dictionary entries",
+      "feedsDictionary": true
     },
     {
       "name": "jpdb-frequency-kana",
       "type": "frequency-dictionary",
-      "path": "Kioku/Resources/jpdb-frequency-kana-2.2.json",
+      "path": "Resources/jpdb-frequency-kana-2.2.json",
       "required": false,
       "derived": false,
       "url": "https://github.com/Kuuuube/yomitan-dictionaries/releases/download/yomitan-permalink/JPDB_v2.2_Frequency_Kana.zip",
-      "sha256": null,
-      "provenance": "JPDB v2.2 frequency dictionary by Kuuuube; not checked in — download separately and extract to Resources/"
+      "sha256": "ae3a3fc396ba53836bf14a4e01b002fd3d4aa8e0ad8727fde503287a3a2da283",
+      "provenance": "JPDB v2.2 frequency dictionary by Kuuuube (yomitan-permalink release); generate_db.py downloads the zip and extracts term_meta_bank_1.json to Resources/jpdb-frequency-kana-2.2.json",
+      "fetch": {
+        "url": "https://github.com/Kuuuube/yomitan-dictionaries/releases/download/yomitan-permalink/JPDB_v2.2_Frequency_Kana.zip",
+        "format": "zip",
+        "member": "term_meta_bank_1.json",
+        "cacheName": "JPDB_v2.2_Frequency_Kana.zip",
+        "archiveSha256": "4fa06c784155ea0ea0953740b99d421296c775ee0d035cfe1ff65a40d7d3e685"
+      },
+      "materialize": true,
+      "feedsDictionary": true
     },
     {
       "name": "wordfreq",
@@ -38,7 +57,8 @@
       "derived": false,
       "url": "https://pypi.org/project/wordfreq/",
       "sha256": null,
-      "provenance": "Python package; install with: pip install wordfreq mecab-python3 ipadic"
+      "provenance": "Python package; install with: pip install wordfreq mecab-python3 ipadic",
+      "feedsDictionary": true
     },
     {
       "name": "kanjidic2-all",
@@ -47,38 +67,67 @@
       "required": false,
       "derived": false,
       "url": "https://github.com/scriptin/jmdict-simplified/releases/download/3.6.2%2B20260223124729/kanjidic2-all-3.6.2%2B20260223124729.json.zip",
-      "sha256": null,
-      "provenance": "scriptin/jmdict-simplified kanjidic2-all release asset; download, extract, and rename to kanjidic2-all.json in Resources/"
+      "sha256": "1299acdd557604747bf875c2a5eb1ea309b1c3a36bf88b31c9ed0b4e8c338290",
+      "provenance": "scriptin/jmdict-simplified kanjidic2-all release asset; generate_db.py downloads the zip and extracts kanjidic2-all-3.6.2.json to Resources/kanjidic2-all.json",
+      "fetch": {
+        "url": "https://github.com/scriptin/jmdict-simplified/releases/download/3.6.2%2B20260223124729/kanjidic2-all-3.6.2%2B20260223124729.json.zip",
+        "format": "zip",
+        "member": "kanjidic2-all-3.6.2.json",
+        "cacheName": "kanjidic2-all-3.6.2+20260223124729.json.zip",
+        "archiveSha256": "2d73c4da2ea8b93ada8d014cd587189fa13f4a824675517395208e3f8937873d"
+      },
+      "materialize": true,
+      "feedsDictionary": true
     },
     {
       "name": "pitch-accent",
       "type": "pitch-accent",
-      "path": "Resources/pitch-accent.tsv",
+      "path": null,
       "required": false,
       "derived": true,
       "url": null,
       "sha256": "85f0073ef6b471e2a9b1d22c1c47e08a5321dd4e530b8d89ca02f49dd663d53b",
-      "provenance": "Derived from UniDic kana-accent lex.csv via scripts/unidic_to_pitch_tsv.py; source archive: https://clrd.ninjal.ac.jp/unidic_archive/cwj/2.1.2/unidic-mecab_kana-accent-2.1.2_src.zip (sha256: 70793cacda81b403eda71736cc180f3144303623755a612b13e1dffeb6554591)"
+      "provenance": "Derived in-process by generate_db.py from unidic-kana-accent-src: lex.csv rows with an accent value; word = surface, kana = base-form pronunciation, kind = second POS field (first if \"*\"), accent = first accent type, morae = kana minus small kana; rows with accent > morae dropped; duplicates dropped keeping file order. sha256 is the canonical TSV written by `generate_db.py --emit-derived DIR` (CRLF, header row) — verified byte-identical to the file this replaced.",
+      "derivedFrom": [
+        "unidic-kana-accent-src"
+      ],
+      "derivation": "derive_pitch_accent_rows in Resources/generate_db.py",
+      "sha256Scheme": "file: SHA-256 of pitch-accent.tsv as written by generate_db.py --emit-derived",
+      "feedsDictionary": true
     },
     {
       "name": "sentence-pairs",
       "type": "sentence-pairs",
-      "path": "Resources/sentence-pairs.tsv",
+      "path": null,
       "required": false,
       "derived": true,
       "url": null,
-      "sha256": "2638c4baf8cb415d99a61af3ed8ae334fcc947f56a44add6c76aeb5506421aee",
-      "provenance": "Built from Tatoeba export: 'Sentence pairs in Japanese-English - 2026-01-20.tsv' and 'Sentence pairs in English-Japanese - 2026-01-20.tsv' via scripts/build_sentence_pairs_tsv.py"
+      "sha256": null,
+      "provenance": "Derived in-process by generate_db.py from the Tatoeba exports: every link between a Japanese and an English sentence, sorted by (ja_id, en_id); tab-split, never CSV-unquoted. Tatoeba re-exports weekly, so the output (and its hash) changes over time — no hash pinned. Replaces the hand-built 2026-01-20 TSV, whose script was lost and which had corrupted ~2,100 English sentences that begin with a quotation mark.",
+      "rolling": true,
+      "derivedFrom": [
+        "tatoeba-jpn-sentences",
+        "tatoeba-eng-sentences",
+        "tatoeba-links"
+      ],
+      "derivation": "derive_sentence_pairs_rows in Resources/generate_db.py",
+      "feedsDictionary": true
     },
     {
       "name": "jlpt-vocab",
       "type": "jlpt-vocabulary",
-      "path": "Resources/jlpt-vocab.tsv",
+      "path": null,
       "required": false,
       "derived": true,
       "url": "https://www.tanos.co.uk/jlpt/",
-      "sha256": null,
-      "provenance": "JLPT vocabulary level lists (N5-N1) by Jonathan Waller, https://www.tanos.co.uk/jlpt/ — licensed CC BY. UNOFFICIAL community estimates; no official JLPT vocab lists exist post-2010. Built into Resources/jlpt-vocab.tsv (columns: surface, reading, level; level = N-number, 5=N5 easiest .. 1=N1 hardest) by scripts/build_jlpt_vocab_tsv.py from the cleaned CSV mirror at https://github.com/Bluskyo/JLPT_Vocabulary (MIT), file data/vocab/results/JLPT_vocab_ALL.csv. Consumed by generate_db.import_jlpt_levels to populate the entry_jlpt_level table."
+      "sha256": "282193cafe2922ea9c1ebbb1206caff7bfcb5bd046b0a2b0c6f1b5529bb8fe01",
+      "provenance": "Derived in-process by generate_db.py from jlpt-vocab-source (rows with a non-blank surface and level 1-5). sha256 is the canonical TSV written by `generate_db.py --emit-derived DIR` — verified byte-identical to the file this replaced. Consumed by import_jlpt_levels to populate entry_jlpt_level. Replaces scripts/build_jlpt_vocab_tsv.py.",
+      "derivedFrom": [
+        "jlpt-vocab-source"
+      ],
+      "derivation": "derive_jlpt_vocab_rows in Resources/generate_db.py",
+      "sha256Scheme": "file: SHA-256 of jlpt-vocab.tsv as written by generate_db.py --emit-derived",
+      "feedsDictionary": true
     },
     {
       "name": "radkfile2",
@@ -87,8 +136,18 @@
       "required": false,
       "derived": false,
       "url": "http://ftp.edrdg.org/pub/Nihongo/kradzip.zip",
-      "sha256": null,
-      "provenance": "EDRDG RADKFILE2 (radical→kanji index, extended radical set). License: CC BY-SA 4.0 (Electronic Dictionary Research and Development Group). Download, gunzip, convert from EUC-JP to UTF-8 and save as Resources/radkfile2.utf8. Example: curl -sL http://ftp.edrdg.org/pub/Nihongo/kradzip.zip | gunzip | iconv -f EUC-JP -t UTF-8 > Resources/radkfile2.utf8"
+      "sha256": "24943341b629e3ee6deda867b8c2e0c9da81e174bb2a4f625e59fc6e46ad3de0",
+      "provenance": "EDRDG RADKFILE2 (extended radical set). License: CC BY-SA 4.0 (Electronic Dictionary Research and Development Group). generate_db.py downloads kradzip.zip, extracts the radkfile2 member (a zip member, EUC-JP) and converts it to UTF-8 as Resources/radkfile2.utf8",
+      "fetch": {
+        "url": "http://ftp.edrdg.org/pub/Nihongo/kradzip.zip",
+        "format": "zip",
+        "member": "radkfile2",
+        "transform": "eucjp-to-utf8",
+        "cacheName": "kradzip.zip",
+        "archiveSha256": "e2df44c07ed557fe9867709a051f1f134cd33c750598112d85ba56eb86fc3c8c"
+      },
+      "materialize": true,
+      "feedsDictionary": true
     },
     {
       "name": "kradfile2",
@@ -97,8 +156,18 @@
       "required": false,
       "derived": false,
       "url": "http://ftp.edrdg.org/pub/Nihongo/kradzip.zip",
-      "sha256": null,
-      "provenance": "EDRDG KRADFILE2 (kanji→radical index, extended radical set). License: CC BY-SA 4.0. Download, gunzip, convert from EUC-JP to UTF-8 and save as Resources/kradfile2.utf8. Example: curl -sL http://ftp.edrdg.org/pub/Nihongo/kradzip.zip | gunzip | iconv -f EUC-JP -t UTF-8 > Resources/kradfile2.utf8"
+      "sha256": "236f5e9be004bb812e0acc1ce1c08a44f15787a9d5b0a7836924806038b8ce8c",
+      "provenance": "EDRDG KRADFILE2 (extended radical set). License: CC BY-SA 4.0 (Electronic Dictionary Research and Development Group). generate_db.py downloads kradzip.zip, extracts the kradfile2 member (a zip member, EUC-JP) and converts it to UTF-8 as Resources/kradfile2.utf8",
+      "fetch": {
+        "url": "http://ftp.edrdg.org/pub/Nihongo/kradzip.zip",
+        "format": "zip",
+        "member": "kradfile2",
+        "transform": "eucjp-to-utf8",
+        "cacheName": "kradzip.zip",
+        "archiveSha256": "e2df44c07ed557fe9867709a051f1f134cd33c750598112d85ba56eb86fc3c8c"
+      },
+      "materialize": true,
+      "feedsDictionary": true
     },
     {
       "name": "handwriting-ja",
@@ -107,8 +176,9 @@
       "required": false,
       "derived": false,
       "url": "https://tegaki.github.io",
-      "sha256": null,
-      "provenance": "Tegaki-Zinnia Japanese handwriting recognition model (~25MB). Consumed by the Zinnia recognizer via the Packages/zinnia-swift local Swift package (feat/handwriting branch). License: LGPL — see the Tegaki project for redistribution terms. Download the Japanese model from https://tegaki.github.io and save as Resources/handwriting-ja.model."
+      "sha256": "d58618576d12c1ea38992606f30d19158a0a3beda3ac23bacccf1e48e651f2b2",
+      "provenance": "Tegaki-Zinnia Japanese handwriting recognition model (~25MB). Consumed by the Zinnia recognizer via the Packages/zinnia-swift local Swift package (feat/handwriting branch). License: LGPL — see the Tegaki project for redistribution terms. Download the Japanese model from https://tegaki.github.io and save as Resources/handwriting-ja.model.",
+      "feedsDictionary": false
     },
     {
       "name": "kanjivg",
@@ -116,19 +186,28 @@
       "path": "Resources/kanjivg.xml",
       "required": false,
       "derived": false,
-      "url": "https://github.com/KanjiVG/kanjivg/releases/download/r20220427/kanjivg-20220427-main.zip",
-      "sha256": null,
-      "provenance": "KanjiVG (Kanji Vector Graphics) by Ulrich Apel et al. License: CC BY-SA 3.0. Single-file XML distribution. Download, unzip, and save as Resources/kanjivg.xml. Example: curl -sL https://github.com/KanjiVG/kanjivg/releases/download/r20220427/kanjivg-20220427-main.zip -o /tmp/kvg.zip && unzip -p /tmp/kvg.zip 'kanjivg-20220427.xml' > Resources/kanjivg.xml"
+      "url": "https://github.com/KanjiVG/kanjivg/releases/download/r20250816/kanjivg-20250816.xml.gz",
+      "sha256": "97f316c265eee227cac44af1baf1227f16c707a367038c6b3d72afc864dd8010",
+      "provenance": "KanjiVG (Kanji Vector Graphics) by Ulrich Apel et al., release r20250816 single-file XML (kanjivg-20250816.xml.gz). License: CC BY-SA 3.0. generate_db.py downloads the gzip and decompresses it to Resources/kanjivg.xml. (An earlier version of this entry pointed at the r20220427 -main.zip, which holds per-character SVGs, not the XML the builder reads.)",
+      "fetch": {
+        "url": "https://github.com/KanjiVG/kanjivg/releases/download/r20250816/kanjivg-20250816.xml.gz",
+        "format": "gz",
+        "cacheName": "kanjivg-20250816.xml.gz",
+        "archiveSha256": "b36579789775ea912d5e98356bf243f54fb953fa3b58a16c2d6995f252e2a3e2"
+      },
+      "materialize": true,
+      "feedsDictionary": true
     },
     {
       "name": "dictionary",
       "type": "sqlite",
-      "path": "Kioku/Resources/dictionary.sqlite",
+      "path": "Resources/dictionary.sqlite",
       "required": true,
       "derived": true,
-      "url": "https://github.com/matthewmorrone/Kioku/releases/download/dictionary-v7/dictionary.sqlite",
-      "sha256": "7b46da969bf87200ae97980d4ca5d5700c5e10bfb02e5e0a8a36b2457912e7d4",
-      "provenance": "generated by generate_db.py from jmdict-eng, extras, jpdb-frequency-kana, wordfreq, kanjidic2-all, pitch-accent, and sentence-pairs. NOT bundled into Kioku.app (~350MB, too large to ship in the baseline install) and NOT committed to git — the local Resources/dictionary.sqlite copy is downloaded straight from this release URL by scripts/ensure_dictionary.sh (used for tests, CI, and generate_db.py's own staleness check), same as at runtime. At runtime DictionaryDownloadManager (Kioku/Dictionary/DictionaryDownloadManager.swift) downloads this exact release asset into Application Support on first launch, verified against the sha256 above. When dictionary.sqlite is rebuilt with meaningfully different content: run generate_db.py, bump the tag (e.g. dictionary-v8) and recompute this sha256 in both this entry and DictionaryDownloadManager.releaseTag/expectedSHA256, then run scripts/publish_dictionary_release.sh locally to publish the release — there is no CI automation for this step, since generate_db.py's upstream inputs are gitignored and only present on whichever machine ran the generator. dictionary-v5 stops JMdict-flagged obsolete/irregular/search-only readings (re_inf ok/ik/sk) from outranking the standard reading — fixed 2,297 surfaces including 涙 (was なだ, now なみだ), お母さん (was おかーさん, now おかあさん), and お父さん (was おとっさん, now おとうさん). dictionary-v6 re-materializes surface_readings with the has_direct_rank column (materialize_surface_readings in generate_db.py, no upstream data changes) so a reading that only INHERITS a multi-reading entry's jpdb_rank can no longer tie with — and lose the wordfreq_zipf tiebreak to — a sibling reading with its own direct rank: fixed the default reading on 6,491 surfaces, including 何か (was なんか, now なにか) and 夜 (was よ, now よる). dictionary-v7 applies PREFERRED_READING_OVERRIDES to surface_readings.best_rank (generate_db.py, no upstream data changes) so a manually curated exception list can override corpus-frequency ranking for surfaces where it picks a reading Japanese speakers don't actually default to: fixed 抱く (was いだく, now だく)."
+      "url": "https://github.com/matthewmorrone/Kioku/releases/download/dictionary-v8/dictionary.sqlite",
+      "sha256": "ebf38239160165c06aa3d096c038cec7feaf9d3341e66f195ddbf5e6a9b25f5f",
+      "provenance": "generated by generate_db.py from every manifest entry with feedsDictionary=true (see the top-level \"regeneration\" and \"tools\" blocks): jmdict-eng, extras, jpdb-frequency-kana, wordfreq, kanjidic2-all, radkfile2, kradfile2, kanjivg, and the pitch-accent / sentence-pairs / jlpt-vocab datasets derived from their raw sources. NOT bundled into Kioku.app (~350MB, too large to ship in the baseline install) and NOT committed to git — the local Resources/dictionary.sqlite copy is downloaded straight from this release URL by scripts/ensure_dictionary.sh (used for tests, CI, and generate_db.py's own staleness check), same as at runtime. At runtime DictionaryDownloadManager (Kioku/Dictionary/DictionaryDownloadManager.swift) downloads this exact release asset into Application Support on first launch, verified against the sha256 above. When dictionary.sqlite is rebuilt with meaningfully different content: run generate_db.py, bump the tag (e.g. dictionary-v8) and recompute this sha256 in both this entry and DictionaryDownloadManager.releaseTag/expectedSHA256, then run scripts/publish_dictionary_release.sh locally to publish the release — there is no CI automation for this step, since generate_db.py's upstream inputs are gitignored and only present on whichever machine ran the generator. dictionary-v5 stops JMdict-flagged obsolete/irregular/search-only readings (re_inf ok/ik/sk) from outranking the standard reading — fixed 2,297 surfaces including 涙 (was なだ, now なみだ), お母さん (was おかーさん, now おかあさん), and お父さん (was おとっさん, now おとうさん). dictionary-v6 re-materializes surface_readings with the has_direct_rank column (materialize_surface_readings in generate_db.py, no upstream data changes) so a reading that only INHERITS a multi-reading entry's jpdb_rank can no longer tie with — and lose the wordfreq_zipf tiebreak to — a sibling reading with its own direct rank: fixed the default reading on 6,491 surfaces, including 何か (was なんか, now なにか) and 夜 (was よ, now よる). dictionary-v7 applies PREFERRED_READING_OVERRIDES to surface_readings.best_rank (generate_db.py, no upstream data changes) so a manually curated exception list can override corpus-frequency ranking for surfaces where it picks a reading Japanese speakers don't actually default to: fixed 抱く (was いだく, now だく). dictionary-v8 is the first build produced entirely from the raw upstream sources in this manifest (generate_db.py now derives pitch-accent, sentence-pairs and jlpt-vocab itself): pitch_accent and entry_jlpt_level are byte-for-byte what v7 held, sentence_pairs is refreshed from Tatoeba (280,508 pairs, and ~2,100 English sentences that v7 had stripped of quotation marks are intact), and extras.json gains ユア so ユアラブ segments as ユア + ラブ.",
+      "feedsDictionary": false
     },
     {
       "name": "mecab-ipadic-matrix",
@@ -137,8 +216,9 @@
       "required": true,
       "derived": false,
       "url": "https://pypi.org/project/ipadic/",
-      "sha256": null,
-      "provenance": "IPADIC 2.7.0-20070801 bigram connection-cost matrix, byte-identical to the PyPI `ipadic` package (source: github.com/polm/ipadic-py). Only piece of MeCab data the DEFAULT trie segmenter needs — IPADicMatrix.swift feeds it into the Viterbi scorer's node-transition costs. Small enough (3.5MB) to commit directly (see .gitignore's exception carve-out) so a fresh clone's default configuration isn't silently degraded, unlike the rest of MeCab's data below."
+      "sha256": "ee44d7350cdcb680ebd699f83e121be1dc63310f8832d55bcb537a068177611a",
+      "provenance": "IPADIC 2.7.0-20070801 bigram connection-cost matrix, byte-identical to the PyPI `ipadic` package (source: github.com/polm/ipadic-py). Only piece of MeCab data the DEFAULT trie segmenter needs — IPADicMatrix.swift feeds it into the Viterbi scorer's node-transition costs. Small enough (3.5MB) to commit directly (see .gitignore's exception carve-out) so a fresh clone's default configuration isn't silently degraded, unlike the rest of MeCab's data below.",
+      "feedsDictionary": false
     },
     {
       "name": "mecab-ipadic-full",
@@ -147,8 +227,10 @@
       "required": false,
       "derived": false,
       "url": "https://pypi.org/project/ipadic/",
-      "sha256": null,
-      "provenance": "Full IPADIC 2.7.0-20070801 (sys.dic + unk.dic + char.bin + dicrc, ~49.5MB) — byte-identical to the PyPI `ipadic` package for char.bin/dicrc/matrix.bin; sys.dic/unk.dic differ by build/version of the same standard vocabulary (see repo investigation notes). Only needed for the opt-in Settings → Segmentation → Engine: MeCab backend (its default dictionary). Not required: the app falls back to the trie segmenter if these files are absent (MeCabSegmenter's failable init). Not checked in — obtain via `pip install ipadic` (extracts to the package's dicdir) or an equivalent mecab-ipadic 2.7.0 distribution, and copy sys.dic/unk.dic/char.bin/dicrc into Resources/MeCab/ipadic/."
+      "sha256": "ef01f988eb59ab3dc085d7351aba25e6e9e9769c7f115ad3fc483b101ae31cf4",
+      "sha256Scheme": "tree: SHA-256 of sorted \"relative/path<TAB>file-sha256\" lines joined by newlines with a trailing newline, excluding .DS_Store",
+      "provenance": "Full IPADIC 2.7.0-20070801 (sys.dic + unk.dic + char.bin + dicrc, ~49.5MB) — byte-identical to the PyPI `ipadic` package for char.bin/dicrc/matrix.bin; sys.dic/unk.dic differ by build/version of the same standard vocabulary (see repo investigation notes). Only needed for the opt-in Settings → Segmentation → Engine: MeCab backend (its default dictionary). Not required: the app falls back to the trie segmenter if these files are absent (MeCabSegmenter's failable init). Not checked in — obtain via `pip install ipadic` (extracts to the package's dicdir) or an equivalent mecab-ipadic 2.7.0 distribution, and copy sys.dic/unk.dic/char.bin/dicrc into Resources/MeCab/ipadic/.",
+      "feedsDictionary": false
     },
     {
       "name": "mecab-unidic",
@@ -166,7 +248,145 @@
         "unidic/dicrc": "8caf337c81e7041d5ef86027d85576a556a6198c464ee3c3145cd0714d43416c",
         "unidic/matrix.bin": "88fb99efe1075d9b8b40e01bb2751e4095f1612618f2490af776eb5ed39190a9"
       },
-      "provenance": "UniDic-MeCab (~196MB) — the largest single resource in the project, and NOT bundled into the app: it lives outside Resources/MeCab/ (which Xcode bundles wholesale as a folder reference) specifically so it's excluded from the shipped app. Reachable only via Settings → Segmentation → Engine: MeCab, then Dictionary: UniDic — two manual changes past the trie default, exercised by essentially no users. Sourced from the NINJAL UniDic archive (same host family as this manifest's pitch-accent entry). To restore: download the url above (unidic-mecab-2.1.2_bin.zip, ~44MB — the pre-built binary distribution, not the larger _src.zip), extract sys.dic/unk.dic/char.bin/dicrc/matrix.bin into Resources/MeCab-unidic-optional/unidic/, verify each against perFileSHA256BeforeDeletion above, then re-add that path as a bundled Resources build-phase entry in Kioku.xcodeproj if you want it shipped again."
+      "provenance": "UniDic-MeCab (~196MB) — the largest single resource in the project, and NOT bundled into the app: it lives outside Resources/MeCab/ (which Xcode bundles wholesale as a folder reference) specifically so it's excluded from the shipped app. Reachable only via Settings → Segmentation → Engine: MeCab, then Dictionary: UniDic — two manual changes past the trie default, exercised by essentially no users. Sourced from the NINJAL UniDic archive (same host family as this manifest's pitch-accent entry). To restore: download the url above (unidic-mecab-2.1.2_bin.zip, ~44MB — the pre-built binary distribution, not the larger _src.zip), extract sys.dic/unk.dic/char.bin/dicrc/matrix.bin into Resources/MeCab-unidic-optional/unidic/, verify each against perFileSHA256BeforeDeletion above, then re-add that path as a bundled Resources build-phase entry in Kioku.xcodeproj if you want it shipped again.",
+      "feedsDictionary": false
+    },
+    {
+      "name": "unidic-kana-accent-src",
+      "type": "source-archive",
+      "path": null,
+      "required": false,
+      "derived": false,
+      "url": "https://clrd.ninjal.ac.jp/unidic_archive/cwj/2.1.2/unidic-mecab_kana-accent-2.1.2_src.zip",
+      "sha256": "0c39684972afa88b3a804781db1cda33d71ef1d159bfeef00fcba53facd2f1f4",
+      "fetch": {
+        "url": "https://clrd.ninjal.ac.jp/unidic_archive/cwj/2.1.2/unidic-mecab_kana-accent-2.1.2_src.zip",
+        "format": "zip",
+        "member": "unidic-mecab_kana-accent-2.1.2_src/lex.csv",
+        "cacheName": "unidic-mecab_kana-accent-2.1.2_src.zip",
+        "archiveSha256": "70793cacda81b403eda71736cc180f3144303623755a612b13e1dffeb6554591"
+      },
+      "provenance": "UniDic-MeCab kana-accent 2.1.2 source archive (NINJAL). sha256 is the hash of the lex.csv member; fetch.archiveSha256 is the zip. Input to derive_pitch_accent_rows in generate_db.py.",
+      "feedsDictionary": true
+    },
+    {
+      "name": "tatoeba-jpn-sentences",
+      "type": "source-archive",
+      "path": null,
+      "required": false,
+      "derived": false,
+      "rolling": true,
+      "url": "https://downloads.tatoeba.org/exports/per_language/jpn/jpn_sentences.tsv.bz2",
+      "sha256": null,
+      "fetch": {
+        "url": "https://downloads.tatoeba.org/exports/per_language/jpn/jpn_sentences.tsv.bz2",
+        "format": "bz2",
+        "cacheName": "jpn_sentences.tsv.bz2"
+      },
+      "provenance": "Tatoeba per-language export of Japanese sentences (id, language, text). Re-exported weekly, so no hash is pinned. License: CC BY 2.0 FR. Input to derive_sentence_pairs_rows.",
+      "feedsDictionary": true
+    },
+    {
+      "name": "tatoeba-eng-sentences",
+      "type": "source-archive",
+      "path": null,
+      "required": false,
+      "derived": false,
+      "rolling": true,
+      "url": "https://downloads.tatoeba.org/exports/per_language/eng/eng_sentences.tsv.bz2",
+      "sha256": null,
+      "fetch": {
+        "url": "https://downloads.tatoeba.org/exports/per_language/eng/eng_sentences.tsv.bz2",
+        "format": "bz2",
+        "cacheName": "eng_sentences.tsv.bz2"
+      },
+      "provenance": "Tatoeba per-language export of English sentences (id, language, text). Re-exported weekly, so no hash is pinned. License: CC BY 2.0 FR. Input to derive_sentence_pairs_rows.",
+      "feedsDictionary": true
+    },
+    {
+      "name": "tatoeba-links",
+      "type": "source-archive",
+      "path": null,
+      "required": false,
+      "derived": false,
+      "rolling": true,
+      "url": "https://downloads.tatoeba.org/exports/links.tar.bz2",
+      "sha256": null,
+      "fetch": {
+        "url": "https://downloads.tatoeba.org/exports/links.tar.bz2",
+        "format": "tar.bz2",
+        "member": "links.csv",
+        "cacheName": "links.tar.bz2"
+      },
+      "provenance": "Tatoeba sentence-link table (id, translation id; both directions), all languages, ~150MB. Re-exported weekly, so no hash is pinned. Input to derive_sentence_pairs_rows.",
+      "feedsDictionary": true
+    },
+    {
+      "name": "jlpt-vocab-source",
+      "type": "source-archive",
+      "path": null,
+      "required": false,
+      "derived": false,
+      "url": "https://raw.githubusercontent.com/Bluskyo/JLPT_Vocabulary/d29a678da569669f27d99400352c99f202b6e53b/data/vocab/results/JLPT_vocab_ALL.csv",
+      "sha256": "810c776c7a72fe9a6860d8629e7f4d3903545808e6cbcff8dde3b52b01800f24",
+      "fetch": {
+        "url": "https://raw.githubusercontent.com/Bluskyo/JLPT_Vocabulary/d29a678da569669f27d99400352c99f202b6e53b/data/vocab/results/JLPT_vocab_ALL.csv",
+        "format": "file",
+        "cacheName": "JLPT_vocab_ALL.csv",
+        "archiveSha256": "810c776c7a72fe9a6860d8629e7f4d3903545808e6cbcff8dde3b52b01800f24"
+      },
+      "provenance": "Cleaned CSV mirror (Kanji,Reading,Level) of Jonathan Waller's JLPT lists (https://www.tanos.co.uk/jlpt/, CC BY, unofficial estimates) from Bluskyo/JLPT_Vocabulary (MIT), pinned to commit d29a678. Input to derive_jlpt_vocab_rows.",
+      "feedsDictionary": true
+    },
+    {
+      "name": "opencc-jp-shinjitai",
+      "type": "variant-kanji-table",
+      "path": null,
+      "required": false,
+      "derived": false,
+      "url": "https://raw.githubusercontent.com/BYVoid/OpenCC/6aa8c54e100678150985a9af631359f80e31956a/data/dictionary/JPShinjitaiCharacters.txt",
+      "sha256": "12cec7250b873ef52b36d8f92218d4f92c0aaf5d8cd7c58fe42d9785bdcdc43a",
+      "fetch": {
+        "url": "https://raw.githubusercontent.com/BYVoid/OpenCC/6aa8c54e100678150985a9af631359f80e31956a/data/dictionary/JPShinjitaiCharacters.txt",
+        "format": "file",
+        "cacheName": "JPShinjitaiCharacters.txt",
+        "archiveSha256": "12cec7250b873ef52b36d8f92218d4f92c0aaf5d8cd7c58fe42d9785bdcdc43a"
+      },
+      "feedsDictionary": false,
+      "feedsApp": true,
+      "provenance": "OpenCC (BYVoid/OpenCC, Apache-2.0) data/dictionary/JPShinjitaiCharacters.txt pinned to commit 6aa8c54: shinjitai <-> old-form (kyujitai / variant) kanji correspondences built from the Jouyou kanji table, the Jinmeiyou variant table and 22 shinjitai from the Hyougai kanji character-shape table. Input to scripts/generate_kyujitai_table.py, which writes Kioku/Dictionary/KyujitaiTable.swift (the table KyujitaiNormalizer applies in the trie and in dictionary lookup). Not used by generate_db.py."
     }
-  ]
+  ],
+  "tools": {
+    "python": {
+      "version": "3.11",
+      "requirements": "requirements.txt",
+      "packages": {
+        "wordfreq": "3.1.1",
+        "mecab-python3": "1.0.12",
+        "ipadic": "1.0.0"
+      }
+    },
+    "homebrew": {
+      "mecab": "0.996",
+      "mecab-ipadic": "2.7.0-20070801"
+    },
+    "note": "wordfreq supplies wordfreq_zipf; the mecab CLI plus mecab-ipadic supplies the IPADic context IDs. generate_db.py fails fast if either is missing."
+  },
+  "regeneration": {
+    "steps": [
+      "python3 -m venv .venv && .venv/bin/pip install -r requirements.txt",
+      "brew install mecab mecab-ipadic",
+      ".venv/bin/python Resources/generate_db.py"
+    ],
+    "options": {
+      "--output PATH": "write the database elsewhere (default Resources/dictionary.sqlite)",
+      "--offline": "never download; fail if a cached archive is missing",
+      "--sources-only": "fetch and verify every source, then exit",
+      "--emit-derived DIR": "write the derived TSVs (whose sha256 values are recorded here) to DIR, then exit"
+    },
+    "cache": "Resources/.source-cache (gitignored)",
+    "reproducibility": "Direct inputs and the pitch-accent / jlpt-vocab derivations are byte-verified against the sha256 values recorded here. Tatoeba entries are marked rolling, so sentence_pairs content tracks Tatoeba's current export; everything else in the database is deterministic from the pinned inputs.",
+    "publishing": "After a rebuild changes the database, bump the release tag, recompute the dictionary sha256 here and in DictionaryDownloadManager.swift, and run scripts/publish_dictionary_release.sh."
+  }
 }

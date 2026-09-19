@@ -75,7 +75,9 @@ extension ReadView {
             segmentSelection.illegalMergeBoundaryLocation = nil
             llmCorrection.pendingLLMChangedLocations = []
             llmCorrection.pendingLLMChangedReadingLocations = []
-            llmCorrection.preLLMSegmentEntries = []
+            llmCorrection.pendingLLMChangesByLocation = [:]
+            llmCorrection.pendingLLMRebuiltEdges = []
+            llmCorrection.pendingLLMWorkingEntries = []
             llmCorrection.hasPendingLLMChanges = false
             llmCorrection.hasAppliedLLMCorrectionForCurrentNote = false
             SegmentLookupSheet.shared.dismissPopover()
@@ -96,7 +98,9 @@ extension ReadView {
         llmCorrection.llmCorrectionTask?.cancel()
         llmCorrection.pendingLLMChangedLocations = []
         llmCorrection.pendingLLMChangedReadingLocations = []
-        llmCorrection.preLLMSegmentEntries = []
+        llmCorrection.pendingLLMChangesByLocation = [:]
+        llmCorrection.pendingLLMRebuiltEdges = []
+        llmCorrection.pendingLLMWorkingEntries = []
         llmCorrection.hasPendingLLMChanges = false
         llmCorrection.hasAppliedLLMCorrectionForCurrentNote = false
         let noteToLoad = notesStore.note(withID: selectedNote.id) ?? selectedNote
