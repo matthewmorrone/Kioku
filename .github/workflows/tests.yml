@@ -140,6 +140,7 @@ jobs:
             -derivedDataPath build \
             -resultBundlePath build/Kioku.xcresult \
             "${plugin_flag[@]}" \
+            DEBUG_INFORMATION_FORMAT=dwarf \
             CODE_SIGNING_ALLOWED=NO
 
       - name: Upload xcresult bundle
