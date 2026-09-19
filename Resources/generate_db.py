@@ -4,6 +4,7 @@ import csv
 import gzip
 import io
 import json
+import os
 import re
 import shutil
 import sqlite3
@@ -21,9 +22,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT_CLASSIFIER_SWIFT_PATH = PROJECT_ROOT / "Kioku" / "Dictionary" / "ScriptClassifier.swift"
 RESOURCES_DIR = PROJECT_ROOT / "Resources"
 MANIFEST_PATH = RESOURCES_DIR / "data-manifest.json"
-# Downloaded upstream archives live here (gitignored). Derivation inputs that are huge once
-# extracted (UniDic lex.csv, Tatoeba links.csv) are streamed straight out of these archives.
-SOURCE_CACHE_DIR = RESOURCES_DIR / ".source-cache"
+# Downloaded upstream archives live OUTSIDE the checkout, so the ~330 MB of sources is fetched once
+# per machine rather than once per checkout — a cache inside the repo is deleted along with any
+# disposable worktree the generator happens to run in. KIOKU_SOURCE_CACHE overrides the location.
+# Derivation inputs that are huge once extracted (UniDic lex.csv, Tatoeba links.csv) are streamed
+# straight out of these archives.
+SOURCE_CACHE_DIR = Path(os.environ.get("KIOKU_SOURCE_CACHE") or Path.home() / "Projects" / "kioku-source-cache")
 JMDICT_PATH = RESOURCES_DIR / "jmdict-eng-3.6.2.json"
 EXTRAS_PATH = RESOURCES_DIR / "extras.json"
 JPDB_PATH = RESOURCES_DIR / "jpdb-frequency-kana-2.2.json"

@@ -385,7 +385,7 @@
       "--sources-only": "fetch and verify every source, then exit",
       "--emit-derived DIR": "write the derived TSVs (whose sha256 values are recorded here) to DIR, then exit"
     },
-    "cache": "Resources/.source-cache (gitignored)",
+    "cache": "~/Projects/kioku-source-cache, outside the checkout so it survives disposable worktrees; override with KIOKU_SOURCE_CACHE",
     "reproducibility": "Direct inputs and the pitch-accent / jlpt-vocab derivations are byte-verified against the sha256 values recorded here. Tatoeba entries are marked rolling, so sentence_pairs content tracks Tatoeba's current export; everything else in the database is deterministic from the pinned inputs.",
     "publishing": "After a rebuild changes the database, bump the release tag, recompute the dictionary sha256 here and in DictionaryDownloadManager.swift, and run scripts/publish_dictionary_release.sh."
   }
