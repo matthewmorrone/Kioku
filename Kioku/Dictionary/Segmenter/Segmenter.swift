@@ -216,16 +216,11 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     edge.partOfSpeech = posBits
                     edge.inflectionSteps = inflectionSteps
                     edge.isDictionaryMatch = true
-                    // Best (highest) frequency score across the surface and its resolved lemmas.
-                    // Conjugated surfaces (流されて) carry no direct score, so the lemma (流される)
-                    // supplies it. Feeds the statistical term in SegmenterScoring.edgeCost.
-                    var freqScore = frequencyScoreBySurface[surface] ?? 0
-                    for lemma in lemmas {
-                        if let lemmaScore = frequencyScoreBySurface[lemma], lemmaScore > freqScore {
-                            freqScore = lemmaScore
-                        }
-                    }
-                    edge.frequencyScore = freqScore
+                    // Frequency, step count and POS of whichever reading of the surface is cheaper.
+                    let reading = pricedReading(of: surface, lemmas: lemmas, inflectionSteps: inflectionSteps)
+                    edge.frequencyScore = reading.score
+                    edge.inflectionSteps = reading.inflectionSteps
+                    edge.partOfSpeech |= reading.lemmaPartOfSpeech
                     // Flag entries that bundle a known grammatical kana as their final char
                     // when the rest of the surface is its own dict entry — these are the rare
                     // "たいよ"-style bundles that need to lose to the compositional path.

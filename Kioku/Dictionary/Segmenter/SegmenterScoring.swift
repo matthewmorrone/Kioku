@@ -82,9 +82,13 @@ nonisolated struct SegmenterScoring {
             return Int(((unknownBaseNats + unknownPerCharacterNats * Double(edge.surface.count)) * 100).rounded())
         }
 
-        let score = edge.frequencyScore > 0 ? edge.frequencyScore : unrankedDictionaryScore
-        let nats = (zipfScaleExponent - score) * log(10.0) + inflectionStepNats * Double(edge.inflectionSteps)
-        return Int((nats * 100).rounded())
+        return Int((wordNats(score: edge.frequencyScore, inflectionSteps: edge.inflectionSteps) * 100).rounded())
+    }
+
+    // −ln P of a dictionary word with this frequency score (0 = unranked), plus the inflection-step charge.
+    static func wordNats(score: Double, inflectionSteps: Int) -> Double {
+        let ranked = score > 0 ? score : unrankedDictionaryScore
+        return (zipfScaleExponent - ranked) * log(10.0) + inflectionStepNats * Double(inflectionSteps)
     }
 
     // Detects punctuation-only single-character surfaces so they avoid strong lexical penalties.
