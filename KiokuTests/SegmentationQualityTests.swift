@@ -207,4 +207,18 @@ final class SegmentationQualityTests: XCTestCase {
         XCTAssertEqual(try segments(of: "時間が過ぎて"), ["時間", "が", "過ぎて"])
         XCTAssertEqual(try segments(of: "していて"), ["していて"])
     }
+    // A word written across katakana and hiragana is one segment — the dictionary entry ウソつき, and
+    // katakana-stem verbs through their lemma (サボった → サボる)…
+    func testWordsWrittenAcrossKanaScripts() throws {
+        XCTAssertEqual(try segments(of: "ウソつきな君"), ["ウソつき", "な", "君"])
+        XCTAssertEqual(try segments(of: "授業をサボった"), ["授業", "を", "サボった"])
+        XCTAssertEqual(try segments(of: "消しゴムを買った"), ["消しゴム", "を", "買った"])
+    }
+
+    // …while a span that merely runs across the script switch is still refused: ビロード+の must not
+    // become どの, nor ケンカ+もした 醸す. Their lemmas are not written across any switch.
+    func testStillRefusesFusionsAcrossKanaScripts() throws {
+        XCTAssertEqual(try segments(of: "ビロードの闇"), ["ビロード", "の", "闇"])
+        XCTAssertEqual(try segments(of: "ケンカもしたけど"), ["ケンカ", "も", "した", "けど"])
+    }
 }
