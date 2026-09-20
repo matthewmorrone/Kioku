@@ -6,8 +6,8 @@ WORK=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..','work','audit'
 import os
 db=sqlite3.connect(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),"Resources","dictionary.sqlite"))
 entries=collections.defaultdict(set); forms=collections.defaultdict(set)
-for t in ('kanji','kana_forms'):
-    for text,e in db.execute(f'select text,entry_id from {t}'): entries[text].add(e); forms[e].add(text)
+for text,e in db.execute('select text,entry_id from kanji union all select text,entry_id from kana_forms'):
+    entries[text].add(e); forms[e].add(text)
 pos=collections.defaultdict(set)
 for e,p in db.execute('select entry_id,pos from senses where pos is not null'):
     pos[e]|={x.strip() for x in p.split(',')}

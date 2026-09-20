@@ -107,7 +107,7 @@ python3 audit/collect.py work/data/train.jsonl work/data/held2k.jsonl work/data/
 python3 audit/audit.py 60          # failures grouped by (class, surface ending → lemma ending), with counts
 ```
 
-2026-09-20: 95.06% → 96.2% resolve. The gaps were rule **typing**, not only missing rows: `rulesIn`
+2026-09-20: 95.06% → 96.08% resolve (main after PR #91). The gaps were rule **typing**, not only missing rows: `rulesIn`
 named the lemma's class, but chaining needs the *inflected form's* class (ている → v1, ない / たい →
 adj-i), so no chain crossed a class change and 知っています, ありません, 言われた, 取ろう had no lattice
 edge at all. What still fails is Tatoeba convention (勉強する / 私の / 十分な as one token, 食べ|なさい,
