@@ -92,20 +92,22 @@ extension Segmenter {
         return trusted.union(deinflected)
     }
 
-    // resolvedTrieLemmas plus the fewest deinflection rules needed to reach any of those lemmas — the
-    // input to SegmenterScoring's inflection-step cost. 0 when the surface is itself a dictionary
-    // surface, or when its lemmas are reached only by script normalization rather than conjugation.
+    // resolvedTrieLemmas plus the fewest deinflection rules needed to reach any lemma other than the
+    // surface itself — the input to SegmenterScoring's inflection-step cost. 0 when its lemmas are
+    // reached only by script normalization rather than conjugation. A surface that is also a
+    // dictionary word still reports the steps to its OTHER lemmas; buildLattice decides which
+    // reading of it to price.
     // One deinflectionPaths traversal serves both results.
     func resolvedTrieLemmasWithInflectionSteps(for surface: String) -> (lemmas: Set<String>, inflectionSteps: Int) {
         let paths = deinflector?.deinflectionPaths(for: surface)
         let (trusted, deinflected) = resolvedTrieLemmasBySource(for: surface, paths: paths)
         let lemmas = trusted.union(deinflected)
-        guard let paths, trie.contains(surface) == false else {
+        guard let paths else {
             return (lemmas, 0)
         }
 
         var fewestSteps: Int?
-        for lemma in lemmas {
+        for lemma in lemmas where lemma != surface {
             for path in paths[lemma] ?? [] where path.chain.isEmpty == false {
                 if fewestSteps == nil || path.chain.count < fewestSteps! {
                     fewestSteps = path.chain.count
@@ -113,6 +115,34 @@ extension Segmenter {
             }
         }
         return (lemmas, fewestSteps ?? 0)
+    }
+
+    // Frequency score and step count that price a lattice edge. A conjugated surface (流されて) has no
+    // rank of its own, so the best of its lemmas (流される) supplies it. A surface that is BOTH a
+    // dictionary word and a conjugated form (して, した, せよ, ならして) has two readings: itself, at its
+    // own rank with no step; or its lemma's form, at the lemma's rank plus the step cost. The cheaper
+    // reading wins — otherwise して is priced as する itself and なら|して beats ならして. When the lemma
+    // reading wins, its POS bits are returned too, so the edge is classed as what was priced:
+    // ならして is the adverb 均して as a word, but the て-form of 鳴らす as the reading chosen.
+    func pricedReading(
+        of surface: String,
+        lemmas: Set<String>,
+        inflectionSteps: Int
+    ) -> (score: Double, inflectionSteps: Int, lemmaPartOfSpeech: UInt64) {
+        let ownScore = frequencyScoreBySurface[surface] ?? 0
+        var lemmaScore = 0.0
+        for lemma in lemmas where lemma != surface {
+            if let score = frequencyScoreBySurface[lemma], score > lemmaScore { lemmaScore = score }
+        }
+        guard trie.contains(surface) else {
+            return (max(ownScore, lemmaScore), inflectionSteps, 0)
+        }
+        let usesLemma = lemmaScore > 0 && SegmenterScoring.wordNats(score: lemmaScore, inflectionSteps: inflectionSteps)
+            < SegmenterScoring.wordNats(score: ownScore, inflectionSteps: 0)
+        guard usesLemma else { return (ownScore, 0, 0) }
+        var lemmaBits: UInt64 = 0
+        for lemma in lemmas where lemma != surface { lemmaBits |= trie.partOfSpeech(for: lemma) }
+        return (lemmaScore, inflectionSteps, lemmaBits)
     }
 
     // Same resolution as resolvedTrieLemmas, but split by source so lemmaCandidates can gate only

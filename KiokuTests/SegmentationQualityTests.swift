@@ -221,4 +221,18 @@ final class SegmentationQualityTests: XCTestCase {
         XCTAssertEqual(try segments(of: "ビロードの闇"), ["ビロード", "の", "闇"])
         XCTAssertEqual(try segments(of: "ケンカもしたけど"), ["ケンカ", "も", "した", "けど"])
     }
+    // して, した and せよ are dictionary words AND conjugated forms of する. Priced as する itself with no
+    // inflection step, they made なら|して and 恋|せよ cheaper than ならして and 恋せよ; they now pay
+    // the step when their lemma prices them, and are classed as that reading (a verb's て-form after
+    // を, not the adverb 均して). Both lines came from reviewing real lyrics.
+    func testConjugatedFormsThatAreAlsoWordsPayTheirStep() throws {
+        XCTAssertEqual(try segments(of: "ベルをならして"), ["ベル", "を", "ならして"])
+        XCTAssertEqual(try segments(of: "恋せよ乙女"), ["恋せよ", "乙女"])
+        XCTAssertEqual(try segments(of: "勉強していた"), ["勉強", "していた"])
+    }
+
+    // Adjective + くなる is one conjugating form, so 切|なくなったり cannot cut through 切ない.
+    func testAdjectiveKuNaruIsOneForm() throws {
+        XCTAssertEqual(try segments(of: "切なくなったり"), ["切なくなったり"])
+    }
 }
