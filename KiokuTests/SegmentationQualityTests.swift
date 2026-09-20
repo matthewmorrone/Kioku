@@ -169,4 +169,27 @@ final class SegmentationQualityTests: XCTestCase {
         let segmenter = try TestReadResources.shared().segmenter
         XCTAssertEqual(segmenter.longestMatchEdges(for: "そこには誰もいない").map(\.surface), ["そこ", "には", "誰も", "いない"])
     }
+
+    // Conjugations that stack one class-changing ending on another — polite over progressive, past
+    // over passive, negative over progressive — are one verb form each. They resolve only when a
+    // rule's rulesIn names the class of the INFLECTED form (ている conjugates as ichidan, ない as an
+    // い-adjective); typed by the lemma's class, none of these had a lattice edge at all.
+    func testStackedConjugationsAreOneSegment() throws {
+        XCTAssertEqual(try segments(of: "知っています"), ["知っています"])
+        XCTAssertEqual(try segments(of: "彼に言われた"), ["彼", "に", "言われた"])
+        XCTAssertEqual(try segments(of: "まだ持っていない"), ["まだ", "持っていない"])
+    }
+
+    // Godan polite negative and volitional, and なさい on a godan stem.
+    func testGodanPoliteNegativeVolitionalAndNasai() throws {
+        XCTAssertEqual(try segments(of: "お金がありません"), ["お金", "が", "ありません"])
+        XCTAssertEqual(try segments(of: "本を読もう"), ["本", "を", "読もう"])
+        XCTAssertEqual(try segments(of: "早くおきなさい"), ["早く", "おきなさい"])
+    }
+
+    // 行く is the one godan く-verb whose past is った, not いた; 行った must reach 行く, not only 行う.
+    func testIttaResolvesToIku() throws {
+        let lemmas = try TestReadResources.shared().segmenter.resolvedTrieLemmas(for: "行った")
+        XCTAssertTrue(lemmas.contains("行く"), "行った resolved to \(lemmas.sorted())")
+    }
 }
