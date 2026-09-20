@@ -43,6 +43,7 @@ final class SegmentationQualityTests: XCTestCase {
     // Returns the chosen surfaces for `text` under the shipped default strategy.
     private func segments(of text: String) throws -> [String] {
         UserDefaults.standard.removeObject(forKey: SegmenterSettings.strategyKey)
+        UserDefaults.standard.removeObject(forKey: SegmenterSettings.splitsParticleClustersKey)
         return try TestReadResources.shared().segmenter.longestMatchEdges(for: text).map(\.surface)
     }
 
@@ -54,6 +55,10 @@ final class SegmentationQualityTests: XCTestCase {
     // 1.62%) and the greedy strategy with its demotion list (82.4% / 3.41%).
     func testHeldOutQualityFloor() throws {
         UserDefaults.standard.removeObject(forKey: SegmenterSettings.strategyKey)
+        // Measured with particle clusters left whole: the gold tokens keep には and ですか as units, and
+        // this floor is about which path wins, not how finely a chosen cluster is displayed.
+        UserDefaults.standard.set(false, forKey: SegmenterSettings.splitsParticleClustersKey)
+        defer { UserDefaults.standard.removeObject(forKey: SegmenterSettings.splitsParticleClustersKey) }
         let segmenter = try TestReadResources.shared().segmenter
         var goldCount = 0
         var exactCount = 0
@@ -144,5 +149,24 @@ final class SegmentationQualityTests: XCTestCase {
     // The たり form belongs to its verb; り must not be pulled onto する.
     func testTariFormStaysWithItsVerb() throws {
         XCTAssertEqual(try segments(of: "減ったりする"), ["減ったり", "する"])
+    }
+    // Particle clusters are shown as their parts by default…
+    func testSplitsParticleClustersByDefault() throws {
+        XCTAssertEqual(try segments(of: "そこには誰もいない"), ["そこ", "に", "は", "誰も", "いない"])
+        XCTAssertEqual(try segments(of: "そうですか"), ["そう", "です", "か"])
+    }
+
+    // …but an entry that merely looks like particles keeps its own meaning: なのに is "even though".
+    func testKeepsLexicalizedParticleWordsWhole() throws {
+        XCTAssertEqual(try segments(of: "雨なのに"), ["雨", "なのに"])
+        XCTAssertEqual(try segments(of: "でも行く"), ["でも", "行く"])
+    }
+
+    // With the option off the path search's own units come through.
+    func testParticleClustersStayWholeWhenOptionIsOff() throws {
+        UserDefaults.standard.set(false, forKey: SegmenterSettings.splitsParticleClustersKey)
+        defer { UserDefaults.standard.removeObject(forKey: SegmenterSettings.splitsParticleClustersKey) }
+        let segmenter = try TestReadResources.shared().segmenter
+        XCTAssertEqual(segmenter.longestMatchEdges(for: "そこには誰もいない").map(\.surface), ["そこ", "には", "誰も", "いない"])
     }
 }

@@ -26,9 +26,11 @@ nonisolated enum SegmenterSettings {
     static let backendKey = "kioku.segmenter.backend"
     static let mecabDictionaryKey = "kioku.segmenter.mecabDictionary"
     static let strategyKey = "kioku.segmenter.strategy"
+    static let splitsParticleClustersKey = "kioku.segmenter.splitsParticleClusters"
     static let defaultBackend = SegmenterBackend.trie.rawValue
     static let defaultMeCabDictionary = MeCabDictionary.ipadic.rawValue
     static let defaultStrategy = SegmentationStrategy.globalLongestMatch
+    static let defaultSplitsParticleClusters = true
 
     // Runtime probe for the trie segmenter's selection strategy.
     // Read on the Segmenter's worker thread, so this must stay a cheap
@@ -42,5 +44,11 @@ nonisolated enum SegmenterSettings {
     // (Viterbi) path instead of the local greedy walk.
     static var usesGlobalLongestMatch: Bool {
         strategy == .globalLongestMatch
+    }
+
+    // Whether a chosen particle-cluster entry (には, ですか — see ParticleClusters) is shown as its
+    // parts. Read on the Segmenter's worker thread, like `strategy`.
+    static var splitsParticleClusters: Bool {
+        UserDefaults.standard.object(forKey: splitsParticleClustersKey) as? Bool ?? defaultSplitsParticleClusters
     }
 }
