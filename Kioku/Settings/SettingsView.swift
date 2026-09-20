@@ -97,6 +97,7 @@ struct SettingsView: View {
     @AppStorage(SegmenterSettings.backendKey) var segmenterBackend: String = SegmenterSettings.defaultBackend
     @AppStorage(SegmenterSettings.mecabDictionaryKey) var mecabDictionary: String = SegmenterSettings.defaultMeCabDictionary
     @AppStorage(SegmenterSettings.strategyKey) var segmentationStrategy: SegmentationStrategy = SegmenterSettings.defaultStrategy
+    @AppStorage(SegmenterSettings.splitsParticleClustersKey) var splitsParticleClusters = SegmenterSettings.defaultSplitsParticleClusters
 
     @AppStorage(DebugSettings.pixelRulerKey) var debugPixelRuler: Bool = false
     @AppStorage(DebugSettings.furiganaRectsKey) var debugFuriganaRects: Bool = false

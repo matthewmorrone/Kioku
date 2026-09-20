@@ -44,6 +44,7 @@ struct ContentView: View {
     @AppStorage(SegmenterSettings.backendKey) private var segmenterBackendSetting = SegmenterSettings.defaultBackend
     @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionarySetting = SegmenterSettings.defaultMeCabDictionary
     @AppStorage(SegmenterSettings.strategyKey) private var segmentationStrategySetting: SegmentationStrategy = SegmenterSettings.defaultStrategy
+    @AppStorage(SegmenterSettings.splitsParticleClustersKey) private var splitsParticleClustersSetting = SegmenterSettings.defaultSplitsParticleClusters
     // Observes the same shared instance the AppDelegate registered the notification handler against,
     // so a deep-link target published from didReceive reaches this view.
     @ObservedObject private var wotdNavigation = WordOfTheDayNavigation.shared
@@ -213,6 +214,10 @@ struct ContentView: View {
         }
         // Bump the segmenter revision so ReadView re-segments existing text with the new strategy.
         .onChange(of: segmentationStrategySetting) { _, _ in
+            rebuildReadResources()
+        }
+        // Same for the particle-cluster option: existing text re-segments at the new granularity.
+        .onChange(of: splitsParticleClustersSetting) { _, _ in
             rebuildReadResources()
         }
         // Validate WOTD scheduling after startup has settled rather than on the critical path.

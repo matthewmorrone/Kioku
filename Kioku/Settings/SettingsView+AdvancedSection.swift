@@ -30,6 +30,7 @@ extension SettingsView {
                         Text(strategy.displayName).tag(strategy)
                     }
                 }
+                Toggle("Split Particle Clusters", isOn: $splitsParticleClusters)
             }
         } header: {
             Text("Segmentation")

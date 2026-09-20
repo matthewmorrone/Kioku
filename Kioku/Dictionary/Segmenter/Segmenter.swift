@@ -374,7 +374,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             // If Viterbi fails to terminate (no path reaches text.endIndex), fall through to greedy
             // so we never return a partial / empty segmentation. This keeps the flag safe to flip.
             if !path.isEmpty {
-                return (latticeEdges: annotatedEdges, selectedEdges: absorbingBoundCharacters(in: path, of: text))
+                return (latticeEdges: annotatedEdges, selectedEdges: splittingParticleClusters(in: absorbingBoundCharacters(in: path, of: text), lattice: annotatedEdges, of: text))
             }
         }
 
@@ -454,7 +454,41 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             }
         }
 
-        return (latticeEdges: latticeEdges, selectedEdges: selectedEdges)
+        return (latticeEdges: latticeEdges, selectedEdges: splittingParticleClusters(in: selectedEdges, lattice: latticeEdges, of: text))
+    }
+
+    // Replaces each chosen particle-cluster entry (には, ですか — see ParticleClusters) with its parts
+    // when SegmenterSettings.splitsParticleClusters is on. It runs after path selection, so the
+    // option changes how finely a cluster is shown and never which path wins. A part takes the
+    // lattice's own edge for its span when there is one, so it carries the same lemma and POS it
+    // would have had if the path had chosen it directly.
+    private func splittingParticleClusters(in path: [LatticeEdge], lattice: [LatticeEdge], of text: String) -> [LatticeEdge] {
+        guard SegmenterSettings.splitsParticleClusters,
+              path.contains(where: { ParticleClusters.components[$0.surface] != nil }) else { return path }
+
+        var result: [LatticeEdge] = []
+        result.reserveCapacity(path.count + 4)
+        for edge in path {
+            guard let parts = ParticleClusters.components[edge.surface] else {
+                result.append(edge)
+                continue
+            }
+            var start = edge.start
+            for part in parts {
+                let end = text.index(start, offsetBy: part.count)
+                if let existing = lattice.first(where: { $0.start == start && $0.end == end && $0.isDictionaryMatch }) {
+                    result.append(existing)
+                } else {
+                    var piece = LatticeEdge(start: start, end: end, surface: part)
+                    piece.partOfSpeech = trie.partOfSpeech(for: part)
+                    piece.isDictionaryMatch = trie.contains(part)
+                    piece.frequencyScore = frequencyScoreBySurface[part] ?? 0
+                    result.append(piece)
+                }
+                start = end
+            }
+        }
+        return result
     }
 
     // Folds bound characters at the head of a selected edge into the segment before it, so no
