@@ -3312,6 +3312,37 @@
       "rulesOut": [
         "adj-i"
       ]
+    },
+    {
+      "kanaIn": "すぎる",
+      "kanaOut": "い",
+      "rulesIn": [
+        "adj-i",
+        "v1"
+      ],
+      "rulesOut": [
+        "adj-i"
+      ]
+    },
+    {
+      "kanaIn": "すぎ",
+      "kanaOut": "い",
+      "rulesIn": [
+        "adj-i"
+      ],
+      "rulesOut": [
+        "adj-i"
+      ]
+    },
+    {
+      "kanaIn": "そう",
+      "kanaOut": "い",
+      "rulesIn": [
+        "adj-i"
+      ],
+      "rulesOut": [
+        "adj-i"
+      ]
     }
   ],
   "conditionalForms": [
@@ -4816,6 +4847,620 @@
       "rulesIn": [
         "vk",
         "v1"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "ながら",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "やすい",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "にくい",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "すぎ",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "いながら",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いやすい",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いにくい",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いすぎ",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いそう",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きながら",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きやすい",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きにくい",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きすぎ",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きそう",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎながら",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎやすい",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎにくい",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎすぎ",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎそう",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しながら",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しやすい",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しにくい",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しすぎ",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しそう",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちながら",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちやすい",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちにくい",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちすぎ",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちそう",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にながら",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にやすい",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ににくい",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にすぎ",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にそう",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びながら",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びやすい",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びにくい",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びすぎ",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びそう",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みながら",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みやすい",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みにくい",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みすぎ",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みそう",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りながら",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りやすい",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りにくい",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りすぎ",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りそう",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しながら",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "しやすい",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "しにくい",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "しすぎ",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "しそう",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "きながら",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "きやすい",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "きにくい",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk",
+        "adj-i"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "きすぎ",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "きそう",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
       ],
       "rulesOut": [
         "vk"
@@ -8421,6 +9066,178 @@
       ],
       "rulesOut": [
         "v5"
+      ]
+    }
+  ],
+  "ichidanStemForms": [
+    {
+      "kanaIn": "ぎ",
+      "kanaOut": "ぎる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "し",
+      "kanaOut": "しる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "じ",
+      "kanaOut": "じる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "ひ",
+      "kanaOut": "ひる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "り",
+      "kanaOut": "りる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "え",
+      "kanaOut": "える",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "け",
+      "kanaOut": "ける",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "げ",
+      "kanaOut": "げる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "せ",
+      "kanaOut": "せる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "ぜ",
+      "kanaOut": "ぜる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "て",
+      "kanaOut": "てる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "で",
+      "kanaOut": "でる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "ね",
+      "kanaOut": "ねる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "へ",
+      "kanaOut": "へる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "べ",
+      "kanaOut": "べる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "め",
+      "kanaOut": "める",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "れ",
+      "kanaOut": "れる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
       ]
     }
   ],

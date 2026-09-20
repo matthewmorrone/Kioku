@@ -7,6 +7,10 @@ import Foundation
 // is the "given a surface, what does it mean" half. `isValidatedSuruNounPrefix` and
 // `suruCompoundEdge` are internal (not private) because buildLattice calls them directly.
 extension Segmenter {
+    // Chain label of deinflection.json's "ichidanStemForms" group (食べ → 食べる), as the deinflector
+    // normalizes it. resolvedTrieLemmasBySource refuses that recovery to surfaces that are already words.
+    static let ichidanStemLabel = "ichidan stem"
+
     // Checks whether a surface string exists directly in the dictionary trie without deinflection.
     func containsSurface(_ surface: String) -> Bool {
         matchedTrieLemmas(for: surface).isEmpty == false
@@ -132,10 +136,18 @@ extension Segmenter {
         }
 
         if let deinflector {
-            let candidates = deinflector.generateCandidates(from: precomputedPaths ?? deinflector.deinflectionPaths(for: surface))
+            let paths = precomputedPaths ?? deinflector.deinflectionPaths(for: surface)
+            let candidates = deinflector.generateCandidates(from: paths)
             for candidate in candidates {
                 let isKanaNormalized = deinflector.isNormalizedKanaCandidate(candidate, for: surface)
                 if hasExactSurfaceMatch, candidate != surface, isKanaNormalized {
+                    continue
+                }
+                // A surface that is already a dictionary word (考え, 過ぎ) needs no ichidan stem
+                // recovery. Taking it would hand the noun its verb's frequency with no inflection
+                // step charged, and 考え|事ができない then beats 考え事|が|できない.
+                if hasExactSurfaceMatch, candidate != surface, let candidatePaths = paths[candidate],
+                   candidatePaths.allSatisfy({ $0.chain == [Self.ichidanStemLabel] }) {
                     continue
                 }
                 if isKanaNormalized {
