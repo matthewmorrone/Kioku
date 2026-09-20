@@ -3,6 +3,7 @@ import Foundation
 //   segcli count <lexical.txt> < gold.jsonl       → "start,end,className" per gold token
 //   segcli fit <pairs.tsv> <configs> <outdir> < sentences   configs: "WEIGHT CLAMP"; lattice once, DP per config
 //   segcli lemmas < surfaces                     → what each surface resolves to, with each lemma's score (the audit's input)
+//   segcli oracle < gold.jsonl                   → per cut-through: is the gold parse in the lattice, and by how much does it lose
 //   segcli run < sentences                         → the shipped path (bundled table, shipped weight)
 // Repo root: four levels up from this file (scripts/segmentation-eval/cli/main.swift), unless KIOKU_CHECKOUT says otherwise.
 let root = ProcessInfo.processInfo.environment["KIOKU_CHECKOUT"]
@@ -89,6 +90,46 @@ if mode == "explain" {
         let allowed = lattice.filter { spans.contains("\(text.distance(from: text.startIndex, to: $0.start)),\(text.distance(from: text.startIndex, to: $0.end))") }
         let forced = segmenter.viterbiSelect(from: allowed, in: text).path
         if forced.isEmpty { print("  wanted: NOT IN LATTICE — missing edge for one of: \(wanted.filter { w in !allowed.contains { $0.surface == w } })") } else { describe(forced, label: "wanted") }
+    }
+    exit(0)
+}
+
+if mode == "oracle" {
+    // segcli oracle < gold.jsonl — for each sentence with a cut-through: the chosen path vs the cheapest
+    // path that cuts through NO gold token. One TSV row each:
+    //   line  marginCentiNats|NOPATH  culprits(surface:score:steps:dict)  chosen  constrained  missingGoldEdges
+    // NOPATH / a non-empty last column mean no cost model can fix it: the gold token has no lattice edge.
+    // The margin ignores transition costs (node costs only).
+    var lineNumber = 0
+    while let line = readLine() {
+        lineNumber += 1
+        guard let data = line.data(using: .utf8),
+              let record = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let sentence = record["s"] as? String, let gold = record["g"] as? [[Any]] else { continue }
+        let spans: [(Int, Int)] = gold.compactMap { t in
+            guard let a = t[0] as? Int, let b = t[1] as? Int else { return nil }
+            return (a, b)
+        }
+        let lattice = segmenter.buildLattice(for: sentence)
+        let scalars = sentence.unicodeScalars
+        func offset(_ index: String.Index) -> Int { scalars.distance(from: scalars.startIndex, to: index) }
+        let bounds = lattice.map { (offset($0.start), offset($0.end)) }
+        func cutsThrough(_ e: (Int, Int)) -> Bool {
+            spans.contains { g in e.0 < g.1 && e.1 > g.0 && (e.0 < g.0 || e.1 > g.1) && !(e.0 <= g.0 && e.1 >= g.1) }
+        }
+        let chosen = segmenter.viterbiSelect(from: lattice, in: sentence).path
+        let culprits = chosen.filter { cutsThrough((offset($0.start), offset($0.end))) }
+        if culprits.isEmpty { continue }
+        let allowed = zip(lattice, bounds).filter { !cutsThrough($0.1) }.map { $0.0 }
+        let constrained = segmenter.viterbiSelect(from: allowed, in: sentence).path
+        func cost(_ path: [LatticeEdge]) -> Int { path.reduce(0) { $0 + SegmenterScoring.edgeCost($1) } }
+        let margin = constrained.isEmpty ? "NOPATH" : String(cost(constrained) - cost(chosen))
+        let edgeSet = Set(bounds.map { "\($0.0),\($0.1)" })
+        let missing = spans.filter { g in culprits.contains { c in offset(c.start) < g.1 && offset(c.end) > g.0 } && !edgeSet.contains("\(g.0),\(g.1)") }
+            .map { g in String(String.UnicodeScalarView(Array(scalars)[g.0..<g.1])) }
+        func show(_ path: [LatticeEdge]) -> String { path.map { "\($0.surface):\(String(format: "%.2f", $0.frequencyScore)):\($0.inflectionSteps)" }.joined(separator: " ") }
+        let culpritText = culprits.map { "\($0.surface):\(String(format: "%.2f", $0.frequencyScore)):\($0.inflectionSteps):\($0.isDictionaryMatch ? 1 : 0)" }.joined(separator: " ")
+        print([String(lineNumber), margin, culpritText, show(chosen), show(constrained), missing.joined(separator: " ")].joined(separator: "\t"))
     }
     exit(0)
 }

@@ -30,6 +30,7 @@ files the CLI compiles — add whatever the compiler reports missing.
 | `count <lexical.txt>` | transition class of every gold token, from the app's own classifier (input to the table generator) |
 | `explain` | stdin `text<TAB>seg\|seg\|…` → node cost, score, steps, class and transition for the chosen path **and** the wanted one, or which wanted edge is missing from the lattice. Use this before theorising about any single failure. |
 | `lemmas` | what each surface resolves to, with scores (input to the deinflection audit) |
+| `oracle` | stdin gold jsonl → for each cut-through, whether the gold parse is in the lattice at all and its node-cost margin. On 2026-09-20 half of all cut-throughs had **no lattice edge** for the gold token — measure this before tuning costs. |
 
 Environment: `DB=<path>` another dictionary file · `SPLIT_CLUSTERS=1` the app's default granularity
 (particle clusters split; off here because the gold keeps には / ですか whole) · `KIOKU_CHECKOUT=<path>`
