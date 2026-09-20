@@ -13,7 +13,7 @@ import Foundation
 // which reported chain=["progressive"], not chain=["progressiveForms"].
 nonisolated enum InflectionFormNames {
     // Display name per normalized chain label. Labels absent here (the internal recovery-step
-    // labels: "stem recovery", "passive stem recovery", "desire negative recovery", "compound
+    // labels: "stem recovery", "ichidan stem", "passive stem recovery", "desire negative recovery", "compound
     // verb recovery") are intentionally dropped from the user-facing description.
     private static let displayNames: [String: String] = [
         "te": "te-form",

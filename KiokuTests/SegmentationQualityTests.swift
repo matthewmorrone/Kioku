@@ -192,4 +192,19 @@ final class SegmentationQualityTests: XCTestCase {
         let lemmas = try TestReadResources.shared().segmenter.resolvedTrieLemmas(for: "行った")
         XCTAssertTrue(lemmas.contains("行く"), "行った resolved to \(lemmas.sorted())")
     }
+    // An ichidan verb's bare stem is a segment of its own before a separate word — 食べ + に + 行く —
+    // and an adjective stem carries すぎる / そう as one form.
+    func testIchidanStemAndAdjectiveStemAuxiliaries() throws {
+        XCTAssertEqual(try segments(of: "ラーメンを食べに行きます"), ["ラーメン", "を", "食べ", "に", "行きます"])
+        XCTAssertEqual(try segments(of: "仕事が忙しすぎる"), ["仕事", "が", "忙しすぎる"])
+        XCTAssertEqual(try segments(of: "歩きながら話す"), ["歩きながら", "話す"])
+    }
+
+    // 考え and 過ぎ are dictionary words AND ichidan stems. They must not borrow 考える / 過ぎる's
+    // frequency through stem recovery, or 考え|事ができない and 過ぎ|て become the cheaper paths.
+    func testDictionaryWordsDoNotBorrowTheirVerbsFrequency() throws {
+        XCTAssertEqual(try segments(of: "考え事ができない"), ["考え事", "が", "できない"])
+        XCTAssertEqual(try segments(of: "時間が過ぎて"), ["時間", "が", "過ぎて"])
+        XCTAssertEqual(try segments(of: "していて"), ["していて"])
+    }
 }
