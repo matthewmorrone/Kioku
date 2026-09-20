@@ -164,42 +164,36 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
                 let surface = String(text[surfaceRange])
 
-                // Hard rejection: a single morpheme never spans a hiragana↔katakana boundary. Once
-                // the scan has consumed both scripts, this surface (and every longer one from this
-                // start) is spurious, so stop extending. Without this, the kana-normalizing
-                // deinflector resolves cross-boundary spans to real words (ビロード+の→「ドの」→どの,
-                // ケンカ+もした→「カもした」→醸す) and the frequency-blind cost model selects them.
+                // A span that mixes hiragana and katakana is almost never one morpheme, and the
+                // kana-normalizing deinflector would happily resolve such spans to real words
+                // (ビロード+の→「ドの」→どの, ケンカ+もした→「カもした」→醸す). Two kinds are genuine and
+                // get an edge; every other mixed span gets none.
                 //
-                // Narrow exception: a katakana loanword noun tagged vs (JMdict's "takes suru"
-                // signal, e.g. キス "n,vs") directly followed by a conjugated form of する (して,
-                // した, しない, …) is a genuine compound verb that JMdict deliberately never spells
-                // out as its own headword — the vs tag alone is meant to signal "attach する" to a
-                // fluent reader (see suruCompoundEdge for the admission checks). This can't reopen
-                // the bugs above: ビロード carries no verb bit, and the stray "カ" fragment cut out
-                // of ケンカ+もした isn't a trie noun at all, so both still fail admission below.
+                // First: a katakana loanword noun tagged vs (キス "n,vs") directly followed by a
+                // conjugated する (して, した, しない, …) — a compound verb JMdict never spells out as
+                // a headword. See suruCompoundEdge for the admission checks; ビロード carries no vs
+                // tag and the stray カ of ケンカ is not a trie noun, so neither bug reopens.
                 if ScriptClassifier.mixesHiraganaAndKatakana(surface) {
-                    // Gate on the PREFIX alone, not the full suffix-deinflection check: this loop
-                    // grows `surface` one character at a time, so a valid conjugation (して, 2
-                    // chars) can sit past an invalid intermediate one (し, 1 char, not yet a
-                    // complete する form). Breaking on the first failed length — as the general
-                    // guard does — would abandon the scan before it ever reaches the real match.
-                    // Once the prefix itself is confirmed a real vs-tagged noun, keep extending
-                    // through every mixed length up to the normal maxMatchLength bound below,
-                    // same as the un-mixed path; only emit an edge on lengths that actually
-                    // complete a する conjugation.
-                    guard let katakanaPrefix = ScriptClassifier.leadingKatakanaPrefix(of: surface),
-                          katakanaPrefix.count < surface.count,
-                          isValidatedSuruNounPrefix(katakanaPrefix) else {
-                        break
-                    }
-                    if let edge = suruCompoundEdge(surface: surface, range: surfaceRange) {
+                    if let katakanaPrefix = ScriptClassifier.leadingKatakanaPrefix(of: surface),
+                       katakanaPrefix.count < surface.count,
+                       isValidatedSuruNounPrefix(katakanaPrefix),
+                       let edge = suruCompoundEdge(surface: surface, range: surfaceRange) {
                         edges.append(edge)
                         keptMatches += 1
+                        continue
                     }
-                    continue
                 }
 
-                let (lemmas, inflectionSteps) = resolvedTrieLemmasWithInflectionSteps(for: surface)
+                var (lemmas, inflectionSteps) = resolvedTrieLemmasWithInflectionSteps(for: surface)
+
+                // Second exception: a word that is itself WRITTEN across the two scripts — ウソつき,
+                // 消しゴム, and katakana-stem verbs like サボった (→ サボる). What separates these from the
+                // fusions above is the lemma: どの and 醸す are not written across a script switch, ウソつき
+                // and サボる are, at the same place the surface switches. Only such lemmas are kept.
+                if ScriptClassifier.mixesHiraganaAndKatakana(surface) {
+                    lemmas = lemmas.filter { ScriptClassifier.sharesKanaScriptSwitch($0, with: surface) }
+                    if lemmas.isEmpty { continue }
+                }
 
                 if lemmas.isEmpty == false {
                     // Bound single-kana morphemes (た、ら、etc.) are excluded; only standalone-valid kana pass.

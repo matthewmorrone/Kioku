@@ -94,6 +94,36 @@ nonisolated enum ScriptClassifier {
         return false
     }
 
+    // Character offset at which `text` first switches between hiragana and katakana, skipping
+    // kanji and the script-neutral prolonged sound mark; nil when it never switches.
+    static func firstKanaScriptSwitch(in text: String) -> Int? {
+        var previousIsKatakana: Bool?
+        for (offset, character) in text.enumerated() {
+            guard let value = character.unicodeScalars.first?.value, value != 0x30FC else { continue }
+            let isKatakana: Bool
+            if (0x3040...0x309F).contains(value) {
+                isKatakana = false
+            } else if (0x30A0...0x30FF).contains(value) {
+                isKatakana = true
+            } else {
+                continue
+            }
+            if let previousIsKatakana, previousIsKatakana != isKatakana { return offset }
+            previousIsKatakana = isKatakana
+        }
+        return nil
+    }
+
+    // True when `lemma` is written across the hiragana/katakana switch at the same place `surface`
+    // is: both switch at the same offset and are identical up to it (サボった / サボる, ウソつき /
+    // ウソつき). A lemma reached only by folding katakana into hiragana (ビロード+の → どの) has no
+    // switch of its own and fails.
+    static func sharesKanaScriptSwitch(_ lemma: String, with surface: String) -> Bool {
+        guard let surfaceSwitch = firstKanaScriptSwitch(in: surface),
+              firstKanaScriptSwitch(in: lemma) == surfaceSwitch else { return false }
+        return lemma.prefix(surfaceSwitch) == surface.prefix(surfaceSwitch)
+    }
+
     // MARK: - Canonical block membership (single source of truth)
     //
     // Every "is this scalar/text Japanese / kana / kanji?" question in the app routes
