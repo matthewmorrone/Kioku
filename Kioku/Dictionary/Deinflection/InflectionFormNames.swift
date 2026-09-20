@@ -30,6 +30,7 @@ nonisolated enum InflectionFormNames {
         "irregular": "irregular",
         "adjective": "adjectival",
         "conditional": "conditional",
+        "representative": "-tari form",
         "contraction": "contraction",
         "benefactive": "benefactive",
         "auxiliary": "auxiliary",

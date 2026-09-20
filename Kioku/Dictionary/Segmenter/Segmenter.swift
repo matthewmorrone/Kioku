@@ -26,6 +26,8 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     // Empty when the segmenter is built without the surface-reading map (e.g., test fixtures); in
     // that case the scoring falls back to the script-only tiebreakers and a zero frequency term.
     var frequencyScoreBySurface: [String: Double]
+    // Transition costs between adjacent word classes on a path; nil scores paths by word costs alone.
+    var transitionTable: SegmenterTransitionTable?
     // Set to true locally to print POS transition decisions during Viterbi runs.
     private let shouldLogPOSTransitions = false
     // Shared set of characters that are always their own segment — single source of truth for
@@ -60,7 +62,8 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         partOfSpeechByEntryID: [Int: UInt64] = [:],
         config: SegmenterConfig = SegmenterConfig(),
         scoring: SegmenterScoring = .default,
-        frequencyScoreBySurface: [String: Double] = [:]
+        frequencyScoreBySurface: [String: Double] = [:],
+        transitionTable: SegmenterTransitionTable? = nil
     ) {
         self.trie = trie
         self.deinflector = deinflector
@@ -68,10 +71,11 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         self.config = config
         self.scoring = scoring
         self.frequencyScoreBySurface = frequencyScoreBySurface
+        self.transitionTable = transitionTable
     }
 
     // Builds the production segmenter for a loaded dictionary, fetching the cost model's frequency
-    // map itself. The app (ContentView) and the test harness (TestReadResources) both come through
+    // map and loading its transition table itself. The app (ContentView) and the test harness (TestReadResources) both come through
     // here, so the two cannot be wired to different frequency sources — which is what once let the
     // tests pass on surface_frequency while the app still ran on the per-entry propagated ranks.
     // A store whose frequency table can't be read yields an empty map (every word unranked).
@@ -85,7 +89,8 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             trie: trie,
             deinflector: deinflector,
             partOfSpeechByEntryID: partOfSpeechByEntryID,
-            frequencyScoreBySurface: (try? dictionaryStore?.fetchFrequencyScoreBySurface()) ?? [:]
+            frequencyScoreBySurface: (try? dictionaryStore?.fetchFrequencyScoreBySurface()) ?? [:],
+            transitionTable: SegmenterTransitionTable.bundled()
         )
     }
 
@@ -95,8 +100,10 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         trie: DictionaryTrie,
         deinflector: Deinflector?,
         partOfSpeechByEntryID: [Int: UInt64],
-        frequencyScoreBySurface: [String: Double]
+        frequencyScoreBySurface: [String: Double],
+        transitionTable: SegmenterTransitionTable?
     ) {
+        self.transitionTable = transitionTable
         self.trie = trie
         self.deinflector = deinflector
         self.partOfSpeechByEntryID = partOfSpeechByEntryID
@@ -111,7 +118,8 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             trie: other.trie,
             deinflector: other.deinflector,
             partOfSpeechByEntryID: other.partOfSpeechByEntryID,
-            frequencyScoreBySurface: other.frequencyScoreBySurface
+            frequencyScoreBySurface: other.frequencyScoreBySurface,
+            transitionTable: other.transitionTable
         )
     }
 
@@ -198,7 +206,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     if surface.count == 1, ScriptClassifier.isPureKana(surface), !config.standaloneKana.contains(surface) {
                         continue
                     }
-                    // Populate POS + dict flag so Viterbi's transitionCost has data to work with.
+                    // Populate POS + dict flag: the path search classes each edge by its POS bits (TransitionClass).
                     // POS comes from the surface's own trie node first; falls back to the union of
                     // POS bits across resolved lemmas when the surface is a deinflected form whose
                     // trie node isn't tagged directly.
@@ -639,7 +647,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
     // MARK: - Viterbi
 
-    // Selects the minimum-cost lattice path using Viterbi DP with POS transition costs.
+    // Selects the minimum-cost lattice path using Viterbi DP: word costs plus class-pair transition costs.
     // Wired into longestMatchResult behind SegmenterSettings.usesGlobalLongestMatch; this entry
     // point remains available for direct callers (diagnostics, tests).
     func viterbiBestPath(for text: String) -> [LatticeEdge] {
@@ -682,6 +690,21 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             return le < re
         }
 
+        // Each edge's transition class, resolved once; a bound character is folded into the segment
+        // before it, so it is not a word in its own right and takes no part in the class sequence.
+        let table = transitionTable
+        let classIDs = edges.map { table?.classIDs(for: $0) }
+        let boundaryIDs = table?.classIDs(for: nil)
+        // Cost of edge `next` directly after edge `previous`; nil stands for the start or end of text.
+        func transitionCost(_ previous: Int?, _ next: Int?) -> Int {
+            guard let table, let boundaryIDs else { return 0 }
+            if let previous, edges[previous].isAbsorbedBoundCharacter { return 0 }
+            if let next, edges[next].isAbsorbedBoundCharacter { return 0 }
+            let from = previous.flatMap { classIDs[$0] } ?? boundaryIDs
+            let to = next.flatMap { classIDs[$0] } ?? boundaryIDs
+            return table.cost(from: from, to: to)
+        }
+
         var bestScore: [Int: Int] = [:]
         var back: [Int: Int?] = [:]
 
@@ -690,9 +713,10 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             let nodeCost = SegmenterScoring.edgeCost(edge)
 
             if edge.start == text.startIndex {
-                bestScore[i] = nodeCost
+                let startCost = nodeCost + transitionCost(nil, i)
+                bestScore[i] = startCost
                 back[i] = nil
-                edges[i].viterbiScore = nodeCost
+                edges[i].viterbiScore = startCost
                 edges[i].viterbiPrevStart = startOffsets[i]
                 continue
             }
@@ -702,7 +726,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
             for prev in edgesByEnd[edge.start] ?? [] {
                 guard let prevScore = bestScore[prev] else { continue }
-                let t = SegmenterScoring.transitionCost(prev: edges[prev], next: edge)
+                let t = transitionCost(prev, i)
                 if shouldLogPOSTransitions && t != 0 {
                     AppLog.debug(.segmentation, "POS transition \(edges[prev].surface) → \(edge.surface) \(t)")
                 }
@@ -718,8 +742,12 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             }
         }
 
+        // A path's total includes the transition from its last word into the end of text.
         let terminals = edges.indices.filter { edges[$0].end == text.endIndex && bestScore[$0] != nil }
-        guard let best = terminals.min(by: { (bestScore[$0] ?? Int.max) < (bestScore[$1] ?? Int.max) }) else {
+        let terminalScore: (Int) -> Int = { index in
+            (bestScore[index] ?? Int.max / 2) + transitionCost(index, nil)
+        }
+        guard let best = terminals.min(by: { terminalScore($0) < terminalScore($1) }) else {
             return (edges: edges, path: [])
         }
 

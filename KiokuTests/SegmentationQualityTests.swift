@@ -49,7 +49,7 @@ final class SegmentationQualityTests: XCTestCase {
     // The quality floor. Each gold token is either reproduced exactly, cut through by one of our
     // segments (a segment that overlaps it partially — the real error, e.g. はだ|きしめたい), or
     // merged/split at a coarser or finer granularity. The floors sit well below what the shipped
-    // model scores on this fixture (exact 89.9%, cut-through 0.55%) and well above what the two
+    // model scores on this fixture (exact 91.6%, cut-through 0.43%) and well above what the two
     // regressions seen in practice score: the segmenter fed per-entry propagated ranks (85.0% /
     // 1.62%) and the greedy strategy with its demotion list (82.4% / 3.41%).
     func testHeldOutQualityFloor() throws {
@@ -77,8 +77,8 @@ final class SegmentationQualityTests: XCTestCase {
 
         let exactRate = Double(exactCount) / Double(goldCount)
         let cutThroughRate = Double(cutThroughCount) / Double(goldCount)
-        XCTAssertGreaterThanOrEqual(exactRate, 0.88, "exact-match rate fell to \(exactRate) over \(goldCount) gold tokens")
-        XCTAssertLessThanOrEqual(cutThroughRate, 0.010, "cut-through rate rose to \(cutThroughRate) over \(goldCount) gold tokens")
+        XCTAssertGreaterThanOrEqual(exactRate, 0.90, "exact-match rate fell to \(exactRate) over \(goldCount) gold tokens")
+        XCTAssertLessThanOrEqual(cutThroughRate, 0.008, "cut-through rate rose to \(cutThroughRate) over \(goldCount) gold tokens")
     }
 
     // だけ + どきっと are both real words; だけど + きっと wins only when だけ, だけど and きっと carry
@@ -116,5 +116,33 @@ final class SegmentationQualityTests: XCTestCase {
     // はだ is the reading of 肌; in kana it is far rarer than は + a following verb.
     func testDoesNotFuseHaDa() throws {
         XCTAssertEqual(try segments(of: "ほんとうはだきしめたい"), ["ほんとう", "は", "だきしめたい"])
+    }
+
+    // The transition table is loaded by the constructor the app and the tests share. If it fails to
+    // load, segmentation silently falls back to word costs alone and every test below still runs.
+    func testTransitionTableIsLoaded() throws {
+        XCTAssertNotNil(try TestReadResources.shared().segmenter.transitionTable)
+    }
+
+    // 結婚 + 式を挙げました are both dictionary units and cheaper by word cost alone; what follows a
+    // noun (を) and what follows を (a verb) is what the transition costs add.
+    func testKeepsCompoundBeforeObjectParticle() throws {
+        XCTAssertEqual(try segments(of: "結婚式を挙げました"), ["結婚式", "を", "挙げました"])
+    }
+
+    // なかったら is ない in the たら-conditional. Without an い-adjective たら rule it resolved only to a
+    // non-word, and がな + かったら won.
+    func testConditionalOfNai() throws {
+        XCTAssertEqual(try segments(of: "嵐がなかったら"), ["嵐", "が", "なかったら"])
+    }
+
+    // Negative past of an ichidan verb is one conjugated form, not 食べられ + なかった.
+    func testIchidanNegativePastIsOneSegment() throws {
+        XCTAssertEqual(try segments(of: "食べられなかった"), ["食べられなかった"])
+    }
+
+    // The たり form belongs to its verb; り must not be pulled onto する.
+    func testTariFormStaysWithItsVerb() throws {
+        XCTAssertEqual(try segments(of: "減ったりする"), ["減ったり", "する"])
     }
 }

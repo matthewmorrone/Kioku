@@ -583,8 +583,8 @@ struct ContentView: View {
             }} catch { print("fetchKanjiReadingFallbackMap failed: \(error)") }
 
             do {
-                // SurfaceRecords carry POS bits + IPADic context IDs so Viterbi can look up
-                // bigram costs directly in matrix.bin. The fetch path was rewritten to aggregate
+                // SurfaceRecords carry the POS bits the path search classes each word by
+                // (TransitionClass). The fetch path aggregates
                 // POS per entry in a first pass (small) and join in-memory against surface rows
                 // in a second pass — avoids the JOIN-explosion that OOM-killed the app earlier.
                 let surfaceData = try StartupTimer.measure("fetchSurfaceData") {
