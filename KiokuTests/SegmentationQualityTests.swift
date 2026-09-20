@@ -8,7 +8,7 @@ import XCTest
 // Gold tokens come from Tatoeba's Japanese indices (the Tanaka Corpus "B lines"): sentences
 // tokenized into JMdict headwords by the JMdict maintainers — the same granularity this segmenter
 // aims for. The 300 fixture sentences are held out: nothing in SegmenterScoring was fitted on them.
-// Re-measure or refit with ~/Projects/kioku-segmentation-eval.
+// Re-measure or refit with scripts/segmentation-eval (see its README).
 @MainActor
 final class SegmentationQualityTests: XCTestCase {
 
