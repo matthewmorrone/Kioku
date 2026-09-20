@@ -168,6 +168,7 @@ final class SegmentationQualityTests: XCTestCase {
         defer { UserDefaults.standard.removeObject(forKey: SegmenterSettings.splitsParticleClustersKey) }
         let segmenter = try TestReadResources.shared().segmenter
         XCTAssertEqual(segmenter.longestMatchEdges(for: "そこには誰もいない").map(\.surface), ["そこ", "には", "誰も", "いない"])
+    }
 
     // Conjugations that stack one class-changing ending on another — polite over progressive, past
     // over passive, negative over progressive — are one verb form each. They resolve only when a
