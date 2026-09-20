@@ -5,6 +5,13 @@ on:
     branches: [ main ]
   pull_request:
 
+# A newer push to the same branch or PR makes the older run pointless, and each run holds a macOS
+# runner for ~13 minutes — so cancel the superseded one. Runs on main are never cancelled: each
+# one is the record for a commit that landed.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   ios:
     # macos-26 (preview) ships iOS 26.5 simulator runtimes; macos-15 caps at
