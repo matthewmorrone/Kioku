@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Builds the segmenter's transition table (Kioku/Dictionary/Segmenter/segmenter-transitions.tsv).
 
-The eval harness (~/Projects/kioku-segmentation-eval, cli-bigram/shipcli) supplies the inputs, so
+The eval harness (scripts/segmentation-eval, its work/segcli) supplies the inputs, so
 every class name comes from the app's own TransitionClass code:
 
   fit_transition_costs.py lexical train.jsonl > lexical.txt
       the commonest short kana words in the gold tokens; each gets a class of its own
-  shipcli count lexical.txt < train.jsonl > classes.txt
+  segcli count lexical.txt < train.jsonl > classes.txt
       one line per sentence, "start,end,className" per gold token
   fit_transition_costs.py pairs classes.txt > segmenter-transitions.tsv
       "A <tab> B <tab> PMI" for every class pair the counts have an opinion about

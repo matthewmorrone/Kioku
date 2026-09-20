@@ -35,7 +35,7 @@ nonisolated struct SegmenterScoring {
     // frequencyScore is Zipf-like: log10 of occurrences per `zipfScaleExponent` decades of words,
     // so −ln P = (zipfScaleExponent − score) · ln 10. This is also the fixed overhead every word
     // pays, i.e. how strongly the path prefers fewer words. Fitted on training sentences and
-    // confirmed on held-out ones (see ~/Projects/kioku-segmentation-eval): below ~8.5 it stops
+    // confirmed on held-out ones (see scripts/segmentation-eval): below ~8.5 it stops
     // fixing errors and only trades merged units for split ones.
     static let zipfScaleExponent = 8.5
 
