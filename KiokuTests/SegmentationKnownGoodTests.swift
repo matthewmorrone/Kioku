@@ -3,10 +3,10 @@ import XCTest
 
 // Pins cases that previously failed and have since been fixed (open cases live
 // under "Still-broken segmentation cases" in docs/todo.md; resolved ones are
-// listed at the bottom of that doc). Each test asserts both that the full
-// surface appears as a lattice edge and that preferredLemma resolves to the
-// expected base form, catching regressions in either the segmentation greedy
-// walk or the lemma scoring pipeline that landed those fixes.
+// listed at the bottom of that doc). Each test asserts that the full surface
+// appears as a lattice edge, that path selection chooses it as ONE segment, and
+// that preferredLemma resolves to the expected base form — catching regressions
+// in lattice building, path selection, or lemma scoring.
 //
 // New entries land here as cases move from "Still-broken" to the
 // "Resolved / pinned" section of docs/todo.md — keeping that doc short and
@@ -29,6 +29,13 @@ final class SegmentationKnownGoodTests: XCTestCase {
         XCTAssertTrue(
             edges.contains { $0.surface == surface },
             "Lattice for \(surface) has no full-span edge; surfaces=\(edges.map(\.surface))",
+            file: file, line: line
+        )
+        // The edge existing is not enough — path selection has to actually choose it.
+        UserDefaults.standard.removeObject(forKey: SegmenterSettings.strategyKey)
+        XCTAssertEqual(
+            resources.segmenter.longestMatchEdges(for: surface).map(\.surface), [surface],
+            "\(surface) is in the lattice but was not chosen as one segment",
             file: file, line: line
         )
         let lemma = resources.segmenter.preferredLemma(for: surface)

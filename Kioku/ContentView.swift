@@ -613,19 +613,12 @@ struct ContentView: View {
             print("Deinflector initialization failed: \(error)")
         }
 
-        // Two frequency maps with two different jobs:
-        //   • frequencyRankBySurface — per-ENTRY best JPDB rank, propagated to every spelling of the
-        //     entry. Backs the lookup/split-editor frequency display, where a kana split piece like
-        //     こと / する should report its word's rank instead of rendering a bare "–".
-        //   • frequencyScoreBySurface — the rank of each surface AS WRITTEN (surface_frequency), which
-        //     is what the segmenter's cost model needs: する scores by its kana-spelling rank, and a
-        //     kana string nobody writes as a word (がそ for 画素) is unranked. Feeding the segmenter
-        //     the propagated map instead erases exactly that distinction.
+        // Per-ENTRY best JPDB rank, propagated to every spelling of the entry. Backs the lookup and
+        // split-editor frequency display, where a kana split piece like こと / する should report its
+        // word's rank instead of rendering a bare "–". NOT what the segmenter scores with: it reads
+        // the rank of each surface as written, via Segmenter(…frequenciesFrom:) below.
         let frequencyRankBySurface: [String: Int] = StartupTimer.measure("frequencyRankBySurface build") {
             (try? dictionaryStore?.fetchBestRankBySurface()) ?? [:]
-        }
-        let frequencyScoreBySurface: [String: Double] = StartupTimer.measure("frequencyScoreBySurface build") {
-            (try? dictionaryStore?.fetchFrequencyScoreBySurface()) ?? [:]
         }
 
         // Choose segmenter based on the user's backend preference.
@@ -637,7 +630,7 @@ struct ContentView: View {
             } else if backend == SegmenterBackend.nlTokenizer.rawValue {
                 return NLTokenizerSegmenter()
             } else {
-                return Segmenter(trie: trie, deinflector: deinflector, partOfSpeechByEntryID: partOfSpeechByEntryID, frequencyScoreBySurface: frequencyScoreBySurface)
+                return Segmenter(trie: trie, deinflector: deinflector, partOfSpeechByEntryID: partOfSpeechByEntryID, frequenciesFrom: dictionaryStore)
             }
         }
 

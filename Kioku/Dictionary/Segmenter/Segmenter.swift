@@ -70,6 +70,25 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         self.frequencyScoreBySurface = frequencyScoreBySurface
     }
 
+    // Builds the production segmenter for a loaded dictionary, fetching the cost model's frequency
+    // map itself. The app (ContentView) and the test harness (TestReadResources) both come through
+    // here, so the two cannot be wired to different frequency sources — which is what once let the
+    // tests pass on surface_frequency while the app still ran on the per-entry propagated ranks.
+    // A store whose frequency table can't be read yields an empty map (every word unranked).
+    convenience init(
+        trie: DictionaryTrie,
+        deinflector: Deinflector?,
+        partOfSpeechByEntryID: [Int: UInt64],
+        frequenciesFrom dictionaryStore: DictionaryStore?
+    ) {
+        self.init(
+            trie: trie,
+            deinflector: deinflector,
+            partOfSpeechByEntryID: partOfSpeechByEntryID,
+            frequencyScoreBySurface: (try? dictionaryStore?.fetchFrequencyScoreBySurface()) ?? [:]
+        )
+    }
+
     // Swaps in fully-loaded dictionary data while preserving this instance's identity — see the
     // property-group comment above for why identity stability matters more than a fresh init here.
     func reconfigure(
