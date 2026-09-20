@@ -63,6 +63,7 @@ public enum PartOfSpeech: UInt8, CaseIterable {
         for rawCode in trimmed.split(separator: ",") {
             let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             if code.isEmpty { continue }
+            bits |= PartOfSpeechDetail.bits(forCode: code)
             if code == "n"              { bits |= PartOfSpeech.noun.bit; continue }
             if code == "n-suf"          { bits |= PartOfSpeech.noun.bit | PartOfSpeech.suffix.bit; continue }
             if code == "n-pref"         { bits |= PartOfSpeech.noun.bit | PartOfSpeech.prefix.bit; continue }
@@ -85,7 +86,8 @@ public enum PartOfSpeech: UInt8, CaseIterable {
             if code == "pron"           { bits |= PartOfSpeech.pronoun.bit; continue }
             if code == "proper"         { bits |= PartOfSpeech.properNoun.bit; continue }
         }
-        return bits == 0 ? PartOfSpeech.unknown.bit : bits
+        // `unknown` marks a payload none of the cases above recognise; detail bits alone don't change that.
+        return (bits & PartOfSpeechDetail.coarseMask) == 0 ? bits | PartOfSpeech.unknown.bit : bits
     }
 
     // Bit-check helpers — nonisolated so they're callable from any concurrency context.
