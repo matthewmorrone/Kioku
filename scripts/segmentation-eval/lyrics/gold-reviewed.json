@@ -1,0 +1,468 @@
+[
+ {
+  "text": "ウソつき困ってるくせに",
+  "segments": [
+   "ウソつき",
+   "困ってる",
+   "くせに"
+  ],
+  "flagged": true,
+  "edited": true
+ },
+ {
+  "text": "眩しげにあなたを見てるの",
+  "segments": [
+   "眩しげ",
+   "に",
+   "あなた",
+   "を",
+   "見てる",
+   "の"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "ダメ! 振り向かないで",
+  "segments": [
+   "ダメ",
+   "!",
+   "振り向かないで"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "ダメ! 声をかけないで",
+  "segments": [
+   "ダメ",
+   "!",
+   "声をかけないで"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "キスして! 私だけいいの!",
+  "segments": [
+   "キスして",
+   "!",
+   "私",
+   "だけ",
+   "いい",
+   "の",
+   "!"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "刻んだムーンハートシークエンス",
+  "segments": [
+   "刻んだ",
+   "ムーン",
+   "ハート",
+   "シークエンス"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "シャイニーメイクアップ輝くよ星空を集めて",
+  "segments": [
+   "シャイニー",
+   "メイクアップ",
+   "輝く",
+   "よ",
+   "星空",
+   "を",
+   "集めて"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "シャイニーメイクアップ煌くよ星空に抱かれて",
+  "segments": [
+   "シャイニー",
+   "メイクアップ",
+   "煌く",
+   "よ",
+   "星空",
+   "に",
+   "抱かれて"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "シャイニーメイクアップ羽ばたくよ星空の彼方へ",
+  "segments": [
+   "シャイニー",
+   "メイクアップ",
+   "羽ばたく",
+   "よ",
+   "星空",
+   "の",
+   "彼方",
+   "へ"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "――だから",
+  "segments": [
+   "―",
+   "―",
+   "だから"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "シャイニーメイクアップ戦うよ星空を纏って",
+  "segments": [
+   "シャイニー",
+   "メイクアップ",
+   "戦う",
+   "よ",
+   "星空",
+   "を",
+   "纏って"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "ララプリティガーディアンセーラームーン",
+  "segments": [
+   "ララ",
+   "プリティ",
+   "ガーディアン",
+   "セーラー",
+   "ムーン"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "恋せよ乙女花の命は儚く美しい",
+  "segments": [
+   "恋せよ",
+   "乙女",
+   "花",
+   "の",
+   "命",
+   "は",
+   "儚く",
+   "美しい"
+  ],
+  "flagged": true,
+  "edited": true
+ },
+ {
+  "text": "求めよどんな時も祈りは正しく美しく",
+  "segments": [
+   "求め",
+   "よ",
+   "どんな",
+   "時",
+   "も",
+   "祈り",
+   "は",
+   "正しく",
+   "美しく"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "いつか本当に出会う",
+  "segments": [
+   "いつか",
+   "本当",
+   "に",
+   "出会う"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "ラララ",
+  "segments": [
+   "ラララ"
+  ],
+  "flagged": true,
+  "edited": true
+ },
+ {
+  "text": "ウキウキトキメクの",
+  "segments": [
+   "ウキウキ",
+   "トキメク",
+   "の"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "泣きたい時にはポケベルならしてよんで",
+  "segments": [
+   "泣きたい",
+   "時には",
+   "ポケベル",
+   "ならして",
+   "よんで"
+  ],
+  "flagged": true,
+  "edited": true
+ },
+ {
+  "text": "かなしみがいま (セーラースマイル)",
+  "segments": [
+   "かなしみ",
+   "が",
+   "いま",
+   "(",
+   "セーラー",
+   "スマイル",
+   ")"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "奇跡をおこすの (セーラーウィング)",
+  "segments": [
+   "奇跡",
+   "を",
+   "おこす",
+   "の",
+   "(",
+   "セーラー",
+   "ウィング",
+   ")"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "まけない! あしたへ (セーラーエール)",
+  "segments": [
+   "まけない",
+   "!",
+   "あした",
+   "へ",
+   "(",
+   "セーラー",
+   "エール",
+   ")"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "ゼッタイ! つかまえる! (セーラースター)",
+  "segments": [
+   "ゼッタイ",
+   "!",
+   "つかまえる",
+   "!",
+   "(",
+   "セーラー",
+   "スター",
+   ")"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "さがしつづける旅がはじまった",
+  "segments": [
+   "さがしつづける",
+   "旅",
+   "が",
+   "はじまった"
+  ],
+  "flagged": true,
+  "edited": true
+ },
+ {
+  "text": "後悔はしない (セーラーアイズ)",
+  "segments": [
+   "後悔",
+   "は",
+   "しない",
+   "(",
+   "セーラー",
+   "アイズ",
+   ")"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "あなたについてく (セーラーウィンド)",
+  "segments": [
+   "あなた",
+   "に",
+   "ついてく",
+   "(",
+   "セーラー",
+   "ウィンド",
+   ")"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "ゼッタイ! みつけるよ! (セーラースター)",
+  "segments": [
+   "ゼッタイ",
+   "!",
+   "みつける",
+   "よ",
+   "!",
+   "(",
+   "セーラー",
+   "スター",
+   ")"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "くるしさがいま (セーラーアイズ)",
+  "segments": [
+   "くるしさ",
+   "が",
+   "いま",
+   "(",
+   "セーラー",
+   "アイズ",
+   ")"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "時々は胸のどこかが切なくなったりするけど",
+  "segments": [
+   "時々",
+   "は",
+   "胸",
+   "の",
+   "どこか",
+   "が",
+   "切なくなったり",
+   "する",
+   "けど"
+  ],
+  "flagged": true,
+  "edited": true
+ },
+ {
+  "text": "掬いあげた化石ムーンフラグメント",
+  "segments": [
+   "掬いあげた",
+   "化石",
+   "ムーン",
+   "フラグメント"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "掬いあげた砂粒ムーンフラグメント",
+  "segments": [
+   "掬いあげた",
+   "砂粒",
+   "ムーン",
+   "フラグメント"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "イェイェイェイェ!",
+  "segments": [
+   "イェイェ",
+   "イェイェ",
+   "!"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "ムーンフラグメント",
+  "segments": [
+   "ムーン",
+   "フラグメント"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "恋はロンリーロンリーハート",
+  "segments": [
+   "恋",
+   "は",
+   "ロンリー",
+   "ロンリー",
+   "ハート"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "ひとりぼっちよ",
+  "segments": [
+   "ひとりぼっち",
+   "よ"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "ロンリーロンリーハート",
+  "segments": [
+   "ロンリー",
+   "ロンリー",
+   "ハート"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "今はベイビーベイビーラブ",
+  "segments": [
+   "今",
+   "は",
+   "ベイビー",
+   "ベイビー",
+   "ラブ"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "ベイビーベイビーラブ",
+  "segments": [
+   "ベイビー",
+   "ベイビー",
+   "ラブ"
+  ],
+  "flagged": true,
+  "edited": false
+ },
+ {
+  "text": "シークレットティアーズ",
+  "segments": [
+   "シークレット",
+   "ティアーズ"
+  ],
+  "flagged": true,
+  "edited": false
+ }
+]
