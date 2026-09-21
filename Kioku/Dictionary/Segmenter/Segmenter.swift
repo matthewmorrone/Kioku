@@ -146,6 +146,11 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
             var keptMatches = 0
 
+            if let numberEdge = numberRunEdge(in: text, startingAt: index) {
+                edges.append(numberEdge)
+                keptMatches += 1
+            }
+
             var endIndex = index
 
             while endIndex < text.endIndex {
@@ -491,7 +496,8 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
         for edge in path {
             var start = edge.start
-            while start < edge.end,
+            // A dictionary word keeps its first character: ヶ月 begins with a "never-initial" kana.
+            while start < edge.end, edge.isDictionaryMatch == false,
                   let last = result.last,
                   !(last.surface.count == 1 && isSpanBreak(last.surface.first!)),
                   isBoundCharacter(at: start, in: text) {
@@ -730,6 +736,9 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
         var bestScore: [Int: Int] = [:]
         var back: [Int: Int?] = [:]
+        // Breaks exact cost ties: fewer inflection steps along the path, then more segments — an
+        // over-merge hides a word boundary from the reader, an over-split does not.
+        var tieRank: [Int: Int] = [:]
 
         for i in sortedIndices {
             let edge = edges[i]
@@ -739,6 +748,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                 let startCost = nodeCost + transitionCost(nil, i)
                 bestScore[i] = startCost
                 back[i] = nil
+                tieRank[i] = edge.inflectionSteps * 1000 - 1
                 edges[i].viterbiScore = startCost
                 edges[i].viterbiPrevStart = startOffsets[i]
                 continue
@@ -754,12 +764,14 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     AppLog.debug(.segmentation, "POS transition \(edges[prev].surface) → \(edge.surface) \(t)")
                 }
                 let score = prevScore + nodeCost + t
-                if bestT == nil || score < bestT! { bestT = score; bestPrev = prev }
+                let wins = bestT == nil || score < bestT! || (score == bestT! && (tieRank[prev] ?? 0) < (tieRank[bestPrev ?? prev] ?? 0))
+                if wins { bestT = score; bestPrev = prev }
             }
 
             if let resolved = bestT {
                 bestScore[i] = resolved
                 back[i] = bestPrev
+                tieRank[i] = (bestPrev.flatMap { tieRank[$0] } ?? 0) + edge.inflectionSteps * 1000 - 1
                 edges[i].viterbiScore = resolved
                 edges[i].viterbiPrevStart = bestPrev.map { startOffsets[$0] }
             }
@@ -770,7 +782,9 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         let terminalScore: (Int) -> Int = { index in
             (bestScore[index] ?? Int.max / 2) + transitionCost(index, nil)
         }
-        guard let best = terminals.min(by: { terminalScore($0) < terminalScore($1) }) else {
+        guard let best = terminals.min(by: {
+            (terminalScore($0), tieRank[$0] ?? 0) < (terminalScore($1), tieRank[$1] ?? 0)
+        }) else {
             return (edges: edges, path: [])
         }
 
