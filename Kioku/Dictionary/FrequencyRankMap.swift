@@ -36,8 +36,8 @@ nonisolated final class FrequencyRankMap: Equatable {
         lhs === rhs
     }
 
-    // Subscript passthrough for ergonomic per-surface access.
+    // Per-surface access; old-form kanji fall back to the modern spelling the table is keyed by.
     subscript(surface: String) -> Int? {
-        data[surface]
+        KyujitaiNormalizer.firstHit(for: surface) { data[$0] }
     }
 }

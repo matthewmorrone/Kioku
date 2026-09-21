@@ -100,26 +100,49 @@ nonisolated public final class DictionaryTrie {
     // terminal node. The modern path only exists once the surface contains an old-form kanji, so
     // ordinary text costs one path and no allocation.
     private func terminalNodes(for surface: String) -> (literal: Node?, modern: Node?) {
-        var literal: Node? = root
-        var modern: Node?
-        var diverged = false
-
+        var cursor = SpellingCursor(root: root)
         for character in surface {
-            let mapped = KyujitaiNormalizer.normalize(character)
-            if mapped != nil, diverged == false {
-                modern = literal
-                diverged = true
-            }
-            literal = literal?.children[character]
-            if diverged {
-                modern = modern?.children[mapped ?? character]
-            }
-            if literal == nil && modern == nil { return (nil, nil) }
+            guard cursor.advance(over: character) else { return (nil, nil) }
+        }
+        return (cursor.literalTerminal, cursor.modernTerminal)
+    }
+
+    // The single place old-form kanji meet the trie: a walk position on two parallel paths, the
+    // characters as written (literal) and with each old-form kanji replaced by its modern form
+    // (modern). The modern path only exists once an old-form kanji has been seen, so ordinary text
+    // costs one path, and every walker shares this one stepping rule.
+    private struct SpellingCursor {
+        private var literal: Node?
+        private var modern: Node?
+        private var diverged = false
+
+        // Starts both paths at the trie root.
+        init(root: Node) {
+            literal = root
         }
 
-        let literalTerminal = literal?.isTerminal == true ? literal : nil
-        let modernTerminal = diverged && modern?.isTerminal == true ? modern : nil
-        return (literalTerminal, modernTerminal)
+        // Moves both paths over one character. Returns false, leaving the cursor where it was,
+        // when neither path continues.
+        mutating func advance(over character: Character) -> Bool {
+            let mapped = KyujitaiNormalizer.normalize(character)
+            let modernStart = (mapped != nil && diverged == false) ? literal : modern
+            let nextLiteral = literal?.children[character]
+            let nextModern = (diverged || mapped != nil) ? modernStart?.children[mapped ?? character] : nil
+            guard nextLiteral != nil || nextModern != nil else { return false }
+            if mapped != nil { diverged = true }
+            literal = nextLiteral
+            modern = nextModern
+            return true
+        }
+
+        // The literal path's node when it ends a dictionary surface here.
+        var literalTerminal: Node? { literal?.isTerminal == true ? literal : nil }
+
+        // The modern path's node when it ends a dictionary surface here.
+        var modernTerminal: Node? { diverged && modern?.isTerminal == true ? modern : nil }
+
+        // Whether either spelling ends a dictionary surface here.
+        var isTerminal: Bool { literalTerminal != nil || modernTerminal != nil }
     }
 
     // Combines the entry IDs stored on the literal and modern terminal nodes of one surface. When
@@ -182,9 +205,7 @@ nonisolated public final class DictionaryTrie {
         }
 
         var matches: [Range<String.Index>] = []
-        var literal: Node? = root
-        var modern: Node?
-        var diverged = false
+        var cursor = SpellingCursor(root: root)
         var currentIndex = index
         var traversedLength = 0
 
@@ -195,20 +216,10 @@ nonisolated public final class DictionaryTrie {
         // Ranges always index the original text, so a match over old-form kanji still covers exactly
         // the characters as written even when it was found through their modern spelling.
         while currentIndex < text.endIndex && traversedLength < maxLength {
-            let character = text[currentIndex]
-            let mapped = KyujitaiNormalizer.normalize(character)
-            if mapped != nil, diverged == false {
-                modern = literal
-                diverged = true
-            }
-            let nextLiteral = literal?.children[character]
-            let nextModern = diverged ? modern?.children[mapped ?? character] : nil
-            guard nextLiteral != nil || nextModern != nil else { break }
-            literal = nextLiteral
-            modern = nextModern
+            guard cursor.advance(over: text[currentIndex]) else { break }
             currentIndex = text.index(after: currentIndex)
             traversedLength += 1
-            if literal?.isTerminal == true || modern?.isTerminal == true {
+            if cursor.isTerminal {
                 matches.append(index..<currentIndex)
             }
         }
@@ -227,32 +238,18 @@ nonisolated public final class DictionaryTrie {
         }
 
         var hits: [TriePrefixHit] = []
-        var literal: Node? = root
-        var modern: Node?
-        var diverged = false
+        var cursor = SpellingCursor(root: root)
         var currentIndex = index
         var traversedLength = 0
 
         while currentIndex < text.endIndex && traversedLength < maxLength {
-            let character = text[currentIndex]
-            let mapped = KyujitaiNormalizer.normalize(character)
-            if mapped != nil, diverged == false {
-                modern = literal
-                diverged = true
-            }
-            let nextLiteral = literal?.children[character]
-            let nextModern = diverged ? modern?.children[mapped ?? character] : nil
-            guard nextLiteral != nil || nextModern != nil else { break }
-            literal = nextLiteral
-            modern = nextModern
+            guard cursor.advance(over: text[currentIndex]) else { break }
             currentIndex = text.index(after: currentIndex)
             traversedLength += 1
 
             // A hit keeps the surface exactly as written; when the word is indexed under both the
             // old and the modern spelling, one hit carries both entries' IDs.
-            let literalTerminal = literal?.isTerminal == true ? literal : nil
-            let modernTerminal = modern?.isTerminal == true ? modern : nil
-            let entryIDs = entryIDs(literal: literalTerminal, modern: modernTerminal)
+            let entryIDs = entryIDs(literal: cursor.literalTerminal, modern: cursor.modernTerminal)
             if entryIDs.isEmpty == false {
                 let surfaceRange = index..<currentIndex
                 hits.append(

@@ -129,10 +129,11 @@ extension Segmenter {
         lemmas: Set<String>,
         inflectionSteps: Int
     ) -> (score: Double, inflectionSteps: Int, lemmaPartOfSpeech: UInt64) {
-        let ownScore = frequencyScoreBySurface[surface] ?? 0
+        let ownScore = frequencyScore(of: surface)
         var lemmaScore = 0.0
         for lemma in lemmas where lemma != surface {
-            if let score = frequencyScoreBySurface[lemma], score > lemmaScore { lemmaScore = score }
+            let score = frequencyScore(of: lemma)
+            if score > lemmaScore { lemmaScore = score }
         }
         guard trie.contains(surface) else {
             return (max(ownScore, lemmaScore), inflectionSteps, 0)
@@ -311,7 +312,7 @@ extension Segmenter {
         var edge = LatticeEdge(start: range.lowerBound, end: range.upperBound, surface: surface)
         edge.partOfSpeech = trie.partOfSpeech(for: prefix) | trie.partOfSpeech(for: "する")
         edge.isDictionaryMatch = true
-        edge.frequencyScore = max(frequencyScoreBySurface[prefix] ?? 0, frequencyScoreBySurface["する"] ?? 0)
+        edge.frequencyScore = max(frequencyScore(of: prefix), frequencyScore(of: "する"))
         if let ids = trie.ipadicContextIDs(for: "する") {
             edge.ipadicLeftID = ids.left
             edge.ipadicRightID = ids.right
@@ -372,7 +373,13 @@ extension Segmenter {
     // Returns the corpus score used only to break structurally equal lemma candidates.
     // Internal (not private): compareEdgePriority, in Segmenter.swift, calls this directly.
     func preferredLemmaFrequencyScore(for lemma: String) -> Double {
-        frequencyScoreBySurface[lemma] ?? 0
+        frequencyScore(of: lemma)
+    }
+
+    // Frequency score of a spelling, 0 when it has none; old-form kanji score as their modern form.
+    // Internal (not private): the particle-cluster split, in Segmenter.swift, calls this too.
+    func frequencyScore(of surface: String) -> Double {
+        KyujitaiNormalizer.firstHit(for: surface) { frequencyScoreBySurface[$0] } ?? 0
     }
 
     // Tunable structural weights for preferredLemmaScore. Grouped like SegmenterScoring's

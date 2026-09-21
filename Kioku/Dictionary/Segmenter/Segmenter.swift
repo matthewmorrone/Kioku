@@ -474,7 +474,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     var piece = LatticeEdge(start: start, end: end, surface: part)
                     piece.partOfSpeech = trie.partOfSpeech(for: part)
                     piece.isDictionaryMatch = trie.contains(part)
-                    piece.frequencyScore = frequencyScoreBySurface[part] ?? 0
+                    piece.frequencyScore = frequencyScore(of: part)
                     result.append(piece)
                 }
                 start = end

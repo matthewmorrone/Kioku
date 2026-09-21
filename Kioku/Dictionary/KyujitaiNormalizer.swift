@@ -24,6 +24,14 @@ nonisolated enum KyujitaiNormalizer {
         return changed ? String(scalars) : nil
     }
 
+    // The one lookup rule for any table keyed by spelling: the surface as written, then its modern
+    // spelling. The scan for old-form kanji only runs after a miss, so a hit costs a single probe.
+    static func firstHit<Value>(for surface: String, in lookup: (String) -> Value?) -> Value? {
+        if let direct = lookup(surface) { return direct }
+        guard let modern = normalize(surface) else { return nil }
+        return lookup(modern)
+    }
+
     // Returns the modern form of a single old-form character, or nil when the character is not one.
     // Only single-scalar characters are mapped, so a kanji carrying a variation selector or other
     // combining scalar is left alone rather than half-converted.
