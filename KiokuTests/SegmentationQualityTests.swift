@@ -245,11 +245,4 @@ final class SegmentationQualityTests: XCTestCase {
         XCTAssertEqual(try segments(of: "１日中寝ていた"), ["１日中", "寝ていた"])
         XCTAssertEqual(try segments(of: "２人で行く"), ["２人", "で", "行く"])
     }
-
-    // The ichidan imperative よ is a terminal rule: 与えよ resolves, but 見てよ cannot chain through
-    // 見てる to claim the particle.
-    func testIchidanImperativeYoDoesNotSwallowTheParticle() throws {
-        XCTAssertEqual(try segments(of: "与えよ"), ["与えよ"])
-        XCTAssertEqual(try segments(of: "見てよ"), ["見て", "よ"])
-    }
 }

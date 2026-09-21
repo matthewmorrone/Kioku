@@ -3178,16 +3178,6 @@
       "rulesOut": [
         "v5"
       ]
-    },
-    {
-      "kanaIn": "よ",
-      "kanaOut": "る",
-      "rulesIn": [
-        "v1"
-      ],
-      "rulesOut": [
-        "v1-lemma"
-      ]
     }
   ],
   "irregularForms": [
