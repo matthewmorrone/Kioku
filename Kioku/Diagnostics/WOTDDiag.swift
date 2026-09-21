@@ -9,6 +9,8 @@ enum WOTDDiag {
 
     // Emits notification diagnostic breadcrumbs only to the unified logging system.
     nonisolated static func log(_ message: @autoclosure () -> String) {
-        logger.notice("\(message(), privacy: .public)")
+        // Evaluate first: Logger's interpolation is an escaping autoclosure and cannot capture `message`.
+        let text = message()
+        logger.notice("\(text, privacy: .public)")
     }
 }

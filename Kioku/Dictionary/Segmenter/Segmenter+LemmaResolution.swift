@@ -117,6 +117,17 @@ extension Segmenter {
         return (lemmas, fewestSteps ?? 0)
     }
 
+    // A run of digits (ASCII or full-width) starting at `index`, as a lattice edge of its own. It is
+    // offered at every digit even when dictionary words start there, because those words are what go
+    // wrong: ２時 + 間 beat ２ + 時間 only while the bare number was unavailable or priced as unknown
+    // text. A digit + counter that IS a word (１日, ２人) still wins on its own frequency.
+    func numberRunEdge(in text: String, startingAt index: String.Index) -> LatticeEdge? {
+        var end = index
+        while end < text.endIndex, SegmenterScoring.isDigit(text[end]) { end = text.index(after: end) }
+        guard end > index else { return nil }
+        return LatticeEdge(start: index, end: end, surface: String(text[index..<end]))
+    }
+
     // Frequency score and step count that price a lattice edge. A conjugated surface (流されて) has no
     // rank of its own, so the best of its lemmas (流される) supplies it. A surface that is BOTH a
     // dictionary word and a conjugated form (して, した, せよ, ならして) has two readings: itself, at its

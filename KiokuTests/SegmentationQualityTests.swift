@@ -235,4 +235,14 @@ final class SegmentationQualityTests: XCTestCase {
     func testAdjectiveKuNaruIsOneForm() throws {
         XCTAssertEqual(try segments(of: "切なくなったり"), ["切なくなったり"])
     }
+    // A number is a token of its own, priced like a common word — not unknown text — so the counter
+    // after it is read whole (２ + 時間, not ２時 + 間). ヶ月 keeps its ヶ even though ヶ can never start a
+    // word on its own. A digit + counter that is a dictionary word still wins on its frequency.
+    func testNumbersAndCounters() throws {
+        XCTAssertEqual(try segments(of: "２時間かかった"), ["２", "時間", "かかった"])
+        XCTAssertEqual(try segments(of: "５ヶ月前"), ["５", "ヶ月", "前"])
+        XCTAssertEqual(try segments(of: "３年間住んだ"), ["３", "年間", "住んだ"])
+        XCTAssertEqual(try segments(of: "１日中寝ていた"), ["１日中", "寝ていた"])
+        XCTAssertEqual(try segments(of: "２人で行く"), ["２人", "で", "行く"])
+    }
 }

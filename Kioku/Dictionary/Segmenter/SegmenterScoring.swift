@@ -63,6 +63,15 @@ nonisolated struct SegmenterScoring {
     // thinly attested pair cannot outvote the word costs.
     static let transitionClampNats = 5.0
 
+    // Cost of a digit run (LatticeEdge from Segmenter.numberRunEdge), in nats — about what a common
+    // word costs: low enough that ２ + 時間 beats ２時 + 間, high enough that １日 and ２人 stay words.
+    static let numberNats = 6.0
+
+    // True for ASCII and full-width digits.
+    static func isDigit(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy { (0x30...0x39).contains($0.value) || (0xFF10...0xFF19).contains($0.value) }
+    }
+
     // Trailing kana that signal "this surface ends with a grammatical particle/auxiliary fused
     // onto its stem" — checked at lattice-build time, not at every transition lookup.
     static let grammaticalEndingKana: Set<Character> = ["た", "だ", "て", "で", "よ"]
@@ -79,6 +88,8 @@ nonisolated struct SegmenterScoring {
         if edge.isAbsorbedBoundCharacter { return 0 }
 
         guard edge.isDictionaryMatch else {
+            // A number is not unknown text: it costs what a common word costs, whatever its length.
+            if edge.surface.allSatisfy(isDigit) { return Int((numberNats * 100).rounded()) }
             return Int(((unknownBaseNats + unknownPerCharacterNats * Double(edge.surface.count)) * 100).rounded())
         }
 
