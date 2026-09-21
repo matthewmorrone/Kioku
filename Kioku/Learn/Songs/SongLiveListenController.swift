@@ -118,10 +118,10 @@ final class SongLiveListenController: NSObject, ObservableObject {
         clipPlayer = nil
         guard let sourceAudioURL else { return }
         Task.detached(priority: .userInitiated) {
-            // Resolved here, off the main thread: VocalStemCache.stemWAVURL does real file
-            // I/O (hashing the source file's content, possibly writing a derived WAV) that
-            // would otherwise undercut this whole function's reason for existing.
-            let playbackURL = VocalStemCache.stemWAVURL(for: sourceAudioURL) ?? sourceAudioURL
+            // Resolved here, off the main thread: VocalStemCache.playableStemURL does real file
+            // I/O (hashing the source file's content) that would otherwise undercut this whole
+            // function's reason for existing.
+            let playbackURL = VocalStemCache.playableStemURL(for: sourceAudioURL) ?? sourceAudioURL
             guard let player = try? AVAudioPlayer(contentsOf: playbackURL) else { return }
             player.prepareToPlay()
             await MainActor.run { [weak self] in
@@ -353,7 +353,7 @@ final class SongLiveListenController: NSObject, ObservableObject {
         if let existing = clipPlayer {
             player = existing
         } else {
-            let playbackURL = VocalStemCache.stemWAVURL(for: sourceAudioURL) ?? sourceAudioURL
+            let playbackURL = VocalStemCache.playableStemURL(for: sourceAudioURL) ?? sourceAudioURL
             guard let loaded = try? AVAudioPlayer(contentsOf: playbackURL) else {
                 completeCurrentStep()
                 return

@@ -87,7 +87,7 @@ enum AudioTranscriptionService {
         onStatus?("Isolating vocals…")
         _ = try await CTCForcedAligner.isolatedVocalStem(for: url, onProgress: { f in onProgress?(f * 0.5) })
         onStatus?("Transcribing vocals…")
-        return VocalStemCache.stemWAVURL(for: url) ?? url
+        return VocalStemCache.playableStemURL(for: url) ?? url
     }
 
     // Decodes any audio file to mono Float PCM at `sampleRate` via AVAssetReader (one-pass resample).
