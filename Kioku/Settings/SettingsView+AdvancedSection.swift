@@ -99,7 +99,7 @@ extension SettingsView {
                 wotdTestStatus = "Scheduling…"
                 Task {
                     await WordOfTheDayScheduler.sendTestNotification(word: word, dictionaryStore: store)
-                    wotdTestStatus = word.map { "Sent “\\($0.surface)” — quit the app now; it arrives in ~10s, then tap it" } ?? "No saved word available"
+                    wotdTestStatus = word.map { "Sent “\($0.surface)” — quit the app now; it arrives in ~10s, then tap it" } ?? "No saved word available"
                     try? await Task.sleep(nanoseconds: 4_000_000_000)
                     if wotdTestTapCount == tap { wotdTestStatus = nil }
                 }
@@ -116,7 +116,6 @@ extension SettingsView {
             Text("Developer Diagnostics")
         }
 
-        #if DEBUG
         // MARK: Debug overlays — hidden in release builds.
         Section {
             Toggle("Pixel Ruler", isOn: $debugPixelRuler)
