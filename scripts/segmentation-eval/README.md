@@ -58,7 +58,9 @@ headwords by the JMdict maintainers. https://downloads.tatoeba.org/exports/jpn_i
 - The full training half (`train.jsonl`, 73k sentences, 22 MB) is not checked in. Rebuild it with
   `prep.py <dir containing jpn_indices.csv>` (odd sentence ids → held-out, even → train); the
   transition-table counts use it **minus its first 2,000 lines**.
-- `lyrics/gold-reviewed.json` — lyric lines the user reviewed (from the alignment-fixture songs).
+- `lyrics/gold-reviewed.json` — the 38 lyric lines (of 319, from the alignment-fixture songs) where a cut
+  of ours fell inside a MeCab word; the user corrected 6. The segmenter was then fixed against these
+  lines, so the score is a regression list, NOT a held-out measure; the other 281 lines are unscored.
   Never print whole lyric lines; the scorer prints only the differing fragments.
 
 ## Numbers to beat (2026-09-21: single-kana gate and unknown-run particle breaks are greedy-only)
@@ -66,7 +68,7 @@ headwords by the JMdict maintainers. https://downloads.tatoeba.org/exports/jpn_i
 | Set | exact | cut-through | split |
 |---|---|---|---|
 | held2k | 88.71 | 0.43 | 2.94 |
-| fresh5k (not re-run; PR #91) | 90.75 | 0.33 | 2.86 |
+| fresh5k | 90.81 | 0.29 | 2.90 |
 | kana2k | 85.29 | 1.38 | 3.83 |
 | CI fixture (300; not re-run; PR #91) | 91.64 | 0.26 | 2.77 |
 | lyric lines reviewed | 35 / 38 | | |
