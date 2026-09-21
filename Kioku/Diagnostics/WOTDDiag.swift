@@ -9,6 +9,7 @@ enum WOTDDiag {
 
     // Emits notification diagnostic breadcrumbs only to the unified logging system.
     nonisolated static func log(_ message: @autoclosure () -> String) {
-        logger.notice("\(message(), privacy: .public)")
+        let text = message()
+        logger.notice("\(text, privacy: .public)")
     }
 }
