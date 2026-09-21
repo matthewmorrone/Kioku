@@ -39,8 +39,6 @@ struct SettingsView: View {
     @AppStorage(DictionarySettings.includeArchaicReadingsKey) var includeArchaicReadings: Bool = DictionarySettings.defaultIncludeArchaicReadings
     @AppStorage(DictionarySettings.showJapaneseInPopoverKey) private var showJapaneseInPopover: Bool = DictionarySettings.defaultShowJapaneseInPopover
     @AppStorage(DictionarySettings.prefersSheetDirectSegmentActionsKey) private var prefersSheetDirectSegmentActions: Bool = DictionarySettings.defaultPrefersSheetDirectSegmentActions
-    @AppStorage(ParticleSettings.storageKey) var particlesRaw: String = ParticleSettings.defaultRawValue
-    @AppStorage(SegmentationDemotions.storageKey) var demotionsRaw: String = SegmentationDemotions.defaultRawValue
 
     // No `private` modifiers below: the AI Correction section's UI lives in
     // SettingsView+AICorrectionSection.swift and needs to read these as
@@ -96,7 +94,6 @@ struct SettingsView: View {
     @AppStorage(QuizAssistSettings.smarterOptionsKey) private var smarterQuizOptions: Bool = QuizAssistSettings.defaultSmarterOptions
     @AppStorage(SegmenterSettings.backendKey) var segmenterBackend: String = SegmenterSettings.defaultBackend
     @AppStorage(SegmenterSettings.mecabDictionaryKey) var mecabDictionary: String = SegmenterSettings.defaultMeCabDictionary
-    @AppStorage(SegmenterSettings.strategyKey) var segmentationStrategy: SegmentationStrategy = SegmenterSettings.defaultStrategy
     @AppStorage(SegmenterSettings.splitsParticleClustersKey) var splitsParticleClusters = SegmenterSettings.defaultSplitsParticleClusters
 
     @AppStorage(DebugSettings.pixelRulerKey) var debugPixelRuler: Bool = false
@@ -149,10 +146,8 @@ struct SettingsView: View {
     // reports its own deletions back so the Clear Caches readout re-measures too.
     @State private var storageRefreshToken = 0
 
-    // advancedSettings (the "Advanced" screen's sections) and particlesBinding / demotionsBinding
-    // live in SettingsView+AdvancedSection.swift to keep this file under the line-count guardrail.
-    // ParticleTagEditor moved to its own file (ParticleTagEditor.swift) — it was already a
-    // standalone struct, not an extension of SettingsView.
+    // advancedSettings (the "Advanced" screen's sections) lives in SettingsView+AdvancedSection.swift
+    // to keep this file under the line-count guardrail.
 
     // Row id currently flashed via listRowBackground when a "bring into focus" scroll lands —
     // set alongside the scroll-to and cleared a moment later. Purely visual; scrollTarget is

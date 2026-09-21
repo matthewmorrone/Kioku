@@ -86,8 +86,7 @@ struct SegmentListView: View {
         let edgeSurface: String
         var id: String { surface }
     }
-    // Read at view init time so a settings change takes effect on the next sheet presentation.
-    let commonParticles = ParticleSettings.allowed()
+    let commonParticles = KanaData.particleSet
 
     // Row identity is unconditionally the dictionary lemma when one resolves,
     // otherwise the raw edge surface. Used for display, save/star lookup,

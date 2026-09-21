@@ -8,7 +8,7 @@ import SwiftUI
 extension SettingsView {
     @ViewBuilder
     var advancedSettings: some View {
-        // MARK: Segmentation — engine, then the two tuning chip-editors.
+        // MARK: Segmentation — engine and granularity.
         Section {
             Picker("Engine", selection: $segmenterBackend) {
                 ForEach(SegmenterBackend.allCases, id: \.rawValue) { backend in
@@ -25,45 +25,10 @@ extension SettingsView {
             }
 
             if segmenterBackend == SegmenterBackend.trie.rawValue {
-                Picker("Strategy", selection: $segmentationStrategy) {
-                    ForEach(SegmentationStrategy.allCases, id: \.rawValue) { strategy in
-                        Text(strategy.displayName).tag(strategy)
-                    }
-                }
                 Toggle("Split Particle Clusters", isOn: $splitsParticleClusters)
             }
         } header: {
             Text("Segmentation")
-        }
-
-        Section {
-            ParticleTagEditor(tags: particlesBinding)
-            HStack {
-                Spacer()
-                Button("Reset to Defaults") {
-                    ParticleSettings.reset()
-                    particlesRaw = ParticleSettings.defaultRawValue
-                }
-                .buttonStyle(.bordered)
-                .font(.footnote)
-            }
-        } header: {
-            Text("Allowed Particles")
-        }
-
-        Section {
-            ParticleTagEditor(tags: demotionsBinding)
-            HStack {
-                Spacer()
-                Button("Reset to Defaults") {
-                    SegmentationDemotions.reset()
-                    demotionsRaw = SegmentationDemotions.defaultRawValue
-                }
-                .buttonStyle(.bordered)
-                .font(.footnote)
-            }
-        } header: {
-            Text("Segmentation Demotions")
         }
 
         // MARK: Dictionary — engine-level lookup knobs.
@@ -136,21 +101,5 @@ extension SettingsView {
 
         // Foreground-only bridge isn't useful enough yet to surface in Settings.
         // BridgeSettingsSection(bridgeServer: bridgeServer)
-    }
-
-    // Bridges AppStorage raw string to the sorted particle list expected by ParticleTagEditor.
-    var particlesBinding: Binding<[String]> {
-        Binding(
-            get: { ParticleSettings.decodeList(from: particlesRaw) },
-            set: { particlesRaw = ParticleSettings.encodeList($0) }
-        )
-    }
-
-    // Bridges AppStorage raw string to the demotion list expected by ParticleTagEditor.
-    var demotionsBinding: Binding<[String]> {
-        Binding(
-            get: { SegmentationDemotions.decodeList(from: demotionsRaw) },
-            set: { demotionsRaw = SegmentationDemotions.encodeList($0) }
-        )
     }
 }

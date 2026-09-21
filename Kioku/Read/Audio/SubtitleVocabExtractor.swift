@@ -10,8 +10,7 @@ import Foundation
 // Behavior (per the agreed design): EVERY unique dictionary-resolvable content lemma is kept — no
 // frequency filter, no known/unknown subtraction. The only exclusions are (1) tokens that don't
 // resolve through the dictionary (punctuation, character names, novel proper nouns — they have no
-// entry to attach to) and (2) grammatical particles, removed via the canonical ParticleSettings
-// allowlist the rest of the app already uses.
+// entry to attach to) and (2) grammatical particles, removed via KanaData.particleSet.
 nonisolated enum SubtitleVocabExtractor {
     // One unique vocabulary item: its dictionary (lemma) form, the resolved canonical entry id, and
     // every surface form actually seen in the episode (食べた, 食べる, …) so the saved card stars on
@@ -41,7 +40,7 @@ nonisolated enum SubtitleVocabExtractor {
         fromEdges edges: [LatticeEdge],
         dictionaryStore: DictionaryStore?
     ) -> [ExtractedVocab] {
-        let particles = ParticleSettings.allowed()
+        let particles = KanaData.particleSet
 
         // lemma → surfaces seen, plus an order list so the result is stable and reviewable.
         var surfacesByLemma: [String: Set<String>] = [:]

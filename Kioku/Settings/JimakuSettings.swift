@@ -1,6 +1,6 @@
 import Foundation
 
-// Centralizes storage for the Jimaku API key (Feature B). Mirrors ParticleSettings'/LLMSettings'
+// Centralizes storage for the Jimaku API key (Feature B). Mirrors LLMSettings'
 // nonisolated-enum-of-static-keys pattern so SettingsView and the search screen can read the same
 // UserDefaults key. `nonisolated` because JimakuProvider (a free-standing actor) reads it from
 // outside the project's MainActor-default isolation domain.
