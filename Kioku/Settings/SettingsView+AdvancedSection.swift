@@ -73,20 +73,23 @@ extension SettingsView {
             Text("Dictionary")
         }
 
-        // MARK: Diagnostics — logs, then (debug builds) the rendering overlays.
         Section {
             NavigationLink {
                 CrashLogsView()
             } label: {
                 Label("Crash Logs", systemImage: "exclamationmark.triangle")
             }
+        } header: {
+            Text("Diagnostics")
+        }
+
+        #if DEBUG
+        Section {
             NavigationLink {
                 LogSettingsView()
             } label: {
                 Label("Debug Logs", systemImage: "text.alignleft")
             }
-            // Developer stub mode: AI calls return the canned response from UserDefaults instead
-            // of contacting any model. Off = real AI, the default.
             Toggle("Use Stub AI Responses", isOn: Binding(get: { useLLM == false }, set: { useLLM = ($0 == false) }))
             Button("Send Test Notification") {
                 wotdTestTapCount += 1
@@ -96,7 +99,7 @@ extension SettingsView {
                 wotdTestStatus = "Scheduling…"
                 Task {
                     await WordOfTheDayScheduler.sendTestNotification(word: word, dictionaryStore: store)
-                    wotdTestStatus = word.map { "Sent “\($0.surface)” — quit the app now; it arrives in ~10s, then tap it" } ?? "No saved word available"
+                    wotdTestStatus = word.map { "Sent “\\($0.surface)” — quit the app now; it arrives in ~10s, then tap it" } ?? "No saved word available"
                     try? await Task.sleep(nanoseconds: 4_000_000_000)
                     if wotdTestTapCount == tap { wotdTestStatus = nil }
                 }
@@ -110,7 +113,7 @@ extension SettingsView {
                     .transition(.opacity)
             }
         } header: {
-            Text("Diagnostics")
+            Text("Developer Diagnostics")
         }
 
         #if DEBUG
