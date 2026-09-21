@@ -4,7 +4,7 @@
 Three workers by default (WORKERS=n to change); each is its own process with its own copy of the
 dictionary in memory. All workers must share one configuration: segcli keeps its settings
 in one UserDefaults domain, so never run two different configurations at the same time."""
-import os, subprocess, sys
+import os, subprocess, sys, threading
 here = os.path.dirname(os.path.abspath(__file__))
 lines = open(sys.argv[1], encoding="utf-8").read().split("\n")
 if lines and lines[-1] == "": lines.pop()
@@ -13,7 +13,6 @@ size = -(-len(lines) // workers)
 chunks = [lines[i:i + size] for i in range(0, len(lines), size)]
 procs = [subprocess.Popen([os.path.join(here, "work", "segcli"), "run"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                           stderr=subprocess.DEVNULL, text=True, encoding="utf-8") for _ in chunks]
-import threading
 outs = [None] * len(chunks)
 def feed(i):
     # communicate() per worker on its own thread, so every worker is fed and drained at once.

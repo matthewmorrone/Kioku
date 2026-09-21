@@ -272,7 +272,9 @@ struct DownloadedModelsSection: View {
     private func performDeleteDownloaded() {
         let whisperFiles = whisperModelManager.downloadedModels
         Task {
-            await Task.detached(priority: .utility) { DownloadedModelKind.allCases.filter { $0 != .vocalStems }.forEach { $0.delete() } }.value
+            await Task.detached(priority: .utility) {
+                DownloadedModelKind.allCases.filter { $0 != .vocalStems }.forEach { $0.delete() }
+            }.value
             for filename in whisperFiles { try? whisperModelManager.deleteModel(filename: filename) }
             await refreshDownloadedModelBytes()
             onStorageChanged()

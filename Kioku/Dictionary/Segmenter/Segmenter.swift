@@ -200,7 +200,8 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
                 if lemmas.isEmpty == false {
                     // Greedy only: bound single-kana morphemes (た、ら、etc.) are excluded; only standalone-valid kana pass.
-                    if usesStandaloneKanaList, surface.count == 1, ScriptClassifier.isPureKana(surface), !config.standaloneKana.contains(surface) {
+                    if usesStandaloneKanaList, surface.count == 1, ScriptClassifier.isPureKana(surface),
+                       !config.standaloneKana.contains(surface) {
                         continue
                     }
                     // Populate POS + dict flag: the path search classes each edge by its POS bits (TransitionClass).
@@ -259,7 +260,11 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             // Single-character fallback so the greedy walk lands on every position,
             // allowing dictionary words that start mid-unknown-run to be reached.
             if keptMatches == 0 {
-                let fallbackRange = unknownFallbackRange(in: text, startingAt: index, breakingAtStandaloneKana: usesStandaloneKanaList)
+                let fallbackRange = unknownFallbackRange(
+                    in: text,
+                    startingAt: index,
+                    breakingAtStandaloneKana: usesStandaloneKanaList
+                )
                 var fallbackEdge = LatticeEdge(
                     start: fallbackRange.lowerBound,
                     end: fallbackRange.upperBound,
@@ -586,7 +591,11 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     }
 
     // Determines how far an unknown segment should extend by grouping contiguous same-script runs.
-    private func unknownFallbackRange(in text: String, startingAt index: String.Index, breakingAtStandaloneKana: Bool) -> Range<String.Index> {
+    private func unknownFallbackRange(
+        in text: String,
+        startingAt index: String.Index,
+        breakingAtStandaloneKana: Bool
+    ) -> Range<String.Index> {
         let firstCharacter = text[index]
         guard let group = ScriptClassifier.unknownGrouping(for: firstCharacter) else {
             let nextIndex = text.index(after: index)

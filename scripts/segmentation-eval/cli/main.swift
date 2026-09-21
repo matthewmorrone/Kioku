@@ -17,7 +17,9 @@ let deinflector = try Deinflector(jsonFileURL: URL(fileURLWithPath: "\(root)/Res
 let segmenter = Segmenter(trie: trie, deinflector: deinflector, partOfSpeechByEntryID: surfaceData.partOfSpeechByEntryID, frequenciesFrom: store)
 UserDefaults.standard.removeObject(forKey: SegmenterSettings.strategyKey)
 // STRATEGY=local measures the greedy walk (with its demotion list) instead of the shipped path search.
-if ProcessInfo.processInfo.environment["STRATEGY"] == "local" { UserDefaults.standard.set(SegmentationStrategy.localLongestMatch.rawValue, forKey: SegmenterSettings.strategyKey) }
+if ProcessInfo.processInfo.environment["STRATEGY"] == "local" {
+    UserDefaults.standard.set(SegmentationStrategy.localLongestMatch.rawValue, forKey: SegmenterSettings.strategyKey)
+}
 UserDefaults.standard.removeObject(forKey: SegmentationDemotions.storageKey)
 // Gold comparisons run with clusters whole (the path search's own output); SPLIT_CLUSTERS=1 shows the app default.
 UserDefaults.standard.set(ProcessInfo.processInfo.environment["SPLIT_CLUSTERS"] != nil, forKey: SegmenterSettings.splitsParticleClustersKey)
