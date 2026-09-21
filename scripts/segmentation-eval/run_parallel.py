@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Runs `segcli run` over a sentence file on several cores and prints the output in input order.
   run_parallel.py work/data/held2k.txt > work/held2k.out        (env such as SPLIT_CLUSTERS / STRATEGY passes through)
-Three workers by default (WORKERS=n to change): each is its own process with its own copy of the
-dictionary in memory, and this is a 16 GB laptop someone is using — six workers made it unusable. All workers must share one configuration: segcli keeps its settings
+Three workers by default (WORKERS=n to change); each is its own process with its own copy of the
+dictionary in memory. All workers must share one configuration: segcli keeps its settings
 in one UserDefaults domain, so never run two different configurations at the same time."""
 import os, subprocess, sys
 here = os.path.dirname(os.path.abspath(__file__))
