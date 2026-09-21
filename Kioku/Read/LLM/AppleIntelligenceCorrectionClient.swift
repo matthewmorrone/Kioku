@@ -102,7 +102,10 @@ enum AppleIntelligenceCorrectionClient {
         let parser = LLMCorrectionService()
         let lookupTool = dictionary.map { JapaneseWordLookupTool(dictionary: $0) }
 
-        AppLog.debug(.llmCorrection, "[AppleIntelligence] starting per-line correction — dictionary tool \(lookupTool == nil ? "disabled" : "enabled")")
+        AppLog.debug(
+            .llmCorrection,
+            "[AppleIntelligence] starting per-line correction — dictionary tool \(lookupTool == nil ? "disabled" : "enabled")"
+        )
         let lines = compactSegments
             .components(separatedBy: "\n")
             .filter { $0.isEmpty == false }
@@ -231,7 +234,10 @@ enum AppleIntelligenceCorrectionClient {
             throw err
         }
 
-        AppLog.info(.llmCorrection, "[AppleIntelligence] finished — \(processedLineCount) line(s) processed, \(failedLineCount) fell back to baseline")
+        AppLog.info(
+            .llmCorrection,
+            "[AppleIntelligence] finished — \(processedLineCount) line(s) processed, \(failedLineCount) fell back to baseline"
+        )
         return Self.buildResponse(from: current)
     }
 

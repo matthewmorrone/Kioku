@@ -329,17 +329,28 @@ struct SegmentListView: View {
                                 // The mark rides on the star slot, same as the Words tab: checkmark
                                 // when learned, question mark when explicitly not-learned, else the
                                 // three-state star above.
-                                let learnedState = canonicalEntryIDBySurface[normalizedSurface].map { wordsStore.learnedState(for: $0) } ?? .unmarked
+                                let learnedState = canonicalEntryIDBySurface[normalizedSurface].map { wordsStore.learnedState(for: $0) }
+                                    ?? .unmarked
                                 starIcon(isStarFilled: isStarFilled, isAnySaved: isAnySaved, learnedState: learnedState)
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(
-                                isSavedForCurrentNote(normalizedSurface: normalizedSurfaceForFiltering(rowIdentity)) ? "Unsave Word" : "Save Word"
+                                isSavedForCurrentNote(normalizedSurface: normalizedSurfaceForFiltering(rowIdentity))
+                                    ? "Unsave Word"
+                                    : "Save Word"
                             )
                             .contextMenu {
                                 if let entryID = canonicalEntryIDBySurface[normalizedSurfaceForFiltering(rowIdentity)] {
                                     let learnedState = wordsStore.learnedState(for: entryID)
-                                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, wordsStore: wordsStore, surface: rowLemma.isEmpty ? rowIdentity : rowLemma, sourceNoteID: sourceNoteID))
+                                    learnedStateMenuButtons(
+                                        currentState: learnedState,
+                                        setState: learnedStateSetter(
+                                            entryID: entryID,
+                                            wordsStore: wordsStore,
+                                            surface: rowLemma.isEmpty ? rowIdentity : rowLemma,
+                                            sourceNoteID: sourceNoteID
+                                        )
+                                    )
                                 }
                             }
                         }
@@ -349,7 +360,15 @@ struct SegmentListView: View {
                             if let entryID = canonicalEntryIDBySurface[normalizedSurfaceForFiltering(rowIdentity)] {
                                 let learnedState = wordsStore.learnedState(for: entryID)
                                 Menu {
-                                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, wordsStore: wordsStore, surface: rowLemma.isEmpty ? rowIdentity : rowLemma, sourceNoteID: sourceNoteID))
+                                    learnedStateMenuButtons(
+                                        currentState: learnedState,
+                                        setState: learnedStateSetter(
+                                            entryID: entryID,
+                                            wordsStore: wordsStore,
+                                            surface: rowLemma.isEmpty ? rowIdentity : rowLemma,
+                                            sourceNoteID: sourceNoteID
+                                        )
+                                    )
                                 } label: {
                                     Label("Mark…", systemImage: "ellipsis.circle")
                                 }

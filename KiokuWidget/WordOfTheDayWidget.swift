@@ -102,8 +102,26 @@ extension WordOfTheDayMirrorEntry {
 
     // Sample prior-days list for the large family's gallery preview.
     static let previewRecent: [WordOfTheDayMirrorEntry] = [
-        WordOfTheDayMirrorEntry(fireDate: Date(timeIntervalSinceNow: -86_400), surface: "夕映", kana: "ゆうばえ", meaning: "evening glow", entryID: 1),
-        WordOfTheDayMirrorEntry(fireDate: Date(timeIntervalSinceNow: -172_800), surface: "揺蕩う", kana: "たゆたう", meaning: "to sway", entryID: 2),
-        WordOfTheDayMirrorEntry(fireDate: Date(timeIntervalSinceNow: -259_200), surface: "朧", kana: "おぼろ", meaning: "haze; dim", entryID: 3),
+        WordOfTheDayMirrorEntry(
+            fireDate: Date(timeIntervalSinceNow: -86_400),
+            surface: "夕映",
+            kana: "ゆうばえ",
+            meaning: "evening glow",
+            entryID: 1
+        ),
+        WordOfTheDayMirrorEntry(
+            fireDate: Date(timeIntervalSinceNow: -172_800),
+            surface: "揺蕩う",
+            kana: "たゆたう",
+            meaning: "to sway",
+            entryID: 2
+        ),
+        WordOfTheDayMirrorEntry(
+            fireDate: Date(timeIntervalSinceNow: -259_200),
+            surface: "朧",
+            kana: "おぼろ",
+            meaning: "haze; dim",
+            entryID: 3
+        ),
     ]
 }

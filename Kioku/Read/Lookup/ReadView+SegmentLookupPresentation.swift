@@ -46,7 +46,10 @@ extension ReadView {
                     let outcome = moveSelectedSegmentSelection(isMovingForward: false)
                     if let textView = sourceView as? UITextView,
                        let selectedSegmentLocation = segmentSelection.selectedSegmentLocation,
-                       let selectedSegmentRect = selectedSegmentRectInTextView(sourceView: textView, selectedLocation: selectedSegmentLocation) {
+                       let selectedSegmentRect = selectedSegmentRectInTextView(
+                           sourceView: textView,
+                           selectedLocation: selectedSegmentLocation
+                       ) {
                         preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: selectedSegmentRect) {
                             Task { @MainActor in
                                 await Task.yield()
@@ -67,7 +70,10 @@ extension ReadView {
                     let outcome = moveSelectedSegmentSelection(isMovingForward: true)
                     if let textView = sourceView as? UITextView,
                        let selectedSegmentLocation = segmentSelection.selectedSegmentLocation,
-                       let selectedSegmentRect = selectedSegmentRectInTextView(sourceView: textView, selectedLocation: selectedSegmentLocation) {
+                       let selectedSegmentRect = selectedSegmentRectInTextView(
+                           sourceView: textView,
+                           selectedLocation: selectedSegmentLocation
+                       ) {
                         preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: selectedSegmentRect) {
                             Task { @MainActor in
                                 await Task.yield()

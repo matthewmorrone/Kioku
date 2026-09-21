@@ -3,7 +3,11 @@ import SwiftUI
 
 extension ReadView {
     // Detects speech-active regions by adaptive energy thresholding and returns chunk ranges tailored for recognition.
-    nonisolated static func makeSpeechActiveChunkRanges(for fileURL: URL, maxChunkDuration: TimeInterval, overlap: TimeInterval) async throws -> [(start: TimeInterval, end: TimeInterval)] {
+    nonisolated static func makeSpeechActiveChunkRanges(
+        for fileURL: URL,
+        maxChunkDuration: TimeInterval,
+        overlap: TimeInterval
+    ) async throws -> [(start: TimeInterval, end: TimeInterval)] {
         let asset = AVURLAsset(url: fileURL)
         let tracks = try await asset.loadTracks(withMediaType: .audio)
         guard let track = tracks.first else {
@@ -202,7 +206,11 @@ extension ReadView {
     }
 
     // Splits an audio file into overlapping fixed-duration chunk ranges to improve long-form transcription recall.
-    nonisolated static func makeChunkRanges(for fileURL: URL, chunkDuration: TimeInterval, overlap: TimeInterval) async throws -> [(start: TimeInterval, end: TimeInterval)] {
+    nonisolated static func makeChunkRanges(
+        for fileURL: URL,
+        chunkDuration: TimeInterval,
+        overlap: TimeInterval
+    ) async throws -> [(start: TimeInterval, end: TimeInterval)] {
         let asset = AVURLAsset(url: fileURL)
         let duration = try await asset.load(.duration)
         let durationSeconds = CMTimeGetSeconds(duration)

@@ -164,7 +164,10 @@ final class LLMCorrectionService {
             if #available(iOS 26.0, *),
                let reformatted = await LLMResponseSalvage.reformat(rawResponse: raw, parseError: error.localizedDescription),
                let salvaged = try? parseCompactResponse(reformatted) {
-                AppLog.info(.llmCorrection, "salvage succeeded — \(salvaged.segments.count) segment entries after reformat:\n\(reformatted)")
+                AppLog.info(
+                    .llmCorrection,
+                    "salvage succeeded — \(salvaged.segments.count) segment entries after reformat:\n\(reformatted)"
+                )
                 return salvaged
             }
             AppLog.error(.llmCorrection, "salvage did not recover a parseable response — surfacing unparseableAfterSalvage")
@@ -326,7 +329,10 @@ final class LLMCorrectionService {
             throw LLMCorrectionError.appleIntelligenceCloudUnavailable
         }
         let messages = buildMessages(compactSegments: compactSegments, correctiveFeedback: correctiveFeedback)
-        AppLog.debug(.llmCorrection, "[AppleIntelligenceCloud] deepReasoning=\(useDeepReasoning) instructions:\n\(messages.system)\nprompt:\n\(messages.user)")
+        AppLog.debug(
+            .llmCorrection,
+            "[AppleIntelligenceCloud] deepReasoning=\(useDeepReasoning) instructions:\n\(messages.system)\nprompt:\n\(messages.user)"
+        )
         let raw = try await AppleIntelligenceCloudClient.generate(
             instructions: messages.system,
             prompt: messages.user,
@@ -376,7 +382,10 @@ final class LLMCorrectionService {
 
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         request.httpBody = bodyData
-        AppLog.debug(.llmCorrection, "[OpenAI] POST \(url) model=\(modelID) temperature=\(usingSearchModel ? "omitted" : "\(temperature)") body bytes=\(bodyData.count)")
+        AppLog.debug(
+            .llmCorrection,
+            "[OpenAI] POST \(url) model=\(modelID) temperature=\(usingSearchModel ? "omitted" : "\(temperature)") body bytes=\(bodyData.count)"
+        )
 
         let (data, statusCode) = try await send(request, provider: "OpenAI")
 
@@ -459,7 +468,10 @@ final class LLMCorrectionService {
             body["messages"] = conversation
             let bodyData = try JSONSerialization.data(withJSONObject: body)
             request.httpBody = bodyData
-            AppLog.debug(.llmCorrection, "[Claude] POST \(url) model=\(LLMSettings.claudeModel()) webSearch=\(LLMSettings.isWebSearchEnabled()) turn=\(turn) body bytes=\(bodyData.count)")
+            AppLog.debug(
+                .llmCorrection,
+                "[Claude] POST \(url) model=\(LLMSettings.claudeModel()) webSearch=\(LLMSettings.isWebSearchEnabled()) turn=\(turn) body bytes=\(bodyData.count)"
+            )
 
             let (data, statusCode) = try await send(request, provider: "Claude")
             guard
@@ -484,7 +496,10 @@ final class LLMCorrectionService {
             }
             let blockTypes = content.compactMap { $0["type"] as? String }.joined(separator: ",")
             let raw = String(data: data, encoding: .utf8) ?? "(unreadable)"
-            AppLog.error(.llmCorrection, "[Claude] HTTP \(statusCode) stop=\(stopReason) blocks=[\(blockTypes)] no text; body:\n\(raw.prefix(4000))")
+            AppLog.error(
+                .llmCorrection,
+                "[Claude] HTTP \(statusCode) stop=\(stopReason) blocks=[\(blockTypes)] no text; body:\n\(raw.prefix(4000))"
+            )
             throw LLMCorrectionError.unexpectedResponseShape("Claude response had no text content blocks (stop_reason=\(stopReason), blocks=[\(blockTypes)])")
         }
         throw LLMCorrectionError.unexpectedResponseShape("Claude kept pausing its web-search turn without answering")
@@ -523,14 +538,20 @@ final class LLMCorrectionService {
                 if http.statusCode == 429, let retryAfter = Self.retryAfterSeconds(from: http) {
                     delaySeconds = min(retryAfter, 30)
                 }
-                AppLog.error(.llmCorrection, "[\(provider)] HTTP \(http.statusCode), retrying in \(delaySeconds)s (attempt \(attempt + 1)/\(maxAttempts))")
+                AppLog.error(
+                    .llmCorrection,
+                    "[\(provider)] HTTP \(http.statusCode), retrying in \(delaySeconds)s (attempt \(attempt + 1)/\(maxAttempts))"
+                )
             } catch let error as LLMCorrectionError {
                 throw error
             } catch {
                 guard attempt < maxAttempts else {
                     throw LLMCorrectionError.networkError("\(provider): \(error.localizedDescription)")
                 }
-                AppLog.error(.llmCorrection, "[\(provider)] request error \(error.localizedDescription), retrying (attempt \(attempt + 1)/\(maxAttempts))")
+                AppLog.error(
+                    .llmCorrection,
+                    "[\(provider)] request error \(error.localizedDescription), retrying (attempt \(attempt + 1)/\(maxAttempts))"
+                )
             }
             try await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
         }
@@ -735,7 +756,11 @@ final class LLMCorrectionService {
         guard innerRuns.count != 1 || innerRuns[0].start != 0 || innerRuns[0].end != chars.count else {
             return bracketReading
         }
-        guard let runReadings = FuriganaAttributedString.normalizedRunReadings(surface: kanjiText, reading: bracketReading, runs: innerRuns),
+        guard let runReadings = FuriganaAttributedString.normalizedRunReadings(
+            surface: kanjiText,
+            reading: bracketReading,
+            runs: innerRuns
+        ),
               runReadings.count == innerRuns.count else {
             return bracketReading
         }

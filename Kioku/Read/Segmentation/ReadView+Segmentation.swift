@@ -348,11 +348,19 @@ extension ReadView {
         // re-entering here would hit the toggle-off branch above and deselect instead of look up.
         guard readResourcesReady else {
             TapDiagnostics.mark("QUEUED: readResourcesReady == false, will replay lookup once resources finish loading")
-            segmentSelection.pendingSegmentTapAfterResourcesReady = (location: tappedSegmentLocation, rect: tappedSegmentRect, sourceView: sourceView)
+            segmentSelection.pendingSegmentTapAfterResourcesReady = (
+                location: tappedSegmentLocation,
+                rect: tappedSegmentRect,
+                sourceView: sourceView
+            )
             return
         }
 
-        presentLookupForSegmentTap(tappedSegmentLocation: tappedSegmentLocation, tappedSegmentRect: tappedSegmentRect, sourceView: sourceView)
+        presentLookupForSegmentTap(
+            tappedSegmentLocation: tappedSegmentLocation,
+            tappedSegmentRect: tappedSegmentRect,
+            sourceView: sourceView
+        )
     }
 
     // The dictionary-lookup/presentation half of a segment tap, split out from

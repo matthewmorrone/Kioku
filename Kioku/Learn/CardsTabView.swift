@@ -104,7 +104,12 @@ struct LearnPagerView: View {
             let width = geo.size.width
 
             HStack(spacing: 0) {
-                FlashcardsView(dictionaryStore: dictionaryStore, segmenter: segmenter, surfaceReadingData: surfaceReadingData, kanjiReadingFallback: kanjiReadingFallback)
+                FlashcardsView(
+                    dictionaryStore: dictionaryStore,
+                    segmenter: segmenter,
+                    surfaceReadingData: surfaceReadingData,
+                    kanjiReadingFallback: kanjiReadingFallback
+                )
                     .frame(width: width)
                     .onPreferenceChange(CardsPageDotsHiddenPreferenceKey.self) { dotsHiddenByPage[.flashcards] = $0 }
                     .onPreferenceChange(CardsStudySessionActivePreferenceKey.self) { sessionActiveByPage[.flashcards] = $0 }

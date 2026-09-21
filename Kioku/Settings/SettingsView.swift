@@ -32,13 +32,17 @@ struct SettingsView: View {
     @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
     @AppStorage(TypographySettings.customFuriganaSizeEnabledKey) private var customFuriganaSizeEnabled = false
     @AppStorage(TypographySettings.furiganaSizeKey) private var furiganaSize = TypographySettings.defaultFuriganaSize
-    @AppStorage(LyricsHighlightGranularity.storageKey) private var lyricsHighlightGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
+    @AppStorage(LyricsHighlightGranularity.storageKey)
+    private var lyricsHighlightGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
     @AppStorage(AudioSettings.backgroundPlaybackKey) private var backgroundPlayback: Bool = AudioSettings.defaultBackgroundPlayback
     @AppStorage(AudioSettings.autoAdvanceToNextNoteKey) private var autoAdvanceToNextNote: Bool = AudioSettings.defaultAutoAdvanceToNextNote
     @AppStorage(ClipboardSettings.autoDetectKey) private var clipboardAutoDetect: Bool = ClipboardSettings.defaultAutoDetect
-    @AppStorage(DictionarySettings.includeArchaicReadingsKey) var includeArchaicReadings: Bool = DictionarySettings.defaultIncludeArchaicReadings
-    @AppStorage(DictionarySettings.showJapaneseInPopoverKey) private var showJapaneseInPopover: Bool = DictionarySettings.defaultShowJapaneseInPopover
-    @AppStorage(DictionarySettings.prefersSheetDirectSegmentActionsKey) private var prefersSheetDirectSegmentActions: Bool = DictionarySettings.defaultPrefersSheetDirectSegmentActions
+    @AppStorage(DictionarySettings.includeArchaicReadingsKey)
+    var includeArchaicReadings: Bool = DictionarySettings.defaultIncludeArchaicReadings
+    @AppStorage(DictionarySettings.showJapaneseInPopoverKey)
+    private var showJapaneseInPopover: Bool = DictionarySettings.defaultShowJapaneseInPopover
+    @AppStorage(DictionarySettings.prefersSheetDirectSegmentActionsKey)
+    private var prefersSheetDirectSegmentActions: Bool = DictionarySettings.defaultPrefersSheetDirectSegmentActions
 
     // No `private` modifiers below: the AI Correction section's UI lives in
     // SettingsView+AICorrectionSection.swift and needs to read these as

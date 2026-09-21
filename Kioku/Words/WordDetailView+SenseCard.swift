@@ -61,7 +61,13 @@ extension WordDetailView {
     // that one gloss (with mutual-exclusion handling above). `sentences` are Tatoeba examples
     // routed to this specific sense by SentenceSenseRouter.
     @ViewBuilder
-    func senseCard(sense: DictionaryEntrySense, entryID: Int64, isSavedEntry: Bool, refs: [SenseReference], sentences: [SentencePair] = []) -> some View {
+    func senseCard(
+        sense: DictionaryEntrySense,
+        entryID: Int64,
+        isSavedEntry: Bool,
+        refs: [SenseReference],
+        sentences: [SentencePair] = []
+    ) -> some View {
         let senseSelected = isSavedEntry && currentSelectedSenseIDs.contains(sense.senseID)
         let selectedGlossIndices: Set<Int> = {
             guard isSavedEntry else { return [] }
@@ -118,7 +124,11 @@ extension WordDetailView {
                                 if sense.glosses.count == 1 {
                                     wordsStore.setSelection(id: entryID, senseIDs: [sense.senseID], glosses: [])
                                 } else {
-                                    wordsStore.setSelection(id: entryID, senseIDs: [], glosses: [GlossRef(senseID: sense.senseID, glossIndex: gIdx)])
+                                    wordsStore.setSelection(
+                                        id: entryID,
+                                        senseIDs: [],
+                                        glosses: [GlossRef(senseID: sense.senseID, glossIndex: gIdx)]
+                                    )
                                 }
                             }
                         }

@@ -37,7 +37,11 @@ nonisolated enum CSVImport {
     }
 
     // Enriches one item in-place by looking up the best dictionary match for its known fields.
-    nonisolated private static func enrich(_ item: inout CSVImportItem, using dictionaryStore: DictionaryStore, fillKanjiFromDictionary: Bool) {
+    nonisolated private static func enrich(
+        _ item: inout CSVImportItem,
+        using dictionaryStore: DictionaryStore,
+        fillKanjiFromDictionary: Bool
+    ) {
         let surface = trim(item.providedSurface ?? item.computedSurface)
         let kana = trim(item.providedKana ?? item.computedKana)
         let meaning = trim(item.providedMeaning ?? item.computedMeaning)

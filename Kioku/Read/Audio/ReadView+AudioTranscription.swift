@@ -97,7 +97,11 @@ extension ReadView {
                 modelURL = try await TranscriptionModelProvider.ensureModel { [self] fraction in
                     let pct = Int((fraction * 100).rounded())
                     Task { @MainActor in
-                        setWhisperTranscriptionNote(id: noteID, statusLine: "Downloading Whisper model (\(TranscriptionModelProvider.downloadSizeText)) \(pct)%…", body: "")
+                        setWhisperTranscriptionNote(
+                            id: noteID,
+                            statusLine: "Downloading Whisper model (\(TranscriptionModelProvider.downloadSizeText)) \(pct)%…",
+                            body: ""
+                        )
                     }
                 }
             }
@@ -146,7 +150,13 @@ extension ReadView {
     }
 
     // Updates the in-progress transcription note content after each chunk so users can read output as it is generated.
-    func updateStreamingTranscriptionNote(id: UUID, transcribedText: String, completedChunks: Int, totalChunks: Int, statusPrefix: String = "Transcribing audio") {
+    func updateStreamingTranscriptionNote(
+        id: UUID,
+        transcribedText: String,
+        completedChunks: Int,
+        totalChunks: Int,
+        statusPrefix: String = "Transcribing audio"
+    ) {
         let statusLine = "[\(statusPrefix) \(completedChunks)/\(totalChunks)]"
         let bodyText = transcribedText.trimmingCharacters(in: .whitespacesAndNewlines)
         let noteContent = bodyText.isEmpty ? statusLine : "\(statusLine)\n\n\(bodyText)"

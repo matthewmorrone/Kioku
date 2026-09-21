@@ -167,7 +167,12 @@ enum AudioTranscriptionService {
         var ranges = try await ReadView.makeSpeechActiveChunkRanges(for: url, maxChunkDuration: 12.0, overlap: 0.4)
         if ranges.isEmpty { ranges = try await ReadView.makeChunkRanges(for: url, chunkDuration: 12.0, overlap: 0.4) }
 
-        var (bestTranscript, bestSegments) = try await applePass(url: url, ranges: ranges, contextualStrings: contextualStrings, onProgress: onProgress)
+        var (bestTranscript, bestSegments) = try await applePass(
+            url: url,
+            ranges: ranges,
+            contextualStrings: contextualStrings,
+            onProgress: onProgress
+        )
         if AudioTranscriptionHelpers.shouldRetryForLowYield(transcript: bestTranscript, durationSeconds: duration) {
             let retry = try await ReadView.makeChunkRanges(for: url, chunkDuration: 8.0, overlap: 0.8)
             let (rt, rs) = try await applePass(url: url, ranges: retry, contextualStrings: [], onProgress: onProgress)

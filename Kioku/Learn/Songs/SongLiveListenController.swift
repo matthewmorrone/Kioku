@@ -233,7 +233,12 @@ final class SongLiveListenController: NSObject, ObservableObject {
             currentSegment = segment
             runSpeech(segment)
         case .clip(let lineIndex, let startMs, let endMs):
-            currentSegment = SongListenSegment(lineIndex: lineIndex, kind: .sentence, text: originalByLineIndex[lineIndex] ?? "", language: .japanese)
+            currentSegment = SongListenSegment(
+                lineIndex: lineIndex,
+                kind: .sentence,
+                text: originalByLineIndex[lineIndex] ?? "",
+                language: .japanese
+            )
             sentenceProgress = nil
             runClip(startMs: startMs, endMs: endMs)
         }
@@ -504,7 +509,11 @@ extension SongLiveListenController: AVSpeechSynthesizerDelegate {
     }
 
     // Hops back onto the main actor to publish live per-character sentence progress.
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {
+    nonisolated func speechSynthesizer(
+        _ synthesizer: AVSpeechSynthesizer,
+        willSpeakRangeOfSpeechString characterRange: NSRange,
+        utterance: AVSpeechUtterance
+    ) {
         Task { @MainActor [weak self] in self?.handleWillSpeak(range: characterRange) }
     }
 }

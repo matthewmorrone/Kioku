@@ -119,7 +119,14 @@ struct FlashcardsView: View {
             }
         }
         .sheet(item: $detailWord) { word in
-            WordDetailView(word: word, reading: nil, dictionaryStore: dictionaryStore, segmenter: segmenter, surfaceReadingData: surfaceReadingData, kanjiReadingFallback: kanjiReadingFallback)
+            WordDetailView(
+                word: word,
+                reading: nil,
+                dictionaryStore: dictionaryStore,
+                segmenter: segmenter,
+                surfaceReadingData: surfaceReadingData,
+                kanjiReadingFallback: kanjiReadingFallback
+            )
                 .environmentObject(wordsStore)
                 .presentationDetents([.large])
         }
@@ -286,7 +293,10 @@ struct FlashcardsView: View {
                     session = []; sessionSource = []
                 }
             } label: {
-                Label(isPresetSession ? "Done" : "Choose Different Cards", systemImage: isPresetSession ? "checkmark.circle" : "slider.horizontal.3")
+                Label(
+                    isPresetSession ? "Done" : "Choose Different Cards",
+                    systemImage: isPresetSession ? "checkmark.circle" : "slider.horizontal.3"
+                )
             }
             .buttonStyle(.bordered)
         }

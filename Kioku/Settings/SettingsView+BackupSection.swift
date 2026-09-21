@@ -33,7 +33,10 @@ extension SettingsView {
                 audioAttachments: audioAttachments
             )
         )
-        AppLog.debug(.backup, "export: staged \(notes.count) notes, \(audioAttachments.count) audio attachments, \(reviewStats.count) review records")
+        AppLog.debug(
+            .backup,
+            "export: staged \(notes.count) notes, \(audioAttachments.count) audio attachments, \(reviewStats.count) review records"
+        )
         isShowingExporter = true
     }
 
@@ -70,7 +73,10 @@ extension SettingsView {
                 // Reject structurally invalid backups before the destructive
                 // replace-all confirmation is ever offered.
                 try AppBackupValidator.validate(document.payload)
-                AppLog.debug(.backup, "import: \(fileURL.lastPathComponent) validated — \(document.payload.notes.count) notes, \(document.payload.audioAttachments.count) audio attachments")
+                AppLog.debug(
+                    .backup,
+                    "import: \(fileURL.lastPathComponent) validated — \(document.payload.notes.count) notes, \(document.payload.audioAttachments.count) audio attachments"
+                )
                 pendingImportDocument = document
                 isShowingImportConfirmation = true
             } catch {
@@ -109,7 +115,10 @@ extension SettingsView {
                 for stagedID in stagedAttachmentIDs where liveAttachmentIDs.contains(stagedID) == false {
                     audioStore.deleteAttachment(stagedID)
                 }
-                AppLog.error(.backup, "import: aborted — audio attachment \(attachment.attachmentID) restore failed, rolled back \(stagedAttachmentIDs.count) staged file(s): \(error.localizedDescription)")
+                AppLog.error(
+                    .backup,
+                    "import: aborted — audio attachment \(attachment.attachmentID) restore failed, rolled back \(stagedAttachmentIDs.count) staged file(s): \(error.localizedDescription)"
+                )
                 showTransferAlert(
                     title: "Import Failed",
                     message: "An audio attachment could not be restored, so no data was changed. \(error.localizedDescription)"
@@ -125,7 +134,10 @@ extension SettingsView {
             for stagedID in stagedAttachmentIDs where liveAttachmentIDs.contains(stagedID) == false {
                 audioStore.deleteAttachment(stagedID)
             }
-            AppLog.error(.backup, "import: aborted — notes persistence failed, rolled back \(stagedAttachmentIDs.count) staged file(s): \(notesError)")
+            AppLog.error(
+                .backup,
+                "import: aborted — notes persistence failed, rolled back \(stagedAttachmentIDs.count) staged file(s): \(notesError)"
+            )
             showTransferAlert(title: "Import Failed", message: "Notes could not be restored, so no data was changed. \(notesError)")
             return
         }
@@ -147,7 +159,10 @@ extension SettingsView {
             lifetimeAgain: payload.lifetimeAgain
         )
 
-        AppLog.info(.backup, "import: replaced all stores — \(payload.notes.count) notes, \(payload.words.count) words, \(payload.wordLists.count) lists, \(payload.audioAttachments.count) audio attachments")
+        AppLog.info(
+            .backup,
+            "import: replaced all stores — \(payload.notes.count) notes, \(payload.words.count) words, \(payload.wordLists.count) lists, \(payload.audioAttachments.count) audio attachments"
+        )
         var message = "Imported \(payload.notes.count) notes, \(payload.words.count) words, \(payload.wordLists.count) lists, \(payload.history.count) history entries, and \(payload.reviewStats.count) review records."
         if payload.audioAttachments.isEmpty == false {
             message += " Restored \(payload.audioAttachments.count) audio attachment(s)."

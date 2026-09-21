@@ -81,7 +81,9 @@ nonisolated enum CachesCleaner {
         var freed = 0
         if let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first, let bundleId = Bundle.main.bundleIdentifier {
             // iOS: Library/Caches/<bundle id>/com.apple.e5rt.e5bundlecache holds the compiled bundles.
-            let url = caches.appendingPathComponent(bundleId, isDirectory: true).appendingPathComponent("com.apple.e5rt.e5bundlecache", isDirectory: true)
+            let url = caches
+                .appendingPathComponent(bundleId, isDirectory: true)
+                .appendingPathComponent("com.apple.e5rt.e5bundlecache", isDirectory: true)
             if fm.fileExists(atPath: url.path) {
                 freed += totalRegularFileBytes(at: url)
                 try? fm.removeItem(at: url)

@@ -44,7 +44,10 @@ final class WordsStore: ObservableObject {
         // changed anything, write the merged data into kioku.words.v1 immediately so it isn't
         // re-derived from those now-cleared keys again, and isn't lost if the app is killed
         // before anything else triggers a save.
-        if migrated.map(\.canonicalEntryID) != loaded.map(\.canonicalEntryID) || zip(migrated, loaded).contains(where: { $0.learnedMark != $1.learnedMark || $0.mastered != $1.mastered || $0.markedWrong != $1.markedWrong || $0.reviewStats != $1.reviewStats }) {
+        if migrated.map(\.canonicalEntryID) != loaded.map(\.canonicalEntryID) || zip(
+            migrated,
+            loaded
+        ).contains(where: { $0.learnedMark != $1.learnedMark || $0.mastered != $1.mastered || $0.markedWrong != $1.markedWrong || $0.reviewStats != $1.reviewStats }) {
             persist(migrated)
         }
     }

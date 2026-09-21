@@ -114,7 +114,10 @@ final class DictionaryDownloadManagerTests: XCTestCase {
             }
             return surfaces
         }
-        XCTAssertFalse(ambiguousSurfaces.isEmpty, "query for ambiguous surfaces returned nothing — likely a broken test query, not a dictionary with zero homophones")
+        XCTAssertFalse(
+            ambiguousSurfaces.isEmpty,
+            "query for ambiguous surfaces returned nothing — likely a broken test query, not a dictionary with zero homophones"
+        )
 
         var mismatches: [String] = []
         for surface in ambiguousSurfaces {

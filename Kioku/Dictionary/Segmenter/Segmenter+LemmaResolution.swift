@@ -245,7 +245,10 @@ extension Segmenter {
     }
 
     // Enumerates exact and alternate candidate resolutions using the same admission rules as lattice generation.
-    private func debugResolutionSources(for surface: String) -> (exactLemmas: Set<String>, alternateResolutions: [(candidate: String, lemmas: Set<String>)]) {
+    private func debugResolutionSources(for surface: String) -> (
+        exactLemmas: Set<String>,
+        alternateResolutions: [(candidate: String, lemmas: Set<String>)]
+    ) {
         let exactLemmas = matchedTrieLemmas(for: surface)
         let hasExactSurfaceMatch = trie.contains(surface)
         var alternateResolutions: [(candidate: String, lemmas: Set<String>)] = []

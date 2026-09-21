@@ -218,7 +218,8 @@ struct LyricsView: View {
     // Save/Learned/Not Learned identically to the Read tab.
     @AppStorage(TokenColorSettings.savedColorKey) private var savedHex: String = TokenColorSettings.defaultSavedHex
     @AppStorage(TokenColorSettings.savedLearnedColorKey) private var savedLearnedHex: String = TokenColorSettings.defaultSavedLearnedHex
-    @AppStorage(TokenColorSettings.savedNotLearnedColorKey) private var savedNotLearnedHex: String = TokenColorSettings.defaultSavedNotLearnedHex
+    @AppStorage(TokenColorSettings.savedNotLearnedColorKey)
+    private var savedNotLearnedHex: String = TokenColorSettings.defaultSavedNotLearnedHex
     @StateObject var translationCache = LyricsTranslationCache()
 
     // Previously three variants (appleMusic / accentBar / focusCard) selectable from Settings.
@@ -350,7 +351,10 @@ struct LyricsView: View {
                         // segments come from the same noteText segmentation the Read view uses.
                         isRubySpacingEnabled: isRubySpacingEnabled,
                         selectedHighlightRange: nil,
-                        playbackHighlightRange: cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                        playbackHighlightRange: cueLocalPlaybackHighlightRange(
+                            cueOriginInNote: cueOriginInNote,
+                            cueLength: cueInput.text.utf16.count
+                        ),
                         selectionHighlightColor: .clear,
                         playbackHighlightColor: Self.activeWordHighlightColor,
                         // The played-portion band is gated on alignment-coverage: when
@@ -360,24 +364,45 @@ struct LyricsView: View {
                         // "already sung" band disappears for low-coverage cues. See
                         // `cueHasReliableDimCoverage` for the 90%-of-cueLen threshold and its
                         // rationale.
-                        unplayedDimmingLocation: cueHasReliableDimCoverage(forCueAtIndex: displayIndex, cueLength: cueInput.text.utf16.count)
-                            ? cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count).map { $0.location + $0.length }
+                        unplayedDimmingLocation: cueHasReliableDimCoverage(
+                            forCueAtIndex: displayIndex,
+                            cueLength: cueInput.text.utf16.count
+                        )
+                            ? cueLocalPlaybackHighlightRange(
+                                cueOriginInNote: cueOriginInNote,
+                                cueLength: cueInput.text.utf16.count
+                            ).map { $0.location + $0.length }
                             : nil,
                         unplayedDimmingColor: Self.playedLineHighlightColor,
                         unknownSegmentLocations: untimedLocations,
                         isHighlightUnknownEnabled: false,
                         unknownSegmentColor: .tertiaryLabel,
                         isSavedHighlightEnabled: isSavedHighlightEnabled,
-                        savedSegmentLocations: rebaseIntoCue(savedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                        savedSegmentLocations: rebaseIntoCue(
+                            savedSegmentLocations,
+                            cueOriginInNote: cueOriginInNote,
+                            cueLength: cueInput.text.utf16.count
+                        ),
                         savedHighlightColor: resolvedSavedHighlightColor,
-                        savedLearnedSegmentLocations: rebaseIntoCue(savedLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                        savedLearnedSegmentLocations: rebaseIntoCue(
+                            savedLearnedSegmentLocations,
+                            cueOriginInNote: cueOriginInNote,
+                            cueLength: cueInput.text.utf16.count
+                        ),
                         savedLearnedHighlightColor: resolvedSavedLearnedHighlightColor,
-                        savedNotLearnedSegmentLocations: rebaseIntoCue(savedNotLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                        savedNotLearnedSegmentLocations: rebaseIntoCue(
+                            savedNotLearnedSegmentLocations,
+                            cueOriginInNote: cueOriginInNote,
+                            cueLength: cueInput.text.utf16.count
+                        ),
                         savedNotLearnedHighlightColor: resolvedSavedNotLearnedHighlightColor,
                         // Overrides the highlighted range's glyph color so it never has to
                         // compete with whatever semantic token color (red vocab, blue, etc.)
                         // it already had — see activeWordForegroundColor's doc comment above.
-                        accentTextRange: cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                        accentTextRange: cueLocalPlaybackHighlightRange(
+                            cueOriginInNote: cueOriginInNote,
+                            cueLength: cueInput.text.utf16.count
+                        ),
                         accentTextColor: Self.activeWordForegroundColor,
                         debugFlags: KiokuDebugOverlayView.Flags(),
                         illegalMergeLocation: nil,
