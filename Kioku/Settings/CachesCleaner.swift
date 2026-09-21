@@ -2,24 +2,26 @@
 //
 // Measures and clears the app's disposable on-disk state: everything under Library/Caches
 // (CoreML's compiled-model bundles, the Hub downloader's content-addressed staging copies of
-// every model, per-piece transcript checkpoints) plus tmp/ (URLSession download temp files
-// that the Hub client leaks — one full-size CFNetworkDownload_*.tmp per model file). Used by
-// the Settings "Clear Caches" button, and by the launch-time sweep for the subset that is
-// never worth keeping. The Application Support tree — where the downloaded model weights
-// actually live — is OUTSIDE both and intentionally NOT touched: those are slow to
-// re-download, and the whole point of moving them was to keep them safe from eviction.
+// every model, per-piece transcript checkpoints), tmp/ (URLSession download temp files
+// that the Hub client leaks — one full-size CFNetworkDownload_*.tmp per model file), and the
+// cached isolated vocal stems — a cache by nature that lives in Application Support only so
+// iOS can't purge it (see VocalStemCache's header). Used by the Settings "Clear Caches"
+// button, and by the launch-time sweep for the subset that is never worth keeping. The
+// downloaded model weights, also in Application Support, are intentionally NOT touched:
+// those are slow to re-download.
 
 import Foundation
+import SwiftWhisperAlign
 
 // Nonisolated so Settings can call from a detached background Task without hopping back to
 // MainActor — the work is pure FileManager I/O and returns plain Int.
 nonisolated enum CachesCleaner {
-    // Sum of byte sizes of every regular file under Library/Caches/ and tmp/, recursively.
+    // Sum of byte sizes of every regular file under the cache roots, recursively.
     static func measure() -> Int {
         roots().reduce(0) { $0 + totalRegularFileBytes(at: $1) }
     }
 
-    // Deletes every top-level entry under Library/Caches/ and tmp/ (whole subtrees). Returns
+    // Deletes every top-level entry under the cache roots (whole subtrees). Returns
     // the freed byte count, computed from a pre-scan so the number is accurate even if some
     // entries fail to delete. Safe to call off the main thread — does no UI work.
     @discardableResult
@@ -96,6 +98,9 @@ nonisolated enum CachesCleaner {
             urls.append(caches)
         }
         urls.append(FileManager.default.temporaryDirectory)
+        if let stems = VocalStemCache.directoryForStorageManagement() {
+            urls.append(stems)
+        }
         return urls
     }
 

@@ -31,11 +31,10 @@ private enum DownloadedModelKind: String, Identifiable, Equatable, CaseIterable 
     }
 }
 
-// Settings → Downloaded Models section. Surfaces the on-device speech models (and the cached
-// isolated vocal stems they produce) that live outside Library/Caches (see DownloadedModelsStore's
-// header) — "Clear Caches" never touches these, so this is the only place a user can reclaim the
-// space: Qwen3-ASR, Qwen3-ForcedAligner, HTDemucs, and cached vocal stems (all fixed-identity, one
-// row each), plus any downloaded Whisper model (a variable-length list, previously only manageable
+// Settings → Downloaded and Caches sections. Downloaded lists the on-device speech models —
+// "Clear Caches" never touches these, so this is the only place a user can reclaim the space:
+// Qwen3-ASR, Qwen3-ForcedAligner, HTDemucs (all fixed-identity, one row each), plus any
+// downloaded Whisper model (a variable-length list, previously only manageable
 // from inside the Bulk Import flow). Hidden entirely when nothing is downloaded yet, mirroring
 // Clear Caches disabling itself at 0 bytes.
 struct DownloadedModelsSection: View {
@@ -65,7 +64,7 @@ struct DownloadedModelsSection: View {
         // once every row started at zero.
         Group {
             Section {
-                if qwenASRBytes > 0 || qwenForcedAlignerBytes > 0 || htDemucsBytes > 0 || vocalStemsBytes > 0
+                if qwenASRBytes > 0 || qwenForcedAlignerBytes > 0 || htDemucsBytes > 0
                     || whisperModelManager.downloadedModels.isEmpty == false {
                     if qwenASRBytes > 0 {
                         downloadedModelRow(kind: .qwenASR, bytes: qwenASRBytes)
@@ -75,9 +74,6 @@ struct DownloadedModelsSection: View {
                     }
                     if htDemucsBytes > 0 {
                         downloadedModelRow(kind: .htDemucs, bytes: htDemucsBytes)
-                    }
-                    if vocalStemsBytes > 0 {
-                        downloadedModelRow(kind: .vocalStems, bytes: vocalStemsBytes)
                     }
                     ForEach(whisperModelManager.downloadedModels, id: \.self) { filename in
                         HStack {
@@ -106,6 +102,23 @@ struct DownloadedModelsSection: View {
                 Text("Downloaded")
             }
             Section {
+                // Rows are grouped by what they are, not where they live: the stems sit in
+                // Application Support, but they are a cache and Clear Caches covers them.
+                if vocalStemsBytes > 0 {
+                    HStack {
+                        Label(DownloadedModelKind.vocalStems.displayName, systemImage: "internaldrive")
+                        Spacer()
+                        Text(formattedBytes(vocalStemsBytes))
+                            .foregroundStyle(.secondary)
+                    }
+                    .swipeActions {
+                        Button(role: .destructive) {
+                            performVocalStemsDeletion()
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
+                }
                 ForEach(cacheEntries) { entry in
                     HStack {
                         Label(entry.label, systemImage: "internaldrive")
@@ -123,7 +136,7 @@ struct DownloadedModelsSection: View {
                     }
                 }
                 // Files below the listing cutoff, so the rows sum to the button exactly.
-                let listed = cacheEntries.reduce(0) { $0 + $1.bytes }
+                let listed = vocalStemsBytes + cacheEntries.reduce(0) { $0 + $1.bytes }
                 if cachesBytes > listed {
                     HStack {
                         Label("Other", systemImage: "doc")
@@ -146,7 +159,7 @@ struct DownloadedModelsSection: View {
             Button("Delete", role: .destructive) { performDeleteDownloaded() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Frees \(formattedBytes(downloadedBytes)). Models download again and isolated vocals are regenerated the next time they're needed.")
+            Text("Frees \(formattedBytes(downloadedBytes)). Models download again the next time they're needed.")
         }
         .alert(
             "Delete \(modelPendingDeletion?.displayName ?? "Model")?",
@@ -158,9 +171,7 @@ struct DownloadedModelsSection: View {
             Button("Delete", role: .destructive) { performModelDeletion() }
             Button("Cancel", role: .cancel) { modelPendingDeletion = nil }
         } message: {
-            Text(modelPendingDeletion == .vocalStems
-                 ? "These will be regenerated automatically the next time each song is aligned."
-                 : "This model will download again automatically the next time it's needed.")
+            Text("This model will download again automatically the next time it's needed.")
         }
         .alert(
             "Delete Whisper Model?",
@@ -230,6 +241,16 @@ struct DownloadedModelsSection: View {
         }
     }
 
+    // Deletes the cached isolated vocals straight away — cache rows take no confirmation — and
+    // re-measures, so the row disappears and the Clear Caches readout shrinks to match.
+    private func performVocalStemsDeletion() {
+        Task {
+            await Task.detached(priority: .utility) { DownloadedModelsStore.deleteVocalStems() }.value
+            await refreshDownloadedModelBytes()
+            onStorageChanged()
+        }
+    }
+
     // Deletes the fixed-identity model pending confirmation and re-measures its (now empty) size.
     private func performModelDeletion() {
         guard let kind = modelPendingDeletion else { return }
@@ -243,15 +264,15 @@ struct DownloadedModelsSection: View {
 
     // Sum of every row in the Downloaded section, for the Delete Downloaded button.
     private var downloadedBytes: Int {
-        qwenASRBytes + qwenForcedAlignerBytes + htDemucsBytes + vocalStemsBytes
+        qwenASRBytes + qwenForcedAlignerBytes + htDemucsBytes
             + whisperModelManager.downloadedModels.reduce(0) { $0 + whisperModelManager.fileSizeBytes(filename: $1) }
     }
 
-    // Deletes every model and cached stem the section lists, then re-measures.
+    // Deletes every model the Downloaded section lists, then re-measures.
     private func performDeleteDownloaded() {
         let whisperFiles = whisperModelManager.downloadedModels
         Task {
-            await Task.detached(priority: .utility) { DownloadedModelKind.allCases.forEach { $0.delete() } }.value
+            await Task.detached(priority: .utility) { DownloadedModelKind.allCases.filter { $0 != .vocalStems }.forEach { $0.delete() } }.value
             for filename in whisperFiles { try? whisperModelManager.deleteModel(filename: filename) }
             await refreshDownloadedModelBytes()
             onStorageChanged()
