@@ -1,13 +1,12 @@
 import SwiftUI
 
-// Advanced settings — segmentation engine/tuning, debug overlays, and the dev bridge — pushed
-// off the main Settings screen via the "Advanced" link. Split out of SettingsView.swift to keep
-// that file under the line-count guardrail; shares the same @State/@AppStorage as the main file
+// The segmentation, dictionary, diagnostics and debug sections of the main Settings screen.
+// Split out of SettingsView.swift to keep that file under the line-count guardrail; shares the same @State/@AppStorage as the main file
 // (see SettingsView.swift for the properties this reads/writes — several are also read by
 // SettingsPreviewRenderer in `body`, which is why they're internal rather than private).
 extension SettingsView {
     @ViewBuilder
-    var advancedSettings: some View {
+    var engineSettings: some View {
         // MARK: Segmentation — engine and granularity.
         Section {
             Picker("Engine", selection: $segmenterBackend) {

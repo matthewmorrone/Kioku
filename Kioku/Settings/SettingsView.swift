@@ -146,8 +146,8 @@ struct SettingsView: View {
     // reports its own deletions back so the Clear Caches readout re-measures too.
     @State private var storageRefreshToken = 0
 
-    // advancedSettings (the "Advanced" screen's sections) lives in SettingsView+AdvancedSection.swift
-    // to keep this file under the line-count guardrail.
+    // engineSettings (the segmentation, dictionary, diagnostics and debug sections) lives in
+    // SettingsView+EngineSections.swift to keep this file under the line-count guardrail.
 
     // Row id currently flashed via listRowBackground when a "bring into focus" scroll lands —
     // set alongside the scroll-to and cleared a moment later. Purely visual; scrollTarget is
@@ -399,30 +399,17 @@ struct SettingsView: View {
                     Text("Data")
                 }
 
-                // MARK: Advanced — segmentation engine/tuning, debug overlays, and the dev bridge,
-                // moved off the main screen to keep it focused. See advancedSettings.
-                Section {
-                    NavigationLink {
-                        Form {
-                            advancedSettings
-                            // MARK: Storage — models, isolated vocals and caches live at the bottom of
-                            // Advanced (own file: self-contained @State + alerts). Its Clear Caches
-                            // confirmation and state stay on this view.
-                            DownloadedModelsSection(
-                                refreshToken: storageRefreshToken,
-                                cachesBytes: cachesBytes,
-                                isClearingCaches: isClearingCaches,
-                                onClearCaches: { performCachesClear() },
-                                onStorageChanged: { Task { await refreshCachesBytes() } }
-                            )
-                        }
-                            .scrollDismissesKeyboard(.interactively)
-                            .washiBackground()
-                            .navigationTitle("Advanced")
-                    } label: {
-                        Label("Advanced", systemImage: "gearshape.2")
-                    }
-                }
+                // MARK: Segmentation, dictionary, diagnostics and debug sections. See engineSettings.
+                engineSettings
+                // MARK: Storage — models, isolated vocals and caches (own file: self-contained
+                // @State + alerts). Its Clear Caches state stays on this view.
+                DownloadedModelsSection(
+                    refreshToken: storageRefreshToken,
+                    cachesBytes: cachesBytes,
+                    isClearingCaches: isClearingCaches,
+                    onClearCaches: { performCachesClear() },
+                    onStorageChanged: { Task { await refreshCachesBytes() } }
+                )
 
                 Section {
                     NavigationLink {
