@@ -308,10 +308,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                 } else {
                     for lemma in lemmas {
                         let summary = debugResolutionSummary(for: edge.surface, lemma: lemma)
-                        AppLog.debug(
-                            .segmentation,
-                            "  [\(startOffset),\(endOffset)) \(escapedForDebug(edge.surface)) → \(escapedForDebug(lemma)) [\(summary)]"
-                        )
+                        AppLog.debug(.segmentation, "  [\(startOffset),\(endOffset)) \(escapedForDebug(edge.surface)) → \(escapedForDebug(lemma)) [\(summary)]")
                     }
                 }
             }
@@ -374,14 +371,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             // If Viterbi fails to terminate (no path reaches text.endIndex), fall through to greedy
             // so we never return a partial / empty segmentation. This keeps the flag safe to flip.
             if !path.isEmpty {
-                return (
-                    latticeEdges: annotatedEdges,
-                    selectedEdges: splittingParticleClusters(
-                        in: absorbingBoundCharacters(in: path, of: text),
-                        lattice: annotatedEdges,
-                        of: text
-                    )
-                )
+                return (latticeEdges: annotatedEdges, selectedEdges: splittingParticleClusters(in: absorbingBoundCharacters(in: path, of: text), lattice: annotatedEdges, of: text))
             }
         }
 
