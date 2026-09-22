@@ -37,6 +37,14 @@ extension WordDetailView {
         }
         if sortedData.isEmpty == false {
             Section("Definition") {
+                // What this expression is built from, above its glosses — おとなになる reads as
+                // おとな + に + なる rather than as an opaque unit. Only ever populated for
+                // multi-word expressions (see DictionaryStore.fetchDecomposition), so a plain
+                // word's Definition section is unchanged.
+                if entryDecomposition.count > 1 {
+                    decompositionRow
+                        .listRowSeparator(.hidden)
+                }
                 // Prefer the word's own definition when it has one; fall back to the
                 // component decomposition only when no entry has senses. The breakdown
                 // still appears in the separate Components section regardless.

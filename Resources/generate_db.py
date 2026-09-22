@@ -424,6 +424,30 @@ def create_schema(conn):
             FOREIGN KEY(sense_id) REFERENCES senses(id)
         );
 
+        -- How a multi-word headword breaks into the pieces it is built from: 大人になる as
+        -- 大人 + に + なる. JMdict has no field for this — an expression entry carries a POS of
+        -- "exp" and its glosses, and nothing about its structure — so the pieces are harvested
+        -- at build time with the mecab CLI (see import_entry_decomposition). Held per (entry,
+        -- surface) because the kanji and kana headwords of one entry analyze separately, and a
+        -- learner reading おとなになる needs that spelling's pieces, not 大人になる's.
+        --
+        -- lemma is the dictionary form when it differs from the piece as written (食べ -> 食べる,
+        -- し -> する), which is what a tap on the piece should look up; NULL when they match.
+        -- start/end are character offsets into `surface`, so the UI can align pieces without
+        -- re-deriving them by string search (a piece can repeat within one headword).
+        CREATE TABLE entry_decomposition (
+            id INTEGER PRIMARY KEY,
+            entry_id INTEGER NOT NULL,
+            surface TEXT NOT NULL,
+            order_index INTEGER NOT NULL,
+            piece TEXT NOT NULL,
+            lemma TEXT,
+            pos TEXT,
+            start INTEGER NOT NULL,
+            end INTEGER NOT NULL,
+            FOREIGN KEY(entry_id) REFERENCES entries(id)
+        );
+
         -- Loanword source information (lsource element).
         -- ls_wasei: 1 when wasei-eigo (Japanese-coined pseudo-loanword).
         -- ls_type: 'full' when entire word derives from source; 'part' for partial borrowings.
@@ -448,6 +472,7 @@ def create_schema(conn):
         CREATE INDEX idx_sense_restrictions_sense_id ON sense_restrictions(sense_id);
         CREATE INDEX idx_sense_references_sense_id ON sense_references(sense_id);
         CREATE INDEX idx_lsource_sense_id ON lsource(sense_id);
+        CREATE INDEX idx_entry_decomposition_surface ON entry_decomposition(surface);
 
         -- Per-character kanji data from KANJIDIC2.
         -- grade: 1–6 = kyōiku (elementary), 8 = jōyō (secondary), 9–10 = jinmeiyō.
@@ -707,6 +732,21 @@ def normalize_extra_entry(entry, entry_index):
     return normalized
 
 
+def join_reference_target(parts):
+    # Rebuilds JMdict's canonical xref string — word, word・reading, or word・reading・senseNum —
+    # from the array jmdict-simplified splits it into. SenseReference.target on the Swift side
+    # documents itself as holding exactly those three shapes.
+    #
+    # Three-element records need care: jmdict-simplified parses the trailing sense number into
+    # its own slot but ALSO leaves it on the reading, so ['丸', 'まる・1', 1] joined naively
+    # becomes 丸・まる・1・1. Every three-element record in 3.6.2 (all 1672) is like this, so drop
+    # the redundant tail rather than emitting a shape nothing downstream expects.
+    pieces = [str(part) for part in parts]
+    if len(pieces) == 3 and pieces[1].endswith("・" + pieces[2]):
+        pieces = pieces[:2]
+    return "・".join(pieces)
+
+
 def insert_entry(conn, entry, ent_seq):
     # Inserts one entry and its forms/senses. Returns (entry_id, kanji_rows, kana_rows)
     # where kanji_rows = [(kanji_id, text)] and kana_rows = [(kana_id, text, applies_to_kanji_set)].
@@ -817,19 +857,20 @@ def insert_entry(conn, entry, ent_seq):
                     (sense_id, k_text),
                 )
 
-        # xref cross-references to related entries.
-        for xref in (sense.get("xref") or []):
-            conn.execute(
-                "INSERT INTO sense_references (sense_id, type, target) VALUES (?, 'xref', ?)",
-                (sense_id, xref),
-            )
-
-        # ant antonyms.
-        for ant in (sense.get("ant") or []):
-            conn.execute(
-                "INSERT INTO sense_references (sense_id, type, target) VALUES (?, 'ant', ?)",
-                (sense_id, ant),
-            )
+        # xref cross-references to related entries, and ant antonyms. jmdict-simplified names
+        # these "related" and "antonym" (the raw JMdict XML element names xref/ant survive only
+        # in our own schema's type column) — reading them under the XML names matched nothing and
+        # left sense_references empty in every build.
+        #
+        # Each record is an array, not a string: JMdict's xref grammar is word[・reading][・sense],
+        # and the JSON splits it into its 1, 2 or 3 parts. Rejoining on ・ restores the canonical
+        # form, which is exactly what SenseReference.target documents itself as holding.
+        for kind, key in (("xref", "related"), ("ant", "antonym")):
+            for parts in (sense.get(key) or []):
+                conn.execute(
+                    "INSERT INTO sense_references (sense_id, type, target) VALUES (?, ?, ?)",
+                    (sense_id, kind, join_reference_target(parts)),
+                )
 
         # lsource loanword origin records.
         for ls in (sense.get("languageSource") or []):
@@ -945,6 +986,106 @@ def apply_frequency_overrides(conn, overrides):
                 f"extras.json frequencyOverrides[{i}] ({kanji_text}/{kana_text}) matched no kana_forms row "
                 "— the (kanji, kana) pair may no longer exist in this JMdict revision."
             )
+
+
+def import_entry_decomposition(conn):
+    # Records how each multi-word headword breaks into its pieces, so the word screen can show
+    # おとなになる as おとな + に + なる with each piece tappable.
+    #
+    # MeCab is the only source in the manifest that knows this. JMdict has no compositional
+    # field (an expression carries "exp" and its glosses, nothing structural), its xrefs are
+    # editorial "see also" pointers, and UniDic's lexicon is per-token — none of them decompose
+    # anything. A morphological analyzer does exactly this job, and generate_db.py already
+    # depends on the mecab CLI for import_mecab_context_ids, so this adds no new requirement.
+    #
+    # Build time, not runtime: an entry's decomposition never changes, and the shipped app has
+    # only matrix.bin — the full IPADic (sys.dic/unk.dic) is not bundled, so there is no MeCab
+    # on the device to ask.
+    import shutil
+    import subprocess
+
+    mecab_path = shutil.which("mecab")
+    if mecab_path is None:
+        print("  mecab CLI not on PATH — skipping decomposition harvest")
+        return
+
+    print("  Harvesting entry decompositions via mecab CLI...")
+
+    # Expression entries are the ones with nothing else to fall back on: a single-word entry's
+    # "decomposition" is itself, and its kanji already carry the breakdown a learner needs.
+    cur = conn.execute(
+        """
+        SELECT DISTINCT e.id, f.text FROM entries e
+        JOIN senses s ON s.entry_id = e.id AND s.pos LIKE '%exp%'
+        JOIN (SELECT entry_id, text FROM kanji UNION ALL SELECT entry_id, text FROM kana_forms) f
+          ON f.entry_id = e.id
+        """
+    )
+    targets = [(row[0], row[1]) for row in cur.fetchall() if row[1] and "\n" not in row[1] and "\t" not in row[1]]
+    if not targets:
+        print("  No expression headwords to decompose")
+        return
+
+    # Same batch protocol as import_mecab_context_ids: one surface per input line, __EOS__
+    # terminating each line's token list, so output groups line up with input by position.
+    # %m = surface, %f[0] = POS, %f[6] = base form.
+    proc = subprocess.run(
+        [
+            mecab_path,
+            "--node-format=%m\t%f[0]\t%f[6]\n",
+            "--unk-format=%m\t%f[0]\t*\n",
+            "--eos-format=__EOS__\n",
+        ],
+        input="\n".join(surface for _, surface in targets) + "\n",
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    rows = []
+    index = 0
+    pieces = []
+
+    def flush():
+        # A single-piece parse says the analyzer found no internal structure — storing it would
+        # make the UI draw a one-chip "breakdown" that repeats the headword.
+        if index < len(targets) and len(pieces) > 1:
+            entry_id, surface = targets[index]
+            offset = 0
+            for order, (piece, pos, base) in enumerate(pieces):
+                lemma = base if base not in ("*", "", piece) else None
+                rows.append((entry_id, surface, order, piece, lemma, pos, offset, offset + len(piece)))
+                offset += len(piece)
+
+    for line in proc.stdout.splitlines():
+        if line == "__EOS__":
+            flush()
+            index += 1
+            pieces = []
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 3:
+            pieces.append((parts[0], parts[1], parts[2]))
+
+    # MeCab normalizes some characters, so a parse whose pieces do not rebuild the headword
+    # exactly would give the UI offsets that slice the wrong text. Drop those rather than
+    # render a breakdown that does not match what is on screen.
+    verified = []
+    by_key = {}
+    for row in rows:
+        by_key.setdefault((row[0], row[1]), []).append(row)
+    for (entry_id, surface), group in by_key.items():
+        if "".join(r[3] for r in sorted(group, key=lambda r: r[2])) == surface:
+            verified.extend(group)
+
+    conn.executemany(
+        "INSERT INTO entry_decomposition (entry_id, surface, order_index, piece, lemma, pos, start, end)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        verified,
+    )
+    dropped = len(by_key) - len({(r[0], r[1]) for r in verified})
+    print(f"  Done: {len({(r[0], r[1]) for r in verified})} headwords decomposed"
+          f" ({len(verified)} pieces){f', {dropped} dropped as non-reconstructing' if dropped else ''}")
 
 
 def import_mecab_context_ids(conn):
@@ -1810,6 +1951,9 @@ def build_database():
 
     with phase("Tagging surfaces with IPADic context IDs..."):
         import_mecab_context_ids(conn)
+
+    with phase("Decomposing multi-word headwords..."):
+        import_entry_decomposition(conn)
 
     with phase("Importing KANJIDIC2 data..."):
         import_kanjidic2(conn)
