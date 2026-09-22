@@ -142,13 +142,19 @@ nonisolated enum SongListenScript {
         return nil
     }
 
-    // Same fall-through as SongLineCard.effectiveWords.
+    // Same fall-through as SongLineCard.effectiveWords, plus the same particle/English
+    // exclusion (SongWordFilter) so listen-along narration never says out loud a bullet the
+    // on-screen card wouldn't even show.
     private static func effectiveWords(for line: SongLine, linesByIndex: [Int: SongLine]) -> [SongWord] {
-        if line.words.isEmpty == false { return line.words }
-        if let reference = line.reference {
-            return referencedLine(for: reference, linesByIndex: linesByIndex)?.words ?? []
+        let words: [SongWord]
+        if line.words.isEmpty == false {
+            words = line.words
+        } else if let reference = line.reference {
+            words = referencedLine(for: reference, linesByIndex: linesByIndex)?.words ?? []
+        } else {
+            words = []
         }
-        return []
+        return words.filter(SongWordFilter.isVocabularyWord)
     }
 
     // Resolves a `.sameAsLine` / `.parallelTo` reference to its target line, if present.

@@ -78,9 +78,15 @@ struct SongLineCard: View {
         return nil
     }
     private var effectiveWords: [SongWord] {
-        if line.words.isEmpty == false { return line.words }
-        if line.reference != nil { return referencedLine?.words ?? [] }
-        return []
+        let words: [SongWord]
+        if line.words.isEmpty == false {
+            words = line.words
+        } else if line.reference != nil {
+            words = referencedLine?.words ?? []
+        } else {
+            words = []
+        }
+        return words.filter(SongWordFilter.isVocabularyWord)
     }
     // The line index whose words `effectiveWords` is actually drawing from — this line's own,
     // or (for a "= line N" chorus fall-through) the referenced line's. Mirrors effectiveWords'
