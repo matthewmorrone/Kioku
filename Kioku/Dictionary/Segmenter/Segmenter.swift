@@ -204,6 +204,11 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                 }
 
                 if lemmas.isEmpty == false {
+                    // A single kana that can never begin a segment (ー, small kana) is never a word on
+                    // its own even when the dictionary lists it; it joins the segment before it.
+                    if surface.count == 1, Self.neverInitialKana.contains(surface.first!) {
+                        continue
+                    }
                     // Greedy only: bound single-kana morphemes (た、ら、etc.) are excluded; only standalone-valid kana pass.
                     if usesStandaloneKanaList, surface.count == 1, ScriptClassifier.isPureKana(surface),
                        !config.standaloneKana.contains(surface) {
