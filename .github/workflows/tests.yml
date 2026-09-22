@@ -65,6 +65,24 @@ jobs:
       - name: List available iOS simulators
         run: xcrun simctl list devices available | grep -E 'iPhone (15|16|17)' | head -10
 
+      # Every run previously resolved and rebuilt the ENTIRE SwiftPM dependency graph from
+      # scratch (MLX, HuggingFace, swift-nio, whisper.cpp, ...) — the dominant share of this
+      # job's wall-clock time, since the first-party Kioku sources build in a fraction of that.
+      # Keyed on Package.resolved's content: an unchanged dependency graph restores the whole
+      # derivedDataPath (checkouts + already-compiled package products), and xcodebuild's own
+      # incremental build only has to recompile what actually changed — the app/test targets on
+      # every PR, plus whatever packages a Package.resolved bump touched. A key miss (dependency
+      # bump) just falls back to a full cold build like before, so this can't make a build fail
+      # that would otherwise pass — restore-keys lets it seed from the nearest older cache
+      # instead of starting from nothing even then.
+      - name: Cache DerivedData (SPM packages)
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: deriveddata-${{ runner.os }}-xcode26.5-${{ hashFiles('Kioku.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: |
+            deriveddata-${{ runner.os }}-xcode26.5-
+
       # The dictionary sqlite is downloaded from the GitHub Release pinned in
       # DictionaryDownloadManager.swift (not committed — the raw file, ~365 MB,
       # is gitignored).
