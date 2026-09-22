@@ -60,8 +60,15 @@ nonisolated struct SegmenterScoring {
     static let transitionWeight = 1.5
 
     // A single transition never moves a path by more than this many nats times the weight, so one
-    // thinly attested pair cannot outvote the word costs.
-    static let transitionClampNats = 5.0
+    // thinly attested pair cannot outvote the word costs. Lowered from 5.0: a bare-noun-after-よ
+    // bigram (lyric line-breaks carry no punctuation, so a w:よ→n transition can be as sparse in
+    // training as it is common in lyrics) was pricing that edge above the old clamp, letting a
+    // competing lexical split (つたえ｜てよ) undercut the correct て-form＋よ analysis by a slim
+    // margin — see つたえてよスターライト in SegmentationQualityTests. Re-measured at 3.0 against
+    // held2k/kana2k/fresh5k: cut-through never regresses (kana2k improves, 276→269 straddles);
+    // exact dips by <0.05pp on held2k/fresh5k, within noise. A 2026-09 "clamp is inert" finding
+    // was under a 16-class transition table, superseded by the current ~1,100-class system.
+    static let transitionClampNats = 3.0
 
     // Cost of a digit run (LatticeEdge from Segmenter.numberRunEdge), in nats — about what a common
     // word costs: low enough that ２ + 時間 beats ２時 + 間, high enough that １日 and ２人 stay words.

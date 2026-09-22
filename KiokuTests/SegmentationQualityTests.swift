@@ -245,4 +245,29 @@ final class SegmentationQualityTests: XCTestCase {
         XCTAssertEqual(try segments(of: "１日中寝ていた"), ["１日中", "寝ていた"])
         XCTAssertEqual(try segments(of: "２人で行く"), ["２人", "で", "行く"])
     }
+
+    // て-form + よ must split even when よ is immediately followed by a bare noun with no
+    // punctuation between them, as lyric line breaks routinely are. つたえ is also a common noun
+    // (message/legend) and てよ is its own dictionary particle-expression, so つたえ｜てよ is a real
+    // competing parse — it used to undercut つたえて｜よ because a w:よ→noun transition, rare in the
+    // prose-trained table, priced above the old clamp. Real line: あいたいとささやく（つたえてよ
+    // スターライト）. See transitionClampNats in SegmenterScoring.swift.
+    func testTeFormPlusYoSplitsBeforeABareNoun() throws {
+        XCTAssertEqual(
+            try segments(of: "あいたいとささやく（つたえてよスターライト）"),
+            ["あいたい", "と", "ささやく", "（", "つたえて", "よ", "スターライト", "）"]
+        )
+        XCTAssertEqual(try segments(of: "伝えてよ星"), ["伝えて", "よ", "星"])
+        XCTAssertEqual(try segments(of: "見てよ空"), ["見て", "よ", "空"])
+    }
+
+    // The ichidan imperative よ deinflection rule (よ→る for a v1 stem) was tried and reverted
+    // (commit 4851340): on kana-only text it let および／いよ resolve as imperatives of おる／いる,
+    // breaking these three sentences. The rule stays out; these guard against it — or an
+    // equivalent — being reintroduced without re-checking kana2k.
+    func testDoesNotFalselyResolveOyoOrIyoAsAnImperative() throws {
+        XCTAssertEqual(try segments(of: "およせください"), ["お", "よせ", "ください"])
+        XCTAssertEqual(try segments(of: "およみになる"), ["お", "よ", "みになる"])
+        XCTAssertEqual(try segments(of: "がいようのみにしよう"), ["がいよう", "のみ", "に", "しよう"])
+    }
 }

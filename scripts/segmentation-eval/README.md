@@ -63,25 +63,39 @@ headwords by the JMdict maintainers. https://downloads.tatoeba.org/exports/jpn_i
   lines, so the score is a regression list, NOT a held-out measure; the other 281 lines are unscored.
   Never print whole lyric lines; the scorer prints only the differing fragments.
 
-## Numbers to beat (2026-09-21: single-kana gate and unknown-run particle breaks are greedy-only)
+## Numbers to beat (2026-09-22: transitionClampNats 5.0 → 3.0)
 
 | Set | exact | cut-through | split |
 |---|---|---|---|
-| held2k | 88.71 | 0.43 | 2.94 |
-| fresh5k | 90.81 | 0.29 | 2.90 |
-| kana2k | 85.29 | 1.38 | 3.83 |
+| held2k | 88.69 | 0.42 | 2.95 |
+| fresh5k | 90.88 | 0.27 | 2.88 |
+| kana2k | 85.32 | 1.32 | 3.84 |
 | CI fixture (300; not re-run; PR #91) | 91.64 | 0.26 | 2.77 |
-| lyric lines reviewed | 35 / 38 | | |
+| lyric lines reviewed | 37 / 38 | | |
 
 History: greedy + demotion list 80.0 / 3.41 (held2k) → Viterbi on surface ranks 86.55 / 0.91 (PR #83,
 tag `segmentation-viterbi-baseline-2026-09-19` + `dictionary-v9`) → fitted overhead + inflection-step
 cost 87.22 / 0.80 (#84) → transition costs 88.53 / 0.60 (#86) → deinflection retyped 88.84 / 0.54 (#88)
 → stems, mixed-script words, two-readings pricing (#89–#91; exact dips are gold convention) 88.56 / 0.54
-→ particle list no longer gates single kana or breaks unknown runs under the path search (ん|だろう, に|お, 諸君|ら).
+→ particle list no longer gates single kana or breaks unknown runs under the path search (ん|だろう, に|お, 諸君|ら)
+→ transitionClampNats 3.0 (from 5.0): a w:よ→noun transition, rare in the prose-trained table but
+common at a lyric line break (no punctuation between よ and the next word), priced above the old
+clamp and let つたえ｜てよ (both real dictionary entries) undercut つたえて｜よ by ~75 centi-nats.
+Re-measured against all three held-out sets, not assumed: kana2k cut-through *improves* (276→269);
+held2k and fresh5k are flat within noise (±0.05pp exact). All four numbers above are from paired
+`fit` runs (both clamps, one process, `SWIFT_DETERMINISTIC_HASHING=1`) confirmed byte-identical
+across repeats — **`segcli run` is not deterministic between separate process launches** without
+that env var (~250/2000 kana2k lines differed run to run in this investigation, moving exact by
+up to 0.2pp): Swift's per-process hash seed affects Set/Dictionary iteration order somewhere in
+tie-breaking. Set `SWIFT_DETERMINISTIC_HASHING=1` for any before/after comparison at this
+precision; a plain `run`/`run` diff otherwise mixes real deltas with seed noise. This may also
+affect the shipped app (same binary, same non-determinism) — not chased here, out of scope for
+this change.
 
-Known misses on lyrics: ラララ (in `extras.json`, needs a dictionary rebuild); に|ついてく (an exact cost
-tie); ならして after a bare noun — **lyrics drop particles, the transition table is counted from
-prose** (noun → verb costs +2.7 nats). The transition weight is irrelevant to the lyric score.
+Known misses on lyrics: ならして after a bare noun — **lyrics drop particles, the transition table
+is counted from prose** (noun → verb costs +2.7 nats). The transition weight is irrelevant to the
+lyric score. ラララ and に|ついてく, both listed here previously, are fixed by dictionary-v11 alone
+(confirmed at the old clamp too) — unrelated to transitionClampNats.
 
 ## Regenerating the transition table
 
@@ -115,14 +129,17 @@ python3 audit/audit.py 60          # failures grouped by (class, surface ending 
 named the lemma's class, but chaining needs the *inflected form's* class (ている → v1, ない / たい →
 adj-i), so no chain crossed a class change and 知っています, ありません, 言われた, 取ろう had no lattice
 edge at all. What still fails is Tatoeba convention (勉強する / 私の / 十分な as one token, 食べ|なさい,
-だった←だ) — don't chase it. Deliberately omitted: ichidan imperative よ (it would swallow 見てよ).
+だった←だ) — don't chase it. Deliberately omitted: ichidan imperative よ (it would swallow 見てよ —
+a different mechanism from つたえてよ-style bare-noun-after-よ misparses, which transitionClampNats
+now fixes; see "Numbers to beat").
 
 ## Tried and dropped — don't repeat without a new reason
 
 - **16 POS classes** for transitions (any weight, penalties-only, + an expression class): flat. Class
   granularity is the whole result — ~1,100 classes work (own class per common function word, JMdict
   tag + last character for conjugating words, fine → coarse backoff). Weight: cut-through bottoms out
-  at 1–1.5; above that only over-splitting grows. Clamp is inert.
+  at 1–1.5; above that only over-splitting grows. Clamp was inert **under 16 classes** — under the
+  current ~1,100-class table it is not: see transitionClampNats 3.0 in "Numbers to beat" above.
 - **IPADic's connection matrix**, bucketed or direct: trained for IPADic's lexicon and short units;
   over-splits JMdict units.
 - **MeCab short-unit decomposition** of each edge (word + connection costs, left ID of the first unit,
