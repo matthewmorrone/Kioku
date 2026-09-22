@@ -361,7 +361,14 @@ final class NotesStore: ObservableObject {
             notes[index].modifiedAt = now
             return notes[index].id
         }
-        let newNote = Note(title: title, content: content, segments: segments, segmentsAreUserEdited: segmentsAreUserEdited ?? false, createdAt: now, modifiedAt: now)
+        let newNote = Note(
+            title: title,
+            content: content,
+            segments: segments,
+            segmentsAreUserEdited: segmentsAreUserEdited ?? false,
+            createdAt: now,
+            modifiedAt: now
+        )
         notes.insert(newNote, at: 0)
         return newNote.id
     }
@@ -379,7 +386,13 @@ final class NotesStore: ObservableObject {
     // Persists a read-screen edit by upserting into the in-memory store and writing to disk immediately.
     // Uses upsertNote so writes are coalesced in memory and can be flushed explicitly when needed.
     @discardableResult
-    func scheduleReadEditorPersist(id: UUID?, title: String, content: String, segments: [SegmentRange]?, segmentsAreUserEdited: Bool? = nil) -> UUID {
+    func scheduleReadEditorPersist(
+        id: UUID?,
+        title: String,
+        content: String,
+        segments: [SegmentRange]?,
+        segmentsAreUserEdited: Bool? = nil
+    ) -> UUID {
         upsertNote(id: id, title: title, content: content, segments: segments, segmentsAreUserEdited: segmentsAreUserEdited)
     }
 

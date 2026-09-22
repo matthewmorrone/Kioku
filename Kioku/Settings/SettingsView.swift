@@ -27,15 +27,17 @@ struct SettingsView: View {
     @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
     @AppStorage(TypographySettings.customFuriganaSizeEnabledKey) private var customFuriganaSizeEnabled = false
     @AppStorage(TypographySettings.furiganaSizeKey) private var furiganaSize = TypographySettings.defaultFuriganaSize
-    @AppStorage(LyricsHighlightGranularity.storageKey) private var lyricsHighlightGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
+    @AppStorage(LyricsHighlightGranularity.storageKey)
+    private var lyricsHighlightGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
     @AppStorage(AudioSettings.backgroundPlaybackKey) private var backgroundPlayback: Bool = AudioSettings.defaultBackgroundPlayback
     @AppStorage(AudioSettings.autoAdvanceToNextNoteKey) private var autoAdvanceToNextNote: Bool = AudioSettings.defaultAutoAdvanceToNextNote
     @AppStorage(ClipboardSettings.autoDetectKey) private var clipboardAutoDetect: Bool = ClipboardSettings.defaultAutoDetect
-    @AppStorage(DictionarySettings.includeArchaicReadingsKey) var includeArchaicReadings: Bool = DictionarySettings.defaultIncludeArchaicReadings
-    @AppStorage(DictionarySettings.showJapaneseInPopoverKey) private var showJapaneseInPopover: Bool = DictionarySettings.defaultShowJapaneseInPopover
-    @AppStorage(DictionarySettings.prefersSheetDirectSegmentActionsKey) private var prefersSheetDirectSegmentActions: Bool = DictionarySettings.defaultPrefersSheetDirectSegmentActions
-    @AppStorage(ParticleSettings.storageKey) var particlesRaw: String = ParticleSettings.defaultRawValue
-    @AppStorage(SegmentationDemotions.storageKey) var demotionsRaw: String = SegmentationDemotions.defaultRawValue
+    @AppStorage(DictionarySettings.includeArchaicReadingsKey)
+    var includeArchaicReadings: Bool = DictionarySettings.defaultIncludeArchaicReadings
+    @AppStorage(DictionarySettings.showJapaneseInPopoverKey)
+    private var showJapaneseInPopover: Bool = DictionarySettings.defaultShowJapaneseInPopover
+    @AppStorage(DictionarySettings.prefersSheetDirectSegmentActionsKey)
+    private var prefersSheetDirectSegmentActions: Bool = DictionarySettings.defaultPrefersSheetDirectSegmentActions
 
     // No `private` modifiers below: the AI Correction section's UI lives in
     // SettingsView+AICorrectionSection.swift and needs to read these as
@@ -91,7 +93,6 @@ struct SettingsView: View {
     @AppStorage(QuizAssistSettings.smarterOptionsKey) private var smarterQuizOptions: Bool = QuizAssistSettings.defaultSmarterOptions
     @AppStorage(SegmenterSettings.backendKey) var segmenterBackend: String = SegmenterSettings.defaultBackend
     @AppStorage(SegmenterSettings.mecabDictionaryKey) var mecabDictionary: String = SegmenterSettings.defaultMeCabDictionary
-    @AppStorage(SegmenterSettings.strategyKey) var segmentationStrategy: SegmentationStrategy = SegmenterSettings.defaultStrategy
     @AppStorage(SegmenterSettings.splitsParticleClustersKey) var splitsParticleClusters = SegmenterSettings.defaultSplitsParticleClusters
 
     @AppStorage(DebugSettings.pixelRulerKey) var debugPixelRuler: Bool = false
@@ -144,10 +145,8 @@ struct SettingsView: View {
     // reports its own deletions back so the Clear Caches readout re-measures too.
     @State private var storageRefreshToken = 0
 
-    // advancedSettings (the "Advanced" screen's sections) and particlesBinding / demotionsBinding
-    // live in SettingsView+AdvancedSection.swift to keep this file under the line-count guardrail.
-    // ParticleTagEditor moved to its own file (ParticleTagEditor.swift) — it was already a
-    // standalone struct, not an extension of SettingsView.
+    // engineSettings (the segmentation, dictionary, diagnostics and debug sections) lives in
+    // SettingsView+EngineSections.swift to keep this file under the line-count guardrail.
 
     var body: some View {
         NavigationStack {
@@ -387,30 +386,17 @@ struct SettingsView: View {
                     Text("Data")
                 }
 
-                // MARK: Advanced — segmentation engine/tuning, debug overlays, and the dev bridge,
-                // moved off the main screen to keep it focused. See advancedSettings.
-                Section {
-                    NavigationLink {
-                        Form {
-                            advancedSettings
-                            // MARK: Storage — models, isolated vocals and caches live at the bottom of
-                            // Advanced (own file: self-contained @State + alerts). Its Clear Caches
-                            // confirmation and state stay on this view.
-                            DownloadedModelsSection(
-                                refreshToken: storageRefreshToken,
-                                cachesBytes: cachesBytes,
-                                isClearingCaches: isClearingCaches,
-                                onClearCaches: { performCachesClear() },
-                                onStorageChanged: { Task { await refreshCachesBytes() } }
-                            )
-                        }
-                            .scrollDismissesKeyboard(.interactively)
-                            .washiBackground()
-                            .navigationTitle("Advanced")
-                    } label: {
-                        Label("Advanced", systemImage: "gearshape.2")
-                    }
-                }
+                // MARK: Segmentation, dictionary, diagnostics and debug sections. See engineSettings.
+                engineSettings
+                // MARK: Storage — models, isolated vocals and caches (own file: self-contained
+                // @State + alerts). Its Clear Caches state stays on this view.
+                DownloadedModelsSection(
+                    refreshToken: storageRefreshToken,
+                    cachesBytes: cachesBytes,
+                    isClearingCaches: isClearingCaches,
+                    onClearCaches: { performCachesClear() },
+                    onStorageChanged: { Task { await refreshCachesBytes() } }
+                )
 
                 Section {
                     NavigationLink {

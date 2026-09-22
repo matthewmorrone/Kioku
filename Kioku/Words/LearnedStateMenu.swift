@@ -58,8 +58,20 @@ func learnedStateSetter(
 // checked-item indicator, the UIKit counterpart of the SwiftUI Toggle-in-Menu trick above.
 func learnedStateUIMenu(currentState: LearnedState, setState: @escaping (LearnedState) -> Void) -> UIMenu {
     UIMenu(children: [
-        UIAction(title: "Save", image: UIImage(systemName: "star"), state: currentState == .unmarked ? .on : .off) { _ in setState(.unmarked) },
-        UIAction(title: "Learned", image: UIImage(systemName: "checkmark"), state: currentState == .learned ? .on : .off) { _ in setState(.learned) },
-        UIAction(title: "Not Learned", image: UIImage(systemName: "questionmark"), state: currentState == .notLearned ? .on : .off) { _ in setState(.notLearned) },
+        UIAction(
+            title: "Save",
+            image: UIImage(systemName: "star"),
+            state: currentState == .unmarked ? .on : .off
+        ) { _ in setState(.unmarked) },
+        UIAction(
+            title: "Learned",
+            image: UIImage(systemName: "checkmark"),
+            state: currentState == .learned ? .on : .off
+        ) { _ in setState(.learned) },
+        UIAction(
+            title: "Not Learned",
+            image: UIImage(systemName: "questionmark"),
+            state: currentState == .notLearned ? .on : .off
+        ) { _ in setState(.notLearned) },
     ])
 }

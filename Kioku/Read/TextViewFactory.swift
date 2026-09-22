@@ -8,7 +8,10 @@ enum TextViewFactory {
 
     // Applies the shared read/edit TextKit 2 configuration to the given instance.
     private static func configure<T: UITextView>(_ textView: T) -> T {
-        precondition(textView.textLayoutManager != nil, "TextKit 2 invariant violated: read editor must use UITextView with a textLayoutManager")
+        precondition(
+            textView.textLayoutManager != nil,
+            "TextKit 2 invariant violated: read editor must use UITextView with a textLayoutManager"
+        )
         textView.autocorrectionType = .no
         textView.spellCheckingType = .no
         textView.autocapitalizationType = .none

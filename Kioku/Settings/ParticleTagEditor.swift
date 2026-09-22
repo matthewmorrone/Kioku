@@ -1,9 +1,8 @@
 import SwiftUI
 
-// Chip grid for adding and removing individual kana from the particle allowlist. Used by
-// SettingsView+AdvancedSection's "Allowed Particles" / "Segmentation Demotions" sections. Split
-// into its own file (it was already a standalone struct, not an extension of SettingsView) to
-// help SettingsView.swift stay under the line-count guardrail.
+// Chip grid for adding and removing short strings from a list (the segmentation demotions, the
+// particle list). No Settings section mounts it at present; it stays for the greedy strategy's
+// demotion list, whose editor returns with that strategy's picker if it ever does.
 struct ParticleTagEditor: View {
     @Binding var tags: [String]
     @State private var draft: String = ""

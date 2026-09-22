@@ -126,6 +126,9 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     // Generates all dictionary-backed lattice edges for every start position in the input text.
     func buildLattice(for text: String) -> [LatticeEdge] {
         var edges: [LatticeEdge] = []
+        // Only the greedy walk needs the standalone-kana list: the path search prices stray single
+        // kana out by frequency, and gating them costs it ん|だろう, に|お, 諸君|ら.
+        let usesStandaloneKanaList = SegmenterSettings.usesGlobalLongestMatch == false
 
         var index = text.startIndex
 
@@ -201,8 +204,14 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                 }
 
                 if lemmas.isEmpty == false {
-                    // Bound single-kana morphemes (た、ら、etc.) are excluded; only standalone-valid kana pass.
-                    if surface.count == 1, ScriptClassifier.isPureKana(surface), !config.standaloneKana.contains(surface) {
+                    // A single kana that can never begin a segment (ー, small kana) is never a word on
+                    // its own even when the dictionary lists it; it joins the segment before it.
+                    if surface.count == 1, Self.neverInitialKana.contains(surface.first!) {
+                        continue
+                    }
+                    // Greedy only: bound single-kana morphemes (た、ら、etc.) are excluded; only standalone-valid kana pass.
+                    if usesStandaloneKanaList, surface.count == 1, ScriptClassifier.isPureKana(surface),
+                       !config.standaloneKana.contains(surface) {
                         continue
                     }
                     // Populate POS + dict flag: the path search classes each edge by its POS bits (TransitionClass).
@@ -261,7 +270,11 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             // Single-character fallback so the greedy walk lands on every position,
             // allowing dictionary words that start mid-unknown-run to be reached.
             if keptMatches == 0 {
-                let fallbackRange = unknownFallbackRange(in: text, startingAt: index)
+                let fallbackRange = unknownFallbackRange(
+                    in: text,
+                    startingAt: index,
+                    breakingAtStandaloneKana: usesStandaloneKanaList
+                )
                 var fallbackEdge = LatticeEdge(
                     start: fallbackRange.lowerBound,
                     end: fallbackRange.upperBound,
@@ -476,7 +489,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     var piece = LatticeEdge(start: start, end: end, surface: part)
                     piece.partOfSpeech = trie.partOfSpeech(for: part)
                     piece.isDictionaryMatch = trie.contains(part)
-                    piece.frequencyScore = frequencyScoreBySurface[part] ?? 0
+                    piece.frequencyScore = frequencyScore(of: part)
                     result.append(piece)
                 }
                 start = end
@@ -589,7 +602,11 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     }
 
     // Determines how far an unknown segment should extend by grouping contiguous same-script runs.
-    private func unknownFallbackRange(in text: String, startingAt index: String.Index) -> Range<String.Index> {
+    private func unknownFallbackRange(
+        in text: String,
+        startingAt index: String.Index,
+        breakingAtStandaloneKana: Bool
+    ) -> Range<String.Index> {
         let firstCharacter = text[index]
         guard let group = ScriptClassifier.unknownGrouping(for: firstCharacter) else {
             let nextIndex = text.index(after: index)
@@ -605,9 +622,9 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
             if ScriptClassifier.unknownGrouping(for: character) != group { break }
 
-            // Stop before standalone particles so they get their own edge rather than being absorbed
-            // into an unknown run (e.g. だ must not consume ね when ね is a standalone particle).
-            if config.standaloneKana.contains(String(character)) { break }
+            // Greedy only: stop before standalone particles so they get their own edge rather than being
+            // absorbed into an unknown run (e.g. だ must not consume ね when ね is a standalone particle).
+            if breakingAtStandaloneKana, config.standaloneKana.contains(String(character)) { break }
 
             currentIndex = text.index(after: currentIndex)
             groupedLength += 1

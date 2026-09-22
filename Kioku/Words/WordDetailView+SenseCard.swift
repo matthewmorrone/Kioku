@@ -61,7 +61,13 @@ extension WordDetailView {
     // that one gloss (with mutual-exclusion handling above). `sentences` are Tatoeba examples
     // routed to this specific sense by SentenceSenseRouter.
     @ViewBuilder
-    func senseCard(sense: DictionaryEntrySense, entryID: Int64, isSavedEntry: Bool, refs: [SenseReference], sentences: [SentencePair] = []) -> some View {
+    func senseCard(
+        sense: DictionaryEntrySense,
+        entryID: Int64,
+        isSavedEntry: Bool,
+        refs: [SenseReference],
+        sentences: [SentencePair] = []
+    ) -> some View {
         let senseSelected = isSavedEntry && currentSelectedSenseIDs.contains(sense.senseID)
         let selectedGlossIndices: Set<Int> = {
             guard isSavedEntry else { return [] }
@@ -118,7 +124,11 @@ extension WordDetailView {
                                 if sense.glosses.count == 1 {
                                     wordsStore.setSelection(id: entryID, senseIDs: [sense.senseID], glosses: [])
                                 } else {
-                                    wordsStore.setSelection(id: entryID, senseIDs: [], glosses: [GlossRef(senseID: sense.senseID, glossIndex: gIdx)])
+                                    wordsStore.setSelection(
+                                        id: entryID,
+                                        senseIDs: [],
+                                        glosses: [GlossRef(senseID: sense.senseID, glossIndex: gIdx)]
+                                    )
                                 }
                             }
                         }
@@ -166,9 +176,9 @@ extension WordDetailView {
                 .padding(.top, 2)
             }
 
-            // Cross-references and antonyms for this sense.
-            let xrefs = refs.filter { $0.type == .xref }.map(\.target)
-            let ants  = refs.filter { $0.type == .ant  }.map(\.target)
+            // Cross-references and antonyms for this sense, shown as headwords only.
+            let xrefs = refs.filter { $0.type == .xref }.map { senseReferenceHeadword($0.target) }
+            let ants  = refs.filter { $0.type == .ant  }.map { senseReferenceHeadword($0.target) }
             if xrefs.isEmpty == false {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text("See also:").font(.caption2).foregroundStyle(.tertiary)
@@ -196,6 +206,19 @@ extension WordDetailView {
                     lineWidth: senseSelected ? 2 : 1
                 )
         )
+    }
+
+    // The displayable part of a SenseReference target. JMdict writes a cross-reference as
+    // word・reading・senseNum, carrying however much disambiguation it takes to identify the
+    // target entry — 丸・まる・1, 事がない・ことがない・1. The reading and sense number are there
+    // to resolve the link, not to be read, so "See also: 丸・まる・1" shows the machinery instead
+    // of the word. Only the leading headword is shown; the column keeps the full target.
+    //
+    // Safe to split on ・ even though katakana headwords can contain one (ソフト・クリーム): a
+    // middot inside a headword would make the first component a fragment, and no reference in
+    // JMdict 3.6.2 has one (checked across all 36,571 records).
+    func senseReferenceHeadword(_ target: String) -> String {
+        String(target.split(separator: "・").first ?? Substring(target))
     }
 
     // Header strip: POS first, then frequency (only on first sense — entry-level), then any

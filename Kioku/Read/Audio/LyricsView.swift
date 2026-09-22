@@ -212,7 +212,8 @@ struct LyricsView: View {
     // Save/Learned/Not Learned identically to the Read tab.
     @AppStorage(TokenColorSettings.savedColorKey) private var savedHex: String = TokenColorSettings.defaultSavedHex
     @AppStorage(TokenColorSettings.savedLearnedColorKey) private var savedLearnedHex: String = TokenColorSettings.defaultSavedLearnedHex
-    @AppStorage(TokenColorSettings.savedNotLearnedColorKey) private var savedNotLearnedHex: String = TokenColorSettings.defaultSavedNotLearnedHex
+    @AppStorage(TokenColorSettings.savedNotLearnedColorKey)
+    private var savedNotLearnedHex: String = TokenColorSettings.defaultSavedNotLearnedHex
     @StateObject var translationCache = LyricsTranslationCache()
 
     // Backing storage for the in-place settings popup (LyricsView+SettingsPopup.swift). All four

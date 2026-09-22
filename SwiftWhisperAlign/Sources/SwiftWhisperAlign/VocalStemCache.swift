@@ -6,9 +6,10 @@
 // both the stereo decode and the isolation, dropping straight into the (cheap) trim/VAD/align
 // stages.
 //
-// Format: raw little-endian Float32 mono @ 44.1 kHz (exactly the buffer HTDemucs returns), so
-// the round-trip is a byte-for-byte reinterpret — no WAV header to parse, no 16-bit
-// quantization. Stored under Application Support/VocalStems (NOT Caches, despite being
+// Format: 16-bit Apple Lossless mono @ 44.1 kHz in an .m4a. A quarter the size of the raw Float32
+// buffer HTDemucs returns (a 3-minute stem: 30.8 MB → 7.6 MB), lossless below the 16-bit
+// quantization, and directly playable — the "listen to the isolated vocals" affordance plays the
+// cache file itself. Samples beyond ±1.0 clip. Stored under Application Support/VocalStems (NOT Caches, despite being
 // regenerable): a Caches-resident stem was observed getting wiped across ordinary dev-reinstall
 // cycles on a nearly-empty 512 GB device — nowhere near genuine storage pressure — so Caches'
 // "OS may purge any time" contract was costing a real ~3.5 min HTDemucs-FT re-isolation on
@@ -25,24 +26,26 @@
 // off-device when seeding the cache.) The `formatVersion` prefix invalidates every entry at
 // once if the isolation algorithm ever changes.
 
+import AVFoundation
 import Foundation
 
 public enum VocalStemCache {
-    // Sample rate the stem is produced and consumed at. Informational — the stored format is
-    // headerless raw Float32, so this isn't encoded in the file; it documents the contract that
-    // both the producer (HTDemucs) and the consumer (the aligner's trim/VAD) assume 44.1 kHz.
+    // Sample rate the stem is produced, stored and consumed at: both the producer (HTDemucs) and
+    // the consumer (the aligner's trim/VAD) assume 44.1 kHz.
     private static let sampleRate = 44_100
+
+    // Frames moved per AVAudioFile read/write, so a whole song never needs a second full-size buffer.
+    private static let chunkFrames: AVAudioFrameCount = 1 << 20
 
     // Bump to invalidate all cached stems when the isolation pipeline changes (model, downmix,
     // overlap-add) so an old stem is never silently fed to a new aligner.
     private static let formatVersion = 1
 
-    // Upper bound on what the stem cache may occupy on disk. The cache was previously UNBOUNDED —
-    // every aligned song left a ~18 MB .f32 (plus a derived .wav) forever, reaching multiple GB on
-    // a well-used device. 500 MB keeps ~25 recent songs' stems for instant Re-align while capping
-    // the growth. Now that this lives in Application Support (not Caches), the OS won't reclaim
-    // it at all on its own — this bound is the only thing keeping it from growing unbounded again.
-    public static let maxBytes = 500 * 1024 * 1024
+    // Upper bound on what the stem cache may occupy on disk. A stem is ~2.5 MB per minute of song
+    // (~10 MB for four minutes), so 250 MB keeps ~25 recent songs' stems for instant Re-align. This
+    // lives in Application Support (not Caches), so the OS won't reclaim it on its own — this bound
+    // is the only thing keeping it from growing without limit.
+    public static let maxBytes = 250 * 1024 * 1024
 
     // Application Support/VocalStems, created on demand and excluded from iCloud backup (see the
     // header comment for why this isn't Caches). nil only if Application Support is unavailable.
@@ -63,7 +66,7 @@ public enum VocalStemCache {
     // isolated once (HTDemucs is the memory-heavy step we never want to repeat).
     private static func cacheURL(for audioURL: URL) -> URL? {
         guard let dir = cacheDir() else { return nil }
-        return dir.appendingPathComponent(fnv1a(contentKey(for: audioURL)) + ".f32")
+        return dir.appendingPathComponent(fnv1a(contentKey(for: audioURL)) + ".m4a")
     }
 
     // Path-independent content fingerprint: size + FNV-1a over the first and last 256 KB. Cheap
@@ -98,7 +101,7 @@ public enum VocalStemCache {
     // so this is the only way a user gets that space back short of `deleteAll`.
     public static func directoryForStorageManagement() -> URL? { cacheDir() }
 
-    // Deletes every cached stem (and any derived .wav). No-op if nothing is cached yet.
+    // Deletes every cached stem. No-op if nothing is cached yet.
     public static func deleteAll() {
         guard let dir = cacheDir(),
               let entries = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
@@ -128,43 +131,77 @@ public enum VocalStemCache {
         return String(format: "%016llx", hash)
     }
 
-    // Loads the cached mono stem for `audioURL`, or nil on miss / unreadable / malformed. The
-    // file is raw little-endian Float32; decoding is a straight reinterpret of the bytes (the
-    // cache is written and read on the same little-endian device).
+    // Loads the cached mono stem for `audioURL`, or nil on miss / unreadable / malformed.
     static func load(for audioURL: URL) -> [Float]? {
-        guard let url = cacheURL(for: audioURL),
-              let data = try? Data(contentsOf: url),
-              data.isEmpty == false,
-              data.count % MemoryLayout<Float>.stride == 0 else { return nil }
+        guard let url = cacheURL(for: audioURL), FileManager.default.fileExists(atPath: url.path),
+              let samples = readSamples(from: url), samples.isEmpty == false else { return nil }
         // Refresh mtime on a hit so the LRU budget treats a re-aligned song as recently USED, not
         // stale — a frequently re-aligned old song then survives eviction over genuinely cold ones.
         try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
-        let count = data.count / MemoryLayout<Float>.stride
-        var samples = [Float](repeating: 0, count: count)
-        _ = samples.withUnsafeMutableBytes { data.copyBytes(to: $0) }
         return samples
     }
 
-    // Stores the mono stem for `audioURL` as raw little-endian Float32. Best-effort: a write
-    // failure (e.g. low disk, or the OS having reclaimed the dir) just means the next align
-    // re-isolates. Skips empty input so a failed isolation isn't cached as a valid result.
+    // Stores the mono stem for `audioURL`. Best-effort: a write failure (e.g. low disk) just means
+    // the next align re-isolates. Skips empty input so a failed isolation isn't cached as a valid result.
     static func store(_ samples: [Float], for audioURL: URL) {
         guard samples.isEmpty == false, let url = cacheURL(for: audioURL) else { return }
-        let data = samples.withUnsafeBufferPointer { Data(buffer: $0) }
-        try? data.write(to: url, options: .atomic)
-        // Drop any stale playable WAV derived from a previous stem at this key, so the next
-        // "listen to stem" regenerates it from the fresh isolation.
-        try? FileManager.default.removeItem(at: url.deletingPathExtension().appendingPathExtension("wav"))
+        guard writeSamples(samples, to: url) else { return }
         // Keep the cache within budget — this store may have pushed it over.
         enforceBudget()
     }
 
+    // Decodes a cached stem file to mono Float32 at its stored rate, a chunk at a time.
+    private static func readSamples(from url: URL) -> [Float]? {
+        guard let file = try? AVAudioFile(forReading: url),
+              file.processingFormat.channelCount == 1,
+              let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: chunkFrames) else { return nil }
+        var samples: [Float] = []
+        samples.reserveCapacity(Int(file.length))
+        while file.framePosition < file.length {
+            guard (try? file.read(into: buffer)) != nil, buffer.frameLength > 0,
+                  let channel = buffer.floatChannelData?[0] else { return nil }
+            samples.append(contentsOf: UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength)))
+        }
+        return samples
+    }
+
+    // Encodes mono Float32 samples as 16-bit Apple Lossless at `url`. Written beside the target and
+    // moved into place, so a crash mid-encode never leaves a truncated stem under the real key.
+    private static func writeSamples(_ samples: [Float], to url: URL) -> Bool {
+        let settings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatAppleLossless, AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: 1, AVEncoderBitDepthHintKey: 16,
+        ]
+        let partial = url.deletingLastPathComponent().appendingPathComponent("." + url.lastPathComponent + ".partial.m4a")
+        try? FileManager.default.removeItem(at: partial)
+        do {
+            // Scoped so the file is closed (and its header finalized) before the move.
+            do {
+                let file = try AVAudioFile(forWriting: partial, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+                guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: chunkFrames),
+                      let channel = buffer.floatChannelData?[0] else { return false }
+                var offset = 0
+                while offset < samples.count {
+                    let count = min(Int(chunkFrames), samples.count - offset)
+                    samples.withUnsafeBufferPointer { channel.update(from: $0.baseAddress! + offset, count: count) }
+                    buffer.frameLength = AVAudioFrameCount(count)
+                    try file.write(from: buffer)
+                    offset += count
+                }
+            }
+            try? FileManager.default.removeItem(at: url)
+            try FileManager.default.moveItem(at: partial, to: url)
+            return true
+        } catch {
+            try? FileManager.default.removeItem(at: partial)
+            return false
+        }
+    }
+
     // Evicts least-recently-USED entries until the VocalStems dir is at or under `maxBytes`. LRU is
     // by file modificationDate, which `load()` refreshes on a hit, so a hot song outlives cold ones.
-    // Counts every file in the dir — both the .f32 stems and any derived .wav (a .wav, being purely
-    // regenerable, naturally evicts before its .f32 since it isn't mtime-touched on stem reuse).
-    // Best-effort and cheap (one directory scan); call on launch to reclaim pre-existing overflow
-    // (e.g. the multi-GB cache an older build accumulated) and after every store.
+    // Counts every file in the dir. Best-effort and cheap (one directory scan); call on launch and
+    // after every store.
     public static func enforceBudget(maxBytes: Int = VocalStemCache.maxBytes) {
         guard let dir = cacheDir() else {
             print("[VocalStemCache] enforceBudget: no cache dir, skipping")
@@ -206,43 +243,11 @@ public enum VocalStemCache {
         return FileManager.default.fileExists(atPath: url.path)
     }
 
-    // Returns a playable 16-bit PCM WAV of the cached stem for `audioURL`, generating it from the
-    // raw f32 on first call and caching the .wav alongside (same dir, same key). nil if no stem is
-    // cached yet (the song hasn't been aligned). Lets the UI play back exactly what the aligner
+    // The cached stem for `audioURL` as a playable file — the cache entry itself — or nil if no stem
+    // is cached yet (the song hasn't been aligned). Lets the UI play back exactly what the aligner
     // hears — the isolated vocals — without re-running isolation.
-    public static func stemWAVURL(for audioURL: URL) -> URL? {
-        guard let f32URL = cacheURL(for: audioURL) else { return nil }
-        let wavURL = f32URL.deletingPathExtension().appendingPathExtension("wav")
-        if FileManager.default.fileExists(atPath: wavURL.path) { return wavURL }
-        guard let samples = load(for: audioURL) else { return nil }
-        return writeWAV16(samples, to: wavURL) ? wavURL : nil
-    }
-
-    // Writes mono float samples as a 16-bit PCM WAV (canonical 44-byte little-endian header +
-    // samples). Hand-rolled so the cache needn't import AVFoundation; the stem is always mono @
-    // 44.1 kHz. Returns false on write failure.
-    private static func writeWAV16(_ samples: [Float], to url: URL) -> Bool {
-        let dataBytes = samples.count * 2
-        let byteRate = sampleRate * 2
-        var header = Data()
-        let appendStr: (String) -> Void = { header.append(contentsOf: Array($0.utf8)) }
-        let appendU32: (UInt32) -> Void = { v in
-            header.append(contentsOf: [UInt8(v & 0xff), UInt8((v >> 8) & 0xff),
-                                       UInt8((v >> 16) & 0xff), UInt8((v >> 24) & 0xff)])
-        }
-        let appendU16: (UInt16) -> Void = { v in
-            header.append(contentsOf: [UInt8(v & 0xff), UInt8((v >> 8) & 0xff)])
-        }
-        appendStr("RIFF"); appendU32(UInt32(36 + dataBytes)); appendStr("WAVE")
-        appendStr("fmt "); appendU32(16); appendU16(1); appendU16(1)
-        appendU32(UInt32(sampleRate)); appendU32(UInt32(byteRate)); appendU16(2); appendU16(16)
-        appendStr("data"); appendU32(UInt32(dataBytes))
-        var pcm = [Int16](repeating: 0, count: samples.count)
-        for i in 0..<samples.count {
-            pcm[i] = Int16((max(-1.0, min(1.0, samples[i])) * 32767).rounded())
-        }
-        var out = header
-        pcm.withUnsafeBufferPointer { out.append(Data(buffer: $0)) }
-        return (try? out.write(to: url, options: .atomic)) != nil
+    public static func playableStemURL(for audioURL: URL) -> URL? {
+        guard let url = cacheURL(for: audioURL), FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return url
     }
 }

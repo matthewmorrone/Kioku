@@ -30,9 +30,10 @@ final class LyricsTranslationCache: ObservableObject {
         translations = [:]
     }
 
-    // Returns true if this cue text has no cached translation yet.
+    // Returns true if this cue text has no cached translation yet. Music-only cues (♪) never
+    // need one: there is nothing to translate.
     func needsTranslation(text: String) -> Bool {
-        translations[text] == nil && text.isEmpty == false
+        translations[text] == nil && text.isEmpty == false && SubtitleParser.isNonSpeechCue(text) == false
     }
 
     // Persists a completed translation result so repeated view appearances skip the translation API.

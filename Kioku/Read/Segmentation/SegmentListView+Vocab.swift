@@ -323,7 +323,12 @@ extension SegmentListView {
                 return (.orange, Color.orange.opacity(0.15), Color.orange.opacity(0.45), "Marked not learned")
             case .unmarked:
                 if isChecked {
-                    return (.accentColor, Color.accentColor.opacity(0.15), Color.accentColor.opacity(0.45), flipped ? "Will be saved for this note" : "Already saved for this note")
+                    return (
+                        .accentColor,
+                        Color.accentColor.opacity(0.15),
+                        Color.accentColor.opacity(0.45),
+                        flipped ? "Will be saved for this note" : "Already saved for this note"
+                    )
                 } else if flipped {
                     if vocabRowWouldFullyRemove(normalizedIdentity) {
                         return (.secondary, Color(.tertiarySystemFill), .clear, "Will be fully removed")
@@ -377,7 +382,10 @@ extension SegmentListView {
         // resolves to.
         .contextMenu {
             if let entryID = canonicalEntryIDBySurface[normalizedIdentity] {
-                learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, wordsStore: wordsStore, surface: identity, sourceNoteID: sourceNoteID))
+                learnedStateMenuButtons(
+                    currentState: learnedState,
+                    setState: learnedStateSetter(entryID: entryID, wordsStore: wordsStore, surface: identity, sourceNoteID: sourceNoteID)
+                )
             }
         }
     }
@@ -474,7 +482,8 @@ extension SegmentListView {
         if hasAttributionBeyondCurrentNote(normalizedSurface: identity) {
             return false
         }
-        let hasBeenOrphaned = wordsStore.words.first { $0.surface == identity || $0.encounteredSurfaces.contains(identity) }?.hasBeenOrphaned ?? false
+        let hasBeenOrphaned = wordsStore.words.first { $0.surface == identity || $0.encounteredSurfaces.contains(identity) }?.hasBeenOrphaned
+            ?? false
         return hasBeenOrphaned == false
     }
 }

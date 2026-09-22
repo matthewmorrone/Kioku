@@ -169,7 +169,8 @@ struct ReadView: View {
     // false: tap opens the lightweight popover (star / speak / meaning / arrow) first; the arrow
     // escalates to the full sheet. true skips straight to the full sheet. User-facing toggle in
     // Settings → Dictionary ("Open Full Lookup on Tap").
-    @AppStorage(DictionarySettings.prefersSheetDirectSegmentActionsKey) var prefersSheetDirectSegmentActions: Bool = DictionarySettings.defaultPrefersSheetDirectSegmentActions
+    @AppStorage(DictionarySettings.prefersSheetDirectSegmentActionsKey)
+    var prefersSheetDirectSegmentActions: Bool = DictionarySettings.defaultPrefersSheetDirectSegmentActions
 
     // Reactive equivalent of LLMSettings.isConfigured() — re-evaluates when any LLM
     // setting changes. Reading llmKeysRevision ties body invalidation to key edits;
@@ -243,6 +244,13 @@ struct ReadView: View {
 }
 
 #Preview {
-    ReadView(selectedNote: .constant(nil), shouldActivateEditModeOnLoad: .constant(false), segmenter: Segmenter(trie: DictionaryTrie()), dictionaryStore: nil, segmenterRevision: 0, readResourcesReady: false)
+    ReadView(
+        selectedNote: .constant(nil),
+        shouldActivateEditModeOnLoad: .constant(false),
+        segmenter: Segmenter(trie: DictionaryTrie()),
+        dictionaryStore: nil,
+        segmenterRevision: 0,
+        readResourcesReady: false
+    )
         .environmentObject(NotesStore())
 }

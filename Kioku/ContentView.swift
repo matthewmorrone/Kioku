@@ -43,8 +43,10 @@ struct ContentView: View {
     @AppStorage(Theme.storageKey) private var japaneseTheme = false
     @AppStorage(SegmenterSettings.backendKey) private var segmenterBackendSetting = SegmenterSettings.defaultBackend
     @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionarySetting = SegmenterSettings.defaultMeCabDictionary
-    @AppStorage(SegmenterSettings.strategyKey) private var segmentationStrategySetting: SegmentationStrategy = SegmenterSettings.defaultStrategy
-    @AppStorage(SegmenterSettings.splitsParticleClustersKey) private var splitsParticleClustersSetting = SegmenterSettings.defaultSplitsParticleClusters
+    @AppStorage(SegmenterSettings.strategyKey)
+    private var segmentationStrategySetting: SegmentationStrategy = SegmenterSettings.defaultStrategy
+    @AppStorage(SegmenterSettings.splitsParticleClustersKey)
+    private var splitsParticleClustersSetting = SegmenterSettings.defaultSplitsParticleClusters
     // Observes the same shared instance the AppDelegate registered the notification handler against,
     // so a deep-link target published from didReceive reaches this view.
     @ObservedObject private var wotdNavigation = WordOfTheDayNavigation.shared
@@ -110,7 +112,15 @@ struct ContentView: View {
             }
 
             // Renders the Words tab entry point; pendingWordsRoute carries notification and read-tab routes.
-            WordsView(dictionaryStore: readResources.dictionaryStore, segmenter: readResources.segmenter, lexicon: readResources.lexicon, surfaceReadingData: readResources.surfaceReadingData, kanjiReadingFallback: readResources.kanjiReadingFallback, pendingRoute: $pendingWordsRoute, onRouteDetailDismissed: handleRoutedWordDetailDismissed)
+            WordsView(
+                dictionaryStore: readResources.dictionaryStore,
+                segmenter: readResources.segmenter,
+                lexicon: readResources.lexicon,
+                surfaceReadingData: readResources.surfaceReadingData,
+                kanjiReadingFallback: readResources.kanjiReadingFallback,
+                pendingRoute: $pendingWordsRoute,
+                onRouteDetailDismissed: handleRoutedWordDetailDismissed
+            )
                 .environmentObject(wordsStore)
                 .environmentObject(savedKanjiStore)
                 .environmentObject(wordListsStore)
@@ -121,7 +131,12 @@ struct ContentView: View {
             }
 
             // Renders the Learn tab entry point, passing the dictionary store for flashcard lookups.
-            LearnView(dictionaryStore: readResources.dictionaryStore, segmenter: readResources.segmenter, surfaceReadingData: readResources.surfaceReadingData, kanjiReadingFallback: readResources.kanjiReadingFallback)
+            LearnView(
+                dictionaryStore: readResources.dictionaryStore,
+                segmenter: readResources.segmenter,
+                surfaceReadingData: readResources.surfaceReadingData,
+                kanjiReadingFallback: readResources.kanjiReadingFallback
+            )
             .tag(ContentTab.learn)
             .tabItem {
                 Label("Learn", systemImage: "rectangle.on.rectangle.angled")
@@ -441,7 +456,8 @@ struct ContentView: View {
     // follow afterwards on a slower path and overwrite the partial state once ready.
     private func rebuildReadResources() {
         let backend = UserDefaults.standard.string(forKey: SegmenterSettings.backendKey) ?? SegmenterSettings.defaultBackend
-        let mecabDict = UserDefaults.standard.string(forKey: SegmenterSettings.mecabDictionaryKey) ?? SegmenterSettings.defaultMeCabDictionary
+        let mecabDict = UserDefaults.standard.string(forKey: SegmenterSettings.mecabDictionaryKey)
+            ?? SegmenterSettings.defaultMeCabDictionary
 
         let currentRevision = readResources.segmenterRevision
         Task.detached(priority: .userInitiated) {
@@ -505,7 +521,11 @@ struct ContentView: View {
 
     // Builds the read-tab segmenter and dictionary store used for furigana lookup.
     // Uses the specified backend and MeCab dictionary when MeCab is selected.
-    private nonisolated static func makeReadResources(backend: String, mecabDictionary: String, prebuiltSurfaceReadingData: [String: SurfaceReadingData]? = nil) -> (segmenter: any TextSegmenting, dictionaryStore: DictionaryStore?, lexicon: Lexicon?, surfaceReadingData: SurfaceReadingDataMap, kanjiReadingFallback: KanjiReadingFallbackMap, frequencyRankBySurface: FrequencyRankMap) {
+    private nonisolated static func makeReadResources(
+        backend: String,
+        mecabDictionary: String,
+        prebuiltSurfaceReadingData: [String: SurfaceReadingData]? = nil
+    ) -> (segmenter: any TextSegmenting, dictionaryStore: DictionaryStore?, lexicon: Lexicon?, surfaceReadingData: SurfaceReadingDataMap, kanjiReadingFallback: KanjiReadingFallbackMap, frequencyRankBySurface: FrequencyRankMap) {
         StartupTimer.mark("makeReadResources started")
         let overallStart = CFAbsoluteTimeGetCurrent()
 
@@ -621,7 +641,12 @@ struct ContentView: View {
             } else if backend == SegmenterBackend.nlTokenizer.rawValue {
                 return NLTokenizerSegmenter()
             } else {
-                return Segmenter(trie: trie, deinflector: deinflector, partOfSpeechByEntryID: partOfSpeechByEntryID, frequenciesFrom: dictionaryStore)
+                return Segmenter(
+                    trie: trie,
+                    deinflector: deinflector,
+                    partOfSpeechByEntryID: partOfSpeechByEntryID,
+                    frequenciesFrom: dictionaryStore
+                )
             }
         }
 

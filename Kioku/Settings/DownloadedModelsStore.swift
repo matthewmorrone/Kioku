@@ -44,9 +44,8 @@ nonisolated enum DownloadedModelsStore {
             + sizeBytes(at: try? ModelStorage.directory(for: ModelStorage.htDemucsFTModelId))
     }
 
-    // On-disk size of the cached isolated vocal stems (VocalStemCache), or 0 if empty. Moved out
-    // of Library/Caches into Application Support — see VocalStemCache's header — so, like the
-    // models above, it needs its own reclaim path since "Clear Caches" no longer covers it.
+    // On-disk size of the cached isolated vocal stems (VocalStemCache), or 0 if empty. Listed as
+    // its own row under Caches; "Clear Caches" covers it (CachesCleaner's roots include it).
     static func vocalStemsSizeBytes() -> Int {
         sizeBytes(at: VocalStemCache.directoryForStorageManagement())
     }

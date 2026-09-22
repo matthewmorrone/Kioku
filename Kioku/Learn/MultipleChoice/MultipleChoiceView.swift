@@ -320,7 +320,10 @@ struct MultipleChoiceView: View {
                     endSession()
                 }
             } label: {
-                Label(isPresetSession ? "Done" : "Choose Different Cards", systemImage: isPresetSession ? "checkmark.circle" : "slider.horizontal.3")
+                Label(
+                    isPresetSession ? "Done" : "Choose Different Cards",
+                    systemImage: isPresetSession ? "checkmark.circle" : "slider.horizontal.3"
+                )
             }
             .buttonStyle(.bordered)
         }

@@ -28,7 +28,11 @@ nonisolated final class SegmenterTransitionTable: Sendable {
     private let boundaryIDs: ClassIDs
 
     // Loads the pair file, scaling each PMI into a cost: −weight · clamp(PMI), in centi-nats.
-    init(contentsOf url: URL, weight: Double = SegmenterScoring.transitionWeight, clampNats: Double = SegmenterScoring.transitionClampNats) throws {
+    init(
+        contentsOf url: URL,
+        weight: Double = SegmenterScoring.transitionWeight,
+        clampNats: Double = SegmenterScoring.transitionClampNats
+    ) throws {
         let text = try String(contentsOf: url, encoding: .utf8)
         var idByName: [String: Int32] = [:]
         var costByPair: [UInt64: Int] = [:]

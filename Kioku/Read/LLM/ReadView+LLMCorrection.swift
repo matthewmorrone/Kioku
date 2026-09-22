@@ -75,7 +75,10 @@ extension ReadView {
             document.activeNoteID == sourceNoteID && document.text == capturedText
         }
 
-        AppLog.debug(.llmCorrection, "requestLLMCorrection starting — provider=\(provider) streaming=\(willStream) segments=\(currentSegments.count) isRetry=\(correctiveFeedback != nil)")
+        AppLog.debug(
+            .llmCorrection,
+            "requestLLMCorrection starting — provider=\(provider) streaming=\(willStream) segments=\(currentSegments.count) isRetry=\(correctiveFeedback != nil)"
+        )
         llmCorrection.isRequestingLLMCorrection = true
         llmCorrection.llmCorrectionTask = Task {
             defer {
@@ -479,7 +482,11 @@ extension ReadView {
 
             // Compare normalized display output against the current furigana so we aren't
             // fooled by full readings (たべる) vs already-stripped display values (た).
-            let incoming = LLMCorrectionDiagnostics.normalizedDisplayReadings(surface: edge.surface, reading: entry.reading, baseLocation: location)
+            let incoming = LLMCorrectionDiagnostics.normalizedDisplayReadings(
+                surface: edge.surface,
+                reading: entry.reading,
+                baseLocation: location
+            )
             let existing = LLMCorrectionDiagnostics.snapshotDisplayReadings(from: oldFurigana, for: edge.surface, baseLocation: location)
             guard incoming != existing else { continue }
 
@@ -515,7 +522,12 @@ extension ReadView {
 
         llmCorrection.pendingLLMRebuiltEdges = rebuiltEdges
         llmCorrection.pendingLLMWorkingEntries = workingEntries
-        return .applied(diff: diffLines, changedLocations: changedLocations, changedReadingLocations: changedReadingLocations, changesByLocation: changesByLocation)
+        return .applied(
+            diff: diffLines,
+            changedLocations: changedLocations,
+            changedReadingLocations: changedReadingLocations,
+            changesByLocation: changesByLocation
+        )
     }
 
     // Writes a fully-resolved edge/entry set to the document — segmentation boundaries and
@@ -656,7 +668,10 @@ extension ReadView {
             // Splice didn't validate (shouldn't normally happen) — drop just this group
             // rather than recursing into confirmLLMChanges(), which would retry the same
             // group forever.
-            AppLog.error(.llmCorrection, "confirmLLMChange: splice failed to validate for group at \(location) — dropping this pending change")
+            AppLog.error(
+                .llmCorrection,
+                "confirmLLMChange: splice failed to validate for group at \(location) — dropping this pending change"
+            )
             for loc in siblingLocations {
                 llmCorrection.pendingLLMChangedLocations.remove(loc)
                 llmCorrection.pendingLLMChangedReadingLocations.remove(loc)

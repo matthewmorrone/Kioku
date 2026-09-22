@@ -55,6 +55,10 @@ final class SongWordFuriganaIsolationTests: XCTestCase {
         let frequencyBySurface = (try? resources.dictionaryStore.fetchFrequencyScoreBySurface()) ?? [:]
         let compoundScore = frequencyBySurface["王子様"] ?? 0
         let partScore = frequencyBySurface["王子"] ?? 0
-        XCTAssertLessThan(compoundScore, partScore, "expected 王子様's frequency score to be worse than 王子's — this is why isolated (no-context) segmentation could prefer splitting it")
+        XCTAssertLessThan(
+            compoundScore,
+            partScore,
+            "expected 王子様's frequency score to be worse than 王子's — this is why isolated (no-context) segmentation could prefer splitting it"
+        )
     }
 }

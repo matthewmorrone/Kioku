@@ -68,7 +68,13 @@ final class SongLineCardTests: XCTestCase {
     // A single word spanning the whole line always wins, regardless of progress.
     func testSingleWordCoveringWholeLineAlwaysWins() {
         let whole = ranges([4])
-        XCTAssertEqual(SongLineCard.estimatedActiveWordRange(progress: 0.0, segmentationRanges: whole, in: text), NSRange(location: 0, length: 4))
-        XCTAssertEqual(SongLineCard.estimatedActiveWordRange(progress: 0.99, segmentationRanges: whole, in: text), NSRange(location: 0, length: 4))
+        XCTAssertEqual(
+            SongLineCard.estimatedActiveWordRange(progress: 0.0, segmentationRanges: whole, in: text),
+            NSRange(location: 0, length: 4)
+        )
+        XCTAssertEqual(
+            SongLineCard.estimatedActiveWordRange(progress: 0.99, segmentationRanges: whole, in: text),
+            NSRange(location: 0, length: 4)
+        )
     }
 }

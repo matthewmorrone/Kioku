@@ -14,8 +14,17 @@ let trie = DictionaryTrie()
 let surfaceData = try store.fetchSurfaceData()
 for record in surfaceData.surfaceRecords { trie.insert(record) }
 let deinflector = try Deinflector(jsonFileURL: URL(fileURLWithPath: "\(root)/Resources/deinflection.json"), trie: trie)
-let segmenter = Segmenter(trie: trie, deinflector: deinflector, partOfSpeechByEntryID: surfaceData.partOfSpeechByEntryID, frequenciesFrom: store)
+let segmenter = Segmenter(
+    trie: trie,
+    deinflector: deinflector,
+    partOfSpeechByEntryID: surfaceData.partOfSpeechByEntryID,
+    frequenciesFrom: store
+)
 UserDefaults.standard.removeObject(forKey: SegmenterSettings.strategyKey)
+// STRATEGY=local measures the greedy walk (with its demotion list) instead of the shipped path search.
+if ProcessInfo.processInfo.environment["STRATEGY"] == "local" {
+    UserDefaults.standard.set(SegmentationStrategy.localLongestMatch.rawValue, forKey: SegmenterSettings.strategyKey)
+}
 UserDefaults.standard.removeObject(forKey: SegmentationDemotions.storageKey)
 // Gold comparisons run with clusters whole (the path search's own output); SPLIT_CLUSTERS=1 shows the app default.
 UserDefaults.standard.set(ProcessInfo.processInfo.environment["SPLIT_CLUSTERS"] != nil, forKey: SegmenterSettings.splitsParticleClustersKey)
@@ -26,7 +35,12 @@ if mode == "lemmas" {
     let freq = try store.fetchFrequencyScoreBySurface()
     while let line = readLine() {
         let r = segmenter.resolvedTrieLemmasWithInflectionSteps(for: line)
-        print(line, "steps=\(r.inflectionSteps)", "own=\(freq[line] ?? 0)", r.lemmas.sorted().map { "\($0)=\(freq[$0] ?? 0)" }.joined(separator: " "))
+        print(
+            line,
+            "steps=\(r.inflectionSteps)",
+            "own=\(freq[line] ?? 0)",
+            r.lemmas.sorted().map { "\($0)=\(freq[$0] ?? 0)" }.joined(separator: " ")
+        )
     }
     exit(0)
 }
@@ -46,7 +60,8 @@ if mode == "count" {
             if cache[surface] == nil {
                 // The class the lattice would give this exact span: take the real edge, not a re-derivation.
                 let edge = segmenter.buildLattice(for: surface).first { $0.surface == surface && $0.isDictionaryMatch }
-                cache[surface] = edge.map { TransitionClass.name(surface: surface, partOfSpeech: $0.partOfSpeech, lexical: lexical) } ?? TransitionClass.boundary
+                cache[surface] = edge.map { TransitionClass.name(surface: surface, partOfSpeech: $0.partOfSpeech, lexical: lexical) }
+                    ?? TransitionClass.boundary
             }
             parts.append("\(a),\(b),\(cache[surface]!)")
         }
@@ -68,7 +83,11 @@ if mode == "explain" {
             if let edge {
                 let node = SegmenterScoring.edgeCost(edge)
                 total += node
-                let cls = edge.isDictionaryMatch ? TransitionClass.name(surface: edge.surface, partOfSpeech: edge.partOfSpeech, lexical: table.lexical) : TransitionClass.boundary
+                let cls = edge.isDictionaryMatch ? TransitionClass.name(
+                    surface: edge.surface,
+                    partOfSpeech: edge.partOfSpeech,
+                    lexical: table.lexical
+                ) : TransitionClass.boundary
                 print(String(format: "    %@  node %5d  (score %.2f, steps %d, class %@)  transition-in %5d", edge.surface, node, edge.frequencyScore, edge.inflectionSteps, cls, transition))
             } else {
                 print(String(format: "    <end>  transition-in %5d", transition))
@@ -141,7 +160,10 @@ if mode == "run" {
 }
 
 let pairsURL = URL(fileURLWithPath: CommandLine.arguments[2])
-let configs: [[Double]] = try String(contentsOfFile: CommandLine.arguments[3], encoding: .utf8).split(separator: "\n").map { $0.split(separator: " ").compactMap { Double($0) } }
+let configs: [[Double]] = try String(
+    contentsOfFile: CommandLine.arguments[3],
+    encoding: .utf8
+).split(separator: "\n").map { $0.split(separator: " ").compactMap { Double($0) } }
 let tables: [SegmenterTransitionTable?] = try configs.map { $0[0] == 0 ? nil : try SegmenterTransitionTable(contentsOf: pairsURL, weight: $0[0], clampNats: $0[1]) }
 let outDir = CommandLine.arguments[4]
 var outputs = [String](repeating: "", count: configs.count)

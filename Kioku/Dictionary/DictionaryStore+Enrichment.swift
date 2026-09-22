@@ -235,6 +235,40 @@ extension DictionaryStore {
         }
     }
 
+    // Fetches the build-time decomposition of one headword — 大人になる as 大人 + に + なる.
+    //
+    // Keyed by surface as well as entry because an entry's kanji and kana headwords are analyzed
+    // separately: a learner reading おとなになる needs that spelling's pieces, not 大人になる's.
+    // Empty for a headword MeCab found no structure in, and for every entry that is not an
+    // expression (a compound verb's breakdown comes from DerivationAnalyzer instead).
+    public func fetchDecomposition(entryID: Int64, surface: String) throws -> [EntryDecompositionPiece] {
+        try withSerializedDatabaseAccess {
+            let sql = """
+            SELECT order_index, piece, lemma, pos
+            FROM entry_decomposition
+            WHERE entry_id = ?1 AND surface = ?2
+            ORDER BY order_index ASC
+            """
+
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+
+            try prepare(sql: sql, statement: &statement)
+            try bindInt64(entryID, index: 1, statement: statement)
+            try bindText(surface, index: 2, statement: statement)
+
+            return try stepRows(statement: statement) { stmt in
+                guard let piecePointer = sqlite3_column_text(stmt, 1) else { return nil }
+                return EntryDecompositionPiece(
+                    orderIndex: Int(sqlite3_column_int(stmt, 0)),
+                    piece: String(cString: piecePointer),
+                    lemma: sqlite3_column_text(stmt, 2).map { String(cString: $0) },
+                    partOfSpeech: sqlite3_column_text(stmt, 3).map { String(cString: $0) }
+                )
+            }
+        }
+    }
+
     // Fetches lsource loanword-origin records for one entry.
     public func fetchLoanwordSources(entryID: Int64) throws -> [LoanwordSource] {
         try withSerializedDatabaseAccess {

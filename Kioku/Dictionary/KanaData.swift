@@ -3,12 +3,15 @@ import Foundation
 // Central reference store for Japanese script constants shared across segmentation,
 // normalization, and filtering subsystems.
 nonisolated enum KanaData {
-    // Single-kana and short multi-kana particles used as the default standalone-segment allowlist.
+    // Single-kana particles: filtered out of vocabulary lists, and the greedy walk's standalone-segment allowlist.
     static let defaultParticles: [String] = [
         "は", "が", "を", "に", "へ", "と", "で", "も", "の", "ね", "よ", "か", "な", "や",
         "ぞ", "さ", "わ", "し", "て", "だ",
         // "から", "まで", "より", "だけ", "ほど", "しか", "こそ", "でも", "なら", "ので", "のに", "って"
     ]
+
+    // Set form of `defaultParticles` for membership checks.
+    static let particleSet: Set<String> = Set(defaultParticles)
 
     // Kana variants normalized during furigana alignment so equivalent spellings match.
     // Maps archaic/alternate forms to their modern equivalents (e.g. づ→ず, ヴ→ブ).

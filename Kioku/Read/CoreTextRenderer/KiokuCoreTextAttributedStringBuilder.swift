@@ -309,7 +309,8 @@ enum KiokuCoreTextAttributedStringBuilder {
                             if crossesNewline == false {
                                 let priorTailIdx = prior.location + prior.length - 1
                                 let priorTailRange = NSRange(location: priorTailIdx, length: 1)
-                                let priorKern = (result.attribute(.kern, at: priorTailIdx, effectiveRange: nil) as? CGFloat) ?? inputs.kerning
+                                let priorKern = (result.attribute(.kern, at: priorTailIdx, effectiveRange: nil) as? CGFloat)
+                                    ?? inputs.kerning
                                 result.addAttribute(.kern, value: priorKern + overhang, range: priorTailRange)
                             }
                         }

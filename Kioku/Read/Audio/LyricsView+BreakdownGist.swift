@@ -42,13 +42,11 @@ extension LyricsView {
 
     // The English text to show beneath the active cue: the breakdown's gist when the note has
     // one covering this cue, otherwise the on-device translation cache, otherwise nil (hides
-    // the row). Called from the cue-rendering loop in LyricsView.swift.
+    // the row). Music-only cues (♪) get none, so a ♪ line is never followed by a second ♪.
+    // Called from the cue-rendering loop in LyricsView.swift.
     func displayedTranslation(for cueIndex: Int) -> String? {
         let text = displayText(for: cueIndex)
-        guard text.isEmpty == false else { return nil }
-        // Non-speech (♪/♫) cues never get a translation row — a stale cached "translation" of
-        // the glyph itself would otherwise render as a second music note under the active card.
-        guard SubtitleParser.isNonSpeechCue(text.trimmingCharacters(in: .whitespacesAndNewlines)) == false else { return nil }
+        guard text.isEmpty == false, SubtitleParser.isNonSpeechCue(text) == false else { return nil }
         if let gist = breakdownGistByNormalizedText[SongLineCueMatcher.normalize(text)] {
             return gist
         }

@@ -33,7 +33,11 @@ struct AudioCueHighlightObserver: View {
                     let preview = cue.text.replacingOccurrences(of: "\n", with: "/").prefix(40)
                     KaraokeDebugLog.log("cue[\(i)] idx=\(cue.index) \(cue.startMs)-\(cue.endMs)ms text=\"\(preview)\"")
                 }
-                updateHighlight(cueIndex: controller.activeCueIndex, currentTimeMs: controller.currentTimeMs, isPlaying: controller.isPlaying)
+                updateHighlight(
+                    cueIndex: controller.activeCueIndex,
+                    currentTimeMs: controller.currentTimeMs,
+                    isPlaying: controller.isPlaying
+                )
             }
             .onDisappear {
                 KaraokeDebugLog.log("observer: onDisappear")

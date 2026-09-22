@@ -140,7 +140,10 @@ struct NotesView: View {
                 // note-only vocabulary just gets the one Delete button above.
                 let orphanCount = orphanedWordCount(for: deletion)
                 if orphanCount > 0 {
-                    Button("Delete Note\(countSuffix(for: deletion)) and \(orphanCount) Word\(orphanCount == 1 ? "" : "s")", role: .destructive) {
+                    Button(
+                        "Delete Note\(countSuffix(for: deletion)) and \(orphanCount) Word\(orphanCount == 1 ? "" : "s")",
+                        role: .destructive
+                    ) {
                         performDelete(deletion, alsoRemoveOrphanedWords: true)
                     }
                 }

@@ -31,7 +31,12 @@ extension LyricsView {
     //      furigana — the user still sees the line.
     func activeCueRenderInput(for index: Int) -> ActiveCueRenderInput {
         guard index >= 0, index < cues.count else {
-            return ActiveCueRenderInput(text: "", furiganaBySegmentLocation: [:], furiganaLengthBySegmentLocation: [:], segmentationRanges: [])
+            return ActiveCueRenderInput(
+                text: "",
+                furiganaBySegmentLocation: [:],
+                furiganaLengthBySegmentLocation: [:],
+                segmentationRanges: []
+            )
         }
 
         // Resolve cue range in noteText — prefer the matched highlight range, but also

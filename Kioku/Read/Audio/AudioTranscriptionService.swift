@@ -87,7 +87,7 @@ enum AudioTranscriptionService {
         onStatus?("Isolating vocals…")
         _ = try await CTCForcedAligner.isolatedVocalStem(for: url, onProgress: { f in onProgress?(f * 0.5) })
         onStatus?("Transcribing vocals…")
-        return VocalStemCache.stemWAVURL(for: url) ?? url
+        return VocalStemCache.playableStemURL(for: url) ?? url
     }
 
     // Decodes any audio file to mono Float PCM at `sampleRate` via AVAssetReader (one-pass resample).
@@ -167,7 +167,12 @@ enum AudioTranscriptionService {
         var ranges = try await ReadView.makeSpeechActiveChunkRanges(for: url, maxChunkDuration: 12.0, overlap: 0.4)
         if ranges.isEmpty { ranges = try await ReadView.makeChunkRanges(for: url, chunkDuration: 12.0, overlap: 0.4) }
 
-        var (bestTranscript, bestSegments) = try await applePass(url: url, ranges: ranges, contextualStrings: contextualStrings, onProgress: onProgress)
+        var (bestTranscript, bestSegments) = try await applePass(
+            url: url,
+            ranges: ranges,
+            contextualStrings: contextualStrings,
+            onProgress: onProgress
+        )
         if AudioTranscriptionHelpers.shouldRetryForLowYield(transcript: bestTranscript, durationSeconds: duration) {
             let retry = try await ReadView.makeChunkRanges(for: url, chunkDuration: 8.0, overlap: 0.8)
             let (rt, rs) = try await applePass(url: url, ranges: retry, contextualStrings: [], onProgress: onProgress)

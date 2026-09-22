@@ -98,7 +98,12 @@ extension SongStepperView {
     // but the very first, the same as buildFuriganaCache's real per-line segments give it.
     private func buildWordFuriganaCache(forIsolated surface: String) -> LineFuriganaCache {
         guard let segmenter, surface.isEmpty == false else {
-            return LineFuriganaCache(sourceText: surface, segmentationRanges: [], furiganaBySegmentLocation: [:], furiganaLengthBySegmentLocation: [:])
+            return LineFuriganaCache(
+                sourceText: surface,
+                segmentationRanges: [],
+                furiganaBySegmentLocation: [:],
+                furiganaLengthBySegmentLocation: [:]
+            )
         }
         let wholeWordEdge = LatticeEdge(
             start: surface.startIndex,
