@@ -14,9 +14,9 @@ extension LyricsView {
         return SubtitleParser.isNonSpeechCue(cues[index].text.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    // One note per ~4s of gap, clamped so a multi-minute intro/outro doesn't overrun the card.
+    // One note per ~4s of gap, clamped to 1-3 so a multi-minute intro/outro doesn't overrun the card.
     static func interludeNoteCount(durationMs: Int) -> Int {
-        max(1, min(6, Int((Double(durationMs) / 4000.0).rounded(.up))))
+        max(1, min(3, Int((Double(durationMs) / 4000.0).rounded(.up))))
     }
 
     // Space-separated note glyphs for the scrolling (non-active) rows — plain Text, no animation.
@@ -24,50 +24,55 @@ extension LyricsView {
         Array(repeating: "♪", count: interludeNoteCount(durationMs: durationMs)).joined(separator: " ")
     }
 
-    // The active card's version: each note is its own Text so it can pulse independently.
-    // `isActive` gates the animation — a cue merely scrolled into view (dragging) shows the
-    // notes at rest; only the cue actually driving playback animates.
+    // The active card's version: each note pulses independently, staggered left-to-right.
+    // `isActive` gates the animation entirely — a cue merely scrolled into view (dragging)
+    // shows the notes at rest, and the pulse only renders while that cue is actually playing.
+    // The pulse phase is derived from `controller.currentTimeMs` (the audio clock) rather than
+    // a free-running UI timer, so it stays "in time" with the music: pausing freezes it exactly
+    // in place, and resuming continues from the same phase instead of restarting.
     @ViewBuilder
     func interludeNotesRow(durationMs: Int, isActive: Bool, fontSize: CGFloat) -> some View {
         let count = Self.interludeNoteCount(durationMs: durationMs)
-        HStack(spacing: fontSize * 0.3) {
-            ForEach(0..<count, id: \.self) { i in
-                Text("♪")
-                    .font(.system(size: fontSize))
-                    .modifier(InterludeNotePulse(isActive: isActive, delay: Double(i) * 0.15))
+        if isActive {
+            TimelineView(.animation) { _ in
+                HStack(spacing: fontSize * 0.3) {
+                    ForEach(0..<count, id: \.self) { i in
+                        Text("♪")
+                            .font(.system(size: fontSize))
+                            .modifier(InterludeNotePulse(timeMs: controller.currentTimeMs, index: i))
+                    }
+                }
+            }
+        } else {
+            HStack(spacing: fontSize * 0.3) {
+                ForEach(0..<count, id: \.self) { i in
+                    Text("♪").font(.system(size: fontSize))
+                }
             }
         }
     }
 }
 
-// Staggered scale/opacity pulse, one phase-offset per note so the row reads as a left-to-right
-// wave rather than every note pulsing in lockstep. Starts/stops with `isActive` rather than
-// running unconditionally, so scrolling past a distant interlude in the list doesn't animate it.
+// Scale/opacity pulse driven purely by the playback clock: `phase` is `timeMs` reduced modulo
+// the pulse period, offset per note index so the row reads as a left-to-right wave. Being a pure
+// function of `timeMs` (rather than a `repeatForever` animation kicked off in `onAppear`) means
+// the wave's position always matches where the song actually is, instead of an independent timer
+// that drifts relative to playback across pause/resume/seek.
 private struct InterludeNotePulse: ViewModifier {
-    let isActive: Bool
-    let delay: Double
-    @State private var isPulsed = false
+    let timeMs: Int
+    let index: Int
 
-    // Applies the current pulse state; the animation itself is driven by `startIfNeeded`.
+    private static let periodMs: Double = 1100
+    private static let staggerMs: Double = 150
+
+    // Computes this note's phase from `timeMs` and applies the resulting scale/opacity.
     func body(content: Content) -> some View {
+        let offset = Double(timeMs) - Double(index) * Self.staggerMs
+        let rawRemainder = offset.truncatingRemainder(dividingBy: Self.periodMs)
+        let phase = (rawRemainder < 0 ? rawRemainder + Self.periodMs : rawRemainder) / Self.periodMs
+        let wave = sin(phase * Double.pi)
         content
-            .scaleEffect(isActive && isPulsed ? 1.3 : 1.0)
-            .opacity(isActive ? (isPulsed ? 1.0 : 0.5) : 1.0)
-            .onAppear { startIfNeeded() }
-            .onChange(of: isActive) { _, active in
-                if active {
-                    startIfNeeded()
-                } else {
-                    withAnimation(.easeOut(duration: 0.2)) { isPulsed = false }
-                }
-            }
-    }
-
-    // Kicks off the repeating pulse animation, staggered by `delay`. No-op when not active.
-    private func startIfNeeded() {
-        guard isActive else { return }
-        withAnimation(.easeInOut(duration: 0.55).repeatForever(autoreverses: true).delay(delay)) {
-            isPulsed = true
-        }
+            .scaleEffect(1.0 + wave * 0.3)
+            .opacity(0.5 + wave * 0.5)
     }
 }
