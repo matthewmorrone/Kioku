@@ -1,9 +1,10 @@
 import SwiftUI
 
-// The persistent bottom transport bar: play/pause, scrubber, "return to start of line", and
-// (when wired) the Background Audio settings-focus shortcut. Split out of LyricsView.swift to
-// keep the main file under the repo's line-count cap — this bar and LyricsScrubber below are
-// self-contained UI with no dependency on the rest of the file's layout/gesture code.
+// The persistent bottom transport bar: play/pause, scrubber, and "return to start of line". The
+// settings gear lives in the top bar instead (LyricsView+ReAlignBar.swift) — see
+// LyricsView+SettingsPopup.swift for its popup. Split out of LyricsView.swift to keep the main
+// file under the repo's line-count cap — this bar and LyricsScrubber below are self-contained UI
+// with no dependency on the rest of the file's layout/gesture code.
 extension LyricsView {
     var controls: some View {
         VStack(spacing: 0) {
@@ -50,22 +51,6 @@ extension LyricsView {
                         controller.seek(toMs: 0)
                     }
                     .accessibilityLabel("Return to start of line")
-
-                if let onFocusSetting {
-                    Circle()
-                        .fill(Color(.systemFill))
-                        .frame(width: 36, height: 36)
-                        .overlay(
-                            Image(systemName: "gearshape")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(Color.secondary)
-                        )
-                        .onTapGesture {
-                            onFocusSetting("backgroundAudioToggle")
-                        }
-                        .accessibilityLabel("Background Audio setting")
-                        .accessibilityHint("Opens Settings and highlights the Background Audio toggle")
-                }
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 12)
@@ -75,7 +60,9 @@ extension LyricsView {
     }
 }
 
-private struct LyricsScrubber: View {
+// Not private: reused by ReadView+MiniPlayer.swift for the minimized "now playing" bar so both
+// controls share one scrubber implementation.
+struct LyricsScrubber: View {
     @ObservedObject var controller: AudioPlaybackController
     @Binding var isScrubbing: Bool
 

@@ -134,6 +134,26 @@ final class NotesAudioStore: NotesAttachmentDeleting {
         loadCues(for: attachmentID).isEmpty == false
     }
 
+    // Writes an attachment's cues to tmp as both SRT (line timing) and the app's own cues JSON
+    // (line + per-mora checkpoints, lossless), for handing to ShareLink. `baseName` seeds both
+    // filenames (sanitized). Shared by the karaoke view's export bar and the Notes list's
+    // context menu so both surfaces produce identical files. nil when there's nothing aligned yet.
+    func timingExportURLs(for attachmentID: UUID, baseName: String) -> (srt: URL, json: URL)? {
+        let cues = loadCues(for: attachmentID)
+        guard cues.isEmpty == false else { return nil }
+        let sanitized = String(sanitizeFilenameComponent(baseName).prefix(60))
+        let base = sanitized.isEmpty ? attachmentID.uuidString : sanitized
+        let dir = FileManager.default.temporaryDirectory
+        let srtURL = dir.appendingPathComponent("\(base).srt")
+        let jsonURL = dir.appendingPathComponent("\(base).cues.json")
+        let srt = SubtitleParser.formatSRT(from: cues)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard (try? srt.write(to: srtURL, atomically: true, encoding: .utf8)) != nil,
+              let json = try? encoder.encode(cues), (try? json.write(to: jsonURL, options: .atomic)) != nil else { return nil }
+        return (srtURL, jsonURL)
+    }
+
     // Returns the URL of the stored audio file, trying common extensions.
     func audioURL(for attachmentID: UUID) -> URL? {
         let extensions = ["mp3", "m4a", "aac", "wav", "caf"]

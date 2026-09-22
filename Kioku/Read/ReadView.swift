@@ -39,10 +39,6 @@ struct ReadView: View {
     // (entryID, surface, reading, sublatticePaths) — carries pre-computed data from the lookup sheet.
     var onOpenWordDetail: ((Int64, String, String?, [[String]]) -> Void)? = nil
     var onActiveNoteChanged: ((UUID) -> Void)? = nil
-    // Switches to the Settings tab and scrolls to/highlights the row with the given id (see
-    // SettingsView's ScrollViewReader). Forwarded to LyricsView's "bring this setting into
-    // focus" button (e.g. Background Audio).
-    var onFocusSetting: ((String) -> Void)? = nil
 
     // Opt-in Japanese theme; gates the warm-paper reading pane fill (see ReadView+Editor).
     @AppStorage(Theme.storageKey) var japaneseTheme = false
@@ -112,6 +108,13 @@ struct ReadView: View {
     // Audio-attachment playback state (controller, cues, highlight override, active cue/attachment) —
     // see AudioPlaybackUIState.
     @State var audioPlayback = AudioPlaybackUIState()
+    // Scrub-in-progress flag for the minimized "now playing" bar (ReadView+MiniPlayer.swift) —
+    // separate from LyricsView's own isScrubbing so dragging one never fights the other's state.
+    @State var isMiniPlayerScrubbing = false
+    // Shared identity between titleLyricsButton and lyricsMiniPlayerInlineControl (both in
+    // ReadView+TitleView.swift's title row) so the button visibly morphs into the mini player's
+    // play/pause + scrubber, and back, instead of one abruptly replacing the other.
+    @Namespace var lyricsMiniPlayerNamespace
     @AppStorage(LyricsHighlightGranularity.storageKey) var lyricsHighlightGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
 
     // Typed view of the granularity AppStorage, falling back to the default when the persisted
@@ -145,8 +148,7 @@ struct ReadView: View {
         segmenterRevision: Int,
         readResourcesReady: Bool,
         onOpenWordDetail: ((Int64, String, String?, [[String]]) -> Void)? = nil,
-        onActiveNoteChanged: ((UUID) -> Void)? = nil,
-        onFocusSetting: ((String) -> Void)? = nil
+        onActiveNoteChanged: ((UUID) -> Void)? = nil
     ) {
         _selectedNote = selectedNote
         _shouldActivateEditModeOnLoad = shouldActivateEditModeOnLoad
@@ -162,7 +164,6 @@ struct ReadView: View {
         self.readResourcesReady = readResourcesReady
         self.onOpenWordDetail = onOpenWordDetail
         self.onActiveNoteChanged = onActiveNoteChanged
-        self.onFocusSetting = onFocusSetting
     }
 
     // false: tap opens the lightweight popover (star / speak / meaning / arrow) first; the arrow

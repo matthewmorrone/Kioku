@@ -46,6 +46,9 @@ extension LyricsView {
     func displayedTranslation(for cueIndex: Int) -> String? {
         let text = displayText(for: cueIndex)
         guard text.isEmpty == false else { return nil }
+        // Non-speech (♪/♫) cues never get a translation row — a stale cached "translation" of
+        // the glyph itself would otherwise render as a second music note under the active card.
+        guard SubtitleParser.isNonSpeechCue(text.trimmingCharacters(in: .whitespacesAndNewlines)) == false else { return nil }
         if let gist = breakdownGistByNormalizedText[SongLineCueMatcher.normalize(text)] {
             return gist
         }

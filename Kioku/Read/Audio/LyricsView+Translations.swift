@@ -29,6 +29,10 @@ extension LyricsView {
         }
         for index in cues.indices {
             let text = displayText(for: index)
+            // Non-speech (♪/♫) cues have nothing to translate — Apple's Translation framework
+            // otherwise echoes the glyph back as its own "translation," which then renders as a
+            // second music note stacked under the active card's own ♪.
+            guard SubtitleParser.isNonSpeechCue(text.trimmingCharacters(in: .whitespacesAndNewlines)) == false else { continue }
             guard translationCache.needsTranslation(text: text) else { continue }
             do {
                 let response = try await session.translate(text)

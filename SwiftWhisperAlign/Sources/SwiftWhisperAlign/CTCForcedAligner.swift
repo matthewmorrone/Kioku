@@ -10,6 +10,7 @@
 // that carry the UTF-16 range of the line text they cover ([[RomanizedSpan]]); those spans
 // become the per-line karaoke checkpoints.
 
+import Accelerate
 import Foundation
 import AVFoundation
 import CoreML
@@ -83,6 +84,19 @@ public struct CTCForcedAligner {
             guard mono.isEmpty == false else {
                 throw NSError(domain: "SwiftWhisperAlign.CTC", code: 15,
                               userInfo: [NSLocalizedDescriptionKey: "Vocal isolation produced no output."])
+            }
+            // Defense in depth alongside HTDemucsCoreMLSeparator now throwing on cancellation
+            // instead of returning a silent partial result: a genuinely-completed isolation of
+            // real audio always has some peak above float noise floor, so a near-zero peak means
+            // the "isolation" is garbage regardless of which path produced it. Caching it would
+            // permanently poison every future Re-align of this song (VocalStemCache.load is a
+            // pure cache hit with no re-validation) — reject before that happens instead of
+            // silently writing a stem that will look like a completed isolation forever.
+            var peak: Float = 0
+            vDSP_maxmgv(mono, 1, &peak, vDSP_Length(mono.count))
+            guard peak > 1e-4 else {
+                throw NSError(domain: "SwiftWhisperAlign.CTC", code: 16,
+                              userInfo: [NSLocalizedDescriptionKey: "Vocal isolation produced silence."])
             }
             Self.breadcrumb("isolated voice \(mono.count) frames (HTDemucs CoreML)")
             VocalStemCache.store(mono, for: input.audioURL)
