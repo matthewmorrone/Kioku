@@ -103,6 +103,15 @@ extension SegmentLookupSheet {
             .senses(forReading: selectedReading, kanji: selectedKanji)
             .filter { $0.glosses.isEmpty == false } ?? []
         guard visibleSenses.isEmpty == false else {
+            // No dictionary on disk yet (first launch, or a new release still downloading): a
+            // spinner instead of an empty sheet. The sheet is refreshed once the store is rebuilt.
+            if DictionaryDownloadManager.isInstalled == false {
+                let spinner = UIActivityIndicatorView(style: .medium)
+                spinner.startAnimating()
+                middleContentStack.addArrangedSubview(spinner)
+                middleContentStack.superview?.isHidden = false
+                return
+            }
             middleContentStack.superview?.isHidden = true
             return
         }

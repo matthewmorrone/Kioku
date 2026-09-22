@@ -38,7 +38,10 @@ struct RichTextEditor: UIViewRepresentable {
         textView.textContainerInset = UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
         textView.textContainer.lineFragmentPadding = 0
         configureWrapping(for: textView)
-        let pinchRecognizer = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(RichTextEditorCoordinator.handlePinch(_:)))
+        let pinchRecognizer = UIPinchGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(RichTextEditorCoordinator.handlePinch(_:))
+        )
         pinchRecognizer.cancelsTouchesInView = false
         textView.addGestureRecognizer(pinchRecognizer)
 

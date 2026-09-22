@@ -128,7 +128,7 @@ own sections.)
 
 ## Segmentation & Lookup
 
-- [ ] **Rebuild and publish the dictionary (`dictionary-v10`) — two `extras.json` entries are waiting
+- [x] **Rebuild and publish the dictionary — done 2026-09-22 as `dictionary-v11` (v10 was built before the cross-reference/decomposition generator change and is superseded). Two `extras.json` entries were waiting
       on it.** Added 2026-09-21. `ユア` ("your"; ユアラブ doesn't split without it) and `ラララ` (came out
       ララ|ラ in the lyric review) are in `Resources/extras.json` but inert until a from-source rebuild:
       `Resources/generate_db.py` (inputs cached in `~/Projects/kioku-source-cache`, ~2 min), bump

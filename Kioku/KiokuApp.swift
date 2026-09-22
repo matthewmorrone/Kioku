@@ -29,12 +29,12 @@ struct KiokuApp: App {
         // One-time cleanup: the .srt sidecar was demoted to an export-only projection of cues.json
         // (the single source of truth), so remove the now-inert sidecars left by older builds.
         NotesAudioStore.shared.purgeLegacySRTSidecars()
-        // Reclaim any over-budget vocal-stem cache that an older, UNBOUNDED build accumulated (it
-        // could reach several GB). Off the main thread so the directory scan + deletes never delay
-        // launch; self-healing — brings the cache back under VocalStemCache.maxBytes on every cold
-        // start, then store() keeps it there.
+        // Shrink raw stems to the compressed format, then bring the vocal-stem cache back under
+        // VocalStemCache.maxBytes; store() keeps it there. Off the main thread so the re-encode,
+        // directory scan and deletes never delay launch.
         Task.detached(priority: .utility) {
-            print("[KiokuApp] launch-time VocalStemCache.enforceBudget starting")
+            print("[KiokuApp] launch-time VocalStemCache.compactRawStems + enforceBudget starting")
+            VocalStemCache.compactRawStems()
             VocalStemCache.enforceBudget()
             let freed = CachesCleaner.sweepStaleDownloads()
             print("[KiokuApp] launch-time stale-download sweep freed \(freed / 1_000_000) MB")

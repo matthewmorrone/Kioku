@@ -10,7 +10,12 @@ struct LearnView: View {
     var kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()
 
     var body: some View {
-        LearnPagerView(dictionaryStore: dictionaryStore, segmenter: segmenter, surfaceReadingData: surfaceReadingData, kanjiReadingFallback: kanjiReadingFallback)
+        LearnPagerView(
+            dictionaryStore: dictionaryStore,
+            segmenter: segmenter,
+            surfaceReadingData: surfaceReadingData,
+            kanjiReadingFallback: kanjiReadingFallback
+        )
             .toolbar(.visible, for: .tabBar)
     }
 }

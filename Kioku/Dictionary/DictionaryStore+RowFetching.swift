@@ -8,7 +8,11 @@ import SQLite3
 // primary file can call them across the file boundary.
 extension DictionaryStore {
     // Fetches entry headers with frequency data, ordered by JPDB rank then sense order.
-    nonisolated func fetchMatchedEntries(surface: String, matchKana: Bool, matchKanji: Bool) throws -> [(entryID: Int64, jpdbRank: Int?, wordfreqZipf: Double?)] {
+    nonisolated func fetchMatchedEntries(
+        surface: String,
+        matchKana: Bool,
+        matchKanji: Bool
+    ) throws -> [(entryID: Int64, jpdbRank: Int?, wordfreqZipf: Double?)] {
         guard matchKana || matchKanji else {
             return []
         }

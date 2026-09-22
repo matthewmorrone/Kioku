@@ -209,7 +209,9 @@ enum BridgeRoutes {
             return failure
         }
 
-        segments[index].furigana = payload.furigana.isEmpty ? nil : payload.furigana.map { FuriganaAnnotation(start: $0.start, end: $0.end, reading: $0.reading) }
+        segments[index].furigana = payload.furigana.isEmpty
+            ? nil
+            : payload.furigana.map { FuriganaAnnotation(start: $0.start, end: $0.end, reading: $0.reading) }
         _ = store.upsertNote(id: id, title: note.title, content: note.content, segments: segments)
         guard let updated = store.note(withID: id) else {
             return .error500(message: "note disappeared after furigana replace")

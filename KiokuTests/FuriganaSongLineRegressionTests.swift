@@ -17,7 +17,12 @@ final class FuriganaSongLineRegressionTests: XCTestCase {
     }
 
     // Renders the edge list and resolved ruby for a line so an assertion failure is self-explanatory.
-    private func diagnostics(_ line: String, _ segmenter: Segmenter, _ map: SurfaceReadingDataMap, _ resolved: (byLocation: [Int: String], lengthByLocation: [Int: Int])) -> String {
+    private func diagnostics(
+        _ line: String,
+        _ segmenter: Segmenter,
+        _ map: SurfaceReadingDataMap,
+        _ resolved: (byLocation: [Int: String], lengthByLocation: [Int: Int])
+    ) -> String {
         var out = "\nLINE: \(line)\n"
         for edge in segmenter.longestMatchEdges(for: line) {
             out += "  edge surface=\(edge.surface) dictMatch=\(edge.isDictionaryMatch) lemma=\(segmenter.preferredLemma(for: edge.surface) ?? "nil") reading=\(FuriganaResolver.readingForSegment(edge.surface, surfaceReadingData: map) ?? "nil")\n"

@@ -31,8 +31,9 @@ nonisolated final class SurfaceReadingDataMap: Equatable, @unchecked Sendable {
         lhs === rhs
     }
 
-    // Subscript passthrough for ergonomic access.
+    // Looks a surface up as written, then in its modern spelling — old-form kanji (氣づく) read
+    // the same as the form the table is keyed by (気づく), and the mapping keeps length and offsets.
     subscript(surface: String) -> SurfaceReadingData? {
-        data[surface]
+        KyujitaiNormalizer.firstHit(for: surface) { data[$0] }
     }
 }

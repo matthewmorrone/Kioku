@@ -292,7 +292,11 @@ extension ReadView {
                 // see it as already-selected and toggle it off instead of looking it up.
                 if let pending = segmentSelection.pendingSegmentTapAfterResourcesReady, let location = pending.location {
                     segmentSelection.pendingSegmentTapAfterResourcesReady = nil
-                    presentLookupForSegmentTap(tappedSegmentLocation: location, tappedSegmentRect: pending.rect, sourceView: pending.sourceView)
+                    presentLookupForSegmentTap(
+                        tappedSegmentLocation: location,
+                        tappedSegmentRect: pending.rect,
+                        sourceView: pending.sourceView
+                    )
                 }
             }
             // The surface-reading/frequency map publishes in Stage 1, ahead of the full engine. When it
@@ -351,7 +355,9 @@ extension ReadView {
                     noteText: document.text,
                     attachmentID: audioPlayback.activeAudioAttachmentID,
                     noteID: document.activeNoteID,
-                    playbackHighlightRangeOverride: lyricsHighlightGranularity == .sentence ? nil : audioPlayback.playbackHighlightRangeOverride,
+                    playbackHighlightRangeOverride: lyricsHighlightGranularity == .sentence
+                        ? nil
+                        : audioPlayback.playbackHighlightRangeOverride,
                     granularity: lyricsHighlightGranularity,
                     isSavedHighlightEnabled: isSavedHighlightEnabled,
                     savedSegmentLocations: savedSegmentLocations,

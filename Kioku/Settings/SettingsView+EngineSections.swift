@@ -1,14 +1,13 @@
 import SwiftUI
 
-// Advanced settings — segmentation engine/tuning, debug overlays, and the dev bridge — pushed
-// off the main Settings screen via the "Advanced" link. Split out of SettingsView.swift to keep
-// that file under the line-count guardrail; shares the same @State/@AppStorage as the main file
+// The segmentation, dictionary, diagnostics and debug sections of the main Settings screen.
+// Split out of SettingsView.swift to keep that file under the line-count guardrail; shares the same @State/@AppStorage as the main file
 // (see SettingsView.swift for the properties this reads/writes — several are also read by
 // SettingsPreviewRenderer in `body`, which is why they're internal rather than private).
 extension SettingsView {
     @ViewBuilder
-    var advancedSettings: some View {
-        // MARK: Segmentation — engine, then the two tuning chip-editors.
+    var engineSettings: some View {
+        // MARK: Segmentation — engine and granularity.
         Section {
             Picker("Engine", selection: $segmenterBackend) {
                 ForEach(SegmenterBackend.allCases, id: \.rawValue) { backend in
@@ -25,45 +24,10 @@ extension SettingsView {
             }
 
             if segmenterBackend == SegmenterBackend.trie.rawValue {
-                Picker("Strategy", selection: $segmentationStrategy) {
-                    ForEach(SegmentationStrategy.allCases, id: \.rawValue) { strategy in
-                        Text(strategy.displayName).tag(strategy)
-                    }
-                }
                 Toggle("Split Particle Clusters", isOn: $splitsParticleClusters)
             }
         } header: {
             Text("Segmentation")
-        }
-
-        Section {
-            ParticleTagEditor(tags: particlesBinding)
-            HStack {
-                Spacer()
-                Button("Reset to Defaults") {
-                    ParticleSettings.reset()
-                    particlesRaw = ParticleSettings.defaultRawValue
-                }
-                .buttonStyle(.bordered)
-                .font(.footnote)
-            }
-        } header: {
-            Text("Allowed Particles")
-        }
-
-        Section {
-            ParticleTagEditor(tags: demotionsBinding)
-            HStack {
-                Spacer()
-                Button("Reset to Defaults") {
-                    SegmentationDemotions.reset()
-                    demotionsRaw = SegmentationDemotions.defaultRawValue
-                }
-                .buttonStyle(.bordered)
-                .font(.footnote)
-            }
-        } header: {
-            Text("Segmentation Demotions")
         }
 
         // MARK: Dictionary — engine-level lookup knobs.
@@ -101,7 +65,8 @@ extension SettingsView {
                 wotdTestStatus = "Scheduling…"
                 Task {
                     await WordOfTheDayScheduler.sendTestNotification(word: word, dictionaryStore: store)
-                    wotdTestStatus = word.map { "Sent “\($0.surface)” — quit the app now; it arrives in ~10s, then tap it" } ?? "No saved word available"
+                    wotdTestStatus = word.map { "Sent “\($0.surface)” — quit the app now; it arrives in ~10s, then tap it" }
+                        ?? "No saved word available"
                     try? await Task.sleep(nanoseconds: 4_000_000_000)
                     if wotdTestTapCount == tap { wotdTestStatus = nil }
                 }
@@ -138,21 +103,5 @@ extension SettingsView {
 
         // Foreground-only bridge isn't useful enough yet to surface in Settings.
         // BridgeSettingsSection(bridgeServer: bridgeServer)
-    }
-
-    // Bridges AppStorage raw string to the sorted particle list expected by ParticleTagEditor.
-    var particlesBinding: Binding<[String]> {
-        Binding(
-            get: { ParticleSettings.decodeList(from: particlesRaw) },
-            set: { particlesRaw = ParticleSettings.encodeList($0) }
-        )
-    }
-
-    // Bridges AppStorage raw string to the demotion list expected by ParticleTagEditor.
-    var demotionsBinding: Binding<[String]> {
-        Binding(
-            get: { SegmentationDemotions.decodeList(from: demotionsRaw) },
-            set: { demotionsRaw = SegmentationDemotions.encodeList($0) }
-        )
     }
 }

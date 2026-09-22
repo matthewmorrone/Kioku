@@ -289,7 +289,11 @@ extension ReadView {
     }
 
     // Moves sheet selection to the previous or next selectable segment and returns refreshed sheet payload.
-    func moveSelectedSegmentSelection(isMovingForward: Bool) -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String?)? {
+    func moveSelectedSegmentSelection(isMovingForward: Bool) -> (
+        surface: String,
+        leftNeighborSurface: String?,
+        rightNeighborSurface: String?
+    )? {
         guard let currentBounds = segmentSelection.selectedBounds ?? segmentSelection.selectedSegmentLocation.flatMap({ location in
             initialMergedEdgeBounds(for: location)
         }) else {
@@ -314,7 +318,9 @@ extension ReadView {
 
                 let leftNeighborSurface = candidateIndex > 0 ? document.segmentEdges[candidateIndex - 1].surface : nil
                 let rightNeighborIndex = candidateIndex + 1
-                let rightNeighborSurface = rightNeighborIndex < document.segmentEdges.count ? document.segmentEdges[rightNeighborIndex].surface : nil
+                let rightNeighborSurface = rightNeighborIndex < document.segmentEdges.count
+                    ? document.segmentEdges[rightNeighborIndex].surface
+                    : nil
                 return (
                     surface: candidateEdge.surface,
                     leftNeighborSurface: leftNeighborSurface,

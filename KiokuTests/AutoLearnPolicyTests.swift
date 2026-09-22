@@ -27,7 +27,12 @@ final class AutoLearnPolicyTests: XCTestCase {
     }
 
     // Builds a directionStats dictionary covering only the given directions.
-    private func directionStats(for directions: [QuestionDirection], correct: Int, again: Int, consecutiveCorrect: Int) -> [String: DirectionStats] {
+    private func directionStats(
+        for directions: [QuestionDirection],
+        correct: Int,
+        again: Int,
+        consecutiveCorrect: Int
+    ) -> [String: DirectionStats] {
         var result: [String: DirectionStats] = [:]
         for direction in directions {
             result[direction.rawValue] = DirectionStats(correct: correct, again: again, consecutiveCorrect: consecutiveCorrect)

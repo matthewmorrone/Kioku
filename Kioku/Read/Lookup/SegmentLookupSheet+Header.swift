@@ -35,7 +35,10 @@ extension SegmentLookupSheet {
             segments.append(Segment(text: String(chars[cursor...]), ruby: nil))
         }
 
-        if segments.isEmpty {
+        // No kanji run means no furigana can ever appear here, so don't reserve the ruby line
+        // above the headword. (Kanji words keep the reserve: their reading arrives a moment
+        // after the sheet opens, and the header must not jump when it does.)
+        if runs.isEmpty {
             let label = UILabel()
             label.font = headwordFont
             label.text = surface

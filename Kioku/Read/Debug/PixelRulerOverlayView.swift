@@ -34,7 +34,11 @@ struct PixelRulerOverlayView: View {
                         var p = Path()
                         p.move(to: CGPoint(x: x, y: rulerThickness))
                         p.addLine(to: CGPoint(x: x, y: h))
-                        context.stroke(p, with: .color(isMajor ? .red.opacity(0.35) : .white.opacity(0.14)), lineWidth: isMajor ? 0.75 : 0.5)
+                        context.stroke(
+                            p,
+                            with: .color(isMajor ? .red.opacity(0.35) : .white.opacity(0.14)),
+                            lineWidth: isMajor ? 0.75 : 0.5
+                        )
                         x += minorStep
                     }
 
@@ -45,7 +49,11 @@ struct PixelRulerOverlayView: View {
                         var p = Path()
                         p.move(to: CGPoint(x: rulerThickness, y: y))
                         p.addLine(to: CGPoint(x: w, y: y))
-                        context.stroke(p, with: .color(isMajor ? .red.opacity(0.35) : .white.opacity(0.14)), lineWidth: isMajor ? 0.75 : 0.5)
+                        context.stroke(
+                            p,
+                            with: .color(isMajor ? .red.opacity(0.35) : .white.opacity(0.14)),
+                            lineWidth: isMajor ? 0.75 : 0.5
+                        )
                         y += minorStep
                     }
                 }

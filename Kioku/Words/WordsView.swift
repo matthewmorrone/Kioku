@@ -293,7 +293,7 @@ struct WordsView: View {
             let word = detailWord(entryID: entryID, surfaceHint: surface)
             WOTDDiag.log("consume .detail entryID=\(entryID) resolved=\(word != nil)")
             if let word {
-                activeTab = .saved
+                activeTab = .history
                 selectedDetailWord = word
                 selectedDetailReading = reading
                 selectedDetailReadingEntryID = word.canonicalEntryID
@@ -306,7 +306,7 @@ struct WordsView: View {
             }
 
         case let .search(query):
-            activeTab = .saved
+            activeTab = .history
             selectedDetailWord = nil
             editMode = .inactive
             selectedWordIDs.removeAll()

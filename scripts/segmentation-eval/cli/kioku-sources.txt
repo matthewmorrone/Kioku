@@ -46,7 +46,6 @@ Settings/SegmenterSettings.swift
 Dictionary/DictionaryStore+RowFetching.swift
 Dictionary/LookupMode.swift
 Dictionary/EntryIDPool.swift
-Settings/ParticleSettings.swift
 Dictionary/Segmenter/MeCabDictionary.swift
 Dictionary/DictionaryStore+FrequencyRanking.swift
 Dictionary/PartOfSpeechDetail.swift

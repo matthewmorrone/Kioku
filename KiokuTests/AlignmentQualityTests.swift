@@ -241,7 +241,10 @@ final class AlignmentQualityTests: XCTestCase {
         // tolerance, XCTExpectFailure will itself fail and we drop the wrapper.
         let gate = XCTExpectedFailure.Options()
         gate.isStrict = false   // songs that already meet the gate must not error for lacking a failure
-        XCTExpectFailure("Alignment timing not yet within tolerance — see printed metrics for the current AFTER numbers and the BEFORE/AFTER delta", options: gate) {
+        XCTExpectFailure(
+            "Alignment timing not yet within tolerance — see printed metrics for the current AFTER numbers and the BEFORE/AFTER delta",
+            options: gate
+        ) {
             XCTAssertGreaterThanOrEqual(afterMetrics.coverageFraction, tolerance.minCoverage,
                                         "Coverage \(afterMetrics.coverageFraction) < tolerance.minCoverage \(tolerance.minCoverage)")
             XCTAssertLessThanOrEqual(afterMetrics.medianStartDeltaMs, tolerance.medianStartMsTolerance,

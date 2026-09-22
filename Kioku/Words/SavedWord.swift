@@ -93,7 +93,24 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
     // Creates a saved-word value with optional note-list and word-list memberships.
     // `encounteredSurfaces` defaults to `[surface]` so call sites that already pass a
     // surface get a sensible per-surface star state without having to spell it out.
-    init(canonicalEntryID: Int64, surface: String, sourceNoteIDs: [UUID] = [], wordListIDs: [UUID] = [], personalNote: String? = nil, savedAt: Date = Date(), selectedSenseIDs: [Int64] = [], selectedGlosses: [GlossRef] = [], encounteredSurfaces: Set<String>? = nil, entSeq: Int64? = nil, hasBeenOrphaned: Bool? = nil, selectedReading: String? = nil, learnedMark: LearnedState = .unmarked, mastered: Bool = false, markedWrong: Bool = false, reviewStats: ReviewWordStats? = nil) {
+    init(
+        canonicalEntryID: Int64,
+        surface: String,
+        sourceNoteIDs: [UUID] = [],
+        wordListIDs: [UUID] = [],
+        personalNote: String? = nil,
+        savedAt: Date = Date(),
+        selectedSenseIDs: [Int64] = [],
+        selectedGlosses: [GlossRef] = [],
+        encounteredSurfaces: Set<String>? = nil,
+        entSeq: Int64? = nil,
+        hasBeenOrphaned: Bool? = nil,
+        selectedReading: String? = nil,
+        learnedMark: LearnedState = .unmarked,
+        mastered: Bool = false,
+        markedWrong: Bool = false,
+        reviewStats: ReviewWordStats? = nil
+    ) {
         self.canonicalEntryID = canonicalEntryID
         self.entSeq = entSeq
         self.surface = surface

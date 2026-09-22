@@ -64,6 +64,6 @@ extension DictionaryStore {
     // the dictionary — callers treat zero as "no POS info" exactly the same way the old
     // SQL-backed posBits behaved.
     public nonisolated func posBits(forSurface surface: String) -> UInt64 {
-        surfacePOSBitsMap[surface] ?? 0
+        KyujitaiNormalizer.firstHit(for: surface) { surfacePOSBitsMap[$0] } ?? 0
     }
 }

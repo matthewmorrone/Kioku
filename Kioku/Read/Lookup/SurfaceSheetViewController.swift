@@ -221,8 +221,12 @@ final class SurfaceSheetViewController: UIViewController {
         }
     }
 
-    // Updates the lemma label when the surface changes or supplemental data refreshes.
+    // Updates the lemma label when the surface changes or supplemental data refreshes. The
+    // refresh completion can land after this controller's view is torn down (a dictionary
+    // download finishing mid-session rebuilds the read resources and re-presents the sheet), so
+    // the IUO outlet is guarded like rebuildHeaderRow's rather than trapped on.
     func updateLemmaChain() {
+        guard let lemmaLabel else { return }
         let info = sheet?.currentSheetLemmaInfo
         let show = info != nil && info?.lemma != currentSurface
         lemmaLabel.attributedText = show ? info.map { NSAttributedString(string: $0.lemma) } : nil

@@ -44,7 +44,7 @@ struct LatticeEdge {
     var viterbiPrevStart: Int? = nil
 
     // Enumerates all complete paths through the edge DAG, capped to avoid combinatorial explosion.
-    // Paths containing single-kana segments not in the ParticleSettings allowlist are excluded.
+    // Paths containing single-kana segments not in KanaData.particleSet are excluded.
     static func validPaths(from edges: [LatticeEdge]) -> [[String]] {
         guard edges.isEmpty == false else { return [] }
         guard let startIndex = edges.map({ $0.start }).min(),
@@ -55,7 +55,7 @@ struct LatticeEdge {
             edgesByStart[edge.start, default: []].append(edge)
         }
 
-        let allowedKana = ParticleSettings.allowed()
+        let allowedKana = KanaData.particleSet
         var allPaths: [[String]] = []
         let limit = 24
         // Hard ceiling on total DFS calls, independent of the path-count limit above. That limit

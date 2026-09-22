@@ -7,10 +7,8 @@ import Foundation
 // beating の + か. Rather than scatter `if surface == "のか"` comparisons through the scoring
 // algorithm, the *strings* live here as data and the algorithm only asks `contains(_:)`.
 //
-// The list is now persisted in UserDefaults and editable from Settings (the same chip editor as
-// the particle allowlist), seeded with the defaults below — so new breakers can be added from the
-// app without a code change + rebuild. Encoding mirrors ParticleSettings (comma-joined) so the
-// SettingsView binds the same way.
+// The list is persisted in UserDefaults (comma-joined), seeded with the defaults below. It has no
+// editor in Settings: only the greedy strategy reads it, and that strategy has no picker either.
 //
 // The demotion is intentionally *soft*, and applies to the local longest-match strategy only:
 // Segmenter.compareEdgePriority sinks a demoted candidate below every non-demoted candidate that
@@ -53,7 +51,7 @@ nonisolated enum SegmentationDemotions {
 
     static let defaultRawValue: String = defaults.joined(separator: ",")
 
-    // Decodes a comma-joined raw string into a list; empty falls back to defaults (matches ParticleSettings).
+    // Decodes a comma-joined raw string into a list; empty falls back to defaults.
     static func decodeList(from rawValue: String) -> [String] {
         let source = rawValue.isEmpty ? defaultRawValue : rawValue
         return source
