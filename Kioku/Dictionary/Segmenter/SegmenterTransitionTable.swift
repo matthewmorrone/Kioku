@@ -95,7 +95,11 @@ nonisolated final class SegmenterTransitionTable: Sendable {
     // Cost of `next` directly after `previous`. Backs off from the full classes to the coarse ones
     // (next first, then previous, then both) until the table has an opinion; none at all costs 0.
     func cost(from previous: ClassIDs, to next: ClassIDs) -> Int {
-        lookup(previous.fine, next.fine) ?? lookup(previous.fine, next.coarse)
+        // The counts merge neighbouring boundaries into one, so boundary → boundary never occurs in
+        // them and would read as a heavy penalty; at run time it is ordinary (a number after 「, two
+        // punctuation marks in a row) and says nothing about the words.
+        if previous.fine == boundaryIDs.fine, next.fine == boundaryIDs.fine, boundaryIDs.fine >= 0 { return 0 }
+        return lookup(previous.fine, next.fine) ?? lookup(previous.fine, next.coarse)
             ?? lookup(previous.coarse, next.fine) ?? lookup(previous.coarse, next.coarse) ?? 0
     }
 

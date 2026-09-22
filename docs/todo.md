@@ -128,6 +128,16 @@ own sections.)
 
 ## Segmentation & Lookup
 
+- [ ] **Rebuild and publish the dictionary (`dictionary-v10`) — two `extras.json` entries are waiting
+      on it.** Added 2026-09-21. `ユア` ("your"; ユアラブ doesn't split without it) and `ラララ` (came out
+      ララ|ラ in the lyric review) are in `Resources/extras.json` but inert until a from-source rebuild:
+      `Resources/generate_db.py` (inputs cached in `~/Projects/kioku-source-cache`, ~2 min), bump
+      `releaseTag` / `expectedSHA256` in `DictionaryDownloadManager.swift`, then
+      `scripts/publish_dictionary_release.sh` (it refuses a dictionary missing any extras surface).
+      Deliberately batched — don't republish for a single entry. After publishing, re-measure with
+      `scripts/segmentation-eval` (its README has the numbers to beat): the CI quality floor and
+      every baseline there are pinned to `dictionary-v9`. `main` is protected, so the pin bump lands
+      through a PR.
 - [ ] **`DictionaryTrie.Node.children` is `[Character: Node]` — consider a scalar-keyed
       dictionary instead.** Investigated 2026-07-13 while chasing cold-start latency
       (`StartupTimer` measured `trie population (456249 records)` at ~1005ms). `Character` is a
@@ -909,6 +919,13 @@ own sections.)
 
 ## Ship Readiness
 
+- [ ] **Smoke-test an optimized Release build on a device before the next distribution.** Added
+      2026-09-21. Until `cd01581` / `181d27f` (2026-09-21) the app target's Release configuration was
+      `SWIFT_OPTIMIZATION_LEVEL = -Onone` with `ENABLE_TESTABILITY = YES`, so no Release build had
+      ever been optimized. It is now `-O` (Debug is untouched; tests build Debug). Optimized builds
+      occasionally expose latent timing / undefined-behaviour bugs, and every deploy so far has been
+      Debug. Build Release for the phone (`/deploy --release`) and exercise the hot paths: open a long
+      note in Read (lattice + furigana layout), a song with alignment, lookup, and cold launch.
 - [x] Hide/gate debug section and diagnostic toggles from release builds
 - [x] Add explicit pre-import confirmation for backup restore
 - [x] Progressive disclosure in dictionary detail UI (`DisclosureGroup` in `WordsView+Search.swift`, `SongLineCard.swift`)
@@ -985,6 +1002,16 @@ Estimated effort: 30–60 min per store using the established pattern.
 
 Things that aren't broken but could become so. Not actionable today — just worth a periodic look.
 
+- [ ] **Move the deploy skill's derived-data path out of `/tmp`.** Added 2026-09-21. The `deploy`
+      skill builds into `/tmp/kioku-build`; macOS purges old files under `/tmp` every few days and
+      leaves the folders, which on 2026-09-21 hollowed out all 40 Swift package checkouts and their
+      cached clones ("package manifest … cannot be accessed", then "repository … does not exist").
+      Recovery was `rm -rf /tmp/kioku-build/SourcePackages/{checkouts,repositories}` +
+      `xcodebuild -resolvePackageDependencies`, turning a quick deploy into a re-fetch and a longer
+      build. Fix: point `-derivedDataPath` (and the install path) at somewhere persistent such as
+      `~/Library/Caches/kioku-build` in `~/.claude/skills/deploy`. Also add
+      `-skipPackagePluginValidation -skipMacroValidation` to the skill's build command — device
+      builds need them and the skill omits them.
 - [ ] **`macos-26` is a GitHub Actions preview runner.** If GH deprecates the preview image before iOS 26.5 reaches `macos-15`, CI breaks until we react. Fallback path: `xcrun simctl runtime install` to add iOS 26.5 to `macos-15`, or accept skip-testing the affected suites. (Left as a watch — no clean proactive code fix short of pre-installing a runtime, which is slow and unwarranted while macos-26 works.)
 - [x] **Coverage step-summary parsing.** Hardened 2026-07-02: the `tests.yml` coverage python now
       guards the `xccov --report --json` shape — if `targets` is empty, or no target reports any

@@ -54,6 +54,8 @@ extension SettingsView {
             } label: {
                 Label("Debug Logs", systemImage: "text.alignleft")
             }
+            // Developer stub mode: AI calls return the canned response from UserDefaults instead
+            // of contacting any model. Off = real AI, the default.
             Toggle("Use Stub AI Responses", isOn: Binding(get: { useLLM == false }, set: { useLLM = ($0 == false) }))
             Button("Send Test Notification") {
                 wotdTestTapCount += 1

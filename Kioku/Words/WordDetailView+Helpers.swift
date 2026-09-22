@@ -301,6 +301,14 @@ extension WordDetailView {
         }.value
         senseReferences = refs
 
+        // Decomposition of the spelling actually on screen, not of the entry's primary headword:
+        // the kanji and kana forms are analyzed separately at build time, and a learner reading
+        // おとなになる should see おとな + に + なる rather than 大人 + に + なる.
+        let decomposition = await Task { @MainActor in
+            (try? store.fetchDecomposition(entryID: savedID, surface: analysisForm)) ?? []
+        }.value
+        entryDecomposition = decomposition
+
         // Synonyms — resolve the saved entry's JMdict cross-references (xref "see also" links)
         // to full dictionary entries so they can be shown as their own browsable section. The
         // target may be a bare word or "word・reading・senseNum"; the leading element before the

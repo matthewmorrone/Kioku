@@ -2,11 +2,15 @@
 //
 // dictionary.sqlite (~350MB) is no longer bundled inside Kioku.app (see the Xcode target's
 // Copy Bundle Resources phase) — it's downloaded once from a pinned GitHub Release asset into
-// Application Support on first launch. Mirrors WhisperModelManager's URLSession downloadTask +
-// progress-delegate pattern (Kioku/Notes/WhisperModelManager.swift). Application Support, not
-// Caches: a mid-download purge under storage pressure would strand the app with a half-written
-// file and no dictionary — the same failure mode ModelStorage's header documents for the speech
-// models (SwiftWhisperAlign/Sources/SwiftWhisperAlign/ModelStorage.swift).
+// Application Support on first launch. Application Support, not Caches: a mid-download purge
+// under storage pressure would strand the app with a half-written file and no dictionary — the
+// same failure mode ModelStorage's header documents for the speech models
+// (SwiftWhisperAlign/Sources/SwiftWhisperAlign/ModelStorage.swift).
+//
+// Progress comes from a delegate on a session this file owns. Do NOT reach for the shorter
+// URLSession.shared.download(from:delegate:) — that delegate is task-scoped and never receives
+// didWriteData, which silently reduces the banner to "0%" until the download finishes.
+// WhisperModelManager (Kioku/Notes/WhisperModelManager.swift) still has that shape.
 
 import Foundation
 import Observation
@@ -16,11 +20,13 @@ import CryptoKit
 enum DictionaryDownloadError: LocalizedError {
     case httpError(Int)
     case checksumMismatch
+    case missingPayload
 
     var errorDescription: String? {
         switch self {
         case .httpError(let code): return "Server returned HTTP \(code)."
         case .checksumMismatch: return "Downloaded file did not match the expected checksum."
+        case .missingPayload: return "The download finished but produced no file."
         }
     }
 }
@@ -133,17 +139,9 @@ final class DictionaryDownloadManager {
             try? directoryURL.setResourceValues(excludedFromBackup)
 
             AppLog.info(.dictionaryDownload, "downloadIfNeeded: starting from \(Self.remoteURL)")
-            let delegate = DictionaryDownloadProgressDelegate { [weak self] value in
-                guard let self else { return }
-                Task { @MainActor in self.progress = value }
-            }
-            let (tempURL, response) = try await URLSession.shared.download(from: Self.remoteURL, delegate: delegate)
-
-            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            AppLog.debug(.dictionaryDownload, "downloadIfNeeded: HTTP \(status), temp file at \(tempURL.path)")
-            guard status == 200 else {
-                throw DictionaryDownloadError.httpError(status)
-            }
+            let tempURL = try await downloadToTemporaryFile()
+            AppLog.debug(.dictionaryDownload, "downloadIfNeeded: temp file at \(tempURL.path)")
+            defer { try? FileManager.default.removeItem(at: tempURL) }
 
             let digest = try Self.sha256(ofFileAt: tempURL)
             guard digest == Self.expectedSHA256 else {
@@ -167,6 +165,30 @@ final class DictionaryDownloadManager {
         }
     }
 
+    // Runs the download and returns the file it landed in, reporting progress along the way.
+    //
+    // The delegate is attached to a session WE own, not handed to URLSession.shared's
+    // download(from:delegate:) — a task-scoped delegate passed that way never receives
+    // urlSession(_:downloadTask:didWriteData:...) at all, so `progress` stayed at the 0 set
+    // above and the banner jumped straight from "0%" to gone. Measured against a 3.6MB asset:
+    // 0 callbacks via the task delegate, 17 via a session delegate on the same URL.
+    //
+    // The session is invalidated on the way out: URLSession holds its delegate strongly until
+    // invalidated, so skipping this leaks the delegate (and the manager it captures) per attempt.
+    @MainActor
+    private func downloadToTemporaryFile() async throws -> URL {
+        let delegate = DictionaryDownloadProgressDelegate { [weak self] value in
+            guard let self else { return }
+            Task { @MainActor in self.progress = value }
+        }
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        return try await withCheckedThrowingContinuation { continuation in
+            delegate.onFinish = { continuation.resume(with: $0) }
+            session.downloadTask(with: Self.remoteURL).resume()
+        }
+    }
+
     // Streaming SHA-256 so a 350MB file isn't loaded into memory at once.
     nonisolated static func sha256(ofFileAt url: URL) throws -> String {
         let handle = try FileHandle(forReadingFrom: url)
@@ -181,17 +203,26 @@ final class DictionaryDownloadManager {
     }
 }
 
-// Relays URLSession download progress to a closure. `downloadIfNeeded()` hops back to the
-// isolated `self` via the `@MainActor` Task inside the closure, so this delegate itself only
-// needs to be Sendable, not actor-isolated.
-private final class DictionaryDownloadProgressDelegate: NSObject, URLSessionDownloadDelegate {
+// Session-level delegate for the dictionary download: relays progress to a closure and hands the
+// finished file to `onFinish`. `downloadIfNeeded()` hops back to the isolated `self` via the
+// `@MainActor` Task inside the progress closure, so this delegate itself only needs to be
+// Sendable, not actor-isolated. Callbacks arrive on the session's own serial delegate queue, so
+// the mutable state below is never touched concurrently.
+private final class DictionaryDownloadProgressDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     private let onProgress: @Sendable (Double) -> Void
+    // Resumes downloadToTemporaryFile's continuation. Called exactly once — see didComplete.
+    var onFinish: (@Sendable (Result<URL, Error>) -> Void)?
+
+    // Where didFinishDownloadingTo moved the payload, read back once the task reports completion.
+    private var downloadedURL: URL?
+    private var finished = false
 
     init(onProgress: @escaping @Sendable (Double) -> Void) {
         self.onProgress = onProgress
     }
 
-    // Forwards download progress to the onProgress closure as a 0–1 fraction.
+    // Forwards download progress to the onProgress closure as a 0–1 fraction. A server that sends
+    // no Content-Length reports -1 here, which would render as a nonsense percentage.
     func urlSession(
         _ session: URLSession,
         downloadTask: URLSessionDownloadTask,
@@ -203,6 +234,40 @@ private final class DictionaryDownloadProgressDelegate: NSObject, URLSessionDown
         onProgress(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite))
     }
 
-    // Actual file handling is done by the async download(from:delegate:) continuation.
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {}
+    // Takes ownership of the downloaded payload. URLSession deletes `location` as soon as this
+    // returns, so the move has to happen here and synchronously rather than on a later hop.
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        let destination = FileManager.default.temporaryDirectory
+            .appendingPathComponent("dictionary-download-\(UUID().uuidString).sqlite")
+        do {
+            try FileManager.default.moveItem(at: location, to: destination)
+            downloadedURL = destination
+        } catch {
+            AppLog.error(.dictionaryDownload, "didFinishDownloadingTo: could not keep payload — \(error.localizedDescription)")
+        }
+    }
+
+    // The single completion point for the whole transfer: fires for success, network failure and
+    // cancellation alike, and always after didFinishDownloadingTo. The HTTP status is checked here
+    // rather than at the call site because that response is only reachable from the task.
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard finished == false else { return }
+        finished = true
+        let result: Result<URL, Error>
+        if let error {
+            result = .failure(error)
+        } else {
+            let status = (task.response as? HTTPURLResponse)?.statusCode ?? -1
+            if status != 200 {
+                if let downloadedURL { try? FileManager.default.removeItem(at: downloadedURL) }
+                result = .failure(DictionaryDownloadError.httpError(status))
+            } else if let downloadedURL {
+                result = .success(downloadedURL)
+            } else {
+                result = .failure(DictionaryDownloadError.missingPayload)
+            }
+        }
+        onFinish?(result)
+        onFinish = nil
+    }
 }

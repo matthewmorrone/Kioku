@@ -1,16 +1,16 @@
 name: Tests
 
+# Pull requests only. main is protected — nothing lands without this check green on its PR — so a
+# run on the push to main would re-test a tree that was tested minutes earlier, for ~13 minutes of
+# macOS runner each time. workflow_dispatch is there for the rare manual run against main.
 on:
-  push:
-    branches: [ main ]
   pull_request:
+  workflow_dispatch:
 
-# A newer push to the same branch or PR makes the older run pointless, and each run holds a macOS
-# runner for ~13 minutes — so cancel the superseded one. Runs on main are never cancelled: each
-# one is the record for a commit that landed.
+# A newer push to the same PR makes the older run pointless, so cancel the superseded one.
 concurrency:
   group: tests-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: true
 
 jobs:
   ios:

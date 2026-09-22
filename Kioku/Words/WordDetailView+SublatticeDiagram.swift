@@ -69,11 +69,7 @@ extension WordDetailView {
         for path in paths {
             segments.formUnion(sublatticeNodes(for: path))
         }
-        return segments.sorted { lhs, rhs in
-            if lhs.start != rhs.start { return lhs.start < rhs.start }
-            if lhs.end != rhs.end { return lhs.end < rhs.end }
-            return lhs.text < rhs.text
-        }
+        return segments.sorted { $0.sortKey < $1.sortKey }
     }
 
     // Every pair of segments that sit back-to-back within some candidate path, deduped so a
@@ -86,9 +82,14 @@ extension WordDetailView {
                 transitions.insert(SublatticeTransition(from: previous, to: next))
             }
         }
+        // Sorted on the full (start, end, text) of both endpoints rather than on start offsets
+        // alone. Comparing only starts leaves two transitions out of the same offset — おと(0,2)
+        // and おとな(0,3) both leaving offset 0 — comparing equal in both directions, which with
+        // Swift's unstable sort over a Set (per-process-seeded string hashing) made the edge
+        // order, and therefore SwiftDagre's crossing-minimizing sweep, differ on every launch.
         return transitions.sorted { lhs, rhs in
-            if lhs.from != rhs.from { return lhs.from.start < rhs.from.start }
-            return lhs.to.start < rhs.to.start
+            if lhs.from.sortKey != rhs.from.sortKey { return lhs.from.sortKey < rhs.from.sortKey }
+            return lhs.to.sortKey < rhs.to.sortKey
         }
     }
 
@@ -121,6 +122,21 @@ extension WordDetailView {
         var id: Self { self }
         var nodeID: String { "\(start)_\(end)_\(text)" }
         var isMarker: Bool { text.isEmpty }
+        // A total order over segments — two distinct segments never compare equal, so any sort
+        // keyed on this is fully determined by the segments themselves rather than by the
+        // iteration order of whatever Set they came out of.
+        var sortKey: SortKey { SortKey(start: start, end: end, text: text) }
+
+        struct SortKey: Comparable {
+            let start: Int
+            let end: Int
+            let text: String
+            static func < (lhs: Self, rhs: Self) -> Bool {
+                if lhs.start != rhs.start { return lhs.start < rhs.start }
+                if lhs.end != rhs.end { return lhs.end < rhs.end }
+                return lhs.text < rhs.text
+            }
+        }
     }
 
     // A directed adjacency between two segments that sit back-to-back in some candidate path —
@@ -223,6 +239,11 @@ extension WordDetailView {
     private struct SublatticeLayout {
         var nodeFrames: [SublatticeSegment: CGRect]
         var edgePaths: [SublatticeTransition: Path]
+        // The same edges as edgePaths, kept as the raw polylines they were smoothed from, so
+        // sublatticeCrossingScore can measure the drawn result. Smoothing only rounds the
+        // corners of these, so a crossing between two polylines is a crossing between the
+        // curves actually on screen.
+        var edgePolylines: [SublatticeTransition: [CGPoint]]
         var contentWidth: CGFloat
         var height: CGFloat
     }
@@ -273,7 +294,92 @@ extension WordDetailView {
     // its start offset (shifted by one for the origin marker occupying rank 0), which keeps the
     // diagram in reading order, and its crossing-minimizing node ordering within each rank keeps
     // transitions between adjacent ranks from crossing.
+    // SwiftDagre's ordering phase is a local search — it sweeps barycenters up and down and keeps
+    // the best layering it happens to reach, but it only ever starts from one initial order, the
+    // DFS order its edges were inserted in. On these lattices that seed decides the outcome: the
+    // same graph reaches a crossing-free layout from some insertion orders and a one-crossing
+    // layout from others (measured on おとなになる: ~2 of every 3 orders find the crossing-free
+    // one, the rest don't). So run the pass from several deterministic insertion orders and keep
+    // whichever drawn result scores lowest, rather than trusting a single seed.
     private func sublatticeLayout(segments: [SublatticeSegment], transitions: [SublatticeTransition]) -> SublatticeLayout? {
+        var best: SublatticeLayout?
+        var bestScore = Int.max
+        for order in sublatticeCandidateOrders(for: transitions) {
+            guard let candidate = sublatticeLayoutPass(segments: segments, transitions: order) else { continue }
+            let score = sublatticeCrossingScore(candidate)
+            if score < bestScore {
+                bestScore = score
+                best = candidate
+                if score == 0 { break }
+            }
+        }
+        return best
+    }
+
+    // A handful of distinct, reproducible insertion orders to seed sublatticeLayoutPass with.
+    // Rotations of the sorted edge list: cheap, deterministic (no RNG, so a given word always
+    // draws identically), and enough variation to move which edge dagre's initial DFS starts
+    // from — which is the parameter that actually decides the layering it converges on.
+    private func sublatticeCandidateOrders(for transitions: [SublatticeTransition]) -> [[SublatticeTransition]] {
+        guard transitions.count > 1 else { return [transitions] }
+        let attempts = min(transitions.count, 8)
+        return (0..<attempts).map { offset in
+            Array(transitions[offset...]) + Array(transitions[..<offset])
+        }
+    }
+
+    // How tangled a finished layout looks: the number of pairs of drawn edges that visibly cross.
+    // Edges meeting at a shared node are touching, not crossing, and must not be counted — every
+    // branch and merge in the lattice would otherwise score as tangle and drown out real
+    // crossings. Lower is better; 0 means nothing overlaps.
+    private func sublatticeCrossingScore(_ layout: SublatticeLayout) -> Int {
+        let edges = layout.edgePolylines.sorted { lhs, rhs in
+            if lhs.key.from.sortKey != rhs.key.from.sortKey { return lhs.key.from.sortKey < rhs.key.from.sortKey }
+            return lhs.key.to.sortKey < rhs.key.to.sortKey
+        }
+        var score = 0
+        for first in edges.indices {
+            for second in edges.indices where second > first {
+                let (lhs, rhs) = (edges[first], edges[second])
+                // Edges meeting at a node are touching by design, not tangled.
+                let shareEndpoint = lhs.key.from == rhs.key.from || lhs.key.from == rhs.key.to
+                    || lhs.key.to == rhs.key.from || lhs.key.to == rhs.key.to
+                guard shareEndpoint == false else { continue }
+                // Counted once per intersecting pair of straight sub-segments rather than once
+                // per pair of edges: an edge that clips another twice while bending around two
+                // chips does read as twice as tangled, and scoring it that way breaks ties
+                // between layouts that cross the same number of edge pairs.
+                for lhsIndex in lhs.value.indices.dropLast() {
+                    for rhsIndex in rhs.value.indices.dropLast() where sublatticeSegmentsCross(
+                        lhs.value[lhsIndex], lhs.value[lhsIndex + 1],
+                        rhs.value[rhsIndex], rhs.value[rhsIndex + 1]
+                    ) {
+                        score += 1
+                    }
+                }
+            }
+        }
+        return score
+    }
+
+    // Whether two straight segments properly cross, by the standard orientation test: they do
+    // when each segment's endpoints fall on opposite sides of the other's infinite line. The
+    // epsilon treats a near-collinear turn as no crossing — dagre emits float coordinates and
+    // its dummy-node bend points routinely sit exactly on another edge's line, which a strict
+    // sign test would score as a crossing on every straight run.
+    private func sublatticeSegmentsCross(_ a: CGPoint, _ b: CGPoint, _ c: CGPoint, _ d: CGPoint) -> Bool {
+        // Which way the turn origin -> pivot -> point bends: 1 left, -1 right, 0 collinear.
+        func orientation(_ origin: CGPoint, _ pivot: CGPoint, _ point: CGPoint) -> Int {
+            let cross = (pivot.y - origin.y) * (point.x - pivot.x) - (pivot.x - origin.x) * (point.y - pivot.y)
+            if cross > 0.001 { return 1 }
+            return cross < -0.001 ? -1 : 0
+        }
+        return orientation(a, b, c) != orientation(a, b, d) && orientation(c, d, a) != orientation(c, d, b)
+    }
+
+    // One layout attempt for a given edge insertion order. See sublatticeLayout for why the
+    // order is a parameter rather than fixed.
+    private func sublatticeLayoutPass(segments: [SublatticeSegment], transitions: [SublatticeTransition]) -> SublatticeLayout? {
         guard segments.isEmpty == false else { return nil }
         let graph = DagreGraph(options: GraphOptions(directed: true))
         for segment in segments {
@@ -367,14 +473,17 @@ extension WordDetailView {
         }
 
         var edgePaths: [SublatticeTransition: Path] = [:]
+        var edgePolylines: [SublatticeTransition: [CGPoint]] = [:]
         for (transition, points) in edgePoints {
             let shifted = points.map { CGPoint(x: $0.x - leftCrop, y: $0.y) }
+            edgePolylines[transition] = shifted
             edgePaths[transition] = sublatticeSmoothedPath(through: shifted)
         }
 
         return SublatticeLayout(
             nodeFrames: nodeFrames,
             edgePaths: edgePaths,
+            edgePolylines: edgePolylines,
             contentWidth: contentWidth,
             height: CGFloat(options.height)
         )

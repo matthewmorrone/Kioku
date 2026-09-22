@@ -87,6 +87,10 @@ struct WordDetailView: View {
     @State var relatedEntries: [DictionaryEntry] = []
     @State var loanwordSources: [LoanwordSource] = []
     @State var senseReferences: [SenseReference] = []
+    // How this headword breaks into the pieces it is built from (大人 + に + なる), harvested at
+    // build time — see DictionaryStore.fetchDecomposition. Empty for anything but a multi-word
+    // expression. Shown under the Definition section's glosses.
+    @State var entryDecomposition: [EntryDecompositionPiece] = []
     // Synonyms resolved from the saved entry's JMdict xref cross-references, shown as their own
     // section beneath the structural/kanji-family related words. See loadDisplayData.
     @State var synonymEntries: [DictionaryEntry] = []
