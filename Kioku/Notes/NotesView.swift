@@ -507,6 +507,15 @@ struct NotesView: View {
         }
 
         if let attachmentID = note.audioAttachmentID {
+            if let urls = timingExportURLs(for: note, attachmentID: attachmentID) {
+                ShareLink(item: urls.srt) {
+                    Label("Export SRT", systemImage: "doc.text")
+                }
+                ShareLink(item: urls.json) {
+                    Label("Export JSON", systemImage: "curlybraces")
+                }
+            }
+
             Button(role: .destructive) {
                 resetSubtitleAttachment(for: note)
             } label: {
@@ -526,6 +535,15 @@ struct NotesView: View {
         } label: {
             Label("Delete", systemImage: "trash")
         }
+    }
+
+    // Writes the note's timed cues to tmp as SRT + JSON for ShareLink, named after the note's
+    // first line (matching the karaoke view's former export naming). nil when there are no cues.
+    private func timingExportURLs(for note: Note, attachmentID: UUID) -> (srt: URL, json: URL)? {
+        let firstLine = note.content.components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { $0.isEmpty == false } ?? "lyrics"
+        return NotesAudioStore.shared.timingExportURLs(for: attachmentID, baseName: firstLine)
     }
 
     // Detaches the audio + subtitles from a note: deletes the on-disk attachment files and clears

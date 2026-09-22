@@ -13,7 +13,12 @@ extension LyricsView {
     // the active cue. Mismatch indicator (orange dot) survives because it conveys data, not style.
     @ViewBuilder
     func inactiveCueRow(index: Int, distance: Int) -> some View {
-        let text = displayText(for: index)
+        // Non-speech rows show duration-scaled note glyphs (LyricsView+MusicalInterlude.swift)
+        // rather than the raw "♪" cue text, so a long instrumental break reads differently from
+        // a short one while scrolling past. No pulse here — only the active card animates.
+        let text = isNonSpeechCue(at: index)
+            ? Self.interludeGlyphs(durationMs: index < cues.count ? cues[index].endMs - cues[index].startMs : 0)
+            : displayText(for: index)
         let metrics = inactiveCueMetrics(distance: distance)
         let defaultSize = CGFloat(TypographySettings.defaultTextSize)
         let scaleFactor = distance == 0 ? scaleFactorForActiveCue(text: text, availableWidth: 280, defaultFontSize: defaultSize) : 1.0

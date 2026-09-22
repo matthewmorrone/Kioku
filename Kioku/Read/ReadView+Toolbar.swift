@@ -194,7 +194,9 @@ extension ReadView {
     // is laid out with default `HStack` spacing. Previously the visible pill was 30×30
     // wrapped in a 44×44 hit frame, which made HStack measure ~14pt of invisible padding
     // per button and pushed the top row's perceived spacing well past the bottom row's.
-    private func titleActionLabel(systemImage: String, foreground: Color) -> some View {
+    // Not private: reused by ReadView+MiniPlayer.swift's inline play/pause button so it matches
+    // the other title-row icons exactly.
+    func titleActionLabel(systemImage: String, foreground: Color) -> some View {
         Image(systemName: systemImage)
             .font(.system(size: 16, weight: .semibold))
             .foregroundStyle(foreground)

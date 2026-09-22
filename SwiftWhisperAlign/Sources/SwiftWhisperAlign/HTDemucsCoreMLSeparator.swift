@@ -83,7 +83,16 @@ enum HTDemucsCoreMLSeparator {
         var wacc = [Float](repeating: 0, count: L)
         var start = 0
         while start < L {
-            if cancellationCheck?() == true { break }
+            // Throws (not `break`): acc/wacc are pre-sized to the FULL song length but only
+            // filled as chunks complete, so a `break` before the first chunk finishes used to
+            // silently return an all-zero array of the correct length. That passed the caller's
+            // `isEmpty` guard and got cached by VocalStemCache as if it were a real isolation —
+            // poisoning every future Re-align of that song with a permanently silent stem (root
+            // cause of a complete, repeatable alignment failure on one song, 2026-09-22: cancel
+            // fired before the first 7.8s chunk, and the cache never had a reason to invalidate
+            // itself since "isEmpty" was never true). Throwing here means a cancelled isolation
+            // is never mistaken for a completed one.
+            if cancellationCheck?() == true { throw CancellationError() }
             let end = min(L, start + SEG)
             let n = end - start
             // Per-chunk autoreleasepool drain: predict() returns MLMultiArray-backed values

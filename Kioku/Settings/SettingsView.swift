@@ -9,11 +9,6 @@ struct SettingsView: View {
     let dictionaryStore: DictionaryStore?
     // Hosts the on-demand local-network MCP listener whose UI lives in BridgeSettingsSection.
     @ObservedObject var bridgeServer: KiokuBridgeServer
-    // Set by a "bring this setting into focus" action elsewhere in the app (e.g. LyricsView's
-    // Background Audio button, routed through ContentView.handleFocusSetting). When non-nil,
-    // the body scrolls to and briefly highlights the row with a matching `.id(...)`, then
-    // clears it back to nil. Defaulted so existing call sites (previews, etc.) still compile.
-    var scrollTarget: Binding<String?> = .constant(nil)
 
     // Not private: SettingsView+BackupSection.swift's export/import functions read these directly.
     @EnvironmentObject var notesStore: NotesStore
@@ -153,14 +148,8 @@ struct SettingsView: View {
     // engineSettings (the segmentation, dictionary, diagnostics and debug sections) lives in
     // SettingsView+EngineSections.swift to keep this file under the line-count guardrail.
 
-    // Row id currently flashed via listRowBackground when a "bring into focus" scroll lands —
-    // set alongside the scroll-to and cleared a moment later. Purely visual; scrollTarget is
-    // the source of truth for whether a focus request is pending.
-    @State private var highlightedSettingID: String? = nil
-
     var body: some View {
         NavigationStack {
-            ScrollViewReader { scrollProxy in
             Form {
                 // MARK: Appearance — live preview + typography sliders.
                 Section {
@@ -290,12 +279,6 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.segmented)
                     Toggle("Background Audio", isOn: $backgroundPlayback)
-                        .id("backgroundAudioToggle")
-                        .listRowBackground(
-                            highlightedSettingID == "backgroundAudioToggle"
-                                ? Color.accentColor.opacity(0.15)
-                                : nil
-                        )
                     Toggle("Continue to Next Note", isOn: $autoAdvanceToNextNote)
                 } header: {
                     Text("Audio")
@@ -427,23 +410,6 @@ struct SettingsView: View {
             .scrollDismissesKeyboard(.interactively)
             .washiBackground()
             .navigationTitle("Settings")
-            .onChange(of: scrollTarget.wrappedValue) { _, newValue in
-                guard let newValue else { return }
-                withAnimation {
-                    highlightedSettingID = newValue
-                    scrollProxy.scrollTo(newValue, anchor: .center)
-                }
-                // Clear both after the highlight has had time to register — scrollTarget so a
-                // later re-focus of the SAME row still fires onChange (nil -> id is a real
-                // change even if id -> id wouldn't be), highlightedSettingID so the flash fades.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    withAnimation {
-                        highlightedSettingID = nil
-                    }
-                    scrollTarget.wrappedValue = nil
-                }
-            }
-            }
         }
         // Tint applied INSIDE the SettingsView's own NavigationStack — on iOS 26 the parent
         // TabView's .themedTint() reliably reaches Toggle on-tracks but not Picker selection

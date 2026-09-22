@@ -198,36 +198,6 @@ public enum VocalStemCache {
         }
     }
 
-    // Re-encodes raw Float32 stems (`<key>.f32`, headerless mono @ 44.1 kHz) found in the cache dir
-    // to `<key>.m4a`, then removes the raw file and any `<key>.wav` beside it. The key is the same,
-    // so those songs keep their stem instead of paying a multi-minute re-isolation. Keeps the raw
-    // file's modification date so LRU order survives. Also clears interrupted encodes. Call on
-    // launch, before `enforceBudget`.
-    public static func compactRawStems() {
-        guard let dir = cacheDir(),
-              let entries = try? FileManager.default.contentsOfDirectory(
-                at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
-        // An encode interrupted by a crash leaves a hidden `.partial.m4a` the budget scan skips.
-        for partial in entries where partial.lastPathComponent.hasSuffix(".partial.m4a") {
-            try? FileManager.default.removeItem(at: partial)
-        }
-        for raw in entries where raw.pathExtension == "f32" {
-            let target = raw.deletingPathExtension().appendingPathExtension("m4a")
-            if FileManager.default.fileExists(atPath: target.path) == false,
-               let data = try? Data(contentsOf: raw), data.isEmpty == false,
-               data.count % MemoryLayout<Float>.stride == 0 {
-                var samples = [Float](repeating: 0, count: data.count / MemoryLayout<Float>.stride)
-                _ = samples.withUnsafeMutableBytes { data.copyBytes(to: $0) }
-                guard writeSamples(samples, to: target) else { continue }
-                if let mtime = (try? raw.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate {
-                    try? FileManager.default.setAttributes([.modificationDate: mtime], ofItemAtPath: target.path)
-                }
-            }
-            try? FileManager.default.removeItem(at: raw)
-            try? FileManager.default.removeItem(at: raw.deletingPathExtension().appendingPathExtension("wav"))
-        }
-    }
-
     // Evicts least-recently-USED entries until the VocalStems dir is at or under `maxBytes`. LRU is
     // by file modificationDate, which `load()` refreshes on a hit, so a hot song outlives cold ones.
     // Counts every file in the dir. Best-effort and cheap (one directory scan); call on launch and

@@ -29,10 +29,9 @@ struct LyricsView: View {
     // A second, independent @AppStorage binding to the SAME key `granularity` reads (ReadView's
     // own @AppStorage, one level up) — `granularity` is a `let` so it can't be toggled from here;
     // this one can, and SwiftUI's @AppStorage instances sharing a key stay in sync automatically,
-    // the same way SettingsView's Picker already does this independently. Backs the quick Word/
-    // Sentence toggle in reAlignBar() — a faster path than Settings for something you're likely
-    // to flip mid-listen while judging alignment quality.
-    // Not private: reAlignBar() (LyricsView+ReAlignBar.swift) reads/writes it.
+    // the same way SettingsView's Picker already does this independently. Backs the Track By
+    // Line/Word picker in the settings popup (LyricsView+SettingsPopup.swift).
+    // Not private: the settings popup reads/writes it.
     @AppStorage(LyricsHighlightGranularity.storageKey) var quickGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
     // Saved Highlight, in noteText UTF-16 coords — same signal as ReadView+Editor's
     // properties of the same name (resolved via resolvedDictionaryEntry(forSurface:), the
@@ -45,11 +44,6 @@ struct LyricsView: View {
     var savedNotLearnedSegmentLocations: Set<Int> = []
     let onSegmentTapped: (Int?, CGRect?, UITextView?) -> Void
     let onDismiss: () -> Void
-    // Switches to Settings and scrolls to/highlights the named row (see SettingsView's
-    // ScrollViewReader). Wired to the controls bar's gear button so a user wondering why
-    // playback stopped in the background can jump straight to the Background Audio toggle.
-    // Defaulted so previews/other call sites stay valid.
-    var onFocusSetting: ((String) -> Void)? = nil
     // The top bar's Re-align action; ReadView owns the run. Defaulted so previews stay valid.
     var onReAlign: () -> Void = {}
     // True while a whole-song re-align is running, with `reAlignMessage` carrying the live
@@ -222,6 +216,17 @@ struct LyricsView: View {
     private var savedNotLearnedHex: String = TokenColorSettings.defaultSavedNotLearnedHex
     @StateObject var translationCache = LyricsTranslationCache()
 
+    // Backing storage for the in-place settings popup (LyricsView+SettingsPopup.swift). All four
+    // display toggles are popup-scoped (LyricsPopupSettings) — NOT shared with ReadView's own
+    // furigana/segmentation AppStorage keys; see LyricsPopupSettings' doc comment for why sharing
+    // them crashed the app.
+    @State var isShowingSettingsPopup = false
+    @AppStorage(AudioSettings.backgroundPlaybackKey) var backgroundPlaybackEnabled: Bool = AudioSettings.defaultBackgroundPlayback
+    @AppStorage(AudioSettings.autoAdvanceToNextNoteKey) var autoAdvanceToNextNoteEnabled: Bool = AudioSettings.defaultAutoAdvanceToNextNote
+    @AppStorage(LyricsPopupSettings.showTranslationKey) var isTranslationVisible: Bool = LyricsPopupSettings.defaultShowTranslation
+    @AppStorage(LyricsPopupSettings.showSegmentationKey) var isSegmentationVisible: Bool = LyricsPopupSettings.defaultShowSegmentation
+    @AppStorage(LyricsPopupSettings.showFuriganaKey) var isFuriganaVisible: Bool = LyricsPopupSettings.defaultShowFurigana
+
     // Previously three variants (appleMusic / accentBar / focusCard) selectable from Settings.
     // Collapsed to one canonical style: centered text, no accent stripe, scale + opacity + blur
     // fall off with distance from the active cue.
@@ -323,104 +328,92 @@ struct LyricsView: View {
                 let scaledTextSize = TypographySettings.defaultTextSize * Double(activeCueScale)
                 let untimedLocations: Set<Int> = []
                 VStack(spacing: 0) {
-                    // Pulsing ♪ during instrumental gaps was removed at user request.
-                    // The active card now always shows the cue at `displayIndex` — during
-                    // intros/gaps that means the *upcoming* cue is visible, which is fine
-                    // and matches "see lyrics backwards and forwards regardless of play state."
-                    KiokuCoreTextRendererView(
-                        text: cueInput.text,
-                        segmentationRanges: cueInput.segmentationRanges,
-                        furiganaBySegmentLocation: cueInput.furiganaBySegmentLocation,
-                        furiganaLengthBySegmentLocation: cueInput.furiganaLengthBySegmentLocation,
-                        isFuriganaVisible: true,
-                        isVisualEnhancementsEnabled: true,
-                        isColorAlternationEnabled: true,
-                        textSize: Binding(get: { scaledTextSize }, set: { _ in }),
-                        lineSpacing: 0,
-                        kerning: 0,
-                        furiganaGap: CGFloat(TypographySettings.defaultFuriganaGap),
-                        evenSegmentColor: resolvedEvenSegmentColor,
-                        oddSegmentColor: resolvedOddSegmentColor,
-                        // Single-line render: scaling above keeps text within the card;
-                        // disabling wrapping prevents any residual long cue from breaking
-                        // onto a second visible line (it would clip instead).
-                        isLineWrappingEnabled: false,
-                        // Honor the Read-view ruby-spacing toggle so wide furigana doesn't
-                        // crash into adjacent kanji in the active-cue card. Packed-layout
-                        // requirements (word-level segments) are satisfied here because the
-                        // segments come from the same noteText segmentation the Read view uses.
-                        isRubySpacingEnabled: isRubySpacingEnabled,
-                        selectedHighlightRange: nil,
-                        playbackHighlightRange: cueLocalPlaybackHighlightRange(
-                            cueOriginInNote: cueOriginInNote,
-                            cueLength: cueInput.text.utf16.count
-                        ),
-                        selectionHighlightColor: .clear,
-                        playbackHighlightColor: Self.activeWordHighlightColor,
-                        // The played-portion band is gated on alignment-coverage: when
-                        // forced-alignment checkpoints don't reach near the cue end, we pass
-                        // nil (renderer shows no band at all) rather than freezing the band's
-                        // trailing edge mid-line. The active-word pill still moves — only the
-                        // "already sung" band disappears for low-coverage cues. See
-                        // `cueHasReliableDimCoverage` for the 90%-of-cueLen threshold and its
-                        // rationale.
-                        unplayedDimmingLocation: cueHasReliableDimCoverage(
-                            forCueAtIndex: displayIndex,
-                            cueLength: cueInput.text.utf16.count
+                    // Non-speech (♪) cues render as a duration-scaled, pulsing note row
+                    // (LyricsView+MusicalInterlude.swift) instead of going through the CoreText
+                    // renderer — there's no furigana/segmentation to speak of for a single glyph,
+                    // and the pulse needs independent per-note animation state the renderer
+                    // doesn't support. Pulses only while this cue is the one actually playing
+                    // (not just scrolled into view by a drag).
+                    if displayIndex < cues.count && isNonSpeechCue(at: displayIndex) {
+                        interludeNotesRow(
+                            durationMs: cues[displayIndex].endMs - cues[displayIndex].startMs,
+                            isActive: controller.isPlaying && displayIndex == activeIndex,
+                            fontSize: scaledTextSize
                         )
-                            ? cueLocalPlaybackHighlightRange(
-                                cueOriginInNote: cueOriginInNote,
-                                cueLength: cueInput.text.utf16.count
-                            ).map { $0.location + $0.length }
-                            : nil,
-                        unplayedDimmingColor: Self.playedLineHighlightColor,
-                        unknownSegmentLocations: untimedLocations,
-                        isHighlightUnknownEnabled: false,
-                        unknownSegmentColor: .tertiaryLabel,
-                        isSavedHighlightEnabled: isSavedHighlightEnabled,
-                        savedSegmentLocations: rebaseIntoCue(
-                            savedSegmentLocations,
-                            cueOriginInNote: cueOriginInNote,
-                            cueLength: cueInput.text.utf16.count
-                        ),
-                        savedHighlightColor: resolvedSavedHighlightColor,
-                        savedLearnedSegmentLocations: rebaseIntoCue(
-                            savedLearnedSegmentLocations,
-                            cueOriginInNote: cueOriginInNote,
-                            cueLength: cueInput.text.utf16.count
-                        ),
-                        savedLearnedHighlightColor: resolvedSavedLearnedHighlightColor,
-                        savedNotLearnedSegmentLocations: rebaseIntoCue(
-                            savedNotLearnedSegmentLocations,
-                            cueOriginInNote: cueOriginInNote,
-                            cueLength: cueInput.text.utf16.count
-                        ),
-                        savedNotLearnedHighlightColor: resolvedSavedNotLearnedHighlightColor,
-                        // Overrides the highlighted range's glyph color so it never has to
-                        // compete with whatever semantic token color (red vocab, blue, etc.)
-                        // it already had — see activeWordForegroundColor's doc comment above.
-                        accentTextRange: cueLocalPlaybackHighlightRange(
-                            cueOriginInNote: cueOriginInNote,
-                            cueLength: cueInput.text.utf16.count
-                        ),
-                        accentTextColor: Self.activeWordForegroundColor,
-                        debugFlags: KiokuDebugOverlayView.Flags(),
-                        illegalMergeLocation: nil,
-                        onSegmentTapped: { localLocation, rect, _ in
-                            // In the karaoke card a plain tap opens the dictionary lookup sheet —
-                            // mirrors the Read tab so the tap-to-define mental model holds across
-                            // both views. Word-level seek-to-tap moves to the long-press menu;
-                            // cue-level seek (tap an inactive cue) and the scrubber are unchanged.
-                            let globalLocation = localLocation.map { $0 + cueOriginInNote }
-                            onSegmentTapped(globalLocation, rect, nil)
-                        },
-                        isScrollEnabled: false,
-                        textAlignment: .center
-                    )
-                    .frame(maxWidth: .infinity)
-                    .frame(height: rendererHeight)
-                    .clipped()
-                    if let translation = displayedTranslation(for: displayIndex) {
+                        .frame(maxWidth: .infinity)
+                        .frame(height: rendererHeight)
+                    } else {
+                        KiokuCoreTextRendererView(
+                            text: cueInput.text,
+                            segmentationRanges: cueInput.segmentationRanges,
+                            furiganaBySegmentLocation: cueInput.furiganaBySegmentLocation,
+                            furiganaLengthBySegmentLocation: cueInput.furiganaLengthBySegmentLocation,
+                            isFuriganaVisible: isFuriganaVisible,
+                            isVisualEnhancementsEnabled: true,
+                            isColorAlternationEnabled: isSegmentationVisible,
+                            textSize: Binding(get: { scaledTextSize }, set: { _ in }),
+                            lineSpacing: 0,
+                            kerning: 0,
+                            furiganaGap: CGFloat(TypographySettings.defaultFuriganaGap),
+                            evenSegmentColor: resolvedEvenSegmentColor,
+                            oddSegmentColor: resolvedOddSegmentColor,
+                            // Single-line render: scaling above keeps text within the card;
+                            // disabling wrapping prevents any residual long cue from breaking
+                            // onto a second visible line (it would clip instead).
+                            isLineWrappingEnabled: false,
+                            // Honor the Read-view ruby-spacing toggle so wide furigana doesn't
+                            // crash into adjacent kanji in the active-cue card. Packed-layout
+                            // requirements (word-level segments) are satisfied here because the
+                            // segments come from the same noteText segmentation the Read view uses.
+                            isRubySpacingEnabled: isRubySpacingEnabled,
+                            selectedHighlightRange: nil,
+                            playbackHighlightRange: cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                            selectionHighlightColor: .clear,
+                            playbackHighlightColor: Self.activeWordHighlightColor,
+                            // The played-portion band is gated on alignment-coverage: when
+                            // forced-alignment checkpoints don't reach near the cue end, we pass
+                            // nil (renderer shows no band at all) rather than freezing the band's
+                            // trailing edge mid-line. The active-word pill still moves — only the
+                            // "already sung" band disappears for low-coverage cues. See
+                            // `cueHasReliableDimCoverage` for the 90%-of-cueLen threshold and its
+                            // rationale.
+                            unplayedDimmingLocation: cueHasReliableDimCoverage(forCueAtIndex: displayIndex, cueLength: cueInput.text.utf16.count)
+                                ? cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count).map { $0.location + $0.length }
+                                : nil,
+                            unplayedDimmingColor: Self.playedLineHighlightColor,
+                            unknownSegmentLocations: untimedLocations,
+                            isHighlightUnknownEnabled: false,
+                            unknownSegmentColor: .tertiaryLabel,
+                            isSavedHighlightEnabled: isSavedHighlightEnabled,
+                            savedSegmentLocations: rebaseIntoCue(savedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                            savedHighlightColor: resolvedSavedHighlightColor,
+                            savedLearnedSegmentLocations: rebaseIntoCue(savedLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                            savedLearnedHighlightColor: resolvedSavedLearnedHighlightColor,
+                            savedNotLearnedSegmentLocations: rebaseIntoCue(savedNotLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                            savedNotLearnedHighlightColor: resolvedSavedNotLearnedHighlightColor,
+                            // Overrides the highlighted range's glyph color so it never has to
+                            // compete with whatever semantic token color (red vocab, blue, etc.)
+                            // it already had — see activeWordForegroundColor's doc comment above.
+                            accentTextRange: cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                            accentTextColor: Self.activeWordForegroundColor,
+                            debugFlags: KiokuDebugOverlayView.Flags(),
+                            illegalMergeLocation: nil,
+                            onSegmentTapped: { localLocation, rect, _ in
+                                // In the karaoke card a plain tap opens the dictionary lookup sheet —
+                                // mirrors the Read tab so the tap-to-define mental model holds across
+                                // both views. Word-level seek-to-tap moves to the long-press menu;
+                                // cue-level seek (tap an inactive cue) and the scrubber are unchanged.
+                                let globalLocation = localLocation.map { $0 + cueOriginInNote }
+                                onSegmentTapped(globalLocation, rect, nil)
+                            },
+                            isScrollEnabled: false,
+                            textAlignment: .center
+                        )
+                        .frame(maxWidth: .infinity)
+                        .frame(height: rendererHeight)
+                        .clipped()
+                    }
+                    if isTranslationVisible, let translation = displayedTranslation(for: displayIndex) {
                         Text(translation)
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)

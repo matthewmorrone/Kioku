@@ -369,7 +369,6 @@ extension ReadView {
                     onDismiss: {
                         audioPlayback.isShowingLyricsView = false
                     },
-                    onFocusSetting: onFocusSetting,
                     onReAlign: { Task { await realignWholeNote() } },
                     isReAligning: lyricRealign.isReAligningWholeNote,
                     reAlignMessage: lyricRealign.reAlignProgressMessage,

@@ -1,10 +1,11 @@
 import SwiftUI
 
 // Top action bar for the karaoke view: Re-align (one forced-alignment pass over the whole song)
-// and the line/word highlight-granularity toggle. Not private: called from panel(geo:) in
-// LyricsView.swift.
+// and the settings-popup gear (LyricsView+SettingsPopup.swift). Not private: called from
+// panel(geo:) in LyricsView.swift.
 extension LyricsView {
-    // Re-align button (or its live progress chip while a run is in flight) plus the granularity toggle.
+    // Re-align button (or its live progress chip while a run is in flight), plus the gear that
+    // opens the in-place settings popup.
     func reAlignBar() -> some View {
         HStack(spacing: 8) {
             if isReAligning {
@@ -58,31 +59,23 @@ extension LyricsView {
 
             Spacer(minLength: 0)
 
-            exportMenu()
-
             Button {
-                let current = LyricsHighlightGranularity(rawValue: quickGranularityRaw) ?? .word
-                let next: LyricsHighlightGranularity = current == .sentence ? .word : .sentence
-                quickGranularityRaw = next.rawValue
+                isShowingSettingsPopup = true
             } label: {
-                let isSentence = quickGranularityRaw == LyricsHighlightGranularity.sentence.rawValue
-                HStack(spacing: 6) {
-                    Image(systemName: isSentence ? "line.3.horizontal" : "textformat.abc")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text(isSentence ? "Line" : "Word")
-                        .font(.system(size: 12, weight: .semibold))
-                        .lineLimit(1)
-                }
-                .foregroundStyle(isSentence ? Color.accentColor : Color.secondary)
-                .padding(.horizontal, 14)
-                .frame(height: 28)
-                .background((isSentence ? Color.accentColor : Color.secondary).opacity(0.16))
-                .clipShape(Capsule())
+                Image(systemName: "gearshape")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.secondary)
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
+                    .background(Color.secondary.opacity(0.16))
+                    .clipShape(Capsule())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(quickGranularityRaw == LyricsHighlightGranularity.sentence.rawValue
-                ? "Highlighting by line. Tap to switch to word-by-word."
-                : "Highlighting word-by-word. Tap to switch to whole-line.")
+            .accessibilityLabel("Lyrics Settings")
+            .popover(isPresented: $isShowingSettingsPopup) {
+                settingsPopup
+                    .presentationCompactAdaptation(.popover)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
