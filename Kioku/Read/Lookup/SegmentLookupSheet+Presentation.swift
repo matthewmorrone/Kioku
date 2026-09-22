@@ -1,10 +1,10 @@
 import UIKit
 
 extension SegmentLookupSheet {
-    // Presents a bottom sheet that starts at a fitted small detent and can expand to medium.
-    // All interactive sheet state lives in SurfaceSheetViewController; this method wires
-    // the coordinator back-reference, installs the updatePresentedSheetSelection callback,
-    // and configures sheet presentation detents.
+    // Presents a bottom sheet sized to a single content-fitted detent (see
+    // SurfaceSheetViewController.contentDetent()). All interactive sheet state lives in
+    // SurfaceSheetViewController; this method wires the coordinator back-reference, installs
+    // the updatePresentedSheetSelection callback, and configures sheet presentation detents.
     func presentSurfaceSheet(
         surface: String,
         leftNeighborSurface: String?,
@@ -43,7 +43,7 @@ extension SegmentLookupSheet {
         let capturedOnWillDismiss = self.onWillDismiss
 
         dismissPopover(notifyDismissal: false) { [weak self] in
-            guard let self, let presenter = self.topPresentingController() else { return }
+            guard let self else { return }
 
             self.onDismiss = onDismiss
             self.onWillDismiss = capturedOnWillDismiss
@@ -69,128 +69,118 @@ extension SegmentLookupSheet {
             self.segmentRangeProvider = segmentRangeProvider
             self.sheetLexiconDebugProvider = sheetLexiconDebugProvider
             self.sheetFrequencyProvider = sheetFrequencyProvider
-            // Initial supplemental data refresh runs ASYNC: the sheet presents immediately
-            // with whatever the providers haven't filled in yet (empty arrays / nil), and
-            // the per-section UI methods (updateMiddleContent etc.) run when the background
-            // refresh hops back to main. Visually: tap → sheet animates in instantly → a
-            // few hundred ms later the definitions/components populate. The previous
-            // synchronous path blocked the present for the full lookup duration (3–7s).
-            // We can't call sheetVC.update* here because sheetVC isn't constructed yet;
-            // the sheet's own viewDidLoad reads the current* properties at present time,
-            // and the async completion below re-runs the update methods once data arrives.
 
-            let sheetVC = SurfaceSheetViewController(
-                surface: surface,
-                leftNeighborSurface: leftNeighborSurface,
-                rightNeighborSurface: rightNeighborSurface,
-                onSelectPrevious: onSelectPrevious,
-                onSelectNext: onSelectNext,
-                onMergeLeft: onMergeLeft,
-                onMergeRight: onMergeRight,
-                onSplitApply: onSplitApply
-            )
-            sheetVC.sheet = self
+            // The sheet's height is fitted to its content (SurfaceSheetViewController.contentDetent()),
+            // so it's built and presented AFTER the dictionary lookup resolves, against final content —
+            // not presented empty/fitted-small and resized once data streams in, which is exactly the
+            // "buttons jump under your finger" failure mode a content-fitted detent needs to avoid. That
+            // trades the previous instant-open feel for a beat of latency here, typically well under the
+            // 3–7s the old fully-synchronous lookup path used to take.
+            self.refreshSheetSupplementalDataAsync { [weak self] in
+                guard let self, let presenter = self.topPresentingController() else { return }
 
-            self.onSheetSelectNext = { [weak sheetVC] in
-                guard let sheetVC, sheetVC.isSplitEditorVisible == false,
-                      let outcome = sheetVC.currentOnSelectNext?() else { return }
-                sheetVC.updateCurrentSurface(outcome)
-                self.refreshSheetSupplementalData()
-                sheetVC.updateReadingFurigana()
-                sheetVC.updateLemmaChain()
-                sheetVC.updateMiddleContent()
-                sheetVC.updateSaveButtonAppearance()
-                sheetVC.updateOpenDetailButtonAppearance()
-            }
+                let sheetVC = SurfaceSheetViewController(
+                    surface: surface,
+                    leftNeighborSurface: leftNeighborSurface,
+                    rightNeighborSurface: rightNeighborSurface,
+                    onSelectPrevious: onSelectPrevious,
+                    onSelectNext: onSelectNext,
+                    onMergeLeft: onMergeLeft,
+                    onMergeRight: onMergeRight,
+                    onSplitApply: onSplitApply
+                )
+                sheetVC.sheet = self
 
-            self.onSheetSelectPrevious = { [weak sheetVC] in
-                guard let sheetVC, sheetVC.isSplitEditorVisible == false,
-                      let outcome = sheetVC.currentOnSelectPrevious?() else { return }
-                sheetVC.updateCurrentSurface(outcome)
-                self.refreshSheetSupplementalData()
-                sheetVC.updateReadingFurigana()
-                sheetVC.updateLemmaChain()
-                sheetVC.updateMiddleContent()
-                sheetVC.updateSaveButtonAppearance()
-                sheetVC.updateOpenDetailButtonAppearance()
-            }
-
-            self.updatePresentedSheetSelection = { [weak sheetVC] (
-                updatedSurface,
-                updatedLeftNeighborSurface,
-                updatedRightNeighborSurface,
-                updatedOnSelectPrevious,
-                updatedOnSelectNext,
-                updatedOnMergeLeft,
-                updatedOnMergeRight,
-                updatedOnSplitApply,
-                updatedSheetReadingsProvider,
-                updatedSheetSublatticeProvider,
-                updatedSegmentRangeProvider,
-                updatedSheetLexiconDebugProvider,
-                updatedSheetFrequencyProvider,
-                updatedOnDismiss
-            ) in
-                guard let sheetVC else { return }
-                sheetVC.currentOnSelectPrevious = updatedOnSelectPrevious
-                sheetVC.currentOnSelectNext = updatedOnSelectNext
-                sheetVC.currentOnMergeLeft = updatedOnMergeLeft
-                sheetVC.currentOnMergeRight = updatedOnMergeRight
-                sheetVC.currentOnSplitApply = updatedOnSplitApply
-                self.sheetReadingsProvider = updatedSheetReadingsProvider
-                self.sheetSublatticeProvider = updatedSheetSublatticeProvider
-                self.segmentRangeProvider = updatedSegmentRangeProvider
-                self.sheetLexiconDebugProvider = updatedSheetLexiconDebugProvider
-                self.sheetFrequencyProvider = updatedSheetFrequencyProvider
-                self.onDismiss = updatedOnDismiss
-
-                if sheetVC.isSplitEditorVisible {
-                    sheetVC.setSplitEditorVisible(false)
-                }
-
-                TapDiagnostics.mark("in-place update closure entered")
-                // Header text swaps synchronously so the user sees instant visual feedback
-                // (the tapped surface in the sheet header) while the dictionary lookups run.
-                sheetVC.updateCurrentSurface((
-                    surface: updatedSurface,
-                    leftNeighborSurface: updatedLeftNeighborSurface,
-                    rightNeighborSurface: updatedRightNeighborSurface
-                ))
-                TapDiagnostics.mark("updateCurrentSurface done (synchronous header update)")
-                // Heavy lookups run on a background queue. When they complete, hop back to
-                // main and refresh the rest of the sheet.
-                self.refreshSheetSupplementalDataAsync { [weak sheetVC] in
-                    guard let sheetVC else { return }
-                    TapDiagnostics.mark("async refresh complete, applying to sheet UI")
+                self.onSheetSelectNext = { [weak sheetVC] in
+                    guard let sheetVC, sheetVC.isSplitEditorVisible == false,
+                          let outcome = sheetVC.currentOnSelectNext?() else { return }
+                    sheetVC.updateCurrentSurface(outcome)
+                    self.refreshSheetSupplementalData()
                     sheetVC.updateReadingFurigana()
                     sheetVC.updateLemmaChain()
                     sheetVC.updateMiddleContent()
                     sheetVC.updateSaveButtonAppearance()
                     sheetVC.updateOpenDetailButtonAppearance()
-                    TapDiagnostics.mark("sheet UI updates applied")
-                    TapDiagnostics.endTap("in-place update fully settled")
                 }
-                TapDiagnostics.mark("in-place update closure returning (refresh continues async)")
-            }
 
-            self.configureSurfaceSheetPresentation(sheetVC)
-            presenter.present(sheetVC, animated: true)
-            self.presentedSheetController = sheetVC
+                self.onSheetSelectPrevious = { [weak sheetVC] in
+                    guard let sheetVC, sheetVC.isSplitEditorVisible == false,
+                          let outcome = sheetVC.currentOnSelectPrevious?() else { return }
+                    sheetVC.updateCurrentSurface(outcome)
+                    self.refreshSheetSupplementalData()
+                    sheetVC.updateReadingFurigana()
+                    sheetVC.updateLemmaChain()
+                    sheetVC.updateMiddleContent()
+                    sheetVC.updateSaveButtonAppearance()
+                    sheetVC.updateOpenDetailButtonAppearance()
+                }
 
-            // Kick off the supplemental refresh AFTER present() so the sheet starts
-            // animating in immediately — the user sees motion ~16ms after the tap instead
-            // of waiting for dictionary work to finish. When the providers complete, the
-            // sheet's update* methods re-populate the dynamic sections.
-            self.refreshSheetSupplementalDataAsync { [weak sheetVC] in
-                guard let sheetVC else { return }
-                TapDiagnostics.mark("fresh-present: async refresh complete, applying to sheet UI")
-                sheetVC.updateReadingFurigana()
-                sheetVC.updateLemmaChain()
-                sheetVC.updateMiddleContent()
-                sheetVC.updateSaveButtonAppearance()
-                sheetVC.updateOpenDetailButtonAppearance()
-                TapDiagnostics.mark("fresh-present: sheet UI updates applied")
-                TapDiagnostics.endTap("fresh-present fully settled")
+                self.updatePresentedSheetSelection = { [weak sheetVC] (
+                    updatedSurface,
+                    updatedLeftNeighborSurface,
+                    updatedRightNeighborSurface,
+                    updatedOnSelectPrevious,
+                    updatedOnSelectNext,
+                    updatedOnMergeLeft,
+                    updatedOnMergeRight,
+                    updatedOnSplitApply,
+                    updatedSheetReadingsProvider,
+                    updatedSheetSublatticeProvider,
+                    updatedSegmentRangeProvider,
+                    updatedSheetLexiconDebugProvider,
+                    updatedSheetFrequencyProvider,
+                    updatedOnDismiss
+                ) in
+                    guard let sheetVC else { return }
+                    sheetVC.currentOnSelectPrevious = updatedOnSelectPrevious
+                    sheetVC.currentOnSelectNext = updatedOnSelectNext
+                    sheetVC.currentOnMergeLeft = updatedOnMergeLeft
+                    sheetVC.currentOnMergeRight = updatedOnMergeRight
+                    sheetVC.currentOnSplitApply = updatedOnSplitApply
+                    self.sheetReadingsProvider = updatedSheetReadingsProvider
+                    self.sheetSublatticeProvider = updatedSheetSublatticeProvider
+                    self.segmentRangeProvider = updatedSegmentRangeProvider
+                    self.sheetLexiconDebugProvider = updatedSheetLexiconDebugProvider
+                    self.sheetFrequencyProvider = updatedSheetFrequencyProvider
+                    self.onDismiss = updatedOnDismiss
+
+                    if sheetVC.isSplitEditorVisible {
+                        sheetVC.setSplitEditorVisible(false)
+                    }
+
+                    TapDiagnostics.mark("in-place update closure entered")
+                    // Header text swaps synchronously so the user sees instant visual feedback
+                    // (the tapped surface in the sheet header) while the dictionary lookups run.
+                    sheetVC.updateCurrentSurface((
+                        surface: updatedSurface,
+                        leftNeighborSurface: updatedLeftNeighborSurface,
+                        rightNeighborSurface: updatedRightNeighborSurface
+                    ))
+                    TapDiagnostics.mark("updateCurrentSurface done (synchronous header update)")
+                    // Heavy lookups run on a background queue. When they complete, hop back to
+                    // main and refresh the rest of the sheet. updateMiddleContent() re-measures
+                    // the content-fitted detent itself, so the sheet resizes once, here, to match.
+                    self.refreshSheetSupplementalDataAsync { [weak sheetVC] in
+                        guard let sheetVC else { return }
+                        TapDiagnostics.mark("async refresh complete, applying to sheet UI")
+                        sheetVC.updateReadingFurigana()
+                        sheetVC.updateLemmaChain()
+                        sheetVC.updateMiddleContent()
+                        sheetVC.updateSaveButtonAppearance()
+                        sheetVC.updateOpenDetailButtonAppearance()
+                        TapDiagnostics.mark("sheet UI updates applied")
+                        TapDiagnostics.endTap("in-place update fully settled")
+                    }
+                    TapDiagnostics.mark("in-place update closure returning (refresh continues async)")
+                }
+
+                // Supplemental data (including currentSheetDictionaryEntry, read by
+                // sheetVC.viewDidLoad()'s updateMiddleContent()) is already in place from the
+                // refreshSheetSupplementalDataAsync completion this whole block runs inside of, so
+                // the sheet presents once, already sized to its final content.
+                self.configureSurfaceSheetPresentation(sheetVC)
+                presenter.present(sheetVC, animated: true)
+                self.presentedSheetController = sheetVC
             }
         }
     }
