@@ -2,6 +2,7 @@
   "resources": [
     {
       "name": "jmdict-eng",
+      "description": "The JMdict Japanese-English dictionary, as scriptin's JSON rebuild of the EDRDG XML. Every headword, reading, sense and gloss the app shows comes from here — it is the spine the rest of these resources annotate.",
       "type": "jmdict",
       "path": "Resources/jmdict-eng-3.6.2.json",
       "required": true,
@@ -21,6 +22,7 @@
     },
     {
       "name": "extras",
+      "description": "Hand-written entries for words JMdict does not carry, mostly katakana fragments (ユア) the segmenter needs in order to split compounds. Merged into the same tables as JMdict so lookup and segmentation cannot tell them apart.",
       "type": "supplemental-dictionary",
       "path": "Resources/extras.json",
       "required": false,
@@ -32,6 +34,7 @@
     },
     {
       "name": "jpdb-frequency-kana",
+      "description": "Word-frequency ranks measured over a large corpus of Japanese media, keyed by kana spelling. Drives the Common/Rare tier badge and orders homographs so the reading a learner will actually meet is the one shown first.",
       "type": "frequency-dictionary",
       "path": "Resources/jpdb-frequency-kana-2.2.json",
       "required": false,
@@ -51,6 +54,7 @@
     },
     {
       "name": "wordfreq",
+      "description": "Python package giving a Zipf frequency for any Japanese string. It is the only frequency source covering words usually written in kana (この, する, こと), which JPDB's kana ranks miss; without it those everyday words rank as Rare, so the build hard-fails rather than ship that silently.",
       "type": "frequency-tool",
       "path": null,
       "required": false,
@@ -62,6 +66,7 @@
     },
     {
       "name": "kanjidic2-all",
+      "description": "Per-character kanji data: readings, meanings, stroke counts, grade and JLPT level. Backs the Kanji breakdown on a word's detail screen and the standalone kanji browser.",
       "type": "kanjidic2",
       "path": "Resources/kanjidic2-all.json",
       "required": false,
@@ -81,6 +86,7 @@
     },
     {
       "name": "pitch-accent",
+      "description": "Accent type and mora count per word, derived from UniDic's kana-accent lexicon. Shows where the pitch drop falls — something printed dictionaries usually omit even though it changes how a word is pronounced.",
       "type": "pitch-accent",
       "path": null,
       "required": false,
@@ -97,6 +103,7 @@
     },
     {
       "name": "sentence-pairs",
+      "description": "Aligned Japanese/English sentence pairs from Tatoeba. Supplies the examples under a sense so a gloss is backed by real usage instead of a bare translation.",
       "type": "sentence-pairs",
       "path": null,
       "required": false,
@@ -115,6 +122,7 @@
     },
     {
       "name": "jlpt-vocab",
+      "description": "Which JLPT level (N5-N1) each word sits at. Fills the level badge on a word and lets learners filter and sort their study lists by exam level.",
       "type": "jlpt-vocabulary",
       "path": null,
       "required": false,
@@ -131,6 +139,7 @@
     },
     {
       "name": "radkfile2",
+      "description": "Radical-to-kanji index: which characters contain a given radical. Powers radical lookup, the way to find a kanji you can neither read nor type.",
       "type": "radical-decomposition",
       "path": "Resources/radkfile2.utf8",
       "required": false,
@@ -151,6 +160,7 @@
     },
     {
       "name": "kradfile2",
+      "description": "The inverse index, kanji to its component radicals. Shows what a character is built from, and narrows the radical picker as components are chosen.",
       "type": "radical-decomposition",
       "path": "Resources/kradfile2.utf8",
       "required": false,
@@ -171,6 +181,7 @@
     },
     {
       "name": "handwriting-ja",
+      "description": "Zinnia/Tegaki stroke-based recognition model, letting users draw a kanji they cannot type. ~25MB and LGPL, so it is fetched per machine rather than committed.",
       "type": "handwriting-recognition-model",
       "path": "Resources/handwriting-ja.model",
       "required": false,
@@ -182,6 +193,7 @@
     },
     {
       "name": "kanjivg",
+      "description": "Per-character stroke paths in drawing order. Drives the animated stroke-order diagrams, and is the only source here that knows how a character is written rather than what it means.",
       "type": "stroke-data",
       "path": "Resources/kanjivg.xml",
       "required": false,
@@ -200,17 +212,19 @@
     },
     {
       "name": "dictionary",
+      "description": "The SQLite database the app actually queries — every resource below marked feedsDictionary compiled into a single file by generate_db.py. Downloaded on first launch instead of bundled, because at ~350MB it would otherwise dominate the install.",
       "type": "sqlite",
       "path": "Resources/dictionary.sqlite",
       "required": true,
       "derived": true,
       "url": "https://github.com/matthewmorrone/Kioku/releases/download/dictionary-v9/dictionary.sqlite",
       "sha256": "32948b3be31c7ad5405fad7f7e63762863d8110812bb86d5fdb6131f58f5c717",
-      "provenance": "generated by generate_db.py from every manifest entry with feedsDictionary=true (see the top-level \"regeneration\" and \"tools\" blocks): jmdict-eng, extras, jpdb-frequency-kana, wordfreq, kanjidic2-all, radkfile2, kradfile2, kanjivg, and the pitch-accent / sentence-pairs / jlpt-vocab datasets derived from their raw sources. NOT bundled into Kioku.app (~350MB, too large to ship in the baseline install) and NOT committed to git — the local Resources/dictionary.sqlite copy is downloaded straight from this release URL by scripts/ensure_dictionary.sh (used for tests, CI, and generate_db.py's own staleness check), same as at runtime. At runtime DictionaryDownloadManager (Kioku/Dictionary/DictionaryDownloadManager.swift) downloads this exact release asset into Application Support on first launch, verified against the sha256 above. When dictionary.sqlite is rebuilt with meaningfully different content: run generate_db.py, bump the tag (e.g. dictionary-v8) and recompute this sha256 in both this entry and DictionaryDownloadManager.releaseTag/expectedSHA256, then run scripts/publish_dictionary_release.sh locally to publish the release — there is no CI automation for this step, since generate_db.py's upstream inputs are gitignored and only present on whichever machine ran the generator. dictionary-v5 stops JMdict-flagged obsolete/irregular/search-only readings (re_inf ok/ik/sk) from outranking the standard reading — fixed 2,297 surfaces including 涙 (was なだ, now なみだ), お母さん (was おかーさん, now おかあさん), and お父さん (was おとっさん, now おとうさん). dictionary-v6 re-materializes surface_readings with the has_direct_rank column (materialize_surface_readings in generate_db.py, no upstream data changes) so a reading that only INHERITS a multi-reading entry's jpdb_rank can no longer tie with — and lose the wordfreq_zipf tiebreak to — a sibling reading with its own direct rank: fixed the default reading on 6,491 surfaces, including 何か (was なんか, now なにか) and 夜 (was よ, now よる). dictionary-v7 applies PREFERRED_READING_OVERRIDES to surface_readings.best_rank (generate_db.py, no upstream data changes) so a manually curated exception list can override corpus-frequency ranking for surfaces where it picks a reading Japanese speakers don't actually default to: fixed 抱く (was いだく, now だく). dictionary-v8 is the first build produced entirely from the raw upstream sources in this manifest (generate_db.py now derives pitch-accent, sentence-pairs and jlpt-vocab itself): pitch_accent and entry_jlpt_level are byte-for-byte what v7 held, sentence_pairs is refreshed from Tatoeba (280,508 pairs, and ~2,100 English sentences that v7 had stripped of quotation marks are intact), and extras.json gains ユア so ユアラブ segments as ユア + ラブ. dictionary-v9 adds the surface_frequency table (materialize_surface_frequency in generate_db.py, no upstream data changes): the JPDB rank of each surface AS WRITTEN, keeping the kana-spelling (㋕) ranks import_jpdb has no row for — する is rank 11 in kana while its kanji form 為る is 34586 — which the segmenter's cost model reads; every other table is byte-for-byte what v8 held. NOTE: the ユア entry described under dictionary-v8 is in extras.json but in neither the v8 nor the v9 file — both were generated before that edit, so ユアラブ does not yet split; any from-source rebuild picks it up (verified: a full rebuild differs from v9 by exactly that one entry plus Tatoeba's rolling sentence churn), and publish_dictionary_release.sh now refuses a dictionary that lacks an extras.json surface.",
+      "provenance": "Generated by generate_db.py from every manifest entry with feedsDictionary=true (see the top-level \"regeneration\" and \"tools\" blocks). Neither bundled into Kioku.app nor committed to git: the local Resources/dictionary.sqlite is downloaded from the release url above by scripts/ensure_dictionary.sh (for tests, CI, and generate_db.py's own staleness check), and at runtime DictionaryDownloadManager fetches that same asset into Application Support on first launch, verified against the sha256 above. To republish after a rebuild with meaningfully different content: run generate_db.py, bump the tag, recompute the sha256 both here and in DictionaryDownloadManager.releaseTag/expectedSHA256, then run scripts/publish_dictionary_release.sh locally. There is no CI automation for this — generate_db.py's upstream inputs are gitignored and exist only on whichever machine ran the generator.",
       "feedsDictionary": false
     },
     {
       "name": "mecab-ipadic-matrix",
+      "description": "IPADIC's bigram connection-cost matrix — the cost of following one word class with another. The default trie segmenter's Viterbi scorer reads it to choose between competing splits, so it is the one piece of MeCab data committed directly (3.5MB) rather than fetched: a fresh clone would otherwise segment worse with no sign anything was missing.",
       "type": "mecab-dictionary",
       "path": "Resources/MeCab/ipadic/matrix.bin",
       "required": true,
@@ -222,6 +236,7 @@
     },
     {
       "name": "mecab-ipadic-full",
+      "description": "The complete IPADIC dictionary, for the optional MeCab segmentation backend. Reachable only via Settings > Segmentation > Engine: MeCab; the app falls back to the trie segmenter when it is absent, so it is not checked in.",
       "type": "mecab-dictionary",
       "path": "Resources/MeCab/ipadic/",
       "required": false,
@@ -234,6 +249,7 @@
     },
     {
       "name": "mecab-unidic",
+      "description": "UniDic for the MeCab backend — an alternative to IPADIC with finer-grained parts of speech. Two settings changes past the default and ~196MB, so it is deliberately kept outside the Resources/MeCab/ folder Xcode bundles wholesale, and ships to nobody.",
       "type": "mecab-dictionary",
       "path": "Resources/MeCab-unidic-optional/unidic/",
       "required": false,
@@ -253,6 +269,7 @@
     },
     {
       "name": "unidic-kana-accent-src",
+      "description": "The UniDic source archive the pitch-accent table is derived from. Pinned as its own entry so the derivation's input is reproducible rather than implied.",
       "type": "source-archive",
       "path": null,
       "required": false,
@@ -271,6 +288,7 @@
     },
     {
       "name": "tatoeba-jpn-sentences",
+      "description": "Tatoeba's Japanese sentence export — the Japanese half of the example-sentence pairs.",
       "type": "source-archive",
       "path": null,
       "required": false,
@@ -288,6 +306,7 @@
     },
     {
       "name": "tatoeba-eng-sentences",
+      "description": "Tatoeba's English sentence export — the English half of the example-sentence pairs.",
       "type": "source-archive",
       "path": null,
       "required": false,
@@ -305,6 +324,7 @@
     },
     {
       "name": "tatoeba-links",
+      "description": "Tatoeba's table of which sentence translates which, the join that turns the two exports above into aligned pairs. All languages and ~150MB, so it is streamed out of the archive rather than unpacked.",
       "type": "source-archive",
       "path": null,
       "required": false,
@@ -323,6 +343,7 @@
     },
     {
       "name": "jlpt-vocab-source",
+      "description": "Pinned CSV mirror of Jonathan Waller's JLPT vocabulary lists — the raw input the jlpt-vocab table is derived from.",
       "type": "source-archive",
       "path": null,
       "required": false,
@@ -340,6 +361,7 @@
     },
     {
       "name": "opencc-jp-shinjitai",
+      "description": "Modern-to-old-form (shinjitai/kyujitai) kanji correspondences. Generates KyujitaiTable.swift so a word written in prewar forms (國 for 国) still finds its entry. Feeds the app directly; generate_db.py never reads it.",
       "type": "variant-kanji-table",
       "path": null,
       "required": false,
