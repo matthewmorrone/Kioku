@@ -48,10 +48,10 @@ final class SurfaceSheetViewController: UIViewController {
     var splitPanelContainer: UIStackView!
     var splitPanelCollapsedConstraint: NSLayoutConstraint!
     // Collapses the definitions area to 0 height while the split editor is open, freeing the vertical
-    // room the taller split panel needs so the fixed `.medium` detent doesn't clip the header title.
+    // room the taller split panel needs within the content-fitted detent.
     var middleContentCollapsedConstraint: NSLayoutConstraint!
-    // Identifier for the content-fitted detent used while the split editor is open (see splitContentDetent()).
-    let splitContentDetentIdentifier = UISheetPresentationController.Detent.Identifier("kioku.splitContent")
+    // Identifier for the sheet's single content-fitted detent (see contentDetent()).
+    let contentDetentIdentifier = UISheetPresentationController.Detent.Identifier("kioku.content")
     var leftInput: UITextField!
     var rightInput: UITextField!
     var leftInputTapButton: UIButton!
@@ -292,8 +292,8 @@ final class SurfaceSheetViewController: UIViewController {
 
     // MARK: - Split management
 
-    // Shows or hides the split editor panel and updates button tint. Sheet height stays
-    // fixed at `.medium()` — the split editor expands inside the existing sheet bounds.
+    // Shows or hides the split editor panel and updates button tint. The sheet has a single
+    // content-fitted detent (see contentDetent()), so toggling the panel just re-measures it.
     func setSplitEditorVisible(_ visible: Bool) {
         isSplitEditorVisible = visible
         splitPanelContainer.isHidden = !visible
@@ -303,24 +303,15 @@ final class SurfaceSheetViewController: UIViewController {
         middleContentContainer.isHidden = visible
         middleContentCollapsedConstraint.isActive = visible
         splitButton.tintColor = visible ? .label : .secondaryLabel
-
-        // Built-in detents are coarse (.medium ≈ half, .large ≈ full), so opening the split editor
-        // used to snap the sheet to full height. Instead use a custom detent sized to the split UI's
-        // actual content height — the sheet grows by exactly what the cut list needs, no big jump.
-        if let presentation = sheetPresentationController {
-            presentation.animateChanges {
-                presentation.detents = visible ? [.medium(), splitContentDetent()] : [.medium()]
-                presentation.largestUndimmedDetentIdentifier = visible ? splitContentDetentIdentifier : .medium
-                presentation.selectedDetentIdentifier = visible ? splitContentDetentIdentifier : .medium
-            }
-        }
+        invalidateContentDetentIfPresented()
     }
 
-    // A custom detent whose height is the split UI's fitted content height, so the sheet sits exactly
-    // as tall as header + split panel + toolbar require instead of snapping to .medium/.large. Capped
-    // at the maximum so a very long cut list (the readout scrolls past its own cap) can't overflow.
-    func splitContentDetent() -> UISheetPresentationController.Detent {
-        .custom(identifier: splitContentDetentIdentifier) { [weak self] context in
+    // A custom detent whose height is the sheet's actual fitted content — header, definitions
+    // (or the split editor when it's open) and the action menu — so the sheet never opens with
+    // dead space below a short entry, and never clips a long one. Capped at the maximum so a
+    // very long cut list (the readout scrolls past its own cap) can't overflow.
+    func contentDetent() -> UISheetPresentationController.Detent {
+        .custom(identifier: contentDetentIdentifier) { [weak self] context in
             guard let self else { return context.maximumDetentValue }
             self.view.layoutIfNeeded()
             let fitted = self.view.systemLayoutSizeFitting(
@@ -329,6 +320,17 @@ final class SurfaceSheetViewController: UIViewController {
                 verticalFittingPriority: .fittingSizeLevel
             ).height + self.view.safeAreaInsets.bottom
             return min(max(fitted, 240), context.maximumDetentValue)
+        }
+    }
+
+    // Re-measures the content-fitted detent so the sheet grows or shrinks to match whatever just
+    // changed (a different word's sense count, a reading swap, the split editor opening). No-op
+    // before the sheet is actually on screen — the initial detent resolution at present time
+    // already sizes correctly against the content in place at that point.
+    func invalidateContentDetentIfPresented() {
+        guard isViewLoaded, view.window != nil, let presentation = sheetPresentationController else { return }
+        presentation.animateChanges {
+            presentation.invalidateDetents()
         }
     }
 
@@ -378,7 +380,7 @@ final class SurfaceSheetViewController: UIViewController {
         // The readout's row count (and thus the fitted content height) just changed for this segment;
         // recompute the custom detent so the sheet resizes to match instead of keeping the prior word's height.
         if isSplitEditorVisible {
-            sheetPresentationController?.invalidateDetents()
+            invalidateContentDetentIfPresented()
         }
     }
 
@@ -567,6 +569,7 @@ final class SurfaceSheetViewController: UIViewController {
             selectedReading: displayedReading(),
             selectedKanji: currentSurface
         )
+        invalidateContentDetentIfPresented()
     }
 
     // Refreshes the save button icon and tint to reflect the current saved state. Same
