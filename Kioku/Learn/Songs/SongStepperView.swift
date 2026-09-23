@@ -54,9 +54,6 @@ struct SongStepperView: View {
     @State var expandedByLineIndex: Set<Int> = []
     @State private var isRegenerateConfirmationPresented: Bool = false
     @State private var isCancelConfirmationPresented: Bool = false
-    // Drives the confirmation for the merged generate+correct path — kept separate from
-    // isRegenerateConfirmationPresented so the two dialogs' distinct messages (and
-    // destinations: startGeneration vs startMergedGeneration) can't cross-wire.
     // Listen-along state shared with SongStepperView+Listen (internal for that reason).
     // True once this view has engaged listen-along (played anything); drives teardown.
     @State var isListening: Bool = false

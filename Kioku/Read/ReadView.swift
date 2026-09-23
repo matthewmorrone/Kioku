@@ -168,6 +168,13 @@ struct ReadView: View {
     @AppStorage(DictionarySettings.prefersSheetDirectSegmentActionsKey)
     var prefersSheetDirectSegmentActions: Bool = DictionarySettings.defaultPrefersSheetDirectSegmentActions
 
+    // Whether AI correction has somewhere to go (a provider with a key, or a stub in stub mode).
+    // Reads llmKeysRevision so the sparkles button enables the moment a key is entered.
+    var isCorrectionConfigured: Bool {
+        _ = llmKeysRevision
+        return LLMSettings.isConfigured()
+    }
+
     // Reactive equivalent of "is song breakdown usable with the active provider": re-evaluates
     // when the key changes (llmKeysRevision). Reads the breakdown-specific stub key in stub mode.
     var isBreakdownConfigured: Bool {

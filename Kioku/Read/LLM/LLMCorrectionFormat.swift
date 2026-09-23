@@ -1,12 +1,11 @@
 import Foundation
 
 // The compact segmentation format an LLM segmentation correction is written in — "1|(流)[なが]されて|…|"
-// per note line — and the prompt that teaches it. The song breakdown's merged request
-// (MergedCorrectionBreakdownService) asks for a corrected segmentation in this format
-// alongside the breakdown; this type holds the instructions for that half and parses what comes
-// back into [LLMSegmentEntry] for ReadView's pending-changes review.
+// per note line — and the prompt that teaches it. LLMCorrectionClient sends a note's current
+// segmentation in this format with this prompt; parseCompactResponse turns the corrected text
+// that comes back into [LLMSegmentEntry] for ReadView's pending-changes review.
 enum LLMCorrectionFormat {
-    // The segmentation-correction instructions sent in the merged breakdown request.
+    // The segmentation-correction instructions (the system prompt LLMCorrectionClient sends).
     static let systemPrompt = """
         You are an expert Japanese linguist. \
         You will be given Japanese text with a proposed morphological segmentation and readings. \

@@ -35,6 +35,13 @@ extension ReadView {
             } message: {
                 Text(llmCorrection.llmCorrectionErrorMessage)
             }
+            .alert("Apply AI Changes?", isPresented: $llmCorrection.isShowingLLMConfirmAll) {
+                Button("Apply All") { confirmLLMChanges() }
+                Button("Reject All", role: .destructive) { rejectAllPendingLLMChanges() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("\(llmCorrection.pendingLLMChangedLocations.count) suggested change(s) are highlighted. Tap one to decide on it individually.")
+            }
             .alert("AI Correction", isPresented: $llmCorrection.isShowingLLMChangePopover) {
                 Button("Confirm") {
                     if let loc = llmCorrection.llmChangePopoverLocation {
@@ -177,11 +184,6 @@ extension ReadView {
                 // can finish either before or after pendingScrollTarget arrives from ContentView —
                 // whichever onChange fires last is the one that actually has both pieces ready.
                 jumpToPendingScrollSurfaceIfReady()
-                consumePendingBreakdownCorrection()
-            }
-            // A merged breakdown's segmentation half arrives here as pending AI changes.
-            .onReceive(songBreakdownStore.$pendingCorrectionByNoteID) { _ in
-                consumePendingBreakdownCorrection()
             }
             .onChange(of: editModeScroll.isEditMode) { _, editing in
                 if editing {

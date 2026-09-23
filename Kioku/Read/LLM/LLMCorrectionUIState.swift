@@ -1,11 +1,18 @@
 import Foundation
 import Observation
 
-// Owns ReadView's state for reviewing a segmentation correction that arrived with a song
-// breakdown: pending per-location changes awaiting confirm/reject, and the error/popover alerts
-// around them. Extracted from ReadView's own @State so the review reads as one unit.
+// Owns ReadView's AI segmentation-correction state: the in-flight request and the line it's on,
+// pending per-location changes awaiting confirm/reject, and the popups around them. Extracted
+// from ReadView's own @State so the correction reads as one unit.
 @Observable
 final class LLMCorrectionUIState {
+    var isRequestingLLMCorrection = false
+    var llmCorrectionTask: Task<Void, Never>?
+    // 0-based index of the note line the model is writing, for the in-progress highlight; nil
+    // when no correction is streaming.
+    var inFlightLineIndex: Int?
+    // The "apply all pending changes?" popup behind the sparkles checkmark.
+    var isShowingLLMConfirmAll = false
     var isShowingLLMCorrectionError = false
     var llmCorrectionErrorMessage = ""
 

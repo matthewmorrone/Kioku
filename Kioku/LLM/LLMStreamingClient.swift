@@ -1,8 +1,8 @@
 import Foundation
 
-// Server-sent-events client for the two remote chat providers. Both breakdown services
-// (SongBreakdownService, MergedCorrectionBreakdownService) go through here so the progressive
-// per-line UI in SongStepperView gets text as the model writes it instead of one blob after a
+// Server-sent-events client for the two remote chat providers. Song breakdowns
+// (SongBreakdownService) and segmentation corrections (LLMCorrectionClient) go through here so
+// their per-line UI gets text as the model writes it instead of one blob after a
 // 30–180s wait. Each call returns the fully accumulated text (so callers parse exactly what a
 // non-streaming request would have returned) and invokes `onDelta` with every text fragment
 // as it arrives, on the network task — callers hop to the main actor themselves.

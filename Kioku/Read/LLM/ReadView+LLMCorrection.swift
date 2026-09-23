@@ -16,29 +16,118 @@ private struct LLMCorrectionNewSeg {
     let surface: String
 }
 
-// Hosts the read screen's review of a segmentation correction that arrived with a song
-// breakdown: validates it against the note, stages it as a pending proposal, and surfaces
-// errors as alerts. Nothing is written to the document until the user confirms — see
-// stageLLMCorrectionResponse / applyPendingSegmentation.
+// Hosts the read screen's AI segmentation correction: requests it (LLMCorrectionClient),
+// validates the streamed answer against the note, stages it as a pending proposal, and surfaces
+// errors as alerts. Nothing is written to the document until the user confirms each change in a
+// popup — see stageLLMCorrectionResponse / confirmLLMChange.
 extension ReadView {
 
-    // Picks up a segmentation correction that arrived with a merged breakdown for the active
-    // note: merged per line against the current segmentation, staged, and held as pending AI
-    // changes until the sparkles checkmark confirms them.
-    func consumePendingBreakdownCorrection() {
-        guard let noteID = document.activeNoteID,
-              let response = songBreakdownStore.takePendingCorrection(forNoteID: noteID) else { return }
+    // Sends the note's current segmentation (manual edits included) for correction and streams
+    // the answer back: the line the model is writing is highlighted, and each finished line's
+    // suggestions are staged as pending changes as they arrive. Nothing is applied to the note —
+    // every change waits for the user's confirm or reject in a popup.
+    func requestLLMCorrection() {
+        guard llmCorrection.llmCorrectionTask == nil else { return }
         let baseline = buildLLMSegmentEntries()
-        guard baseline.isEmpty == false else { return }
-        llmCorrection.pendingLLMChangedLocations = []
-        llmCorrection.pendingLLMChangedReadingLocations = []
-        llmCorrection.pendingLLMChangesByLocation = [:]
-        llmCorrection.pendingLLMRebuiltEdges = []
-        llmCorrection.pendingLLMWorkingEntries = []
-        llmCorrection.hasPendingLLMChanges = false
+        guard baseline.isEmpty == false else {
+            llmCorrection.llmCorrectionErrorMessage = "No segments to correct yet. Wait for the note to finish loading."
+            llmCorrection.isShowingLLMCorrectionError = true
+            return
+        }
         let text = document.text
-        let merged = Self.mergeResponsePerLine(response: response, originalText: text, baseline: baseline)
-        handleLLMCorrectionResult(stageLLMCorrectionResponse(merged, originalText: text))
+        let noteID = document.activeNoteID
+        let compact = LLMCorrectionDiagnostics.buildCompactFormat(from: baseline)
+        clearPendingLLMCorrectionState()
+        llmCorrection.isRequestingLLMCorrection = true
+        llmCorrection.inFlightLineIndex = 0
+
+        llmCorrection.llmCorrectionTask = Task { @MainActor in
+            defer {
+                llmCorrection.isRequestingLLMCorrection = false
+                llmCorrection.inFlightLineIndex = nil
+                llmCorrection.llmCorrectionTask = nil
+            }
+            // Completed-line snapshots arrive off the main actor; the newest one is all that
+            // matters, so older ones are dropped rather than queued.
+            let (partials, continuation) = AsyncStream<String>.makeStream(bufferingPolicy: .bufferingNewest(1))
+            let request = Task { () throws -> String in
+                defer { continuation.finish() }
+                return try await LLMCorrectionClient.requestCorrection(compactSegments: compact) { completed in
+                    continuation.yield(completed)
+                }
+            }
+            do {
+                let raw = try await withTaskCancellationHandler {
+                    for await partial in partials {
+                        guard document.activeNoteID == noteID, document.text == text else { continue }
+                        applyLLMStreamingPartial(partial, originalText: text, baseline: baseline)
+                    }
+                    return try await request.value
+                } onCancel: {
+                    request.cancel()
+                }
+                // The user switched notes or edited the text mid-request: the answer no longer
+                // lines up with what's on screen, so it's dropped rather than staged.
+                guard Task.isCancelled == false, document.activeNoteID == noteID, document.text == text else { return }
+                let response = try LLMCorrectionFormat.parseCompactResponse(raw)
+                let merged = Self.mergeResponsePerLine(response: response, originalText: text, baseline: baseline)
+                handleLLMCorrectionResult(stageLLMCorrectionResponse(merged, originalText: text))
+            } catch {
+                if Task.isCancelled || error is CancellationError {
+                    AppLog.debug(.llmCorrection, "correction cancelled")
+                    return
+                }
+                AppLog.error(.llmCorrection, "correction failed: \(error)")
+                llmCorrection.llmCorrectionErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                llmCorrection.isShowingLLMCorrectionError = true
+            }
+        }
+    }
+
+    // Stages the response so far: lines the model has finished carry its suggestions, lines it
+    // hasn't reached yet fall back to the current segmentation (see mergeResponsePerLine), so the
+    // pending state is REPLACED each time rather than accumulated. Also moves the in-progress
+    // highlight to the line being written. A partial that doesn't parse or reconcile yet is
+    // skipped — the next completed line gets another chance.
+    func applyLLMStreamingPartial(_ partialText: String, originalText: String, baseline: [LLMSegmentEntry]) {
+        llmCorrection.inFlightLineIndex = LLMCorrectionClient.completedLineCount(in: partialText)
+        guard let partial = try? LLMCorrectionFormat.parseCompactResponse(partialText) else { return }
+        let merged = Self.mergeResponsePerLine(response: partial, originalText: originalText, baseline: baseline)
+        if case .applied(_, let changedLocations, let changedReadingLocations, let changesByLocation) = stageLLMCorrectionResponse(merged, originalText: originalText) {
+            llmCorrection.pendingLLMChangedLocations = changedLocations
+            llmCorrection.pendingLLMChangedReadingLocations = changedReadingLocations
+            llmCorrection.pendingLLMChangesByLocation = changesByLocation
+            llmCorrection.hasPendingLLMChanges = changedLocations.isEmpty == false
+        }
+    }
+
+    // Cancels the in-flight correction. Suggestions already staged stay pending for review.
+    func cancelLLMCorrection() {
+        llmCorrection.llmCorrectionTask?.cancel()
+    }
+
+    // Segment-start UTF-16 locations on the note line the model is writing right now, for the
+    // renderer's in-progress tint. Empty when no correction is streaming or the index no longer
+    // maps to a line of the current text.
+    var inFlightLineSegmentLocations: Set<Int> {
+        guard let lineIndex = llmCorrection.inFlightLineIndex else { return [] }
+        let lines = document.text.components(separatedBy: "\n")
+        guard lineIndex >= 0, lineIndex < lines.count else { return [] }
+        // Walk to the target line, summing each prior line's UTF-16 length plus its "\n".
+        var lineStart = 0
+        for i in 0..<lineIndex {
+            lineStart += lines[i].utf16.count + 1
+        }
+        let lineEnd = lineStart + lines[lineIndex].utf16.count
+        var locations: Set<Int> = []
+        for edge in document.segmentEdges {
+            let range = NSRange(edge.start..<edge.end, in: document.text)
+            guard range.location != NSNotFound else { continue }
+            if range.location >= lineStart, range.location < lineEnd {
+                locations.insert(range.location)
+            }
+        }
+        return locations
     }
 
     // Per-line salvage pass over an LLM response: groups the response and the

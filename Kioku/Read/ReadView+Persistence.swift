@@ -54,6 +54,7 @@ extension ReadView {
 
             document.segmentationRefreshTask?.cancel()
             document.furiganaComputationTask?.cancel()
+            llmCorrection.llmCorrectionTask?.cancel()
             document.isLoadingSelectedNote = true
             document.activeNoteID = nil
             loadAudioAttachmentIfNeeded(attachmentID: nil)
@@ -93,6 +94,7 @@ extension ReadView {
 
         document.segmentationRefreshTask?.cancel()
         document.furiganaComputationTask?.cancel()
+        llmCorrection.llmCorrectionTask?.cancel()
         llmCorrection.pendingLLMChangedLocations = []
         llmCorrection.pendingLLMChangedReadingLocations = []
         llmCorrection.pendingLLMChangesByLocation = [:]
