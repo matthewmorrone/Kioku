@@ -90,7 +90,7 @@ extension SettingsView {
         }
     }
 
-    // The selected provider's model, each row priced per million tokens (input / output). A
+    // The selected provider's model, each row with its estimated cost per breakdown. A
     // stored id that isn't in the catalog (set by an older build) stays listed so the picker
     // never shows a blank selection.
     private var modelPicker: some View {
@@ -98,7 +98,7 @@ extension SettingsView {
         let selection = modelSelection
         return Picker("Model", selection: selection) {
             ForEach(options) { option in
-                Text("\(option.id)  \(LLMModelCatalog.priceLabel(for: option))").tag(option.id)
+                Text("\(option.id)  \(LLMModelCatalog.costLabel(for: option))").tag(option.id)
             }
             if options.contains(where: { $0.id == selection.wrappedValue }) == false {
                 Text(selection.wrappedValue).tag(selection.wrappedValue)

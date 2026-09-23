@@ -32,13 +32,24 @@ nonisolated enum LLMModelCatalog {
         }
     }
 
-    // The picker row's price, input then output per million tokens: "$0.25 / $2".
-    static func priceLabel(for option: LLMModelOption) -> String {
-        "\(dollars(option.inputPerMillion)) / \(dollars(option.outputPerMillion))"
+    // A typical song breakdown's size, measured from saved breakdowns (2026-09-23): the ~2,100
+    // token instructions plus the lyrics in, the line-by-line breakdown out. A per-million price
+    // reads like a per-use price at a glance, so the picker shows what one breakdown costs.
+    static let typicalBreakdownInputTokens = 2_700
+    static let typicalBreakdownOutputTokens = 3_000
+
+    // The estimated cost of one typical breakdown on this model, in US cents. Excludes caching
+    // discounts and a reasoning model's hidden reasoning tokens.
+    static func breakdownCostCents(for option: LLMModelOption) -> Double {
+        let dollars = Double(typicalBreakdownInputTokens) * option.inputPerMillion / 1_000_000
+            + Double(typicalBreakdownOutputTokens) * option.outputPerMillion / 1_000_000
+        return dollars * 100
     }
 
-    // A dollar amount with cents only when there are any: $2, $2.50, $0.15.
-    private static func dollars(_ amount: Double) -> String {
-        amount == amount.rounded() ? "$\(Int(amount))" : String(format: "$%.2f", amount)
+    // The picker row's cost: "~0.4¢ per breakdown" under a cent, whole cents above ("~4¢").
+    static func costLabel(for option: LLMModelOption) -> String {
+        let cents = breakdownCostCents(for: option)
+        let amount = cents < 1 ? String(format: "%.1f", cents) : String(Int(cents.rounded()))
+        return "~\(amount)¢ per breakdown"
     }
 }
