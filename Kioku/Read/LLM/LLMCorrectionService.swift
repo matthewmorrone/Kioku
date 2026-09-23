@@ -411,15 +411,13 @@ final class LLMCorrectionService {
         //
         // No `temperature` — sampling params are rejected with a 400 on current-generation
         // Claude models (Sonnet 5 and later). The Settings slider still applies to OpenAI.
+        // max_tokens is set below: 16384 leaves headroom for the web_search loop, whose
+        // server_tool_use blocks count against the same budget as the correction text.
         var conversation: [[String: Any]] = [
             ["role": "user", "content": messages.user]
         ]
         var body: [String: Any] = [
             "model": LLMSettings.claudeModel(),
-            // Headroom for the web_search loop: server_tool_use blocks count against this
-            // budget too, so 4096 could be spent entirely on searching and leave no room for
-            // the actual correction text.
-            "max_tokens": 16384,
             "system": [
                 [
                     "type": "text",
@@ -428,6 +426,7 @@ final class LLMCorrectionService {
                 ]
             ]
         ]
+        ClaudeRequestParameters.apply(to: &body, model: LLMSettings.claudeModel(), maxTokens: 16384)
         // Server-side web_search tool: the model can search canonical lyric sources
         // to ground gikun/ateji readings JMdict doesn't carry. Anthropic handles the
         // search internally; we just see the final response with the text already

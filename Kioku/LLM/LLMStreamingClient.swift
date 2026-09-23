@@ -88,15 +88,15 @@ nonisolated enum LLMStreamingClient {
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         // Sampling params (temperature/top_p/top_k) are rejected with a 400 on current-generation
         // Claude models (Sonnet 5 and later) — omit rather than send a value the API will reject.
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": model,
-            "max_tokens": maxTokens,
             "system": system,
             "messages": [
                 ["role": "user", "content": userContent]
             ],
             "stream": true
         ]
+        ClaudeRequestParameters.apply(to: &body, model: model, maxTokens: maxTokens)
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         return try await consume(request: request, urlSession: urlSession, providerName: "Claude") { json in

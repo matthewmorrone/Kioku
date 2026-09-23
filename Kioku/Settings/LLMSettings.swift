@@ -66,16 +66,13 @@ enum LLMSettings {
     static let temperatureKey = "kioku.llm.temperature"
     static let defaultTemperature: Double = 0.4
 
-    // Model identifiers sent to each provider. Configurable so the model can be changed
-    // without a rebuild. Claude defaults to the current-generation Sonnet — strong at Japanese
-    // and cheaper than both Opus and the prior Sonnet generation ($2/$10 per Mtok vs Opus's
-    // $5/$25 and Sonnet 4.6's $3/$15). OpenAI defaults to gpt-4.1-mini: under a cent per song
-    // breakdown, and it takes the classic max_tokens/temperature request shape (see
-    // OpenAIRequestParameters) rather than the GPT-5 reasoning one.
-    static let claudeModelKey = "kioku.llm.claudeModel"
+    // The one model each provider uses, chosen by a one-shot seven-model song-breakdown
+    // comparison on the same song (2026-09-23). gpt-5.6-luna got every sung reading right at
+    // ~0.6¢ a breakdown; gpt-4.1-mini, gpt-5-mini and gpt-4o-mini misread 5–7 of 34 lines and
+    // claude-haiku-4-5 ~17. Sonnet 5 stays for Claude (Opus costs ~2.5× more); it needs the
+    // reasoning cap in ClaudeRequestParameters or it spends the whole budget thinking.
     static let defaultClaudeModel = "claude-sonnet-5"
-    static let openAIModelKey = "kioku.llm.openaiModel"
-    static let defaultOpenAIModel = "gpt-4.1-mini"
+    static let defaultOpenAIModel = "gpt-5.6-luna"
 
     // When true, the LLM request includes a web-search tool the model can use to
     // look up canonical lyrics (Uta-Net / J-Lyric / Genius / Niconico Kashi)
@@ -155,16 +152,14 @@ enum LLMSettings {
         apiKey(for: correctionProvider())
     }
 
-    // Returns the configured Claude model id, defaulting to Sonnet 5 when unset or blank.
+    // The Claude model every Claude request uses.
     static func claudeModel() -> String {
-        let stored = UserDefaults.standard.string(forKey: claudeModelKey) ?? ""
-        return stored.isEmpty ? defaultClaudeModel : stored
+        defaultClaudeModel
     }
 
-    // Returns the configured OpenAI model id, defaulting to gpt-4.1-mini when unset or blank.
+    // The OpenAI model every OpenAI request uses (the web-search path swaps in its own model).
     static func openAIModel() -> String {
-        let stored = UserDefaults.standard.string(forKey: openAIModelKey) ?? ""
-        return stored.isEmpty ? defaultOpenAIModel : stored
+        defaultOpenAIModel
     }
 
     // True when the user has opted into the LLM using a web-search tool to

@@ -24,9 +24,6 @@ extension SettingsView {
                     }
                 }
             }
-            if selectedRemoteProvider != .none {
-                modelPicker
-            }
             // The key field for the selected provider only; edits write through to the Keychain.
             // A persistent leading label, not just the SecureField's own placeholder text — a
             // placeholder disappears the moment a key is typed in, leaving the row unlabeled.
@@ -73,7 +70,7 @@ extension SettingsView {
             // Temperature: same reasoning — gate on the picker, OpenAI only (Claude rejects the
             // parameter, on-device pins its own).
             if selectedRemoteProvider == .openAI,
-               OpenAIRequestParameters.isReasoningModel(effectiveOpenAIModel) == false {
+               OpenAIRequestParameters.isReasoningModel(LLMSettings.openAIModel()) == false {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text("Temperature")
@@ -88,43 +85,6 @@ extension SettingsView {
         } header: {
             Text("AI")
         }
-    }
-
-    // The selected provider's model, each row with its estimated cost per breakdown. A
-    // stored id that isn't in the catalog (set by an older build) stays listed so the picker
-    // never shows a blank selection.
-    private var modelPicker: some View {
-        let options = LLMModelCatalog.options(for: selectedRemoteProvider)
-        let selection = modelSelection
-        return Picker("Model", selection: selection) {
-            ForEach(options) { option in
-                Text("\(option.id)  \(LLMModelCatalog.costLabel(for: option))").tag(option.id)
-            }
-            if options.contains(where: { $0.id == selection.wrappedValue }) == false {
-                Text(selection.wrappedValue).tag(selection.wrappedValue)
-            }
-        }
-    }
-
-    // Reads and writes the selected provider's model id, resolving blank to its default.
-    private var modelSelection: Binding<String> {
-        switch selectedRemoteProvider {
-        case .claude:
-            return Binding(
-                get: { claudeModelRaw.isEmpty ? LLMSettings.defaultClaudeModel : claudeModelRaw },
-                set: { claudeModelRaw = $0 }
-            )
-        default:
-            return Binding(
-                get: { effectiveOpenAIModel },
-                set: { openAIModelRaw = $0 }
-            )
-        }
-    }
-
-    // The OpenAI model requests will use — the stored pick, or the default when blank.
-    private var effectiveOpenAIModel: String {
-        openAIModelRaw.isEmpty ? LLMSettings.defaultOpenAIModel : openAIModelRaw
     }
 
     // The picker's current value as a provider (Apple values from older builds read as none).
