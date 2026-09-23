@@ -6,7 +6,7 @@ import Foundation
 // compact text back, reporting each completed line so the Read tab can highlight where the model
 // is and stage that line's suggestions as they arrive. Nothing here touches the document: the
 // caller parses and stages the result as pending changes for the user to confirm or reject.
-nonisolated enum LLMCorrectionClient {
+enum LLMCorrectionClient {
     // Answer-sized cap for the corrected compact text, which runs roughly the size of the input.
     // Reasoning models get their own headroom on top (see OpenAI/ClaudeRequestParameters).
     static let maxTokens = 16384
