@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Hosts the learning tab: flashcards, multiple choice, cloze, and the kana chart — all
+// Hosts the learning tab: flashcards, multiple choice, matching, fill in the blank, cloze, and the kana chart — all
 // swipeable left/right. Major sections: horizontal pager across the modes, page-dot overlay.
 struct LearnView: View {
     let dictionaryStore: DictionaryStore?

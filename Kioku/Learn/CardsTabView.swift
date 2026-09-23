@@ -1,6 +1,7 @@
 import SwiftUI
 
-// The swipeable pages in the Learn tab: Flashcards, Multiple Choice, and Cloze.
+// The swipeable pages in the Learn tab: Flashcards, Multiple Choice, Matching, Fill in the Blank,
+// Cloze, and the kana chart.
 // (Breakdown, formerly `songs`, moved to the Read tab as a per-note sheet. Coverage moved to the
 // Read tab's Extract Words sheet as a third mode alongside Lines/Vocab, since it's scoped to one
 // note and the Learn tab's note-picker entry point was redundant with reaching it from Read.)
@@ -9,6 +10,7 @@ import SwiftUI
 enum LearnPage: Int, CaseIterable, Identifiable {
     case flashcards
     case multipleChoice
+    case matching
     case fillInBlank
     case cloze
     case kanaChart
@@ -117,6 +119,10 @@ struct LearnPagerView: View {
                     .frame(width: width)
                     .onPreferenceChange(CardsPageDotsHiddenPreferenceKey.self) { dotsHiddenByPage[.multipleChoice] = $0 }
                     .onPreferenceChange(CardsStudySessionActivePreferenceKey.self) { sessionActiveByPage[.multipleChoice] = $0 }
+                MatchingView(dictionaryStore: dictionaryStore)
+                    .frame(width: width)
+                    .onPreferenceChange(CardsPageDotsHiddenPreferenceKey.self) { dotsHiddenByPage[.matching] = $0 }
+                    .onPreferenceChange(CardsStudySessionActivePreferenceKey.self) { sessionActiveByPage[.matching] = $0 }
                 FillInBlankView(dictionaryStore: dictionaryStore)
                     .frame(width: width)
                     .onPreferenceChange(CardsPageDotsHiddenPreferenceKey.self) { dotsHiddenByPage[.fillInBlank] = $0 }

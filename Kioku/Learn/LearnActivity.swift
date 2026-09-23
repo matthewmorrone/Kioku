@@ -60,6 +60,16 @@ struct LearnActivity: Identifiable {
         supportedDirections: QuestionDirection.allCases
     )
 
+    static let matching = LearnActivity(
+        id: "matching",
+        title: "Matching",
+        systemImage: "arrow.left.and.right.square",
+        startTitle: "Start Matching",
+        unitLabel: "Words",
+        minimumPoolSize: MatchingRoundBuilder.pairsPerRound,
+        supportedDirections: QuestionDirection.allCases
+    )
+
     static let fillInBlank = LearnActivity(
         id: "fillInBlank",
         title: "Fill in the Blank",
