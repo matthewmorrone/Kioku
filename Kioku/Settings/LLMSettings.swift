@@ -69,11 +69,13 @@ enum LLMSettings {
     // Model identifiers sent to each provider. Configurable so the model can be changed
     // without a rebuild. Claude defaults to the current-generation Sonnet — strong at Japanese
     // and cheaper than both Opus and the prior Sonnet generation ($2/$10 per Mtok vs Opus's
-    // $5/$25 and Sonnet 4.6's $3/$15). OpenAI defaults to gpt-4o.
+    // $5/$25 and Sonnet 4.6's $3/$15). OpenAI defaults to gpt-4.1-mini: under a cent per song
+    // breakdown, and it takes the classic max_tokens/temperature request shape (see
+    // OpenAIRequestParameters) rather than the GPT-5 reasoning one.
     static let claudeModelKey = "kioku.llm.claudeModel"
     static let defaultClaudeModel = "claude-sonnet-5"
     static let openAIModelKey = "kioku.llm.openaiModel"
-    static let defaultOpenAIModel = "gpt-4o"
+    static let defaultOpenAIModel = "gpt-4.1-mini"
 
     // When true, the LLM request includes a web-search tool the model can use to
     // look up canonical lyrics (Uta-Net / J-Lyric / Genius / Niconico Kashi)
@@ -159,7 +161,7 @@ enum LLMSettings {
         return stored.isEmpty ? defaultClaudeModel : stored
     }
 
-    // Returns the configured OpenAI model id, defaulting to gpt-4o when unset or blank.
+    // Returns the configured OpenAI model id, defaulting to gpt-4.1-mini when unset or blank.
     static func openAIModel() -> String {
         let stored = UserDefaults.standard.string(forKey: openAIModelKey) ?? ""
         return stored.isEmpty ? defaultOpenAIModel : stored

@@ -5,15 +5,11 @@ import Foundation
 // Anthropic: its published per-model API rates). Prices change — update them here when they do.
 // Ordered most to least capable within each provider.
 nonisolated enum LLMModelCatalog {
+    // Only models under a cent per typical breakdown (see breakdownCostCents) are offered.
     static let openAI: [LLMModelOption] = [
-        LLMModelOption(id: "gpt-5.6-sol", inputPerMillion: 4.00, outputPerMillion: 20.00),
-        LLMModelOption(id: "gpt-5.6-terra", inputPerMillion: 2.00, outputPerMillion: 12.00),
         LLMModelOption(id: "gpt-5.6-luna", inputPerMillion: 0.20, outputPerMillion: 1.20),
-        LLMModelOption(id: "gpt-5", inputPerMillion: 1.25, outputPerMillion: 10.00),
         LLMModelOption(id: "gpt-5-mini", inputPerMillion: 0.25, outputPerMillion: 2.00),
-        LLMModelOption(id: "gpt-4.1", inputPerMillion: 2.00, outputPerMillion: 8.00),
         LLMModelOption(id: "gpt-4.1-mini", inputPerMillion: 0.40, outputPerMillion: 1.60),
-        LLMModelOption(id: "gpt-4o", inputPerMillion: 2.50, outputPerMillion: 10.00),
         LLMModelOption(id: "gpt-4o-mini", inputPerMillion: 0.15, outputPerMillion: 0.60),
     ]
 
