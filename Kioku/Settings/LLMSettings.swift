@@ -101,6 +101,18 @@ enum LLMSettings {
 
     static var defaultProvider: String { LLMProvider.none.rawValue }
 
+    // Claude is a debug-build-only provider: in a one-shot breakdown comparison (2026-09-23) it
+    // cost ~8× gpt-5.6-luna without doing better, so release builds (TestFlight / App Store,
+    // archived Release by scripts/distribute.sh) don't offer it and treat a stored Claude pick
+    // as no provider.
+    static var isClaudeAvailable: Bool {
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }
+
     // The provider picked in Settings: the REMOTE model (OpenAI / Claude), or none. On-device
     // Apple Intelligence is not a choice here but a capability the app uses on its own (see
     // correctionProvider), and Cloud / Cloud Pro need the Private Cloud Compute entitlement this
@@ -109,7 +121,9 @@ enum LLMSettings {
     static func remoteProvider() -> LLMProvider {
         let raw = UserDefaults.standard.string(forKey: providerKey) ?? defaultProvider
         let provider = LLMProvider(rawValue: raw) ?? .none
-        return provider.isAppleIntelligence ? .none : provider
+        if provider.isAppleIntelligence { return .none }
+        if provider == .claude, isClaudeAvailable == false { return .none }
+        return provider
     }
 
     // The provider correction runs on: on-device Apple Intelligence when it's available and the

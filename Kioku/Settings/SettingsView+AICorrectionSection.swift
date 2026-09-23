@@ -90,15 +90,20 @@ extension SettingsView {
     // The picker's current value as a provider (Apple values from older builds read as none).
     private var selectedRemoteProvider: LLMProvider {
         let provider = LLMProvider(rawValue: llmProviderRaw) ?? .none
-        return provider.isAppleIntelligence ? .none : provider
+        if provider.isAppleIntelligence { return .none }
+        if provider == .claude, LLMSettings.isClaudeAvailable == false { return .none }
+        return provider
     }
 
-    // Only remote providers are choices; Apple's variants are capabilities or unavailable.
+    // Only remote providers are choices; Apple's variants are capabilities or unavailable, and
+    // Claude is offered in debug builds only (see LLMSettings.isClaudeAvailable).
     private func isProviderSelectable(_ provider: LLMProvider) -> Bool {
         switch provider {
         case .appleIntelligence, .appleIntelligenceCloud, .appleIntelligenceCloudPro:
             return false
-        case .none, .openAI, .claude:
+        case .claude:
+            return LLMSettings.isClaudeAvailable
+        case .none, .openAI:
             return true
         }
     }
