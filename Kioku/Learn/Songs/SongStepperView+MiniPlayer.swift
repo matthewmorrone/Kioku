@@ -150,7 +150,7 @@ extension SongStepperView {
         case .line(let index):
             introOutroPlayback.pause()
             if let line = displayItems.first(where: { $0.line.index == index })?.line {
-                playListen(line: line)
+                playListenFromMiniPlayer(line: line)
             } else {
                 playAllListen()
             }

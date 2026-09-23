@@ -60,6 +60,9 @@ struct SongStepperView: View {
     // Listen-along state shared with SongStepperView+Listen (internal for that reason).
     // True once this view has engaged listen-along (played anything); drives teardown.
     @State var isListening: Bool = false
+    // Listen-along options from the toolbar's options menu (see BreakdownListenSettings).
+    @AppStorage(BreakdownListenSettings.pauseAfterLineKey) var pauseAfterEachLine = BreakdownListenSettings.defaultPauseAfterLine
+    @AppStorage(BreakdownListenSettings.wordRepeatCountKey) var wordRepeatCount = BreakdownListenSettings.defaultWordRepeatCount
     // Plays the breakdown's script live (sung clips + TTS narration), one step at a time —
     // see SongLiveListenController. Owned by this view, not the environment: it has no
     // cross-session position of its own to persist, so a fresh sheet gets a fresh controller
@@ -82,7 +85,7 @@ struct SongStepperView: View {
     @State var currentPlaybackStep: SongPlaybackStep = .intro
     // The note's SRT cues, for matching each line to its sung time range (see
     // lineRangesByIndex). Empty when the note has no audio attachment or no cues.
-    @State private var noteCues: [SubtitleCue] = []
+    @State var noteCues: [SubtitleCue] = []
     // Furigana state shared with SongStepperView+Furigana (internal, not private, for that reason).
     @State var furiganaCacheByLineIndex: [Int: LineFuriganaCache] = [:]
     // The note's persisted per-note reading overrides (Note.segments), restored once on appear
@@ -227,14 +230,7 @@ struct SongStepperView: View {
                     .accessibilityLabel(areAllLinesExpanded ? "Hide all explanations" : "Show all explanations")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button("Regenerate") {
-                            isRegenerateConfirmationPresented = true
-                        }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .accessibilityLabel("Regenerate breakdown")
+                    optionsMenu
                 }
             }
         }
@@ -501,6 +497,36 @@ struct SongStepperView: View {
     }
 
     // MARK: - Listen control
+
+    // The toolbar's options menu: listen-along behaviour (pause at line ends, how many times each
+    // word is heard before its definition) plus Regenerate. Changing the repeat count rebuilds
+    // the script, since it changes which steps exist.
+    private var optionsMenu: some View {
+        Menu {
+            Toggle(isOn: $pauseAfterEachLine) {
+                Label("Pause After Each Line", systemImage: "pause.circle")
+            }
+            Picker(selection: $wordRepeatCount) {
+                ForEach(BreakdownListenSettings.wordRepeatChoices, id: \.self) { count in
+                    Text("\(count)×").tag(count)
+                }
+            } label: {
+                Label("Repeat Each Word", systemImage: "repeat")
+            }
+            .pickerStyle(.menu)
+            Divider()
+            Button {
+                isRegenerateConfirmationPresented = true
+            } label: {
+                Label("Regenerate", systemImage: "arrow.clockwise")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .accessibilityLabel("Options")
+        .onChange(of: wordRepeatCount) { _, _ in configureLiveListen() }
+        .onChange(of: pauseAfterEachLine) { _, pause in liveListen.pauseAfterEachLine = pause }
+    }
 
     // The listen button: headphones plays every line in sequence, pause while anything is
     // playing, a warning (missing voices, or the audio session couldn't activate) that retries
