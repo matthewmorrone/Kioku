@@ -51,13 +51,12 @@ nonisolated enum LLMStreamingClient {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": model,
             "messages": messages,
-            "max_tokens": maxTokens,
-            "temperature": temperature,
             "stream": true
         ]
+        OpenAIRequestParameters.apply(to: &body, model: model, maxTokens: maxTokens, temperature: temperature)
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         return try await consume(request: request, urlSession: urlSession, providerName: "OpenAI") { json in

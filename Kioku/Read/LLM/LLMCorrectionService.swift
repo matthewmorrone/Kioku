@@ -367,12 +367,14 @@ final class LLMCorrectionService {
             "messages": [
                 ["role": "system", "content": messages.system],
                 ["role": "user", "content": messages.user]
-            ],
-            "max_tokens": 4096
+            ]
         ]
-        if usingSearchModel == false {
-            body["temperature"] = temperature
-        }
+        OpenAIRequestParameters.apply(
+            to: &body,
+            model: modelID,
+            maxTokens: 4096,
+            temperature: usingSearchModel ? nil : temperature
+        )
 
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         request.httpBody = bodyData

@@ -55,6 +55,9 @@ struct SettingsView: View {
     @AppStorage(LLMSettings.keysRevisionKey) var llmKeysRevision: Int = 0
     @AppStorage(LLMSettings.useLLMKey) var useLLM: Bool = true
     @AppStorage(LLMSettings.temperatureKey) var temperature: Double = LLMSettings.defaultTemperature
+    // Per-provider model picks; blank means the provider's default (see LLMSettings).
+    @AppStorage(LLMSettings.openAIModelKey) var openAIModelRaw: String = ""
+    @AppStorage(LLMSettings.claudeModelKey) var claudeModelRaw: String = ""
     // Default true so a fresh install gets canonical-lyrics grounding out of the
     // box for songs; the user can disable to cut cost or for privacy.
     @AppStorage(LLMSettings.useWebSearchKey) var useWebSearch: Bool = true
