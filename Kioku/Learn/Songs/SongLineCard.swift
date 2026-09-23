@@ -461,10 +461,30 @@ struct SongLineCard: View {
     // (chorus, refrain) and value-based identity would collide and break SwiftUI's diffing.
     private var wordsList: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(effectiveWords.enumerated()), id: \.offset) { _, word in
+            ForEach(Array(effectiveWords.enumerated()), id: \.offset) { offset, word in
                 wordEntryRow(word)
+                    .id(wordRowScrollID(for: word, at: offset))
             }
         }
+    }
+
+    // The scroll id for one word row. A word's first occurrence in the line gets the id
+    // `wordRowID` names, so the mini player can scroll to it by surface; later repeats of the
+    // same surface get a positional id that can't collide with it.
+    private func wordRowScrollID(for word: SongWord, at offset: Int) -> String {
+        let surface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isFirstOccurrence = effectiveWords.prefix(offset).contains {
+            $0.surface.trimmingCharacters(in: .whitespacesAndNewlines) == surface
+        } == false
+        return isFirstOccurrence
+            ? SongLineCard.wordRowID(lineIndex: line.index, surface: surface)
+            : "word-\(line.index)-#\(offset)"
+    }
+
+    // The scroll id of a word's row in a line's card — shared by the card that tags the row and
+    // the Breakdown view that scrolls to it.
+    static func wordRowID(lineIndex: Int, surface: String) -> String {
+        "word-\(lineIndex)-\(surface)"
     }
 
     // Pattern-to-bank note (the prompt's "optional grammar pattern worth memorizing").

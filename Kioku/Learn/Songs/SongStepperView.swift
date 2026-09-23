@@ -51,7 +51,7 @@ struct SongStepperView: View {
     // Per-line expansion state: whether a line's word/grammar explanations are visible.
     // Keyed by `line.index` (not array offset) so it survives regenerate / breakdown rebuilds.
     // Lines are auto-expanded as they stream in; reset when a new generation starts.
-    @State private var expandedByLineIndex: Set<Int> = []
+    @State var expandedByLineIndex: Set<Int> = []
     @State private var isRegenerateConfirmationPresented: Bool = false
     @State private var isCancelConfirmationPresented: Bool = false
     // Drives the confirmation for the merged generate+correct path — kept separate from
@@ -60,6 +60,11 @@ struct SongStepperView: View {
     // Listen-along state shared with SongStepperView+Listen (internal for that reason).
     // True once this view has engaged listen-along (played anything); drives teardown.
     @State var isListening: Bool = false
+    // The word listen-along is on, for the mini player's label (see SongWordFocus).
+    @State var listenWordFocus: SongWordFocus?
+    // Bumped by a tap on the mini player's label; the scroll view answers it by scrolling back
+    // to the word (or line) being played.
+    @State var listenScrollRequest = 0
     // Listen-along options from the toolbar's options menu (see BreakdownListenSettings).
     @AppStorage(BreakdownListenSettings.pauseAfterLineKey) var pauseAfterEachLine = BreakdownListenSettings.defaultPauseAfterLine
     @AppStorage(BreakdownListenSettings.wordRepeatCountKey) var wordRepeatCount = BreakdownListenSettings.defaultWordRepeatCount
@@ -254,6 +259,9 @@ struct SongStepperView: View {
         // The mini player follows whichever line the narration track is actively speaking;
         // when nothing is playing this simply doesn't fire, leaving the step wherever the user
         // (or intro/outro playback) last parked it.
+        .onChange(of: activeListenSegment) { _, segment in
+            updateListenWordFocus(segment)
+        }
         .onChange(of: activeListenSegment?.lineIndex) { _, newLineIndex in
             if let newLineIndex {
                 currentPlaybackStep = .line(newLineIndex)
@@ -606,6 +614,9 @@ struct SongStepperView: View {
                 withAnimation(.easeInOut(duration: 0.3)) {
                     proxy.scrollTo(newID, anchor: .center)
                 }
+            }
+            .onChange(of: listenScrollRequest) { _, _ in
+                scrollBackToListenPosition(proxy: proxy, items: items)
             }
             // Listen-along follows the spoken line the same way, expanding it so the word
             // rows it's about to read are visible.
