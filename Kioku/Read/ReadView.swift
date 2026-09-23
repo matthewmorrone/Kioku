@@ -20,9 +20,6 @@ struct ReadView: View {
     // Read here (not just inside the breakdown sheet) so the title-row breakdown button can
     // show an activity indicator while a generation is running for the currently-open note.
     @EnvironmentObject var songBreakdownStore: SongBreakdownStore
-    // Observes the singleton so the renderer re-evaluates inFlightLineLocations
-    // whenever the AI client publishes a new currentLineIndex during streaming.
-    @ObservedObject var aiProgress = AICorrectionProgress.shared
     let segmenter: any TextSegmenting
     let dictionaryStore: DictionaryStore?
     let lexicon: Lexicon?
@@ -126,7 +123,6 @@ struct ReadView: View {
     // LLMCorrectionUIState.
     @State var llmCorrection = LLMCorrectionUIState()
     @AppStorage(LLMSettings.useLLMKey) private var llmUseLLM = true
-    @AppStorage(LLMSettings.stubResponseKey) private var llmStubResponse = ""
     @AppStorage(SongBreakdownService.songStubResponseKey) private var breakdownStubResponse = ""
     // Keys themselves live in the Keychain; the revision counter is the reactive
     // signal that a key was added or cleared in Settings.
@@ -172,38 +168,8 @@ struct ReadView: View {
     @AppStorage(DictionarySettings.prefersSheetDirectSegmentActionsKey)
     var prefersSheetDirectSegmentActions: Bool = DictionarySettings.defaultPrefersSheetDirectSegmentActions
 
-    // Reactive equivalent of LLMSettings.isConfigured() — re-evaluates when any LLM
-    // setting changes. Reading llmKeysRevision ties body invalidation to key edits;
-    // the actual presence check goes to the Keychain. Internal so the toolbar and
-    // title-row extensions can enable/disable their LLM buttons appropriately.
-    // Apple Intelligence (on-device or Cloud/Cloud Pro) requires no key, so it counts as
-    // configured whenever the corresponding model is present and ready, regardless of
-    // remote key state.
-    var isLLMConfigured: Bool {
-        _ = llmKeysRevision
-        if llmUseLLM {
-            let provider = LLMSettings.correctionProvider()
-            if provider == .appleIntelligence {
-                return AppleIntelligenceAvailability.isAvailable
-            }
-            if provider == .appleIntelligenceCloud || provider == .appleIntelligenceCloudPro {
-                return AppleIntelligenceCloudAvailability.isAvailable
-            }
-            return LLMSettings.apiKey(for: provider) != nil
-        } else {
-            return llmStubResponse.isEmpty == false
-        }
-    }
-
-    // Reactive equivalent of "is song breakdown usable with the active provider" — deliberately
-    // NOT shared with isLLMConfigured above, because breakdown and correction support opposite
-    // Apple Intelligence variants: correction is on-device-only (SongBreakdownError.appleIntelligenceUnsupported
-    // when Apple Intelligence Cloud/Cloud Pro is picked there), while breakdown is Cloud/Cloud
-    // Pro-only (SongBreakdownError.appleIntelligenceUnsupported when on-device is picked here).
-    // Reusing isLLMConfigured for the title row's breakdown button would hide the ONLY feature a
-    // Cloud-configured user actually has, even though LLMSettings.isConfigured() reports them
-    // configured. Also reads the breakdown-specific stub key in stub mode, not correction's —
-    // the two stubs are independent (see SongBreakdownService's own key comment).
+    // Reactive equivalent of "is song breakdown usable with the active provider": re-evaluates
+    // when the key changes (llmKeysRevision). Reads the breakdown-specific stub key in stub mode.
     var isBreakdownConfigured: Bool {
         _ = llmKeysRevision
         if llmUseLLM {

@@ -1,19 +1,14 @@
 import Foundation
 
-// Opt-in alternative to running LLMCorrectionService and SongBreakdownService as two separate
-// round-trips for a song note: sends ONE request asking the model for both a corrected
-// segmentation (compact format, same spec LLMCorrectionService uses) and a line-by-line
-// breakdown (same markdown spec SongBreakdownParser already parses), so the breakdown pass
-// gets to see the same lyrics context the segmentation pass reasons over instead of drifting
-// out of sync across two independent calls.
+// The song breakdown request whenever a remote provider is set: ONE request asking the model for
+// both a line-by-line breakdown (the markdown spec SongBreakdownParser parses) and a corrected
+// segmentation of the lyrics (LLMCorrectionFormat's compact spec), which the Read tab then
+// offers as pending changes to confirm or reject. The segmentation half sees the same lyrics
+// context the breakdown reasons over.
 //
-// Deliberately additive: reuses LLMCorrectionService.systemPromptForRemoteProvider / .parseCompactResponse and
-// SongBreakdownPrompt / SongBreakdownParser verbatim rather than forking them, and leaves both
-// existing services completely untouched. The two output halves are stitched into one prompt
-// separated by `responseDelimiter`, then split back apart before parsing each half with its
-// existing parser — no new wire format, no new caching model, nothing for either original path
-// to migrate. Reverting this feature means removing this file and its (also additive) call
-// site in SongBreakdownStore; neither existing service's behavior changes either way.
+// Reuses SongBreakdownPrompt / SongBreakdownParser and LLMCorrectionFormat verbatim rather than
+// forking them. The two output halves are stitched into one prompt separated by
+// `responseDelimiter`, then split back apart before parsing each half with its own parser.
 //
 // The response streams (LLMStreamingClient) so the breakdown half — which the model writes
 // first — feeds SongStepperView's progressive cards line by line, same as the plain path.
@@ -39,7 +34,7 @@ final class MergedCorrectionBreakdownService {
     // Runs the merged call and returns both halves already parsed into the same types their
     // standalone services would have produced. `noteContent` is the raw note text — the
     // segmentation half is instructed to re-segment from scratch, so no pre-existing
-    // segmentation input is needed (same assumption LLMCorrectionQueue makes for unseen notes).
+    // segmentation input is needed.
     // `onPartialLines` receives the breakdown lines parsed so far as the stream progresses;
     // once the delimiter has arrived the breakdown half is complete and updates stop.
     func generate(
@@ -61,16 +56,9 @@ final class MergedCorrectionBreakdownService {
         }
 
         let provider = LLMSettings.breakdownProvider()
-        // No Apple Intelligence variant is supported here — not just the on-device model being
-        // too small for the breakdown half, but because this feature couples correction and
-        // breakdown into ONE call by design. Correction is meant to be free whenever Apple
-        // Intelligence (on-device OR Cloud/Cloud Pro) is active — LLMCorrectionService now
-        // supports both independently — and folding it into this paid, structured combined call
-        // would defeat that. Run the two features separately instead: SongBreakdownService
-        // already supports Apple Intelligence Cloud/Cloud Pro on its own, and correction now
-        // supports every Apple Intelligence variant on its own too. Checked before the API-key
-        // guard below for the same reason SongBreakdownService checks it there — no Apple
-        // Intelligence variant has a key, so that guard would otherwise misreport "not configured".
+        // No Apple Intelligence variant runs this combined request. Checked before the API-key
+        // guard below because no Apple Intelligence variant has a key, so that guard would
+        // otherwise misreport "not configured".
         if provider.isAppleIntelligence {
             throw SongBreakdownError.appleIntelligenceUnsupported
         }
@@ -85,8 +73,7 @@ final class MergedCorrectionBreakdownService {
 
         // Larger max_tokens than SongBreakdownService's 8192: this response has to carry a
         // full breakdown *and* a segmentation in one completion, and 8192 was observed to
-        // truncate before the model ever reached the ===SEGMENTATION=== delimiter. 16384 is
-        // gpt-4o's full output cap; Claude's synchronous cap is far above it.
+        // truncate before the model ever reached the ===SEGMENTATION=== delimiter.
         let raw: String
         let producedBy: SongBreakdownProvider
         switch provider {
@@ -97,8 +84,6 @@ final class MergedCorrectionBreakdownService {
             // here instead of silently mis-dispatching.
             throw SongBreakdownError.noKeyConfigured
         case .openAI:
-            let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
-                ?? LLMSettings.defaultTemperature
             raw = try await LLMStreamingClient.streamOpenAI(
                 apiKey: apiKey,
                 model: LLMSettings.openAIModel(),
@@ -107,7 +92,6 @@ final class MergedCorrectionBreakdownService {
                     ["role": "user", "content": user]
                 ],
                 maxTokens: 16384,
-                temperature: temperature,
                 urlSession: urlSession,
                 onDelta: onDelta
             )
@@ -175,7 +159,7 @@ final class MergedCorrectionBreakdownService {
 
         do {
             let breakdownLines = try SongBreakdownParser().parse(markdown: breakdownMarkdown)
-            let correction = try LLMCorrectionService().parseCompactResponse(compactOutput)
+            let correction = try LLMCorrectionFormat.parseCompactResponse(compactOutput)
             return MergedCorrectionBreakdownResult(
                 correction: correction,
                 breakdownLines: breakdownLines,
@@ -199,7 +183,7 @@ final class MergedCorrectionBreakdownService {
 
         ---
 
-        \(LLMCorrectionService.systemPromptForRemoteProvider)
+        \(LLMCorrectionFormat.systemPrompt)
 
         FINAL OUTPUT STRUCTURE:
         1. First, produce the song breakdown exactly as specified above.
@@ -224,10 +208,8 @@ final class MergedCorrectionBreakdownService {
         """
     }
 
-    // Encodes raw note content as one degenerate segment per source line, same shape
-    // LLMCorrectionQueue.compactFormat(forContent:) produces for a note with no existing
-    // segmentation. Duplicated locally (rather than calling the @MainActor-isolated queue's
-    // static func) so this service has no actor-hop or dependency on LLMCorrectionQueue.
+    // Encodes raw note content as one degenerate segment per source line: the segmentation half
+    // re-segments from scratch, so it gets the lines unsegmented.
     private static func compactFormat(forContent content: String) -> String {
         let lines = content.components(separatedBy: "\n")
         var out: [String] = []
@@ -240,9 +222,8 @@ final class MergedCorrectionBreakdownService {
     }
 }
 
-// One merged call's parsed output: a segmentation correction ready for
-// LLMCorrectionApplier.segmentRanges(from:originalText:), and breakdown lines ready for
-// SongBreakdown(lines:) — the same shapes each standalone service already produces.
+// One merged call's parsed output: a segmentation correction for the Read tab's pending-changes
+// review, and breakdown lines ready for SongBreakdown(lines:).
 struct MergedCorrectionBreakdownResult {
     let correction: LLMCorrectionResponse
     let breakdownLines: [SongLine]

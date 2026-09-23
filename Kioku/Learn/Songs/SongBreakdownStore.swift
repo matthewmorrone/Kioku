@@ -228,15 +228,14 @@ final class SongBreakdownStore: ObservableObject {
         generationTasksByNoteID[id] = task
     }
 
-    // Generates the breakdown the only way the UI now offers: the merged call (breakdown +
-    // segmentation correction in one request) when correction would go to the same remote
-    // provider anyway, else the plain breakdown — with on-device correction available, the
-    // correction stays local and free. The correction half of a merged call is handed to the
-    // ReadView as pending changes via pendingCorrectionByNoteID.
+    // Generates the breakdown: the merged call (breakdown + segmentation correction in one
+    // request) whenever a remote provider is set, else the plain path (stub mode, or no provider
+    // — which surfaces the not-configured error). The correction half of a merged call is handed
+    // to the ReadView as pending changes via pendingCorrectionByNoteID.
     func startBreakdown(forNote note: Note, providerLabel: String) {
         let useLLM = LLMSettings.isEnabled()
         let remote = LLMSettings.breakdownProvider()
-        if useLLM, remote != .none, LLMSettings.correctionProvider() == remote {
+        if useLLM, remote != .none {
             startMergedGeneration(forNote: note, providerLabel: providerLabel)
         } else {
             startGeneration(forNoteID: note.id, lyrics: note.content, providerLabel: providerLabel)

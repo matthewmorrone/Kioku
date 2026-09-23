@@ -368,7 +368,6 @@ extension ReadView {
                         unknownSegmentColor: .label,
                         changedSegmentLocations: llmCorrection.pendingLLMChangedLocations,
                         changedReadingLocations: llmCorrection.pendingLLMChangedReadingLocations,
-                        inFlightSegmentLocations: inFlightLineSegmentLocations,
                         isSavedHighlightEnabled: isSavedHighlightEnabled,
                         savedSegmentLocations: savedSegmentLocations,
                         savedHighlightColor: UIColor(hexString: savedHex) ?? .systemYellow,

@@ -14,10 +14,9 @@ nonisolated enum OpenAIRequestParameters {
     // reasoning; low effort keeps the hidden (billed) reasoning small.
     static let reasoningEffort = "low"
 
-    // True for the GPT-5 family (gpt-5, gpt-5-mini, gpt-5.6-…), excluding the search model,
-    // which takes the older parameters (see LLMCorrectionService's search path).
+    // True for the GPT-5 family (gpt-5, gpt-5-mini, gpt-5.6-…).
     static func isReasoningModel(_ model: String) -> Bool {
-        model.hasPrefix("gpt-5") && model.contains("search") == false
+        model.hasPrefix("gpt-5")
     }
 
     // Adds the length/sampling parameters for `model` to a request body.

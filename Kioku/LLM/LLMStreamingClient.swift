@@ -41,7 +41,6 @@ nonisolated enum LLMStreamingClient {
         model: String,
         messages: [[String: String]],
         maxTokens: Int,
-        temperature: Double,
         urlSession: URLSession,
         onDelta: @escaping @Sendable (String) -> Void
     ) async throws -> String {
@@ -56,7 +55,7 @@ nonisolated enum LLMStreamingClient {
             "messages": messages,
             "stream": true
         ]
-        OpenAIRequestParameters.apply(to: &body, model: model, maxTokens: maxTokens, temperature: temperature)
+        OpenAIRequestParameters.apply(to: &body, model: model, maxTokens: maxTokens, temperature: nil)
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         return try await consume(request: request, urlSession: urlSession, providerName: "OpenAI") { json in

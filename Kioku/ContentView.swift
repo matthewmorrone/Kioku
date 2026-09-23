@@ -25,10 +25,6 @@ struct ContentView: View {
     @StateObject private var wordListsStore = WordListsStore()
     @StateObject private var historyStore = HistoryStore()
     @StateObject private var songBreakdownStore = SongBreakdownStore()
-    // Background queue that runs LLM correction on notes the bulk-import sheet
-    // hands over. Attached to notesStore in onAppear for the same
-    // @StateObject-can't-see-other-@StateObject reason as the bridge server.
-    @StateObject private var llmCorrectionQueue = LLMCorrectionQueue()
     // Lifetime tied to the app shell so Settings can start/stop the listener freely; the
     // notes store is attached during onAppear because @StateObject initializers can't see
     // each other.
@@ -149,15 +145,6 @@ struct ContentView: View {
                 Label("Settings", systemImage: "gear")
             }
         }
-        // Floating LLM correction-queue progress card pinned above the tab bar so the
-        // user can see batch progress from any tab and minimize it when not needed.
-        // Auto-hides when there's no activity (no run in flight + no recent results).
-        .overlay(alignment: .bottom) {
-            CorrectionProgressOverlay()
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
-                .allowsHitTesting(true)
-        }
         // Vermilion accent app-wide when the Japanese Theme is on (and the system accent when off).
         // On iOS 26 SwiftUI's TabView applies its own tint that overrides both the AccentColor asset
         // and UITabBar.appearance(), so the tint must be set explicitly here.
@@ -171,7 +158,6 @@ struct ContentView: View {
         .environmentObject(wordListsStore)
         .environmentObject(historyStore)
         .environmentObject(songBreakdownStore)
-        .environmentObject(llmCorrectionQueue)
         .environmentObject(wotdNavigation)
         .environmentObject(readNoteNavigation)
         .onAppear {
@@ -183,7 +169,6 @@ struct ContentView: View {
             bridgeServer.attach(notesStore: notesStore)
             // Same wiring for the LLM correction queue — it needs the store reference
             // to resolve note IDs and persist corrections after each run.
-            llmCorrectionQueue.attach(store: notesStore)
             // dictionary.sqlite isn't bundled — download it if this is a fresh install, then
             // rebuild the read resources so DictionaryStore() (which failed silently above,
             // since nothing was downloaded yet) succeeds on this second attempt.

@@ -3,8 +3,7 @@ import XCTest
 
 // Characterizes OpenAIRequestParameters: GPT-5
 // reasoning models get max_completion_tokens (with reasoning headroom) and low reasoning effort
-// and no temperature; older models keep max_tokens and the user's temperature; the search model
-// keeps the older shape.
+// and no temperature; older models keep max_tokens and the user's temperature.
 @MainActor
 final class OpenAIRequestParametersTests: XCTestCase {
 
@@ -37,11 +36,4 @@ final class OpenAIRequestParametersTests: XCTestCase {
         }
     }
 
-    // The search model keeps max_tokens; a nil temperature is simply omitted.
-    func testSearchModelKeepsOlderShape() {
-        let b = body(for: LLMSettings.openAISearchModel, temperature: nil)
-        XCTAssertEqual(b["max_tokens"] as? Int, 8192)
-        XCTAssertNil(b["temperature"])
-        XCTAssertNil(b["reasoning_effort"])
-    }
 }

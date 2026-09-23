@@ -1,6 +1,6 @@
 import Foundation
 
-// Enumerates the supported LLM providers for segmentation correction.
+// Enumerates the LLM providers song breakdowns can run on.
 // None means no key is configured and the feature is unavailable.
 enum LLMProvider: String, CaseIterable {
     case none = ""
@@ -44,7 +44,7 @@ enum LLMProvider: String, CaseIterable {
 // Centralizes storage keys and defaults for LLM provider configuration.
 // Keys use the kioku.llm prefix to avoid collisions with other app settings.
 enum LLMSettings {
-    // The one shared remote-provider pick, used for both Correction and Breakdown.
+    // The remote-provider pick song breakdowns use.
     static let providerKey = "kioku.llm.provider"
     // API keys live in the Keychain. These constants double as the Keychain account
     // names and the legacy UserDefaults keys that pre-Keychain installs migrate from.
@@ -62,9 +62,6 @@ enum LLMSettings {
     }
     // Compact-format stub used when useLLM is false. Parsed by the same pipeline as real responses.
     static let stubResponseKey = "kioku.llm.stubResponse"
-    // Sampling temperature sent to the LLM. Lower = more deterministic; range 0.0–1.0.
-    static let temperatureKey = "kioku.llm.temperature"
-    static let defaultTemperature: Double = 0.4
 
     // The one model each provider uses, chosen by a one-shot seven-model song-breakdown
     // comparison on the same song (2026-09-23). gpt-5.6-luna got every sung reading right at
@@ -73,31 +70,6 @@ enum LLMSettings {
     // reasoning cap in ClaudeRequestParameters or it spends the whole budget thinking.
     static let defaultClaudeModel = "claude-sonnet-5"
     static let defaultOpenAIModel = "gpt-5.6-luna"
-
-    // When true, the LLM request includes a web-search tool the model can use to
-    // look up canonical lyrics (Uta-Net / J-Lyric / Genius / Niconico Kashi)
-    // and ground gikun/ateji readings that don't follow morphological rules.
-    // Apple Intelligence is offline-only and ignores this setting. Defaults to
-    // true because the cost is bounded by the model's own judgment about when
-    // to invoke the tool, and song lyrics — the common case for Kioku — depend
-    // heavily on contextual readings JMdict doesn't carry.
-    static let useWebSearchKey = "kioku.llm.useWebSearch"
-    // Whether on-device Apple Intelligence should be usable at all when the device has it.
-    // Off means correctionProvider() never resolves to it, even if available — Correction
-    // falls straight through to the shared remote provider (or none).
-    static let appleIntelligenceEnabledKey = "kioku.llm.appleIntelligenceEnabled"
-    // True unless the user explicitly turned the toggle off.
-    static func isAppleIntelligenceEnabled() -> Bool {
-        UserDefaults.standard.object(forKey: appleIntelligenceEnabledKey) == nil
-            || UserDefaults.standard.bool(forKey: appleIntelligenceEnabledKey)
-    }
-    // For OpenAI: when web search is enabled, this model is used in place of the
-    // user's configured model because web_search is a model-level feature in the
-    // Chat Completions API rather than a separately-passable tool. The user's
-    // configured model is restored when web search is off. gpt-4o-search-preview
-    // and gpt-4o-mini-search-preview were retired 2026-07-23; gpt-5-search-api is
-    // their Chat Completions replacement.
-    static let openAISearchModel = "gpt-5-search-api"
 
     static var defaultProvider: String { LLMProvider.none.rawValue }
 
@@ -113,10 +85,9 @@ enum LLMSettings {
         #endif
     }
 
-    // The provider picked in Settings: the REMOTE model (OpenAI / Claude), or none. On-device
-    // Apple Intelligence is not a choice here but a capability the app uses on its own (see
-    // correctionProvider), and Cloud / Cloud Pro need the Private Cloud Compute entitlement this
-    // app lacks (calling without it SIGTRAPs inside FoundationModels, confirmed on-device
+    // The provider picked in Settings: the REMOTE model (OpenAI / Claude), or none. Apple
+    // Intelligence is not a choice here — Cloud / Cloud Pro need the Private Cloud Compute
+    // entitlement this app lacks (calling without it SIGTRAPs inside FoundationModels, confirmed on-device
     // 2026-09-10 and -13) — so any stored Apple value reads as none.
     static func remoteProvider() -> LLMProvider {
         let raw = UserDefaults.standard.string(forKey: providerKey) ?? defaultProvider
@@ -124,14 +95,6 @@ enum LLMSettings {
         if provider.isAppleIntelligence { return .none }
         if provider == .claude, isClaudeAvailable == false { return .none }
         return provider
-    }
-
-    // The provider correction runs on: on-device Apple Intelligence when it's available and the
-    // toggle hasn't turned it off, else the shared remote provider if it has a key, else none.
-    static func correctionProvider() -> LLMProvider {
-        if AppleIntelligenceAvailability.isAvailable, isAppleIntelligenceEnabled() { return .appleIntelligence }
-        let remote = remoteProvider()
-        return apiKey(for: remote) != nil ? remote : .none
     }
 
     // The provider song breakdowns run on: always the shared remote one (on-device can't do them).
@@ -161,47 +124,21 @@ enum LLMSettings {
         }
     }
 
-    // Returns the API key for the current correction provider, or nil if not set.
-    static func activeAPIKey() -> String? {
-        apiKey(for: correctionProvider())
-    }
-
     // The Claude model every Claude request uses.
     static func claudeModel() -> String {
         defaultClaudeModel
     }
 
-    // The OpenAI model every OpenAI request uses (the web-search path swaps in its own model).
+    // The OpenAI model every OpenAI request uses.
     static func openAIModel() -> String {
         defaultOpenAIModel
     }
 
-    // True when the user has opted into the LLM using a web-search tool to
-    // verify readings against canonical lyric sources. Defaults to true on a
-    // fresh install — the toggle exists so users can opt out (cost or privacy
-    // concerns) but the common case for songs benefits from it.
-    static func isWebSearchEnabled() -> Bool {
-        if UserDefaults.standard.object(forKey: useWebSearchKey) == nil {
-            return true
-        }
-        return UserDefaults.standard.bool(forKey: useWebSearchKey)
-    }
-
-    // Returns true when useLLM is on and the correction provider is usable (Apple
-    // Intelligence available on-device or via Private Cloud Compute, or a remote
-    // provider with a key), or when useLLM is off and a stub is set.
+    // Returns true when useLLM is on and the remote provider has a key, or when useLLM is off
+    // and a stub is set — i.e. a breakdown request has somewhere to go.
     static func isConfigured() -> Bool {
         if isEnabled() {
-            let provider = correctionProvider()
-            switch provider {
-            case .appleIntelligence:
-                return AppleIntelligenceAvailability.isAvailable
-            case .appleIntelligenceCloud, .appleIntelligenceCloudPro:
-                return AppleIntelligenceCloudAvailability.isAvailable
-            case .none, .openAI, .claude:
-                break
-            }
-            return activeAPIKey() != nil
+            return apiKey(for: remoteProvider()) != nil
         } else {
             let stub = UserDefaults.standard.string(forKey: stubResponseKey) ?? ""
             return stub.isEmpty == false

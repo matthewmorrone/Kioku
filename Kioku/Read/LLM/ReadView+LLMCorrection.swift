@@ -16,149 +16,17 @@ private struct LLMCorrectionNewSeg {
     let surface: String
 }
 
-// Hosts LLM-driven segmentation and reading correction logic for the read screen. Converts
-// current view state into a request payload, validates responses and stages them as a pending
-// proposal, and surfaces errors as alerts. Nothing is written to the document until the user
-// confirms — see stageLLMCorrectionResponse / applyPendingSegmentation.
+// Hosts the read screen's review of a segmentation correction that arrived with a song
+// breakdown: validates it against the note, stages it as a pending proposal, and surfaces
+// errors as alerts. Nothing is written to the document until the user confirms — see
+// stageLLMCorrectionResponse / applyPendingSegmentation.
 extension ReadView {
 
-    // Builds the current segment + reading snapshot and sends it to the LLM for correction.
-    // Streams per-line corrections back to the UI when the active provider supports it
-    // (Apple Intelligence). Remote providers and stub mode return a single final response
-    // which is applied once at the end. In both cases the apply path is the same; the
-    // streaming variant just calls it multiple times with cumulative responses.
-    //
-    // correctiveFeedback: non-nil only for a "Retry with Feedback" resend after a previous
-    // response from the same provider failed to parse — see requestLLMCorrectionWithFeedback().
-    // Threaded straight through to LLMCorrectionService.requestCorrections.
-    func requestLLMCorrection(correctiveFeedback: String? = nil) {
-        guard llmCorrection.llmCorrectionTask == nil else { return }
-
-        let currentSegments = buildLLMSegmentEntries()
-        guard currentSegments.isEmpty == false else {
-            llmCorrection.llmCorrectionErrorMessage = "No segments to correct. Make sure the note has content and segmentation has loaded."
-            llmCorrection.llmCorrectionRetryContext = nil
-            llmCorrection.isShowingLLMCorrectionError = true
-            return
-        }
-
-        let capturedText = document.text
-        let compactSegments = LLMCorrectionDiagnostics.buildCompactFormat(from: currentSegments)
-        let service = LLMCorrectionService()
-
-        // Clear stale pending state before starting a fresh run — a leftover proposal from a
-        // prior session shouldn't linger once a new one starts.
-        llmCorrection.pendingLLMChangedLocations = []
-        llmCorrection.pendingLLMChangedReadingLocations = []
-        llmCorrection.pendingLLMChangesByLocation = [:]
-        llmCorrection.pendingLLMRebuiltEdges = []
-        llmCorrection.pendingLLMWorkingEntries = []
-        llmCorrection.hasPendingLLMChanges = false
-        // Clear any retry context from a prior failed attempt — a fresh request (whether
-        // plain or corrective) shouldn't carry forward a stale "resend with feedback" option
-        // from an unrelated earlier failure.
-        llmCorrection.llmCorrectionRetryContext = nil
-
-        // Only the on-device provider streams today. Remote and stub return a
-        // single response; we apply it once at the end. Reading this once up
-        // front avoids racing the @AppStorage value mid-request.
-        let useLLM = LLMSettings.isEnabled()
-        let provider = LLMSettings.correctionProvider()
-        let willStream = useLLM && (provider == .appleIntelligence
-            || ((provider == .openAI || provider == .claude) && LLMSettings.isWebSearchEnabled() == false))
-
-        // Captured so a response that lands after the user has switched notes or edited this one
-        // (cooperative cancellation doesn't interrupt an in-flight network/model call) is discarded
-        // instead of being staged against offsets that belong to the old text.
-        let sourceNoteID = document.activeNoteID
-        let isStillCurrent: @MainActor () -> Bool = {
-            document.activeNoteID == sourceNoteID && document.text == capturedText
-        }
-
-        AppLog.debug(
-            .llmCorrection,
-            "requestLLMCorrection starting — provider=\(provider) streaming=\(willStream) segments=\(currentSegments.count) isRetry=\(correctiveFeedback != nil)"
-        )
-        llmCorrection.isRequestingLLMCorrection = true
-        llmCorrection.llmCorrectionTask = Task {
-            defer {
-                Task { @MainActor in
-                    llmCorrection.isRequestingLLMCorrection = false
-                    llmCorrection.llmCorrectionTask = nil
-                }
-            }
-
-            do {
-                let baselineSnapshot = currentSegments
-                let response = try await service.requestCorrections(
-                    compactSegments: compactSegments,
-                    dictionary: dictionaryStore,
-                    correctiveFeedback: correctiveFeedback,
-                    onPartial: willStream ? { @MainActor partial in
-                        guard isStillCurrent() else { return }
-                        let merged = Self.mergeResponsePerLine(
-                            response: partial,
-                            originalText: capturedText,
-                            baseline: baselineSnapshot
-                        )
-                        self.applyLLMStreamingPartial(merged, originalText: capturedText)
-                    } : nil
-                )
-                LLMCorrectionService.logOutcome(provider: provider, result: .success(response))
-
-                await MainActor.run {
-                    guard isStillCurrent() else { return }
-                    if willStream {
-                        // Streaming already applied every line as it arrived;
-                        // the final response equals the last partial. Just flag
-                        // the note as having had a correction applied so a
-                        // subsequent sparkles tap goes through the rerun-confirm
-                        // dialog.
-                        if llmCorrection.hasPendingLLMChanges {
-                            llmCorrection.hasAppliedLLMCorrectionForCurrentNote = true
-                        }
-                    } else {
-                        // Remote / stub one-shot — merge per-line with baseline
-                        // first so a single bad line (e.g., gpt-4o-search-preview
-                        // substituting kana → kanji on one row) doesn't tank
-                        // the whole correction. Lines whose surfaces concat to
-                        // the source line apply as-returned; the rest fall back
-                        // to the baseline (no change for that line).
-                        let merged = Self.mergeResponsePerLine(
-                            response: response,
-                            originalText: capturedText,
-                            baseline: baselineSnapshot
-                        )
-                        let result = stageLLMCorrectionResponse(merged, originalText: capturedText)
-                        handleLLMCorrectionResult(result)
-                    }
-                }
-            } catch {
-                // A cancellation the user asked for is not an error to report.
-                if error is CancellationError || (error as? URLError)?.code == .cancelled { return }
-                LLMCorrectionService.logOutcome(provider: provider, result: .failure(error))
-                await MainActor.run {
-                    llmCorrection.llmCorrectionErrorMessage = error.localizedDescription
-                    // Only a whole-response parse failure (nothing recognizable found, even
-                    // after the automatic on-device salvage pass) carries a retry context —
-                    // that's the one failure kind where resending with concrete feedback about
-                    // what went wrong can actually help. Network errors, missing keys, etc. have
-                    // nothing productive to "correct."
-                    if case let LLMCorrectionError.unparseableAfterSalvage(rawResponse, reason) = error {
-                        llmCorrection.llmCorrectionRetryContext = (rawResponse, reason)
-                    }
-                    llmCorrection.isShowingLLMCorrectionError = true
-                }
-            }
-        }
-    }
-
     // Picks up a segmentation correction that arrived with a merged breakdown for the active
-    // note and presents it exactly like a one-shot correction response: merged per line
-    // against the current segmentation, applied, and held as pending AI changes until the
-    // sparkles checkmark confirms them. No-op while a correction request is in flight.
+    // note: merged per line against the current segmentation, staged, and held as pending AI
+    // changes until the sparkles checkmark confirms them.
     func consumePendingBreakdownCorrection() {
-        guard llmCorrection.llmCorrectionTask == nil, let noteID = document.activeNoteID,
+        guard let noteID = document.activeNoteID,
               let response = songBreakdownStore.takePendingCorrection(forNoteID: noteID) else { return }
         let baseline = buildLLMSegmentEntries()
         guard baseline.isEmpty == false else { return }
@@ -168,45 +36,9 @@ extension ReadView {
         llmCorrection.pendingLLMRebuiltEdges = []
         llmCorrection.pendingLLMWorkingEntries = []
         llmCorrection.hasPendingLLMChanges = false
-        llmCorrection.llmCorrectionRetryContext = nil
         let text = document.text
         let merged = Self.mergeResponsePerLine(response: response, originalText: text, baseline: baseline)
         handleLLMCorrectionResult(stageLLMCorrectionResponse(merged, originalText: text))
-    }
-
-    // Retries after a parse failure by resending the SAME provider a corrected request that
-    // includes the previous raw response and why it was rejected (see
-    // LLMCorrectionService.correctiveFeedback), instead of a blind identical resend. Distinct
-    // from the alert's plain "Retry" button, which just calls requestLLMCorrection() again.
-    // No-ops if there's no retry context (e.g. the user dismissed the alert first).
-    func requestLLMCorrectionWithFeedback() {
-        guard let context = llmCorrection.llmCorrectionRetryContext else { return }
-        AppLog.debug(.llmCorrection, "retrying with corrective feedback — reason: \(context.reason)")
-        let feedback = LLMCorrectionService.correctiveFeedback(
-            previousRawResponse: context.rawResponse,
-            reason: context.reason
-        )
-        requestLLMCorrection(correctiveFeedback: feedback)
-    }
-
-    // Stages one streaming partial. Each partial's `mergeResponsePerLine` result already
-    // represents the FULL cumulative proposal so far (corrected lines from the response,
-    // not-yet-corrected lines falling back to baseline) — so the pending state is REPLACED
-    // each call, not unioned. Nothing is written to the document; see stageLLMCorrectionResponse.
-    func applyLLMStreamingPartial(_ partial: LLMCorrectionResponse, originalText: String) {
-        let result = stageLLMCorrectionResponse(partial, originalText: originalText)
-        switch result {
-        case .applied(_, let changedLocations, let changedReadingLocations, let changesByLocation):
-            llmCorrection.pendingLLMChangedLocations = changedLocations
-            llmCorrection.pendingLLMChangedReadingLocations = changedReadingLocations
-            llmCorrection.pendingLLMChangesByLocation = changesByLocation
-            llmCorrection.hasPendingLLMChanges = changedLocations.isEmpty == false
-        case .surfaceMismatch(let msg), .networkError(let msg), .decodingError(let msg):
-            // A streaming partial failed validation — the per-line client
-            // sanitizes input so this is rare, but if it happens, log and
-            // skip rather than failing the whole run.
-            AppLog.error(.llmCorrection, "streaming partial apply failed: \(msg)")
-        }
     }
 
     // Per-line salvage pass over an LLM response: groups the response and the
@@ -266,44 +98,6 @@ extension ReadView {
             lines.append(current)
         }
         return lines
-    }
-
-    // Cancels any in-flight LLM correction request.
-    func cancelLLMCorrection() {
-        llmCorrection.llmCorrectionTask?.cancel()
-        llmCorrection.llmCorrectionTask = nil
-        llmCorrection.isRequestingLLMCorrection = false
-    }
-
-    // Segment-start UTF-16 locations covering the note line the AI is processing
-    // RIGHT NOW (per AICorrectionProgress.currentLineIndex). Used to drive a
-    // per-line in-flight highlight so the user can see which line the model is
-    // working on without watching a spinner. Returns an empty set when no AI
-    // request is in flight, or when the published index doesn't map to a real
-    // line in the current text (e.g., text changed mid-request).
-    var inFlightLineSegmentLocations: Set<Int> {
-        guard let lineIndex = aiProgress.currentLineIndex else { return [] }
-        let lines = document.text.components(separatedBy: "\n")
-        guard lineIndex >= 0, lineIndex < lines.count else { return [] }
-
-        // Walk up to the target line, summing each prior line's UTF-16 count
-        // plus one for the "\n" separator. Last line has no trailing newline,
-        // which is fine because we never need its end offset.
-        var lineStart = 0
-        for i in 0..<lineIndex {
-            lineStart += lines[i].utf16.count + 1
-        }
-        let lineEnd = lineStart + lines[lineIndex].utf16.count
-
-        var locs: Set<Int> = []
-        for edge in document.segmentEdges {
-            let r = NSRange(edge.start..<edge.end, in: document.text)
-            guard r.location != NSNotFound else { continue }
-            if r.location >= lineStart, r.location < lineEnd {
-                locs.insert(r.location)
-            }
-        }
-        return locs
     }
 
     // Converts the current segment edges and reading overrides into LLMSegmentEntry values
@@ -723,9 +517,6 @@ extension ReadView {
                 llmCorrection.pendingLLMChangedReadingLocations = changedReadingLocations
                 llmCorrection.pendingLLMChangesByLocation = changesByLocation
                 llmCorrection.hasPendingLLMChanges = true
-                // This note now has an AI correction applied — future taps should confirm
-                // before replacing it rather than re-running silently.
-                llmCorrection.hasAppliedLLMCorrectionForCurrentNote = true
             }
         case .surfaceMismatch(let msg):
             AppLog.error(.llmCorrection, "surface mismatch: \(msg)")

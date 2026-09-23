@@ -32,52 +32,30 @@ extension ReadView {
         }
     }
 
-    // Triggers an LLM correction request for the current note's segmentation and readings.
-    // While changes are pending, acts as a confirm button (sparkles + checkmark overlay).
-    // Always visible — disabled (not hidden) when no provider is configured, so its absence
-    // doesn't read as "this feature doesn't exist" when it's really "go set up a provider".
+    // Confirms every pending AI change from a breakdown's segmentation correction at once
+    // (sparkles + checkmark). Only shown while such changes are pending.
+    @ViewBuilder
     var llmCorrectionButton: some View {
-        Button {
-            if llmCorrection.isRequestingLLMCorrection {
-                llmCorrection.isShowingLLMCancelConfirm = true
-            } else if llmCorrection.hasPendingLLMChanges {
+        if llmCorrection.hasPendingLLMChanges {
+            Button {
                 confirmLLMChanges()
-            } else if llmCorrection.hasAppliedLLMCorrectionForCurrentNote {
-                // Only warn about replacing corrections once this note has actually had one
-                // applied — a fresh note runs straight away without the confirm dialog.
-                llmCorrection.isShowingLLMRerunConfirm = true
-            } else {
-                llmCorrection.isShowingLLMStartConfirm = true
-            }
-        } label: {
-            Group {
-                if llmCorrection.isRequestingLLMCorrection {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .scaleEffect(0.7)
-                } else if llmCorrection.hasPendingLLMChanges {
-                    // Sparkles with a checkmark badge signals "confirm these AI changes".
-                    ZStack(alignment: .bottomTrailing) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 16, weight: .semibold))
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 10, weight: .bold))
-                            .offset(x: 4, y: 4)
-                    }
-                } else {
+            } label: {
+                ZStack(alignment: .bottomTrailing) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 16, weight: .semibold))
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .offset(x: 4, y: 4)
                 }
+                .foregroundStyle(Color.green)
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(ReadToggleAppearance.background))
             }
-            .foregroundStyle(llmCorrection.hasPendingLLMChanges ? Color.green : Color.accentColor)
-            .frame(width: 36, height: 36)
-            .background(Circle().fill(ReadToggleAppearance.background))
+            .buttonStyle(PlainButtonStyle())
+            .disabled(editModeScroll.isEditMode)
+            .opacity(editModeScroll.isEditMode ? 0.5 : 1.0)
+            .accessibilityLabel("Confirm AI Changes")
         }
-        .buttonStyle(PlainButtonStyle())
-        .disabled(editModeScroll.isEditMode || isLLMConfigured == false)
-        .opacity(editModeScroll.isEditMode || isLLMConfigured == false ? 0.5 : 1.0)
-        .accessibilityLabel(llmCorrection.hasPendingLLMChanges ? "Confirm AI Changes" : (llmCorrection.isRequestingLLMCorrection ? "Cancel AI Correction" : "Request AI Correction"))
-        .accessibilityHint(isLLMConfigured ? "" : "Set up an AI provider in Settings to use this")
     }
 
     // Resets custom segment segmentation back to computed segmentation.
@@ -413,17 +391,14 @@ extension ReadView {
         editModeButtonLabel
             .contentShape(Circle())
             .onTapGesture {
-                guard llmCorrection.isRequestingLLMCorrection == false else { return }
                 editModeScroll.isEditMode.toggle()
             }
             .onLongPressGesture(minimumDuration: 0.35) {
-                guard llmCorrection.isRequestingLLMCorrection == false else { return }
                 readSheets.isShowingDisplayOptions = true
             }
-            .disabled(llmCorrection.isRequestingLLMCorrection)
-            .opacity(llmCorrection.isRequestingLLMCorrection ? 0.4 : (editModeScroll.isEditMode ? 1 : 0.7))
+            .opacity(editModeScroll.isEditMode ? 1 : 0.7)
             .accessibilityLabel(editModeScroll.isEditMode ? "Disable Edit Mode" : "Enable Edit Mode")
-            .accessibilityHint(llmCorrection.isRequestingLLMCorrection ? "Disabled while AI correction runs" : "Long press for display options")
+            .accessibilityHint("Long press for display options")
             .accessibilityAddTraits(.isButton)
             .popover(isPresented: $readSheets.isShowingDisplayOptions, arrowEdge: .bottom) {
                 displayOptionsPopover

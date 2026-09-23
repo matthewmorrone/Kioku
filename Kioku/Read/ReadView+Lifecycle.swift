@@ -29,23 +29,8 @@ extension ReadView {
                 Text(lyricRealign.cueRealignErrorMessage)
             }
             .alert("AI Correction", isPresented: $llmCorrection.isShowingLLMCorrectionError) {
-                Button("Retry") {
-                    llmCorrection.llmCorrectionErrorMessage = ""
-                    requestLLMCorrection()
-                }
-                // Only shown when the failure was a whole-response parse failure (see
-                // llmCorrection.llmCorrectionRetryContext) — resends the SAME provider with the previous raw
-                // response and the parse error folded in as corrective feedback, instead of a
-                // blind identical retry.
-                if llmCorrection.llmCorrectionRetryContext != nil {
-                    Button("Retry with Feedback") {
-                        llmCorrection.llmCorrectionErrorMessage = ""
-                        requestLLMCorrectionWithFeedback()
-                    }
-                }
                 Button("OK", role: .cancel) {
                     llmCorrection.llmCorrectionErrorMessage = ""
-                    llmCorrection.llmCorrectionRetryContext = nil
                 }
             } message: {
                 Text(llmCorrection.llmCorrectionErrorMessage)
@@ -64,26 +49,6 @@ extension ReadView {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text(llmCorrection.llmChangePopoverText)
-            }
-            .alert("Run AI Correction?", isPresented: $llmCorrection.isShowingLLMStartConfirm) {
-                Button("Run") { requestLLMCorrection() }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Sends this note's text and segmentation to \(LLMSettings.correctionProvider().displayName). The suggested changes come back as pending edits for you to confirm before anything is applied.")
-            }
-            .alert("Cancel AI Correction?", isPresented: $llmCorrection.isShowingLLMCancelConfirm) {
-                Button("Cancel Correction", role: .destructive) { cancelLLMCorrection() }
-                Button("Keep Going", role: .cancel) {}
-            } message: {
-                Text("The correction in progress will be discarded.")
-            }
-            .alert("Re-run AI Correction?", isPresented: $llmCorrection.isShowingLLMRerunConfirm) {
-                Button("Re-run", role: .destructive) {
-                    requestLLMCorrection()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This note already has corrections applied. Re-running will replace them.")
             }
             // Auto-segmentation confirm dialog disabled — see requestAutoSegConfirm in
             // ReadView+Persistence.swift for re-enable instructions.
