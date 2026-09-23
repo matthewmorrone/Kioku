@@ -86,10 +86,17 @@ nonisolated enum SongListenScript {
                     steps.append(leading)
                 }
 
-                let definition = SongLineCard.truncatingAtSemicolon(SongLineCard.stripInlineMarkdown(word.definition))
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                // `text` is the displayed definition, which SongLineCard matches to tint the row;
+                // the TTS-friendly rewrite is only what's spoken.
+                let definition = SongDefinitionCleaner.clean(word.definition)
                 if definition.isEmpty == false {
-                    steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .wordDefinition, text: ttsFriendlyText(definition), language: .english)))
+                    steps.append(.speech(SongListenSegment(
+                        lineIndex: line.index,
+                        kind: .wordDefinition,
+                        text: definition,
+                        language: .english,
+                        spokenText: ttsFriendlyText(definition)
+                    )))
                 }
                 steps.append(.speech(spoken))
             }

@@ -53,7 +53,7 @@ final class SongListenScriptTests: XCTestCase {
         )])
         let steps = SongListenScript.build(from: bd)
         let texts = steps.compactMap { step -> String? in
-            if case .speech(let s) = step { return s.text }
+            if case .speech(let s) = step { return s.spokenText ?? s.text }
             return nil
         }
         XCTAssertTrue(texts.contains("to spin or weave a story"), "got: \(texts)")
