@@ -42,10 +42,10 @@ nonisolated enum LLMModelCatalog {
         return dollars * 100
     }
 
-    // The picker row's cost: "~0.4¢ per breakdown" under a cent, whole cents above ("~4¢").
+    // The picker row's cost per typical breakdown: "~0.4¢" under a cent, whole cents above ("~4¢").
     static func costLabel(for option: LLMModelOption) -> String {
         let cents = breakdownCostCents(for: option)
         let amount = cents < 1 ? String(format: "%.1f", cents) : String(Int(cents.rounded()))
-        return "~\(amount)¢ per breakdown"
+        return "~\(amount)¢"
     }
 }

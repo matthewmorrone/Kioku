@@ -48,9 +48,9 @@ final class OpenAIRequestParametersTests: XCTestCase {
     // Cost per typical breakdown: one decimal under a cent, whole cents above.
     func testCostLabels() {
         // 2,700 × $0.20/M + 3,000 × $1.20/M = $0.00414
-        XCTAssertEqual(LLMModelCatalog.costLabel(for: LLMModelOption(id: "a", inputPerMillion: 0.20, outputPerMillion: 1.20)), "~0.4¢ per breakdown")
+        XCTAssertEqual(LLMModelCatalog.costLabel(for: LLMModelOption(id: "a", inputPerMillion: 0.20, outputPerMillion: 1.20)), "~0.4¢")
         // 2,700 × $2.50/M + 3,000 × $10/M = $0.03675
-        XCTAssertEqual(LLMModelCatalog.costLabel(for: LLMModelOption(id: "b", inputPerMillion: 2.5, outputPerMillion: 10)), "~4¢ per breakdown")
+        XCTAssertEqual(LLMModelCatalog.costLabel(for: LLMModelOption(id: "b", inputPerMillion: 2.5, outputPerMillion: 10)), "~4¢")
     }
 
     // Every provider default is offered in its own picker.
