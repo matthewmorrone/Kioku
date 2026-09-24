@@ -6,7 +6,8 @@ import Foundation
 // Shown from a long-press on the Read tab's segment-list button.
 nonisolated enum SegmentationChangeList {
 
-    // Builds the change lines in text order. `defaultEdges` is the segmenter's own path for the
+    // Builds the change lines in text order, each distinct change once (a global merge of の|様
+    // everywhere is one line, not one per occurrence). `defaultEdges` is the segmenter's own path for the
     // text; `defaultFurigana` is the resolver's reading for each of the CURRENT edges, so a merged
     // or split segment is only listed as a reading change when its reading was pinned away from
     // what the resolver gives that segment.
@@ -65,7 +66,8 @@ nonisolated enum SegmentationChangeList {
             }
         }
 
-        return changes.sorted { $0.location < $1.location }.map(\.line)
+        var seen = Set<String>()
+        return changes.sorted { $0.location < $1.location }.map(\.line).filter { seen.insert($0).inserted }
     }
 
     // Each edge's UTF-16 range and surface, skipping edges that fall outside `text`.

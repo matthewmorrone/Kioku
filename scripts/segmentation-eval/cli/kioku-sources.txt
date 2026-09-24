@@ -32,6 +32,7 @@ Dictionary/ScriptClassifier.swift
 Dictionary/Segmenter/SegmentationDemotions.swift
 Dictionary/Segmenter/Segmenter+LemmaResolution.swift
 Dictionary/Segmenter/Segmenter.swift
+Dictionary/Segmenter/Segmenter+Viterbi.swift
 Dictionary/Segmenter/SegmenterBackend.swift
 Dictionary/Segmenter/SegmenterConfig.swift
 Dictionary/Segmenter/SegmenterScoring.swift
