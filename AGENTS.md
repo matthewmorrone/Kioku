@@ -2,7 +2,6 @@
 
 ## Workflow Constraints
 
-- Never create git worktrees. Work directly on the current branch.
 - When you encounter pre-existing lint/invariant/test/CI failures while working in the repo, fix them as part of your current change. Do not flag them as "not introduced by me" or leave them for someone else — the codebase is shared, and if you found it broken you own fixing it.
 - On a fresh clone, run `bash scripts/setup.sh` once. It wires `core.hooksPath` to `.githooks/` so pre-commit + pre-push invariant checks run, makes the hook scripts executable, and decompresses `Resources/dictionary.sqlite` from the committed `.zst` archive. Without this, builds fail (missing dictionary) and bad commits sneak past local invariants.
 
