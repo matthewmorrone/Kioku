@@ -137,7 +137,9 @@ extension ReadView {
         subtitleImport.isCancellingAlignment = false
         subtitleImport.alignmentCancellationToken.reset()
         lyricAlignment.progressMessage = "Preparing \(totalLines) lines..."
+        let foregroundGuard = AlignmentForegroundGuard()
         defer {
+            foregroundGuard.end()
             lyricAlignment.isAligning = false
             subtitleImport.isCancellingAlignment = false
             lyricAlignment.progressMessage = ""
@@ -164,7 +166,7 @@ extension ReadView {
         } catch is CancellationError {
             // User cancelled from the bar's chip; nothing to surface.
         } catch {
-            lyricAlignment.errorMessage = error.localizedDescription
+            lyricAlignment.errorMessage = foregroundGuard.message(for: error)
         }
     }
 
@@ -210,7 +212,9 @@ extension ReadView {
         lyricAlignment.progressMessage = "Re-aligning \(totalLines) lines…"
         subtitleImport.alignmentCancellationToken.reset()
         subtitleImport.isCancellingAlignment = false
+        let foregroundGuard = AlignmentForegroundGuard()
         defer {
+            foregroundGuard.end()
             lyricAlignment.isAligning = false
             lyricAlignment.progressMessage = ""
             subtitleImport.isCancellingAlignment = false
@@ -249,7 +253,7 @@ extension ReadView {
         } catch is CancellationError {
             // User navigated away / cancelled mid-run; nothing to surface.
         } catch {
-            lyricAlignment.errorMessage = "Couldn't re-align: \(error.localizedDescription)"
+            lyricAlignment.errorMessage = foregroundGuard.message(for: error)
         }
     }
 
