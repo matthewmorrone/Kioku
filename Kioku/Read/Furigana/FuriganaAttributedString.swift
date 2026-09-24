@@ -78,28 +78,41 @@ enum FuriganaAttributedString {
 
     // Detects contiguous kanji runs and returns character-index ranges within the surface.
     // Iteration marks (々) are treated as run continuations when they follow a kanji character.
+    // Digits (ASCII or full-width) join a run that contains kanji, so a number + counter like
+    // ２人 → ふたり or 3回 → さんかい gets one ruby over the whole thing rather than the reading
+    // squeezed over the counter alone; a stretch of digits with no kanji is not a run.
     nonisolated static func kanjiRuns(in text: String) -> [(start: Int, end: Int)] {
         let characters = Array(text)
         var runs: [(start: Int, end: Int)] = []
         var runStart: Int?
+        var runHasKanji = false
 
         for (index, character) in characters.enumerated() {
             let isKanji = ScriptClassifier.containsKanji(String(character))
             let isIterationMark = character.unicodeScalars.first?.value == 0x3005 // 々
+            let isDigit = isRunDigit(character)
             let continuesRun = isIterationMark && runStart != nil
-            if isKanji || continuesRun {
+            if isKanji || continuesRun || isDigit {
                 if runStart == nil { runStart = index }
+                if isKanji { runHasKanji = true }
             } else if let start = runStart {
-                runs.append((start: start, end: index))
+                if runHasKanji { runs.append((start: start, end: index)) }
                 runStart = nil
+                runHasKanji = false
             }
         }
 
-        if let start = runStart {
+        if let start = runStart, runHasKanji {
             runs.append((start: start, end: characters.count))
         }
 
         return runs
+    }
+
+    // True for the digits that can be part of a number + counter run: ASCII 0–9 and full-width ０–９.
+    nonisolated private static func isRunDigit(_ character: Character) -> Bool {
+        guard let value = character.unicodeScalars.first?.value, character.unicodeScalars.count == 1 else { return false }
+        return (0x30...0x39).contains(value) || (0xFF10...0xFF19).contains(value)
     }
 
     // Splits a full reading into per-kanji-run readings using okurigana as delimiters.
@@ -143,7 +156,12 @@ enum FuriganaAttributedString {
                 continue
             }
 
-            guard let sepRange = reading.range(of: separator, range: cursor..<reading.endIndex) else {
+            // Every run is read with at least one kana, so the separator is searched for only
+            // after the run's first reading character — otherwise 言い訳 (いいわけ) matches the い
+            // belonging to 言 itself, leaving 言 bare and handing 訳 "いわけ".
+            guard cursor < reading.endIndex else { return nil }
+            let searchStart = reading.index(after: cursor)
+            guard let sepRange = reading.range(of: separator, range: searchStart..<reading.endIndex) else {
                 return nil
             }
 
