@@ -678,6 +678,10 @@ own sections.)
 
 ## Audio & Alignment
 
+- [ ] **Moon Pride: delayed lines** — noted 2026-09-24. `muunpuraido` (fixture in
+      `KiokuTests/Fixtures/alignment/`) still has lines whose highlight starts late. Measure the
+      per-line onset error against `muunpuraido.ground-truth.srt` via `AlignmentQualityTests`
+      to find which lines lag and by how much before changing the aligner.
 - [ ] **Moon Heart Sequence: repetition + wrong duration** — noted 2026-09-24. Two issues on
       `muunhaatoshiikuensu` (fixture in `KiokuTests/Fixtures/alignment/`): (1) repeated lyrics
       still land on the wrong occurrence — same class of bug as the tsukiiro-chainon
