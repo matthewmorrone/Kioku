@@ -13,4 +13,8 @@ final class ReadSheetsUIState {
     // flipping more than one category per visit. A popover of real Toggle rows doesn't.
     var isShowingSavedHighlightCategories = false
     var isShowingBreakdownSheet = false
+    // Long-press on the segment-list button: the note's changes from default segmentation and
+    // readings (SegmentationChangeList), shown in an alert.
+    var isShowingChangesFromDefault = false
+    var changesFromDefault: [String] = []
 }

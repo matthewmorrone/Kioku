@@ -145,14 +145,51 @@ extension ReadView {
             .accessibilityAddTraits(.isButton)
     }
 
+    // Tap opens the segment list; long-press lists the note's changes from default segmentation
+    // and readings.
     var titleExtractWordsButton: some View {
-        Button {
-            readSheets.isShowingSegmentList = true
-        } label: {
-            titleActionLabel(systemImage: "list.bullet", foreground: .accentColor)
+        titleActionLabel(systemImage: "list.bullet", foreground: .accentColor)
+            .contentShape(Capsule())
+            .onTapGesture {
+                readSheets.isShowingSegmentList = true
+            }
+            .onLongPressGesture {
+                showChangesFromDefault()
+            }
+            .accessibilityLabel("Extract Words")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(named: "Changes from Default") {
+                showChangesFromDefault()
+            }
+    }
+
+    // Runs the segmenter and reading resolver fresh for the note, off the main thread, and shows
+    // how the note's current segmentation and readings differ from that default.
+    func showChangesFromDefault() {
+        let text = document.text
+        let currentEdges = document.segmentEdges
+        let currentFurigana = (
+            byLocation: document.furiganaBySegmentLocation,
+            lengthByLocation: document.furiganaLengthBySegmentLocation
+        )
+        let resolver = FuriganaResolver(segmenter: segmenter, kanjiReadingFallback: kanjiReadingFallback)
+        let readingData = surfaceReadingData
+        Task {
+            let lines = await Task.detached(priority: .userInitiated) { [segmenter] in
+                let defaultEdges = segmenter.longestMatchResult(for: text).selectedEdges
+                let defaultFurigana = resolver.build(for: text, edges: currentEdges, surfaceReadingData: readingData)
+                return SegmentationChangeList.lines(
+                    text: text,
+                    defaultEdges: defaultEdges,
+                    currentEdges: currentEdges,
+                    defaultFurigana: defaultFurigana,
+                    currentFurigana: currentFurigana
+                )
+            }.value
+            guard document.text == text else { return }
+            readSheets.changesFromDefault = lines
+            readSheets.isShowingChangesFromDefault = true
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Extract Words")
     }
 
     // True while a breakdown generation is in flight for the currently-open note — surfaced

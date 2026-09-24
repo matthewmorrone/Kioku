@@ -41,6 +41,11 @@ extension ReadView {
             } message: {
                 Text("\(llmCorrection.pendingLLMChangedLocations.count) suggested change(s) are highlighted. Tap one to decide on it individually.")
             }
+            .alert("Changes from Default", isPresented: $readSheets.isShowingChangesFromDefault) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(readSheets.changesFromDefault.isEmpty ? "None" : readSheets.changesFromDefault.joined(separator: "\n"))
+            }
             .alert("AI Correction", isPresented: $llmCorrection.isShowingLLMChangePopover) {
                 Button("Confirm") {
                     if let loc = llmCorrection.llmChangePopoverLocation {
