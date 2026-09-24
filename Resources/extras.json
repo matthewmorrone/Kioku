@@ -5,8 +5,8 @@
 			"kana": "あいひと",
 			"sense": [
 				{
-					"partOfSpeech": ["noun (common) (futsuumeishi)"],
-					"misc": ["poetical term"],
+					"partOfSpeech": ["n"],
+					"misc": ["poet"],
 					"gloss": ["lover; beloved (poetic reading of 愛人)"]
 				}
 			]
@@ -16,7 +16,7 @@
 			"kana": "ゆうばえ",
 			"sense": [
 				{
-					"partOfSpeech": ["noun (common) (futsuumeishi)"],
+					"partOfSpeech": ["n"],
 					"gloss": ["evening glow; afterglow of sunset"]
 				}
 			]
@@ -47,10 +47,10 @@
 			"sense": [
 				{
 					"partOfSpeech": [
-						"adverb (fukushi)"
+						"adv"
 					],
 					"misc": [
-						"onomatopoeic or mimetic word"
+						"on-mim"
 					],
 					"gloss": [
 						{
@@ -71,6 +71,16 @@
 		{
 			"kana": "ラララ",
 			"gloss": "la la la (sung vocalization)"
+		},
+		{
+			"kanji": "の様",
+			"kana": "のよう",
+			"sense": [
+				{
+					"partOfSpeech": ["exp"],
+					"gloss": ["like; as if (の様に with the に dropped, as in lyrics)"]
+				}
+			]
 		}
 	],
 	"frequencyOverrides": [
