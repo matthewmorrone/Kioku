@@ -109,6 +109,17 @@ public enum VocalStemCache {
         for url in entries { try? FileManager.default.removeItem(at: url) }
     }
 
+    // Deletes the cached stem for one song, so its next alignment isolates the vocals afresh.
+    // Backs the lyric view's "Re-align from Scratch" action. No-op if nothing is cached.
+    public static func delete(for audioURL: URL) {
+        guard let url = cacheURL(for: audioURL), FileManager.default.fileExists(atPath: url.path) else { return }
+        do {
+            try FileManager.default.removeItem(at: url)
+        } catch {
+            print("[VocalStemCache] delete failed for \(url.lastPathComponent): \(error.localizedDescription)")
+        }
+    }
+
     // [DEBUG] Reports the computed cache filename, the source byte size, and whether a cache file
     // is present — so the harness can read the exact key off the breadcrumb and seed it precisely
     // instead of reverse-engineering the hash off-device (where any mismatch is invisible).

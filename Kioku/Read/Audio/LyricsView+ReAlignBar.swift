@@ -1,9 +1,16 @@
 import SwiftUI
+import SwiftWhisperAlign
 
-// Top action bar for the karaoke view: Re-align (one forced-alignment pass over the whole song)
-// and the settings-popup gear (LyricsView+SettingsPopup.swift). Not private: called from
-// panel(geo:) in LyricsView.swift.
+// Top action bar for the karaoke view: Re-align (one forced-alignment pass over the whole song;
+// press and hold for Re-align from Scratch, which isolates the vocals again first) and the
+// settings-popup gear (LyricsView+SettingsPopup.swift). Not private: called from panel(geo:) in
+// LyricsView.swift.
 extension LyricsView {
+    // The attached song's audio file, which keys its cached vocal stem.
+    private var attachmentAudioURL: URL? {
+        attachmentID.flatMap { NotesAudioStore.shared.audioURL(for: $0) }
+    }
+
     // Re-align button (or its live progress chip while a run is in flight), plus the gear that
     // opens the in-place settings popup.
     func reAlignBar() -> some View {
@@ -55,6 +62,13 @@ extension LyricsView {
                 .buttonStyle(.plain)
                 .disabled(noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityLabel(cues.isEmpty ? "Align all lyrics to the audio" : "Re-align all lyrics to the audio")
+                .contextMenu {
+                    Button("Re-align from Scratch", systemImage: "arrow.clockwise") {
+                        if let audioURL = attachmentAudioURL { VocalStemCache.delete(for: audioURL) }
+                        onReAlign()
+                    }
+                    .disabled(attachmentAudioURL.map(VocalStemCache.hasStem(for:)) != true)
+                }
             }
 
             Spacer(minLength: 0)
