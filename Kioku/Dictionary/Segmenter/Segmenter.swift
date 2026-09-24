@@ -148,6 +148,8 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             }
 
             var keptMatches = 0
+            // Whether any edge longer than one character starts here; see the fallback below.
+            var keptMultiCharacterMatch = false
 
             if let numberEdge = numberRunEdge(in: text, startingAt: index) {
                 edges.append(numberEdge)
@@ -188,6 +190,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                        let edge = suruCompoundEdge(surface: surface, range: surfaceRange) {
                         edges.append(edge)
                         keptMatches += 1
+                        keptMultiCharacterMatch = true
                         continue
                     }
                 }
@@ -263,13 +266,18 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     }
                     edges.append(edge)
                     keptMatches += 1
+                    if characterLength > 1 { keptMultiCharacterMatch = true }
                 }
             }
 
             // Ensures every character position has at least one outgoing edge.
             // Single-character fallback so the greedy walk lands on every position,
             // allowing dictionary words that start mid-unknown-run to be reached.
-            if keptMatches == 0 {
+            // A katakana run whose first kana is also a one-character entry (リ of リュミエール, シ of
+            // シェノン) still gets its whole-run edge, or an unknown loanword could only come out as
+            // that kana plus the rest; the path search weighs the two on cost.
+            let isKatakanaRunStart = ScriptClassifier.isPureKatakana(String(text[index]))
+            if keptMatches == 0 || (keptMultiCharacterMatch == false && isKatakanaRunStart) {
                 let fallbackRange = unknownFallbackRange(
                     in: text,
                     startingAt: index,
@@ -280,13 +288,17 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     end: fallbackRange.upperBound,
                     surface: String(text[fallbackRange])
                 )
+                // A one-kana run here would only duplicate the dictionary edge for that kana.
+                let duplicatesSingleKanaMatch = keptMatches > 0 && text.index(after: index) == fallbackRange.upperBound
                 if text.index(after: index) == fallbackRange.upperBound,
                    index > text.startIndex,
                    isSpanBreak(text[text.index(before: index)]) == false,
                    isBoundCharacter(at: index, in: text) {
                     fallbackEdge.isAbsorbedBoundCharacter = true
                 }
-                edges.append(fallbackEdge)
+                if duplicatesSingleKanaMatch == false {
+                    edges.append(fallbackEdge)
+                }
             }
 
             index = text.index(after: index)
