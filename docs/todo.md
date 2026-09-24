@@ -131,7 +131,7 @@ own sections.)
 - [x] **Rebuild and publish the dictionary — done 2026-09-22 as `dictionary-v11` (v10 was built before the cross-reference/decomposition generator change and is superseded). Two `extras.json` entries were waiting
       on it.** Added 2026-09-21. `ユア` ("your"; ユアラブ doesn't split without it) and `ラララ` (came out
       ララ|ラ in the lyric review) are in `Resources/extras.json` but inert until a from-source rebuild:
-      `Resources/generate_db.py` (inputs cached in `~/Projects/kioku-source-cache`, ~2 min), bump
+      `Resources/generate_db.py` (inputs cached in `~/Projects/kioku-source-cache`, ~1 min; needs wordfreq — `~/Projects/Kioku/.venv` from `requirements.txt`), bump
       `releaseTag` / `expectedSHA256` in `DictionaryDownloadManager.swift`, then
       `scripts/publish_dictionary_release.sh` (it refuses a dictionary missing any extras surface).
       Deliberately batched — don't republish for a single entry. After publishing, re-measure with
@@ -376,22 +376,24 @@ own sections.)
 
 - [ ] **Context-chosen readings for homographs (様 さま/よう, 方, 何, 間, 上…)** — added 2026-09-24.
       Furigana picks a reading by surface alone: `FuriganaResolver.readingForSegment` takes the
-      top-ranked hiragana reading, so 様 is always さま, including の様に / 様な / 様だ where it is よう
-      (seen in 月色チャイのん). The path search has the context (transition classes over the next
-      segment) but each edge is one surface with its entries' POS unioned, and the chosen path never
-      records which entry/reading won.
-      Already in place: per-entry POS is loaded in memory (`Segmenter.partOfSpeechByEntryID`, entry IDs
-      per trie surface — used today only to gate deinflection); edges carry IPAdic context IDs; a MeCab
-      backend exists whose IPAdic output carries an in-context reading (not used by furigana).
-      The catch, checked for 様: JMdict tags さま (51237) `suf`/`n` and よう (56931) `n-suf,n` — nearly
-      the same class — and the harvested IPAdic IDs are per surface (all four 様 entries share 1314/1314).
-      So per-reading edges from JMdict POS alone would not separate them. Candidate sources of a real
-      per-reading signal: harvest IPAdic IDs per (surface, reading) at build time (`generate_db.py`
-      already runs mecab; a rebuild takes ~30 s), or consult MeCab's in-context reading for
-      multi-reading surfaces. Then: one lattice edge per reading, carry the winner into furigana.
-      Start by counting how many common surfaces have readings whose class would actually differ.
-      No hand-written rules or new JSON rule files. Re-measure held2k / kana2k / fresh5k and the
-      lyric lines before shipping. Existing notes pick it up via Reset on the note's segmentation.
+      top-ranked hiragana reading, so a lone 様 is さま even in の様止まらず (よう). Measured
+      2026-09-24 against the Tatoeba gold's marked readings (held2k + fresh5k, 4,551 multi-reading
+      kanji segments): the frequency pick is right 96.5%. Tried and rejected:
+        • Reading from a dictionary phrase around the segment (様に → ように), used whether or not
+          the phrase won the path search: 18 changes on held2k, mostly wrong (今日は → こんにち ×8,
+          後に → のち, 外に → ほか). Phrase POS doesn't separate good from bad (外に exp, 度に adv).
+        • MeCab/IPAdic's in-context reading where it is one of ours: 95.5% — fixes 87 (counters and
+          suffixes: 人 にん, 中 ちゅう, 分 ふん, 様 よう) but breaks 131 (後 のち, 金 きん, 間 ま,
+          昨夜 さくや, 今 こん). A "trust MeCab only for counters/suffixes" filter would be fitted to
+          this gold — declined.
+        • Per-reading lattice edges from JMdict POS: JMdict tags さま (51237) `suf`/`n` and よう
+          (56931) `n-suf,n`, and its よう-様 is the "way of doing" sense — the "like" sense lives
+          only in 様に / 様な / 様だ / 様です. IPAdic context IDs are per surface (all 様 share 1314).
+      The eval can't settle 様: Tatoeba prose writes ように in kana (286 sentences) and has 3 bare
+      kanji 様. What shipped instead: merging segments takes the merged word's dictionary reading
+      (の様に → よう; `markFuriganaReplaceable`), and dictionary-v12 adds の様 (のよう) as an extra.
+      Reopen only with lyric text whose readings are marked — the 12 alignment-fixture songs are
+      the candidate source.
 
 ### Intentionally unrecognized
 
