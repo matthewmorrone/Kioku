@@ -374,6 +374,21 @@ own sections.)
   Fix path: revisit Viterbi bigram calibration for prt→verb transitions and
   audit whether 闇's canonical kana row is being passed over for 暗い's.
 
+- [ ] **Context-chosen readings for homographs (様 さま/よう, 方, 何, 間, 上…)** — added 2026-09-24.
+      Furigana picks a reading by surface alone: `FuriganaResolver.readingForSegment` takes the
+      top-ranked hiragana reading, so 様 is always さま, including の様に / 様な / 様だ where it is よう
+      (seen in 月色チャイのん). The path search already has the context — transition classes over
+      the next segment — but it can't use it for readings: POS bits in the trie are per surface (the
+      union of every entry spelled that way), so 様 has one class and the chosen path never records
+      which entry/reading won. Plan: (1) store POS per (surface, reading) in the dictionary
+      (`Resources/generate_db.py`; a rebuild takes ~30 s); (2) emit one lattice edge per reading
+      whose POS differs, each priced and classed by its own entry, and carry the winning reading on
+      the segment into furigana; (3) re-count the transition table if the per-reading classes need it
+      (Tatoeba gold marks readings on some tokens, e.g. 様(よう)). Start by counting how many common
+      surfaces have readings with differing POS. No hand-written rules or new JSON rule files.
+      Re-measure held2k / kana2k / fresh5k and the lyric lines before shipping. Existing notes pick
+      it up via Reset on the note's segmentation.
+
 ### Intentionally unrecognized
 
 - **ちゃいのん** — context-specific stylization from the song title 月色チャイのん.
