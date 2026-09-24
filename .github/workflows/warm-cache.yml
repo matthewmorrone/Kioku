@@ -1,0 +1,74 @@
+name: Warm CI Cache
+
+# Builds on main and saves the DerivedData cache that tests.yml restores. GitHub only lets a PR
+# read caches saved by its own ref or by the default branch, so this is the one place a cache can
+# be written that every PR can use. The key is the Package.resolved hash, so it only needs a new
+# save when dependencies change (or when this or the test workflow changes how things build);
+# workflow_dispatch reseeds it by hand, e.g. after a runner image update invalidates it.
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Kioku.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved'
+      - '.github/workflows/warm-cache.yml'
+      - '.github/workflows/tests.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: warm-cache
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Rewrite any SSH submodule URLs to HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      # Same Xcode as tests.yml — the cache key names it, and a different toolchain would leave
+      # every restored product stale.
+      - name: Select Xcode 26.5
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.5'
+
+      - name: Ensure Metal Toolchain
+        run: xcodebuild -downloadComponent MetalToolchain || true
+
+      # Same key as tests.yml's restore step. When an exact-key cache already exists this step
+      # restores it and the save at the end is skipped; otherwise the build below populates it.
+      - name: DerivedData cache
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: deriveddata-${{ runner.os }}-xcode26.5-${{ hashFiles('Kioku.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: |
+            deriveddata-${{ runner.os }}-xcode26.5-
+
+      - name: Download dictionary.sqlite
+        run: bash scripts/ensure_dictionary.sh
+
+      - name: Decompress handwriting-ja.model
+        run: bash scripts/ensure_handwriting_model.sh
+
+      # Build only — no tests. Destination, coverage and derivedDataPath must match tests.yml's
+      # `xcodebuild test` exactly, or the PR run treats the restored products as out of date.
+      # A push to main is a trusted trigger, so the package-plugin trust skip applies (see the
+      # long note on the same flag in tests.yml).
+      - name: Build for testing
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project Kioku.xcodeproj \
+            -scheme Kioku \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            -enableCodeCoverage YES \
+            -derivedDataPath build \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO

@@ -1,8 +1,8 @@
 name: Tests
 
-# Pull requests only. main is protected — nothing lands without this check green on its PR — so a
-# run on the push to main would re-test a tree that was tested minutes earlier, for ~13 minutes of
-# macOS runner each time. workflow_dispatch is there for the rare manual run against main.
+# Pull requests only: a run on the push to main would re-test a tree that was tested minutes
+# earlier. warm-cache.yml builds on main (dependency changes only) so these runs start warm.
+# workflow_dispatch is there for the rare manual run against main.
 on:
   pull_request:
   workflow_dispatch:
@@ -65,18 +65,16 @@ jobs:
       - name: List available iOS simulators
         run: xcrun simctl list devices available | grep -E 'iPhone (15|16|17)' | head -10
 
-      # Every run previously resolved and rebuilt the ENTIRE SwiftPM dependency graph from
-      # scratch (MLX, HuggingFace, swift-nio, whisper.cpp, ...) — the dominant share of this
-      # job's wall-clock time, since the first-party Kioku sources build in a fraction of that.
-      # Keyed on Package.resolved's content: an unchanged dependency graph restores the whole
-      # derivedDataPath (checkouts + already-compiled package products), and xcodebuild's own
-      # incremental build only has to recompile what actually changed — the app/test targets on
-      # every PR, plus whatever packages a Package.resolved bump touched. A key miss (dependency
-      # bump) just falls back to a full cold build like before, so this can't make a build fail
-      # that would otherwise pass — restore-keys lets it seed from the nearest older cache
-      # instead of starting from nothing even then.
-      - name: Cache DerivedData (SPM packages)
-        uses: actions/cache@v4
+      # Restores the DerivedData (resolved package checkouts + already-compiled package products)
+      # that warm-cache.yml saves from main, so a PR only compiles what it changed instead of the
+      # whole SwiftPM graph (MLX, swift-nio, HuggingFace, whisper.cpp, …) — ~10 of a cold run's
+      # ~14 minutes. Restore-only: a cache saved from a PR ref is readable by that PR alone, so
+      # saving here just piled up ~1.1 GB per PR that no other run could use. The key is the
+      # Package.resolved hash, the same key warm-cache.yml writes; restore-keys falls back to the
+      # newest older cache after a dependency bump. warm-cache.yml must build with this job's
+      # exact destination and flags, or the restored products are treated as stale.
+      - name: Restore DerivedData cache
+        uses: actions/cache/restore@v4
         with:
           path: build
           key: deriveddata-${{ runner.os }}-xcode26.5-${{ hashFiles('Kioku.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
@@ -165,13 +163,18 @@ jobs:
             echo "No xcresult — skipping coverage summary." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
+          # A cancelled or crashed test step leaves an incomplete bundle xccov can't open; note it
+          # and move on rather than failing this informational step on a traceback.
+          if ! xcrun xccov view --report --json build/Kioku.xcresult > /tmp/coverage.json 2>/dev/null; then
+            echo "Coverage unavailable — the result bundle is incomplete (tests didn't finish)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           {
             echo "## Coverage"
             echo
             echo "| Target | Lines covered | Executable lines | % |"
             echo "|---|---:|---:|---:|"
-            xcrun xccov view --report --json build/Kioku.xcresult \
-              | python3 -c '
+            python3 -c '
           import json, sys
           report = json.load(sys.stdin)
           targets = report.get("targets", [])
@@ -194,7 +197,7 @@ jobs:
               print("")
               print("> ⚠️ **No executable lines across any target** — likely a changed xccov JSON "
                     "shape (`coveredLines`/`executableLines` keys), not genuinely zero coverage.")
-          '
+          ' < /tmp/coverage.json
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload xcresult bundle
