@@ -100,6 +100,7 @@ jobs:
             exit 0
           fi
           echo "Booting $udid"
+          echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
           xcrun simctl boot "$udid" || true
 
       # Restores the DerivedData (resolved package checkouts + already-compiled package products)
@@ -130,6 +131,15 @@ jobs:
       # this the Copy Bundle Resources phase fails (CpResource handwriting-ja.model).
       - name: Decompress handwriting-ja.model
         run: bash scripts/ensure_handwriting_model.sh
+
+      # Diagnostic: how much simulator boot is still outstanding when the build is about to start.
+      # If this step takes ~0 s, the idle stretch between build and first test is not boot.
+      - name: Wait for simulator
+        if: env.SIM_UDID != ''
+        run: |
+          start=$(date +%s)
+          xcrun simctl bootstatus "$SIM_UDID" -b || true
+          echo "Simulator boot wait: $(( $(date +%s) - start )) s"
 
       # Parallel testing (Xcode's default for simulator destinations) spins up multiple
       # simulator "clones" that run test classes concurrently on the runner's finite cores.
@@ -190,6 +200,33 @@ jobs:
             -resultBundlePath build/Kioku.xcresult \
             "${plugin_flag[@]}" \
             CODE_SIGNING_ALLOWED=NO
+
+      # Diagnostic: the test action's phases (preparing, installing, launching, running) with
+      # durations, from the result bundle, since xcodebuild logs nothing between the build ending
+      # and the app launching.
+      - name: Test action timeline
+        if: always()
+        run: |
+          if [[ ! -d build/Kioku.xcresult ]]; then
+            echo "No xcresult"
+            exit 0
+          fi
+          xcrun xcresulttool get log --type action --path build/Kioku.xcresult --compact > /tmp/action-log.json || exit 0
+          python3 -c '
+          import json, sys
+          root = json.load(open("/tmp/action-log.json"))
+          def walk(section, depth):
+              if depth > 5 or "testDetails" in section:
+                  return
+              duration = section.get("duration", 0)
+              if duration >= 0.5 or depth <= 1:
+                  start = section.get("startTime", 0)
+                  title = section.get("title", "?")
+                  print(f"{duration:8.1f}s  start {start:.0f}  " + "  " * depth + title)
+              for child in section.get("subsections", []):
+                  walk(child, depth + 1)
+          walk(root, 0)
+          '
 
       # Emit a per-target line-coverage summary into the workflow run page so
       # PR reviewers see coverage without downloading the artifact. xccov reads
