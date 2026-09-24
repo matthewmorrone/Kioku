@@ -62,9 +62,14 @@ enum HTDemucsCoreMLSeparator {
     // Isolates vocals from decoded stereo, returning full-length mono vocals at 44.1 kHz.
     // The await is at the top (model-store check + any first-run download); the iSTFT
     // overlap-add loop below runs synchronously on the caller's task.
+    // `waitUntilReady`, when supplied, is awaited before every chunk. iOS refuses GPU work from a
+    // backgrounded process and aborts the command buffer, so a host that knows it has gone to the
+    // background parks the loop here instead of letting the next `predict` fail. The accumulators
+    // hold their partial result across the wait, and a suspended process resumes mid-loop.
     static func isolateVocalsMono(
         stereo: [[Float]],
         cancellationCheck: (@Sendable () -> Bool)? = nil,
+        waitUntilReady: (@Sendable () async -> Void)? = nil,
         onProgress: ((Double) -> Void)? = nil,
         onStage: (@Sendable (String) -> Void)? = nil
     ) async throws -> [Float] {
@@ -82,6 +87,8 @@ enum HTDemucsCoreMLSeparator {
         var acc = [Float](repeating: 0, count: L)
         var wacc = [Float](repeating: 0, count: L)
         var start = 0
+        // Attempts spent on the chunk at `start`; reset each time one lands.
+        var chunkAttempts = 0
         while start < L {
             // Throws (not `break`): acc/wacc are pre-sized to the FULL song length but only
             // filled as chunks complete, so a `break` before the first chunk finishes used to
@@ -93,6 +100,8 @@ enum HTDemucsCoreMLSeparator {
             // itself since "isEmpty" was never true). Throwing here means a cancelled isolation
             // is never mistaken for a completed one.
             if cancellationCheck?() == true { throw CancellationError() }
+            await waitUntilReady?()
+            if cancellationCheck?() == true { throw CancellationError() }
             let end = min(L, start + SEG)
             let n = end - start
             // Per-chunk autoreleasepool drain: predict() returns MLMultiArray-backed values
@@ -101,6 +110,7 @@ enum HTDemucsCoreMLSeparator {
             // transient CoreML buffers pile up (≈1.4 GB) and cross jetsam on longer songs.
             // The accumulators (acc, wacc) live outside the pool, so per-chunk results
             // survive; only the transient buffers (lch/rch, MLMultiArrays, freqL/R) drain.
+            do {
             try autoreleasepool {
                 // Pad the chunk to SEG (the model is fixed-length).
                 var lch = [Float](repeating: 0, count: SEG)
@@ -122,6 +132,18 @@ enum HTDemucsCoreMLSeparator {
                 // on the final chunk — chunk-count estimates over-shoot and stall the bar at ~97%.
                 onProgress?(Double(end) / Double(L))
             }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // The prediction in flight when the app leaves the foreground is aborted by iOS.
+                // Nothing reaches the accumulators until predict returns, so this chunk can simply
+                // be run again — back round the loop, where waitUntilReady parks until it can.
+                // The attempt cap keeps a genuinely broken prediction from looping forever.
+                chunkAttempts += 1
+                if chunkAttempts >= 3 { throw error }
+                continue
+            }
+            chunkAttempts = 0
             if end >= L { break }
             start += stride
         }

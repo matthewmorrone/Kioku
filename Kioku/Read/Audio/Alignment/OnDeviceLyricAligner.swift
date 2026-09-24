@@ -71,6 +71,9 @@ enum OnDeviceLyricAligner {
         let result = try await CTCForcedAligner().align(
             input: input,
             cancellationCheck: cancellationCheck,
+            // Vocal isolation runs on the GPU, which iOS refuses to a backgrounded app: park the
+            // separator between chunks rather than letting the next one be aborted mid-flight.
+            waitUntilReady: { await AlignmentForegroundGuard.waitUntilForeground() },
             onProgress: nil,
             onStage: onStage,
             onSegment: onSegment
