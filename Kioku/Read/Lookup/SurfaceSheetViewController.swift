@@ -52,6 +52,9 @@ final class SurfaceSheetViewController: UIViewController {
     var middleContentCollapsedConstraint: NSLayoutConstraint!
     // Identifier for the sheet's single content-fitted detent (see contentDetent()).
     let contentDetentIdentifier = UISheetPresentationController.Detent.Identifier("kioku.content")
+    // Height of everything the sheet holds, measured in viewDidLayoutSubviews and read back by
+    // the detent resolver. Zero until the first layout pass.
+    var measuredContentHeight: CGFloat = 0
     var leftInput: UITextField!
     var rightInput: UITextField!
     var leftInputTapButton: UIButton!
@@ -113,8 +116,6 @@ final class SurfaceSheetViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
-        // Keeps content clear of the grabber area so the title is never clipped.
-        additionalSafeAreaInsets.top = 20
 
         buildHeader()
         buildSplitPanel()
@@ -130,6 +131,28 @@ final class SurfaceSheetViewController: UIViewController {
         splitButton.isEnabled = currentSurface.count > 1 && currentOnSplitApply != nil
         splitButton.alpha = splitButton.isEnabled ? 1 : 0.45
         updateMergeButtonAvailability()
+    }
+
+    // Measures the content from a real layout pass — the one point where multi-line labels have
+    // already wrapped to the sheet's width, so the height covers everything the sheet holds
+    // rather than the single-line heights a cold measurement reports. The detent closure only
+    // reads `measuredContentHeight`: measuring, or resizing anything, from inside the resolver
+    // re-enters layout.
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        guard view.bounds.width > 0 else { return }
+        let fitted = view.systemLayoutSizeFitting(
+            CGSize(width: view.bounds.width, height: UIView.layoutFittingCompressedSize.height),
+            withHorizontalFittingPriority: .required,
+            verticalFittingPriority: .fittingSizeLevel
+        ).height
+        guard abs(fitted - measuredContentHeight) > 0.5 else { return }
+        measuredContentHeight = fitted
+        // Off this layout pass: invalidateDetents resizes the sheet, which lays out again.
+        // The guard above is what stops the second pass from scheduling a third.
+        DispatchQueue.main.async { [weak self] in
+            self?.invalidateContentDetentIfPresented()
+        }
     }
 
     // MARK: - Reading management
@@ -313,14 +336,28 @@ final class SurfaceSheetViewController: UIViewController {
     func contentDetent() -> UISheetPresentationController.Detent {
         .custom(identifier: contentDetentIdentifier) { [weak self] context in
             guard let self else { return context.maximumDetentValue }
-            self.view.layoutIfNeeded()
-            let fitted = self.view.systemLayoutSizeFitting(
-                CGSize(width: self.view.bounds.width, height: 0),
-                withHorizontalFittingPriority: .required,
-                verticalFittingPriority: .fittingSizeLevel
-            ).height + self.view.safeAreaInsets.bottom
+            // Read-only. viewDidLayoutSubviews owns the measurement: measuring, or resizing
+            // anything, from inside a detent resolver re-enters layout. Until the first layout
+            // pass has run there is nothing measured, and the sheet opens at a middling height
+            // that the pass then corrects.
+            guard self.measuredContentHeight > 0 else { return min(340, context.maximumDetentValue) }
+            let fitted = self.measuredContentHeight + self.pendingBottomSafeAreaInset()
             return min(max(fitted, 240), context.maximumDetentValue)
         }
+    }
+
+    // The home-indicator inset the fitted measurement above is still missing. `systemLayoutSizeFitting`
+    // resolves `safeAreaLayoutGuide` constraints against the view's CURRENT insets, which are zero on the
+    // very first detent resolution because the sheet's view isn't in a window yet. Sizing the sheet from
+    // that measurement leaves it exactly one home-indicator short of its content, and since the action
+    // menu is pinned to the safe-area bottom the deficit is taken out of the header — which is what
+    // vertically clips the headword. Returning the difference (rather than the raw container inset) keeps
+    // later re-measurements, where the view does carry the inset, from counting it twice.
+    private func pendingBottomSafeAreaInset() -> CGFloat {
+        let containerInset = sheetPresentationController?.containerView?.safeAreaInsets.bottom
+            ?? view.window?.safeAreaInsets.bottom
+            ?? view.safeAreaInsets.bottom
+        return max(0, containerInset - view.safeAreaInsets.bottom)
     }
 
     // Re-measures the content-fitted detent so the sheet grows or shrinks to match whatever just

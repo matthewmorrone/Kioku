@@ -43,6 +43,7 @@ extension SegmentLookupSheet {
             label.font = headwordFont
             label.text = surface
             label.textAlignment = .center
+            label.setContentCompressionResistancePriority(.required, for: .vertical)
             return [label]
         }
 
@@ -51,6 +52,11 @@ extension SegmentLookupSheet {
             headwordLabel.font = headwordFont
             headwordLabel.text = segment.text
             headwordLabel.textAlignment = .center
+            // The headword is the one thing in the sheet that must never be shortened: a label
+            // squeezed below its line height renders a vertically centred slice of the glyphs.
+            // Any height the sheet is short comes out of the definitions area instead (see
+            // buildMiddleContent, which drops its vertical compression resistance to match).
+            headwordLabel.setContentCompressionResistancePriority(.required, for: .vertical)
 
             let rubyLabel = UILabel()
             rubyLabel.font = rubyFont
