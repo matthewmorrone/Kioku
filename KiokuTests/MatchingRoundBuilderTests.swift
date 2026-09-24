@@ -90,13 +90,20 @@ final class MatchingRoundBuilderTests: XCTestCase {
         }
     }
 
-    // A word with nobody to pair with in any direction it can be asked is dropped rather than
-    // shown as a one-tile board.
-    func testLoneLeftoverIsDroppedNotShownAlone() {
+    // Six words deal as 4 + 2, not 5 + a lone word that would have to be dropped.
+    func testFullBoardLeavesNoLoneWord() {
         let items = (1...6).map { item(Int64($0), kanji: "漢\($0)") }
         let rounds = build(items, DirectionSelection(directions: [.kanjiToMeaning]))
-        XCTAssertEqual(rounds.map(\.pairs.count), [5])
-        XCTAssertTrue(rounds.allSatisfy { $0.pairs.count >= MatchingRoundBuilder.minimumPairsPerRound })
+        XCTAssertEqual(rounds.map(\.pairs.count), [4, 2])
+        XCTAssertEqual(Set(rounds.flatMap { $0.pairs.map(\.id) }), Set(1...6))
+    }
+
+    // A word nothing can share a board with (here: the only other word has the same answer) is
+    // dropped rather than shown as a one-tile board.
+    func testUnpairableWordIsDroppedNotShownAlone() {
+        let items = [item(1, kanji: "闇", meaning: "darkness"), item(2, kanji: "暗闇", meaning: "darkness")]
+        let rounds = build(items, DirectionSelection(directions: [.kanjiToMeaning]))
+        XCTAssertTrue(rounds.isEmpty)
     }
 
     // Every pair on a board uses the board's own direction, which must be one of the ticked ones.

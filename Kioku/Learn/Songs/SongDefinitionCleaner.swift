@@ -27,7 +27,7 @@ nonisolated enum SongDefinitionCleaner {
             with: "",
             options: [.regularExpression, .caseInsensitive]
         )
-        if withoutBackReference.trimmingCharacters(in: .whitespaces).isEmpty == false {
+        if withoutBackReference.trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: ",."))).isEmpty == false {
             text = withoutBackReference
         }
         if let cut = firstCommentaryBoundary(in: text) {

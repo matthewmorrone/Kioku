@@ -37,10 +37,17 @@ enum MatchingRoundBuilder {
                 }
             }
 
-            guard let dealt else {
+            guard var dealt else {
                 // Nothing to pair the lead with in any direction it can be asked.
                 remaining.removeFirst()
                 continue
+            }
+            // A board that would leave exactly one word behind gives its last word back, so the
+            // leftover has a partner on the next board instead of being dropped as a lone word
+            // (5 words where two share an answer deal as 4 + 1 otherwise, losing a word).
+            if remaining.count - dealt.pairs.count == 1, dealt.pairs.count > minimumPairsPerRound {
+                dealt.pairs.removeLast()
+                dealt.indices.removeLast()
             }
             for index in dealt.indices.reversed() {
                 remaining.remove(at: index)
