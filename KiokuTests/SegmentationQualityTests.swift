@@ -270,4 +270,12 @@ final class SegmentationQualityTests: XCTestCase {
         XCTAssertEqual(try segments(of: "およみになる"), ["お", "よ", "みになる"])
         XCTAssertEqual(try segments(of: "がいようのみにしよう"), ["がいよう", "のみ", "に", "しよう"])
     }
+
+    // An unknown katakana word whose first kana is also a one-character entry (リ is a prefix, シ a
+    // noun) lost its whole-run lattice edge once single kana stopped being gated for the path
+    // search, and came out as リ + ュミエール. See the katakana fallback in Segmenter.buildLattice.
+    func testUnknownKatakanaRunStaysWholeAfterASingleKanaEntry() throws {
+        XCTAssertEqual(try segments(of: "その物語リュミエール"), ["その", "物語", "リュミエール"])
+        XCTAssertEqual(try segments(of: "涙色のシェノン"), ["涙", "色", "の", "シェノン"])
+    }
 }
