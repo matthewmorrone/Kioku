@@ -14,19 +14,12 @@ extension ReadView {
             } message: {
                 Text(subtitleImport.audioTranscriptionErrorMessage)
             }
-            .alert("Generate SRT Failed", isPresented: lyricAlignmentErrorPresented) {
+            .alert("Alignment Failed", isPresented: alignmentErrorPresented) {
                 Button("OK", role: .cancel) {
-                    subtitleImport.lyricAlignmentErrorMessage = ""
+                    lyricAlignment.errorMessage = ""
                 }
             } message: {
-                Text(subtitleImport.lyricAlignmentErrorMessage)
-            }
-            .alert("Re-align Failed", isPresented: cueRealignErrorPresented) {
-                Button("OK", role: .cancel) {
-                    lyricRealign.cueRealignErrorMessage = ""
-                }
-            } message: {
-                Text(lyricRealign.cueRealignErrorMessage)
+                Text(lyricAlignment.errorMessage)
             }
             .alert("This Sounds Like Singing", isPresented: $subtitleImport.isShowingSungAudioRecommendation) {
                 Button("Transcribe Anyway") { transcribePendingSungAudio() }
@@ -312,7 +305,7 @@ extension ReadView {
             }
         }
         .overlay {
-            if subtitleImport.isShowingSubtitlePopup || subtitleImport.isGeneratingLyricAlignment {
+            if subtitleImport.isShowingSubtitlePopup {
                 subtitlePopupOverlay
             }
         }
@@ -343,8 +336,8 @@ extension ReadView {
                         audioPlayback.isShowingLyricsView = false
                     },
                     onReAlign: { Task { await realignWholeNote() } },
-                    isReAligning: lyricRealign.isReAligningWholeNote,
-                    reAlignMessage: lyricRealign.reAlignProgressMessage,
+                    isReAligning: lyricAlignment.isAligning,
+                    reAlignMessage: lyricAlignment.progressMessage,
                     onCancelReAlign: { cancelAlignment() },
                     isCancellingReAlign: subtitleImport.isCancellingAlignment
                 )

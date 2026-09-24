@@ -1,8 +1,10 @@
 import Foundation
 import Observation
 
-// Owns ReadView's subtitle/audio import state: transcription and forced-alignment progress,
-// the staged audio/SRT/TextGrid picks awaiting confirmation, and the import-flow sheets/pickers.
+// Owns ReadView's subtitle/audio import state: transcription progress, the staged
+// audio/SRT/TextGrid picks awaiting confirmation, and the import-flow sheets/pickers. An
+// alignment run's own progress/error lives in LyricAlignmentUIState, which the lyric view
+// renders; only the cancellation token stays here, shared by both entry points.
 // Extracted from ReadView's own @State — see LLMCorrectionUIState for the same rationale
 // applied to the LLM-correction feature.
 @Observable
@@ -10,7 +12,6 @@ final class SubtitleImportUIState {
     var isShowingFileImporter = false
     var isShowingSubtitlePopup = false
     var isPerformingAudioTranscription = false
-    var isGeneratingLyricAlignment = false
     var isCancellingAlignment = false
     var alignmentCancellationToken = AlignmentCancellationToken()
     var audioTranscriptionErrorMessage = ""
@@ -18,10 +19,6 @@ final class SubtitleImportUIState {
     // "find the lyrics online" recommendation is showing; transcribed only on Transcribe Anyway.
     var pendingSungAudioURL: URL? = nil
     var isShowingSungAudioRecommendation = false
-    var lyricAlignmentErrorMessage = ""
-    var lyricAlignmentProgressMessage = ""
-    var lyricAlignmentSourceFilename = ""
-    var alignmentResultSRT = ""
     var pendingSubtitleAudioURL: URL? = nil
     var pendingSubtitleAudioFilename = ""
     var pendingSubtitleFileURL: URL? = nil

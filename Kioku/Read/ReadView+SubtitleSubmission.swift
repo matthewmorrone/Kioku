@@ -1,27 +1,21 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-// Unified subtitle popup — handles audio file selection, alignment progress, and result display.
+// Subtitle popup — picks the audio (and optional sidecar) an alignment runs against. It closes
+// the moment Submit starts a run: progress, cancel and failure all report from the lyric view's
+// own chip (LyricsView+ReAlignBar), which is the single display for an alignment in flight.
 extension ReadView {
-    // Displays a centered popup over a dimmed background for the full subtitle alignment flow.
+    // Displays a centered popup over a dimmed background for picking alignment input files.
     var subtitlePopupOverlay: some View {
         ZStack {
             Color.black.opacity(0.15)
                 .ignoresSafeArea()
                 .onTapGesture {
-                    if subtitleImport.isGeneratingLyricAlignment == false {
-                        dismissSubtitlePopup()
-                    }
+                    dismissSubtitlePopup()
                 }
 
             VStack(alignment: .leading, spacing: 14) {
-                if subtitleImport.alignmentResultSRT.isEmpty == false && subtitleImport.isGeneratingLyricAlignment == false {
-                    alignmentResultContent
-                } else if subtitleImport.isGeneratingLyricAlignment {
-                    alignmentProgressContent
-                } else {
-                    audioSelectionContent
-                }
+                audioSelectionContent
             }
             .padding(.horizontal, 22)
             .padding(.vertical, 18)
@@ -33,7 +27,6 @@ extension ReadView {
     // Clears popup state and dismisses.
     private func dismissSubtitlePopup() {
         subtitleImport.isShowingSubtitlePopup = false
-        subtitleImport.alignmentResultSRT = ""
         clearPendingSubtitleFileSelection()
     }
 
@@ -72,6 +65,10 @@ extension ReadView {
                 .buttonStyle(.bordered)
 
                 Button {
+                    // Hand straight off to the lyric view: it owns the progress chip the run
+                    // reports through, and once cues land it is where they're read anyway.
+                    subtitleImport.isShowingSubtitlePopup = false
+                    audioPlayback.isShowingLyricsView = true
                     Task {
                         await submitPendingSubtitleSelection()
                     }
@@ -130,101 +127,4 @@ extension ReadView {
         .buttonStyle(.plain)
     }
 
-    // During alignment: the same capsule progress chip as the karaoke Re-align bar
-    // (mini spinner + high-contrast text in an accent capsule), plus a plain Cancel.
-    private var alignmentProgressContent: some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.mini)
-                Text(subtitleImport.lyricAlignmentProgressMessage.isEmpty ? "Aligning…" : subtitleImport.lyricAlignmentProgressMessage)
-                    .font(.system(size: 12, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .animation(.easeInOut(duration: 0.15), value: subtitleImport.lyricAlignmentProgressMessage)
-            }
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 16)
-            .frame(height: 28)
-            .background(Color.accentColor.opacity(0.16))
-            .clipShape(Capsule())
-
-            Button("Cancel") { cancelAlignment() }
-                .font(.system(size: 13, weight: .semibold))
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
-                .disabled(subtitleImport.isCancellingAlignment)
-        }
-    }
-
-    // Post-alignment: shows the SRT output with mismatched lines highlighted, plus timing and normalization tools.
-    private var alignmentResultContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("Alignment Complete", systemImage: "checkmark.circle.fill")
-                    .font(.headline)
-                    .foregroundStyle(.green)
-                Spacer()
-                Button {
-                    dismissSubtitlePopup()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
-                        .background(Circle().fill(Color(.tertiarySystemFill)))
-                }
-                .buttonStyle(.plain)
-            }
-
-            ScrollView {
-                Text(highlightedAlignmentResult)
-                    .font(.system(size: 11, design: .monospaced))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-            }
-            .frame(maxHeight: 260)
-
-            Button("Done") {
-                dismissSubtitlePopup()
-            }
-            .buttonStyle(.borderedProminent)
-            .frame(maxWidth: .infinity)
-        }
-    }
-
-
-    // Builds an AttributedString from the SRT result, coloring mismatched cue text lines orange.
-    private var highlightedAlignmentResult: AttributedString {
-        let mismatchedTexts = buildMismatchedCueTexts()
-        var result = AttributedString()
-        let lines = subtitleImport.alignmentResultSRT.components(separatedBy: "\n")
-
-        for (i, line) in lines.enumerated() {
-            var attrLine = AttributedString(line)
-            if mismatchedTexts.contains(line) {
-                attrLine.foregroundColor = .orange
-            }
-            result.append(attrLine)
-            if i < lines.count - 1 {
-                result.append(AttributedString("\n"))
-            }
-        }
-        return result
-    }
-
-    // Returns the set of cue text strings that don't match their corresponding note text.
-    private func buildMismatchedCueTexts() -> Set<String> {
-        var mismatched = Set<String>()
-        for (index, cue) in audioPlayback.audioAttachmentCues.enumerated() {
-            guard SubtitleParser.isNonSpeechCue(cue.text) == false else { continue }
-            guard index < audioPlayback.audioAttachmentHighlightRanges.count,
-                  let range = audioPlayback.audioAttachmentHighlightRanges[index],
-                  let swiftRange = Range(range, in: document.text) else { continue }
-            let noteLineText = String(document.text[swiftRange])
-            if noteLineText != cue.text {
-                mismatched.insert(cue.text)
-            }
-        }
-        return mismatched
-    }
 }
