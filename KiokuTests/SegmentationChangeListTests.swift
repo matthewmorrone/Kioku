@@ -50,4 +50,17 @@ final class SegmentationChangeListTests: XCTestCase {
         )
         XCTAssertEqual(unchanged, [])
     }
+
+    // The same change made at several places is listed once.
+    func testRepeatedChangeListedOnce() {
+        let text = "の様にの様に"
+        let lines = SegmentationChangeList.lines(
+            text: text,
+            defaultEdges: edges(text, ["の", "様", "に", "の", "様", "に"]),
+            currentEdges: edges(text, ["の様に", "の様に"]),
+            defaultFurigana: (byLocation: [1: "よう", 4: "よう"], lengthByLocation: [1: 1, 4: 1]),
+            currentFurigana: (byLocation: [1: "よう", 4: "よう"], lengthByLocation: [1: 1, 4: 1])
+        )
+        XCTAssertEqual(lines, ["の|様|に → の様に"])
+    }
 }
