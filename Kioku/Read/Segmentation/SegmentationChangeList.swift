@@ -2,7 +2,7 @@ import Foundation
 
 // Lists how a note's segmentation and readings differ from what the segmenter and reading
 // resolver would produce on their own, one change per line, in the compact notation the AI
-// correction uses: `AB → A|B` for boundaries (default on the left), `A(B) → A(C)` for readings.
+// correction uses: `AB → A|B` for boundaries (default on the left), `A(B → C)` for readings.
 // Shown from a long-press on the Read tab's segment-list button.
 nonisolated enum SegmentationChangeList {
 
@@ -59,10 +59,10 @@ nonisolated enum SegmentationChangeList {
 
         // Reading changes: any current segment whose ruby differs from the resolver's default for it.
         for span in currents where ScriptClassifier.containsKanji(span.surface) {
-            let from = annotated(span, furigana: defaultFurigana)
-            let to = annotated(span, furigana: currentFurigana)
+            let from = reading(of: span, furigana: defaultFurigana)
+            let to = reading(of: span, furigana: currentFurigana)
             if from != to {
-                changes.append((span.range.location, "\(from) → \(to)"))
+                changes.append((span.range.location, "\(span.surface)(\(from ?? "—") → \(to ?? "—"))"))
             }
         }
 
@@ -79,13 +79,12 @@ nonisolated enum SegmentationChangeList {
         }
     }
 
-    // `surface(reading)`: the segment's text with each ruby entry swapped in over the characters
-    // it covers and kana kept as written (の様に → の様に(のように)); the bare surface when no
-    // entry lies inside the segment.
-    private static func annotated(
-        _ span: (range: NSRange, surface: String),
+    // The segment's reading: its text with each ruby entry swapped in over the characters it
+    // covers and kana kept as written (の様に → のように); nil when no entry lies inside it.
+    private static func reading(
+        of span: (range: NSRange, surface: String),
         furigana: (byLocation: [Int: String], lengthByLocation: [Int: Int])
-    ) -> String {
+    ) -> String? {
         var reading = ""
         var hasRuby = false
         var location = span.range.location
@@ -105,6 +104,6 @@ nonisolated enum SegmentationChangeList {
                 index = span.surface.index(after: index)
             }
         }
-        return hasRuby ? "\(span.surface)(\(reading))" : span.surface
+        return hasRuby ? reading : nil
     }
 }

@@ -3,7 +3,7 @@ import XCTest
 
 // Covers the compact change list behind the long-press on the Read tab's segment-list button:
 // boundary changes as `default → current` with `|` between segments, reading changes as
-// `A(B) → A(C)`, in text order.
+// `A(B → C)`, in text order.
 final class SegmentationChangeListTests: XCTestCase {
 
     // Builds edges for `text` cut into the given pieces, in order.
@@ -26,7 +26,7 @@ final class SegmentationChangeListTests: XCTestCase {
             defaultFurigana: (byLocation: [0: "えいが", 3: "さま"], lengthByLocation: [0: 2, 3: 1]),
             currentFurigana: (byLocation: [0: "えいが", 3: "よう"], lengthByLocation: [0: 2, 3: 1])
         )
-        XCTAssertEqual(lines, ["の|様|に → の様に", "の様に(のさまに) → の様に(のように)"])
+        XCTAssertEqual(lines, ["の|様|に → の様に", "の様に(のさまに → のように)"])
     }
 
     // A split is listed the other way round, and an unchanged note lists nothing.
