@@ -9,7 +9,7 @@ import SoundAnalysis
 // FLEURS read-speech clips (2026-09-23) that rule separated every file: songs 0% speech windows,
 // speech clips 0% sung/music windows on all but one (33%, still a two-to-one speech majority).
 enum AudioContentClassifier {
-    static let windowSeconds = 3.0
+    nonisolated static let windowSeconds = 3.0
 
     // Classifies the file at `url`. Unclear when the classifier can't be run or neither side has
     // any windows (silence, noise); otherwise whichever side has more windows.

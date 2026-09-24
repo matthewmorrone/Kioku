@@ -4,7 +4,7 @@ import SoundAnalysis
 // Collects AudioContentClassifier's per-window top labels and turns them into a verdict. The
 // sound classifier's own taxonomy decides the buckets: speech-like labels vs singing/music labels;
 // everything else (silence, clicks, room noise between words) counts toward neither.
-final class AudioContentWindowTally: NSObject, SNResultsObserving, @unchecked Sendable {
+nonisolated final class AudioContentWindowTally: NSObject, SNResultsObserving, @unchecked Sendable {
     private var speechWindows = 0
     private var sungWindows = 0
 
