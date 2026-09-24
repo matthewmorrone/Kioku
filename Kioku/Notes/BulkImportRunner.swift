@@ -31,7 +31,7 @@ final class BulkImportRunner: ObservableObject {
 
     // Walks the supplied plan in order, recording per-item status as each item processes.
     // Errors are captured into the item's status and do not abort subsequent items.
-    func run(plan: [BulkImportPlanItem], whisperModelURL: URL?) async {
+    func run(plan: [BulkImportPlanItem], whisperModelURL: URL?, isolateVocalsByItemID: [String: Bool] = [:]) async {
         guard isRunning == false, hasFinished == false else { return }
         isRunning = true
         createdNoteIDs.removeAll()
@@ -50,7 +50,7 @@ final class BulkImportRunner: ObservableObject {
             )
 
             do {
-                try await process(item: item, whisperModelURL: whisperModelURL)
+                try await process(item: item, whisperModelURL: whisperModelURL, isolateVocals: isolateVocalsByItemID[item.id] ?? false)
                 progressByItem[item.id]?.status = .completed
                 AppLog.debug(.notesImport, "bulk import: completed \"\(item.baseName)\"")
             } catch {
@@ -64,7 +64,7 @@ final class BulkImportRunner: ObservableObject {
     // Dispatches one plan item to the create-note or attach-audio path based on the URLs
     // present and any matched existing note. Transcription only runs when no text or
     // subtitle source is available for an audio-only item without a matching note.
-    private func process(item: BulkImportPlanItem, whisperModelURL: URL?) async throws {
+    private func process(item: BulkImportPlanItem, whisperModelURL: URL?, isolateVocals: Bool) async throws {
         let textContent = try item.textURL.map { try Self.readText(from: $0) }
         let subtitleData = try item.subtitleURL.map { try Self.readSubtitle(at: $0) }
 
@@ -136,7 +136,7 @@ final class BulkImportRunner: ObservableObject {
             let didStart = audioURL.startAccessingSecurityScopedResource()
             defer { if didStart { audioURL.stopAccessingSecurityScopedResource() } }
             let transcribed = try await AudioTranscriptionService.transcribe(
-                url: audioURL, engine: engine, isolateVocals: TranscriptionPreprocessing.isolateVocals,
+                url: audioURL, engine: engine, isolateVocals: isolateVocals,
                 whisperModelURL: whisperModelURL,
                 onProgress: { [weak self] frac in
                     Task { @MainActor in self?.progressByItem[itemID]?.transcriptionProgress = frac }
