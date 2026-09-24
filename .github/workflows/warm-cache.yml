@@ -61,6 +61,7 @@ jobs:
           key: deriveddata-${{ runner.os }}-xcode26.5-pinned-mtimes-${{ hashFiles('Kioku.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: |
             deriveddata-${{ runner.os }}-xcode26.5-pinned-mtimes-
+            deriveddata-${{ runner.os }}-xcode26.5-
 
       - name: Download dictionary.sqlite
         run: bash scripts/ensure_dictionary.sh

@@ -117,6 +117,7 @@ jobs:
           key: deriveddata-${{ runner.os }}-xcode26.5-pinned-mtimes-${{ hashFiles('Kioku.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: |
             deriveddata-${{ runner.os }}-xcode26.5-pinned-mtimes-
+            deriveddata-${{ runner.os }}-xcode26.5-
 
       # The dictionary sqlite is downloaded from the GitHub Release pinned in
       # DictionaryDownloadManager.swift (not committed — the raw file, ~365 MB,
