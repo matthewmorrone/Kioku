@@ -42,12 +42,23 @@ enum MatchingRoundBuilder {
                 remaining.removeFirst()
                 continue
             }
-            // A board that would leave exactly one word behind gives its last word back, so the
-            // leftover has a partner on the next board instead of being dropped as a lone word
-            // (5 words where two share an answer deal as 4 + 1 otherwise, losing a word).
-            if remaining.count - dealt.pairs.count == 1, dealt.pairs.count > minimumPairsPerRound {
-                dealt.pairs.removeLast()
-                dealt.indices.removeLast()
+            // A board that would leave exactly one word behind gives a word back, so the leftover has
+            // a partner on the next board instead of being dropped as a lone word (5 words where two
+            // share an answer deal as 4 + 1 otherwise, losing a word). The word given back must be
+            // able to share a board with the leftover — giving back the leftover's own duplicate
+            // would strand both.
+            if remaining.count - dealt.pairs.count == 1, dealt.pairs.count > minimumPairsPerRound,
+               let leftoverIndex = remaining.indices.first(where: { dealt.indices.contains($0) == false }) {
+                let fields = dealt.direction.fields
+                let leftover = remaining[leftoverIndex]
+                let leftoverPrompt = leftover.value(for: fields.prompt)
+                let leftoverAnswer = leftover.value(for: fields.answer)
+                if let giveBack = dealt.pairs.indices.last(where: { position in
+                    dealt.pairs[position].prompt != leftoverPrompt && dealt.pairs[position].answer != leftoverAnswer
+                }) {
+                    dealt.pairs.remove(at: giveBack)
+                    dealt.indices.remove(at: giveBack)
+                }
             }
             for index in dealt.indices.reversed() {
                 remaining.remove(at: index)

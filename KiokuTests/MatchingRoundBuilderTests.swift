@@ -66,12 +66,15 @@ final class MatchingRoundBuilderTests: XCTestCase {
             item(4, kanji: "水", meaning: "water"),
             item(5, kanji: "火", meaning: "fire"),
         ]
-        let rounds = build(items, DirectionSelection(directions: [.kanjiToMeaning]))
-        for round in rounds {
-            XCTAssertEqual(Set(round.pairs.map(\.answer)).count, round.pairs.count)
-            XCTAssertEqual(Set(round.pairs.map(\.prompt)).count, round.pairs.count)
+        // Every shuffle, not one lucky seed: the deal order decides which word ends up leftover.
+        for seed in UInt64(1)...50 {
+            let rounds = build(items, DirectionSelection(directions: [.kanjiToMeaning]), seed: seed)
+            for round in rounds {
+                XCTAssertEqual(Set(round.pairs.map(\.answer)).count, round.pairs.count, "seed \(seed)")
+                XCTAssertEqual(Set(round.pairs.map(\.prompt)).count, round.pairs.count, "seed \(seed)")
+            }
+            XCTAssertEqual(Set(rounds.flatMap { $0.pairs.map(\.id) }), Set(1...5), "seed \(seed)")
         }
-        XCTAssertEqual(Set(rounds.flatMap { $0.pairs.map(\.id) }), Set(1...5))
     }
 
     // A kana-only word can't be asked a kanji direction, so with only kanji directions ticked it is
