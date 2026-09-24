@@ -2,10 +2,9 @@ import Foundation
 import CryptoKit
 
 // Generates a SongBreakdown by sending the verbatim song-breakdown prompt + lyrics to the
-// active LLM provider, then parsing the markdown response. Shares LLMSettings (provider/key)
-// with LLMCorrectionService so there's a single user-config surface for both features.
-// Stub mode short-circuits the network call with a UserDefaults-stored markdown blob — same
-// pattern as LLMCorrectionService — so parser iteration doesn't require an API key.
+// active LLM provider, then parsing the markdown response. Stub mode short-circuits the
+// network call with a UserDefaults-stored markdown blob so parser iteration doesn't require an
+// API key.
 //
 // Responses stream (LLMStreamingClient): every time a newline lands in the accumulated text
 // the partial markdown is re-parsed and handed to `onPartialLines`, so the caller can render
@@ -74,19 +73,9 @@ final class SongBreakdownService {
         // (LLMSettings.apiKey(for:) always returns nil for it), so without this check that guard
         // would fire first and claim "No LLM is configured" — false, since one IS configured,
         // it's just unsupported for this one feature. Throw the distinct, accurate error instead.
-        // With on-device Apple Intelligence selected (correction's best home), the breakdown
-        // goes to Private Cloud Compute instead whenever the device offers it: no key, no cost,
-        // and the feature isn't lost to a picker that serves both features. Note this fallback
-        // reads LLMSettings.correctionProvider(), not `provider` above: breakdownProvider() is
-        // the remote-only picker (see its doc comment) and never resolves to .appleIntelligence,
-        // so checking `provider` here would never trigger — correctionProvider() is what actually
-        // reports "on-device Apple Intelligence is where correction runs".
-        let onDeviceCorrectionFallback = provider == .none && LLMSettings.correctionProvider() == .appleIntelligence
         // The Cloud/Cloud Pro variants (Private Cloud Compute) get their own dispatch path,
-        // bypassing the API-key guard below for the same reason as the on-device check above —
-        // either the breakdown picker itself is set to Cloud/Cloud Pro, or the on-device fallback
-        // above applies.
-        if provider.isAppleIntelligence || onDeviceCorrectionFallback {
+        // bypassing the API-key guard below (no Apple Intelligence variant has a key).
+        if provider.isAppleIntelligence {
             guard AppleIntelligenceCloudAvailability.isAvailable else {
                 NSLog("[SongBreakdown] Apple Intelligence Cloud selected/fallback but unavailable — throwing appleIntelligenceUnsupported")
                 throw SongBreakdownError.appleIntelligenceUnsupported
@@ -120,14 +109,11 @@ final class SongBreakdownService {
         case .openAI:
             // A single user-role message containing the whole prompt: the prompt is a
             // self-contained instruction + data and doesn't benefit from a system/user split.
-            let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
-                ?? LLMSettings.defaultTemperature
             raw = try await LLMStreamingClient.streamOpenAI(
                 apiKey: apiKey,
                 model: LLMSettings.openAIModel(),
                 messages: [["role": "user", "content": SongBreakdownPrompt.instantiated(withLyrics: lyrics)]],
                 maxTokens: 8192,
-                temperature: temperature,
                 urlSession: urlSession,
                 onDelta: onDelta
             )

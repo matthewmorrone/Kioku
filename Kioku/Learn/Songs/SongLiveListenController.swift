@@ -49,6 +49,9 @@ final class SongLiveListenController: NSObject, ObservableObject {
     // Set by `playLine` so `advance` stops (without firing the natural-finish callback) once
     // it steps past this line's last step, instead of continuing into the next line.
     private var stopAfterLineIndex: Int?
+    // The Breakdown options menu's "Pause After Each Line": continuous playback parks at the
+    // start of the next line instead of running into it, and the next play resumes there.
+    var pauseAfterEachLine = false
 
     private let synthesizer = AVSpeechSynthesizer()
     private var clipPlayer: AVAudioPlayer?
@@ -160,19 +163,33 @@ final class SongLiveListenController: NSObject, ObservableObject {
     // the line currently parked as `currentSegment` (e.g. paused mid-line), resumes from that
     // step; on any other line, starts from its first step.
     func playLine(_ lineIndex: Int) {
-        let start: Int
-        if currentSegment?.lineIndex == lineIndex,
-           steps.indices.contains(currentStepIndex),
-           stepLineIndex(steps[currentStepIndex]) == lineIndex {
-            start = currentStepIndex
-        } else {
-            guard let firstIndex = steps.firstIndex(where: { stepLineIndex($0) == lineIndex }) else { return }
-            start = firstIndex
-        }
+        guard let start = resumeIndex(forLine: lineIndex) else { return }
         stopAfterLineIndex = lineIndex
         beginSession()
         guard lastError == nil else { return }
         advance(startingAt: start)
+    }
+
+    // Plays from one line onward through the rest of the script — the mini player's play when
+    // lines aren't set to pause, so it carries on the way the toolbar's play-all does. Resumes
+    // mid-line the same way `playLine` does.
+    func play(fromLine lineIndex: Int) {
+        guard let start = resumeIndex(forLine: lineIndex) else { return }
+        stopAfterLineIndex = nil
+        beginSession()
+        guard lastError == nil else { return }
+        advance(startingAt: start)
+    }
+
+    // Where playing `lineIndex` should start: the parked step when playback stopped inside that
+    // line, else the line's first step. Nil when the script has no steps for the line.
+    private func resumeIndex(forLine lineIndex: Int) -> Int? {
+        if currentSegment?.lineIndex == lineIndex,
+           steps.indices.contains(currentStepIndex),
+           stepLineIndex(steps[currentStepIndex]) == lineIndex {
+            return currentStepIndex
+        }
+        return steps.firstIndex(where: { stepLineIndex($0) == lineIndex })
     }
 
     // Pauses in place: the synthesizer/clip stop immediately, but `currentStepIndex` and
@@ -206,17 +223,35 @@ final class SongLiveListenController: NSObject, ObservableObject {
 
     // MARK: - Stepping
 
+    // The line a step belongs to — what line bounds and line-boundary pauses compare.
     private func stepLineIndex(_ step: SongListenStep) -> Int {
         switch step {
         case .speech(let segment): return segment.lineIndex
         case .clip(let lineIndex, _, _): return lineIndex
+        case .wordClip(let lineIndex, _, _, _): return lineIndex
+        }
+    }
+
+    // The segment to publish as `currentSegment` for a step. A clip has no speech segment of its
+    // own, so it gets a synthetic one carrying what it plays — the line's text for a line clip
+    // (the Japanese row highlights), the word's surface for a word clip (that word's row
+    // highlights) — mirroring what a speech step for the same thing would look like.
+    private func displaySegment(for step: SongListenStep) -> SongListenSegment {
+        switch step {
+        case .speech(let segment):
+            return segment
+        case .clip(let lineIndex, _, _):
+            return SongListenSegment(lineIndex: lineIndex, kind: .sentence, text: originalByLineIndex[lineIndex] ?? "", language: .japanese)
+        case .wordClip(let lineIndex, let surface, _, _):
+            return SongListenSegment(lineIndex: lineIndex, kind: .wordSurface, text: surface, language: .japanese)
         }
     }
 
     // Runs the step at `index`, or stops appropriately once there's nothing left to run: the
-    // natural end of the whole script when unbounded, or a quiet pause (no callback) once a
-    // `playLine` bound's line is behind us.
-    private func advance(startingAt index: Int) {
+    // natural end of the whole script when unbounded, a quiet pause (no callback) once a
+    // `playLine` bound's line is behind us, or — with `pauseAfterEachLine` — a park at the next
+    // line's first step when `continuing` crosses into it (not when a play starts there).
+    private func advance(startingAt index: Int, continuing: Bool = false) {
         if let boundLine = stopAfterLineIndex {
             guard index < steps.count, stepLineIndex(steps[index]) == boundLine else {
                 pause()
@@ -228,24 +263,33 @@ final class SongLiveListenController: NSObject, ObservableObject {
                 finishNaturally()
                 return
             }
+            if continuing, pauseAfterEachLine, index > 0,
+               stepLineIndex(steps[index]) != stepLineIndex(steps[index - 1]) {
+                parkAtLineStart(index)
+                return
+            }
         }
 
         currentStepIndex = index
         isPlaying = true
+        currentSegment = displaySegment(for: steps[index])
         switch steps[index] {
         case .speech(let segment):
-            currentSegment = segment
             runSpeech(segment)
-        case .clip(let lineIndex, let startMs, let endMs):
-            currentSegment = SongListenSegment(
-                lineIndex: lineIndex,
-                kind: .sentence,
-                text: originalByLineIndex[lineIndex] ?? "",
-                language: .japanese
-            )
+        case .clip(_, let startMs, let endMs), .wordClip(_, _, let startMs, let endMs):
             sentenceProgress = nil
             runClip(startMs: startMs, endMs: endMs)
         }
+    }
+
+    // Pauses at the start of the next line: that line becomes the current one (so its row
+    // highlights and the mini player moves to it), and the next play of either kind resumes
+    // from its first step.
+    private func parkAtLineStart(_ index: Int) {
+        pause()
+        currentStepIndex = index
+        currentSegment = displaySegment(for: steps[index])
+        sentenceProgress = nil
     }
 
     // Reached the end of an unbounded (whole-script) playback on its own: resets to the top
@@ -267,7 +311,7 @@ final class SongLiveListenController: NSObject, ObservableObject {
         let gap = gapSeconds(after: currentSegment?.kind)
         let item = DispatchWorkItem { [weak self] in
             guard let self, self.isPlaying else { return }
-            self.advance(startingAt: self.currentStepIndex + 1)
+            self.advance(startingAt: self.currentStepIndex + 1, continuing: true)
         }
         scheduledWork = item
         DispatchQueue.main.asyncAfter(deadline: .now() + gap, execute: item)

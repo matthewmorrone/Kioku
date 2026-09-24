@@ -28,27 +28,25 @@ extension ReadView {
             } message: {
                 Text(lyricRealign.cueRealignErrorMessage)
             }
+            .alert("This Sounds Like Singing", isPresented: $subtitleImport.isShowingSungAudioRecommendation) {
+                Button("Transcribe Anyway") { transcribePendingSungAudio() }
+                Button("Cancel", role: .cancel) { discardPendingSungAudio() }
+            } message: {
+                Text("We recommend finding the song's lyrics online.")
+            }
             .alert("AI Correction", isPresented: $llmCorrection.isShowingLLMCorrectionError) {
-                Button("Retry") {
-                    llmCorrection.llmCorrectionErrorMessage = ""
-                    requestLLMCorrection()
-                }
-                // Only shown when the failure was a whole-response parse failure (see
-                // llmCorrection.llmCorrectionRetryContext) — resends the SAME provider with the previous raw
-                // response and the parse error folded in as corrective feedback, instead of a
-                // blind identical retry.
-                if llmCorrection.llmCorrectionRetryContext != nil {
-                    Button("Retry with Feedback") {
-                        llmCorrection.llmCorrectionErrorMessage = ""
-                        requestLLMCorrectionWithFeedback()
-                    }
-                }
                 Button("OK", role: .cancel) {
                     llmCorrection.llmCorrectionErrorMessage = ""
-                    llmCorrection.llmCorrectionRetryContext = nil
                 }
             } message: {
                 Text(llmCorrection.llmCorrectionErrorMessage)
+            }
+            .alert("Apply AI Changes?", isPresented: $llmCorrection.isShowingLLMConfirmAll) {
+                Button("Apply All") { confirmLLMChanges() }
+                Button("Reject All", role: .destructive) { rejectAllPendingLLMChanges() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("\(llmCorrection.pendingLLMChangedLocations.count) suggested change(s) are highlighted. Tap one to decide on it individually.")
             }
             .alert("AI Correction", isPresented: $llmCorrection.isShowingLLMChangePopover) {
                 Button("Confirm") {
@@ -64,26 +62,6 @@ extension ReadView {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text(llmCorrection.llmChangePopoverText)
-            }
-            .alert("Run AI Correction?", isPresented: $llmCorrection.isShowingLLMStartConfirm) {
-                Button("Run") { requestLLMCorrection() }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Sends this note's text and segmentation to \(LLMSettings.correctionProvider().displayName). The suggested changes come back as pending edits for you to confirm before anything is applied.")
-            }
-            .alert("Cancel AI Correction?", isPresented: $llmCorrection.isShowingLLMCancelConfirm) {
-                Button("Cancel Correction", role: .destructive) { cancelLLMCorrection() }
-                Button("Keep Going", role: .cancel) {}
-            } message: {
-                Text("The correction in progress will be discarded.")
-            }
-            .alert("Re-run AI Correction?", isPresented: $llmCorrection.isShowingLLMRerunConfirm) {
-                Button("Re-run", role: .destructive) {
-                    requestLLMCorrection()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This note already has corrections applied. Re-running will replace them.")
             }
             // Auto-segmentation confirm dialog disabled — see requestAutoSegConfirm in
             // ReadView+Persistence.swift for re-enable instructions.
@@ -212,11 +190,6 @@ extension ReadView {
                 // can finish either before or after pendingScrollTarget arrives from ContentView —
                 // whichever onChange fires last is the one that actually has both pieces ready.
                 jumpToPendingScrollSurfaceIfReady()
-                consumePendingBreakdownCorrection()
-            }
-            // A merged breakdown's segmentation half arrives here as pending AI changes.
-            .onReceive(songBreakdownStore.$pendingCorrectionByNoteID) { _ in
-                consumePendingBreakdownCorrection()
             }
             .onChange(of: editModeScroll.isEditMode) { _, editing in
                 if editing {

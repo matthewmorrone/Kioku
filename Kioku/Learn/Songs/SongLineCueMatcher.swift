@@ -33,6 +33,20 @@ enum SongLineCueMatcher {
         return result
     }
 
+    // Returns line.index → the cue that line matched, for cutting per-word snippets out of the
+    // cue's own alignment checkpoints (SongWordClipLocator). Same forward-cursor matching as
+    // computeRanges, so both maps always agree on which cue a line is.
+    static func matchedCues(
+        lines: [SongLine],
+        cues: [SubtitleCue]
+    ) -> [Int: SubtitleCue] {
+        var result: [Int: SubtitleCue] = [:]
+        for match in matchedCueIndices(lines: lines, cues: cues) {
+            result[match.lineIndex] = cues[match.cueIndex]
+        }
+        return result
+    }
+
     // Walks lines and cues in parallel, pairing each line to the next cue (from a
     // forward-only cursor) whose text matches. Split out of computeRanges so the tightening
     // pass below can see each match's NEXT match too (needed for the trailing-edge bound).

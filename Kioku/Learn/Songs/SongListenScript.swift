@@ -2,8 +2,8 @@ import Foundation
 
 // Turns a SongBreakdown into a flat, ordered list of things to play/say: for each line, the
 // sung audio clip (when a matched time range is available), then the Japanese original, then
-// the English gist, then each word's Japanese surface followed by its English definition —
-// before moving to the next line. This is the "script" that SongLiveListenController plays
+// the English gist, then each word — its sung snippet (or reading), its English definition,
+// and its reading again — before moving to the next line. This is the "script" that SongLiveListenController plays
 // through live, one step at a time; the language tag on each SongListenSegment is what drives
 // the Japanese/English voice switching ("code switching") during synthesis, and the leading
 // `.clip` step (when present) is what lets the listener hear the line sung before its
@@ -22,10 +22,14 @@ nonisolated enum SongListenScript {
     // given breakdown + line-range map always produces the same script (and therefore the
     // same audio). `lineRanges` mirrors the per-line play button's own range lookup
     // (SongLineCueMatcher.computeRanges) — pass an empty map (the default) to render
-    // narration-only, e.g. when the note has no audio attachment.
+    // narration-only, e.g. when the note has no audio attachment. `lineCues` (each line's
+    // matched cue, SongLineCueMatcher.matchedCues) is what word snippets are cut from;
+    // `wordRepeatCount` is how many times each word is heard before its definition.
     static func build(
         from breakdown: SongBreakdown,
-        lineRanges: [Int: (startMs: Int, endMs: Int)] = [:]
+        lineRanges: [Int: (startMs: Int, endMs: Int)] = [:],
+        lineCues: [Int: SubtitleCue] = [:],
+        wordRepeatCount: Int = 1
     ) -> [SongListenStep] {
         var steps: [SongListenStep] = []
         let linesByIndex = Dictionary(uniqueKeysWithValues: breakdown.lines.map { ($0.index, $0) })
@@ -56,22 +60,45 @@ nonisolated enum SongListenScript {
                 steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .translation, text: ttsFriendlyText(gist), language: .english)))
             }
 
+            // Each word: heard `wordRepeatCount` times (the singer's own snippet when the line's
+            // alignment brackets it, else the synthesized reading), then its definition, then the
+            // synthesized reading once more so the word is the last thing heard before moving on.
+            // `searchFrom` walks the cue text forward so a word sung twice maps in order.
+            var searchFrom = 0
             for word in effectiveWords(for: line, linesByIndex: linesByIndex) {
                 let surface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard surface.isEmpty == false else { continue }
-                steps.append(.speech(SongListenSegment(
+                let spoken = SongListenSegment(
                     lineIndex: line.index,
                     kind: .wordSurface,
                     text: surface,
                     language: .japanese,
                     spokenText: spokenReading(original: surface, romaji: word.sungRomaji)
-                )))
+                )
 
-                let definition = SongLineCard.truncatingAtSemicolon(SongLineCard.stripInlineMarkdown(word.definition))
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if definition.isEmpty == false {
-                    steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .wordDefinition, text: ttsFriendlyText(definition), language: .english)))
+                var leading = SongListenStep.speech(spoken)
+                if let cue = lineCues[line.index], let lineEndMs = lineRanges[line.index]?.endMs,
+                   let located = SongWordClipLocator.locate(surface, in: cue, lineEndMs: lineEndMs, searchFrom: searchFrom) {
+                    leading = .wordClip(lineIndex: line.index, surface: surface, startMs: located.startMs, endMs: located.endMs)
+                    searchFrom = located.nextSearchFrom
                 }
+                for _ in 0..<max(1, wordRepeatCount) {
+                    steps.append(leading)
+                }
+
+                // `text` is the displayed definition, which SongLineCard matches to tint the row;
+                // the TTS-friendly rewrite is only what's spoken.
+                let definition = SongDefinitionCleaner.clean(word.definition)
+                if definition.isEmpty == false {
+                    steps.append(.speech(SongListenSegment(
+                        lineIndex: line.index,
+                        kind: .wordDefinition,
+                        text: definition,
+                        language: .english,
+                        spokenText: ttsFriendlyText(definition)
+                    )))
+                }
+                steps.append(.speech(spoken))
             }
 
             // Previously omitted entirely — the pattern-bank note (displayed by

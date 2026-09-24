@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 import UserNotifications
 
 // Single-screen settings, organized top-to-bottom: appearance (typography, theme),
-// reading behavior (audio, word of the day, clipboard), segmentation tuning, AI correction,
+// reading behavior (audio, word of the day, clipboard), segmentation tuning, AI provider,
 // developer tools, and data transfer. Footer prose is intentionally omitted — rows stand alone.
 struct SettingsView: View {
     let dictionaryStore: DictionaryStore?
@@ -39,14 +39,12 @@ struct SettingsView: View {
     @AppStorage(DictionarySettings.prefersSheetDirectSegmentActionsKey)
     private var prefersSheetDirectSegmentActions: Bool = DictionarySettings.defaultPrefersSheetDirectSegmentActions
 
-    // No `private` modifiers below: the AI Correction section's UI lives in
+    // No `private` modifiers below: the AI section's UI lives in
     // SettingsView+AICorrectionSection.swift and needs to read these as
     // bindings. Extensions in other source files can't reach `private`
     // members, so these stay at module-internal access.
-    // The one shared remote-provider pick, used for both Correction and Breakdown.
+    // The remote provider song breakdowns use.
     @AppStorage(LLMSettings.providerKey) var llmProviderRaw: String = LLMSettings.defaultProvider
-    // Whether on-device Apple Intelligence handles Correction automatically when available.
-    @AppStorage(LLMSettings.appleIntelligenceEnabledKey) var appleIntelligenceEnabled: Bool = true
     // API keys live in the Keychain, not UserDefaults; @State holds the editing copy
     // and onChange writes through. keysRevision is a non-secret change counter other
     // views observe to re-check key presence without touching the secret itself.
@@ -54,10 +52,6 @@ struct SettingsView: View {
     @State var claudeKey: String = LLMSettings.apiKey(for: .claude) ?? ""
     @AppStorage(LLMSettings.keysRevisionKey) var llmKeysRevision: Int = 0
     @AppStorage(LLMSettings.useLLMKey) var useLLM: Bool = true
-    @AppStorage(LLMSettings.temperatureKey) var temperature: Double = LLMSettings.defaultTemperature
-    // Default true so a fresh install gets canonical-lyrics grounding out of the
-    // box for songs; the user can disable to cut cost or for privacy.
-    @AppStorage(LLMSettings.useWebSearchKey) var useWebSearch: Bool = true
 
     @AppStorage(TokenColorSettings.enabledKey) var customTokenColorsEnabled: Bool = false
     @AppStorage(TokenColorSettings.colorAKey) var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
@@ -284,7 +278,7 @@ struct SettingsView: View {
                     Text("Audio")
                 }
 
-                // MARK: AI Correction — body lives in SettingsView+AICorrectionSection.swift
+                // MARK: AI — body lives in SettingsView+AICorrectionSection.swift
                 aiCorrectionSection
 
                 // MARK: Learning — auto-mark words as learned past a chosen bar, and whether the

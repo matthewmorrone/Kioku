@@ -53,7 +53,7 @@ final class SongListenScriptTests: XCTestCase {
         )])
         let steps = SongListenScript.build(from: bd)
         let texts = steps.compactMap { step -> String? in
-            if case .speech(let s) = step { return s.text }
+            if case .speech(let s) = step { return s.spokenText ?? s.text }
             return nil
         }
         XCTAssertTrue(texts.contains("to spin or weave a story"), "got: \(texts)")
@@ -101,9 +101,70 @@ final class SongListenScriptTests: XCTestCase {
             if case .speech(let s) = step, s.kind == .wordSurface { return s }
             return nil
         }
-        XCTAssertEqual(wordSurfaceSteps.count, 1)
-        XCTAssertEqual(wordSurfaceSteps[0].text, "命")
-        XCTAssertEqual(wordSurfaceSteps[0].spokenText, "いのち")
+        // Once before the definition and once after it.
+        XCTAssertEqual(wordSurfaceSteps.count, 2)
+        for step in wordSurfaceSteps {
+            XCTAssertEqual(step.text, "命")
+            XCTAssertEqual(step.spokenText, "いのち")
+        }
+    }
+
+    // The kinds of a line's word steps, in order, with clips named by what they play.
+    private func wordStepKinds(_ steps: [SongListenStep]) -> [String] {
+        steps.compactMap { step in
+            switch step {
+            case .speech(let s) where s.kind == .wordSurface: return "say:\(s.text)"
+            case .speech(let s) where s.kind == .wordDefinition: return "def:\(s.text)"
+            case .wordClip(_, let surface, _, _): return "clip:\(surface)"
+            default: return nil
+            }
+        }
+    }
+
+    // Without alignment each word is: reading, definition, reading again.
+    func testWordIsReadThenDefinedThenReadAgain() {
+        let bd = breakdown(lines: [line(words: [
+            SongWord(surface: "夕凪", sungRomaji: "", definition: "evening calm"),
+        ])])
+        XCTAssertEqual(wordStepKinds(SongListenScript.build(from: bd)), ["say:夕凪", "def:evening calm", "say:夕凪"])
+    }
+
+    // The repeat option repeats what leads the word, not the closing reading.
+    func testWordRepeatCountRepeatsTheLeadingUtterance() {
+        let bd = breakdown(lines: [line(words: [
+            SongWord(surface: "夕凪", sungRomaji: "", definition: "evening calm"),
+        ])])
+        XCTAssertEqual(
+            wordStepKinds(SongListenScript.build(from: bd, wordRepeatCount: 3)),
+            ["say:夕凪", "say:夕凪", "say:夕凪", "def:evening calm", "say:夕凪"]
+        )
+    }
+
+    // With the line's cue aligned, the word leads with the singer's own snippet, cut from its
+    // checkpoint onset to the next checkpoint's onset.
+    func testAlignedWordLeadsWithItsSungSnippet() {
+        let bd = breakdown(lines: [line(original: "夕凪の時間", words: [
+            SongWord(surface: "時間", sungRomaji: "", definition: "time"),
+        ])])
+        let cue = SubtitleCue(index: 1, startMs: 1000, endMs: 3000, text: "夕凪の時間", checkpoints: [
+            CueCharTiming(timeMs: 1000, charOffsetInCue: 0, charLength: 2),
+            CueCharTiming(timeMs: 1600, charOffsetInCue: 2, charLength: 1),
+            CueCharTiming(timeMs: 1900, charOffsetInCue: 3, charLength: 2),
+        ])
+        let steps = SongListenScript.build(
+            from: bd,
+            lineRanges: [1: (startMs: 1000, endMs: 2600)],
+            lineCues: [1: cue],
+            wordRepeatCount: 2
+        )
+        XCTAssertEqual(wordStepKinds(steps), ["clip:時間", "clip:時間", "def:time", "say:時間"])
+        guard let clip = steps.first(where: { if case .wordClip = $0 { return true } else { return false } }),
+              case .wordClip(_, _, let startMs, let endMs) = clip else {
+            return XCTFail("expected a word clip")
+        }
+        // Last word of the line: runs from its onset to the line's end.
+        XCTAssertEqual(startMs, 1900)
+        XCTAssertEqual(endMs, 2600)
     }
 
     // No romaji available (nil, or the referenced-line fall-through never populated it) —

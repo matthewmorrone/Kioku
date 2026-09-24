@@ -66,15 +66,58 @@ extension ReadView {
             }
 
             Task {
-                await transcribeAudioFile(at: sourceURL)
+                await prepareAudioImport(at: sourceURL)
             }
         case .failure(let error):
             subtitleImport.audioTranscriptionErrorMessage = error.localizedDescription
         }
     }
 
-    // Runs the selected transcription engine for one imported audio file and creates a new note with transcript and karaoke timing data.
-    func transcribeAudioFile(at sourceURL: URL) async {
+    // Copies the picked audio and checks whether it's speech or singing. Speech transcribes right
+    // away; singing is held for the "find the song's lyrics online" recommendation, since
+    // transcription is unreliable on songs, and transcribes only if the user chooses to anyway.
+    func prepareAudioImport(at sourceURL: URL) async {
+        guard subtitleImport.isPerformingAudioTranscription == false else { return }
+        let copiedURL: URL
+        do {
+            copiedURL = try AudioTranscriptionHelpers.copyImportedAudioToTemporaryLocation(sourceURL)
+        } catch {
+            subtitleImport.audioTranscriptionErrorMessage = error.localizedDescription
+            return
+        }
+        subtitleImport.isPerformingAudioTranscription = true
+        let kind = await AudioContentClassifier.classify(copiedURL)
+        subtitleImport.isPerformingAudioTranscription = false
+        if kind == .singing {
+            subtitleImport.pendingSungAudioURL = copiedURL
+            subtitleImport.isShowingSungAudioRecommendation = true
+            return
+        }
+        await transcribeAudioFile(copiedURL: copiedURL, isolateVocals: false)
+    }
+
+    // Transcribe Anyway on the singing recommendation: isolates the vocals first, which is what
+    // transcription of a song needs.
+    func transcribePendingSungAudio() {
+        guard let url = subtitleImport.pendingSungAudioURL else { return }
+        subtitleImport.pendingSungAudioURL = nil
+        Task { await transcribeAudioFile(copiedURL: url, isolateVocals: true) }
+    }
+
+    // Cancel on the singing recommendation: drops the held temporary copy.
+    func discardPendingSungAudio() {
+        guard let url = subtitleImport.pendingSungAudioURL else { return }
+        subtitleImport.pendingSungAudioURL = nil
+        do {
+            try FileManager.default.removeItem(at: url)
+        } catch {
+            AppLog.error(.transcription, "couldn't remove held audio copy: \(error)")
+        }
+    }
+
+    // Transcribes an already-copied audio file (consumed and deleted here) and creates a new note
+    // with the transcript and its karaoke timing data.
+    func transcribeAudioFile(copiedURL: URL, isolateVocals isolate: Bool) async {
         guard subtitleImport.isPerformingAudioTranscription == false else { return }
         subtitleImport.isPerformingAudioTranscription = true
         defer { subtitleImport.isPerformingAudioTranscription = false }
@@ -85,7 +128,6 @@ extension ReadView {
         let engine = TranscriptionEngine.current
         let noteID = beginStreamingTranscriptionNote(totalChunks: 1)
         do {
-            let copiedURL = try AudioTranscriptionHelpers.copyImportedAudioToTemporaryLocation(sourceURL)
             defer { try? FileManager.default.removeItem(at: copiedURL) }
 
             let contextual = AudioTranscriptionHelpers.makeSpeechContextualStrings(from: document.text, title: resolvedTitle)
@@ -106,7 +148,6 @@ extension ReadView {
                 }
             }
 
-            let isolate = TranscriptionPreprocessing.isolateVocals
             setWhisperTranscriptionNote(id: noteID, statusLine: isolate ? "Isolating vocals…" : "Transcribing audio…", body: "")
             let cues = try await AudioTranscriptionService.transcribe(
                 url: copiedURL, engine: engine, isolateVocals: isolate,

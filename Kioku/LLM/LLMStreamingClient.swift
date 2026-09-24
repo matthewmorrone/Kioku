@@ -1,8 +1,8 @@
 import Foundation
 
-// Server-sent-events client for the two remote chat providers. Both breakdown services
-// (SongBreakdownService, MergedCorrectionBreakdownService) go through here so the progressive
-// per-line UI in SongStepperView gets text as the model writes it instead of one blob after a
+// Server-sent-events client for the two remote chat providers. Song breakdowns
+// (SongBreakdownService) and segmentation corrections (LLMCorrectionClient) go through here so
+// their per-line UI gets text as the model writes it instead of one blob after a
 // 30–180s wait. Each call returns the fully accumulated text (so callers parse exactly what a
 // non-streaming request would have returned) and invokes `onDelta` with every text fragment
 // as it arrives, on the network task — callers hop to the main actor themselves.
@@ -41,7 +41,6 @@ nonisolated enum LLMStreamingClient {
         model: String,
         messages: [[String: String]],
         maxTokens: Int,
-        temperature: Double,
         urlSession: URLSession,
         onDelta: @escaping @Sendable (String) -> Void
     ) async throws -> String {
@@ -51,13 +50,12 @@ nonisolated enum LLMStreamingClient {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": model,
             "messages": messages,
-            "max_tokens": maxTokens,
-            "temperature": temperature,
             "stream": true
         ]
+        OpenAIRequestParameters.apply(to: &body, model: model, maxTokens: maxTokens, temperature: nil)
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         return try await consume(request: request, urlSession: urlSession, providerName: "OpenAI") { json in
@@ -89,15 +87,15 @@ nonisolated enum LLMStreamingClient {
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         // Sampling params (temperature/top_p/top_k) are rejected with a 400 on current-generation
         // Claude models (Sonnet 5 and later) — omit rather than send a value the API will reject.
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": model,
-            "max_tokens": maxTokens,
             "system": system,
             "messages": [
                 ["role": "user", "content": userContent]
             ],
             "stream": true
         ]
+        ClaudeRequestParameters.apply(to: &body, model: model, maxTokens: maxTokens)
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         return try await consume(request: request, urlSession: urlSession, providerName: "Claude") { json in

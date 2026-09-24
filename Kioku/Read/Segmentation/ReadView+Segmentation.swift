@@ -98,8 +98,6 @@ extension ReadView {
         llmCorrection.pendingLLMRebuiltEdges = []
         llmCorrection.pendingLLMWorkingEntries = []
         llmCorrection.hasPendingLLMChanges = false
-        // Corrections were just cleared, so the next AI run should go straight through.
-        llmCorrection.hasAppliedLLMCorrectionForCurrentNote = false
         // Always drop user-edited readings so the reset is total. Re-segmentation will
         // backfill defaults from the lexicon below.
         document.furiganaBySegmentLocation = [:]

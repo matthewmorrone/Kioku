@@ -9,18 +9,7 @@ import UniformTypeIdentifiers
 // BulkImportRunner; row status updates in place as items complete.
 struct BulkImportSheet: View {
     @EnvironmentObject private var store: NotesStore
-    @EnvironmentObject private var llmCorrectionQueue: LLMCorrectionQueue
     @Environment(\.dismiss) private var dismiss
-
-    // Sticky preference for the "Auto-correct imported notes" toggle so the
-    // user's last choice carries across imports. Only consulted when an LLM
-    // provider is configured at import time; reading it when no provider is
-    // set is harmless because the toggle row is hidden in that case.
-    @AppStorage("kioku.bulkImport.autoCorrect") private var autoCorrectImports = false
-    // Mirror of LLMSettings.useLLMKey and keysRevision so the toggle row
-    // appears/disappears live when the user adjusts LLM setup elsewhere.
-    @AppStorage(LLMSettings.useLLMKey) private var llmUseLLM = true
-    @AppStorage(LLMSettings.keysRevisionKey) private var llmKeysRevision = 0
 
     @State private var pickedURLs: [URL] = []
 
@@ -29,8 +18,11 @@ struct BulkImportSheet: View {
 
     @State private var pickerError = ""
 
-    // Isolate the vocal stem before transcribing. Default on (best for songs).
-    @AppStorage(TranscriptionPreprocessing.isolateVocalsKey) private var isolateVocals = true
+    // Speech-vs-singing verdict for each audio-only item (keyed by plan item id), filled in as
+    // soon as files are picked; nil while that item's check is still running.
+    @State private var audioKindByItemID: [String: AudioContentKind] = [:]
+    // Sung items the user chose to transcribe anyway; every other sung item is left out of the run.
+    @State private var transcribeAnywayItemIDs: Set<String> = []
 
     @StateObject private var runner: BulkImportRunner
 
@@ -60,13 +52,21 @@ struct BulkImportSheet: View {
         )
     }
 
-    private var needsTranscription: Bool {
-        plan.contains { BulkImportPlanner.requiresTranscription($0) }
+    // Audio-only items (they'd be transcribed), which are the ones the speech check runs on.
+    private var transcriptionItems: [BulkImportPlanItem] {
+        plan.filter { BulkImportPlanner.requiresTranscription($0) }
     }
 
+    // A sung item is skipped unless the user opted to transcribe it anyway.
+    private func isSkipped(_ item: BulkImportPlanItem) -> Bool {
+        audioKindByItemID[item.id] == .singing && transcribeAnywayItemIDs.contains(item.id) == false
+    }
+
+    // Import waits for every audio-only item's check, and needs at least one item left to run.
     private var canImport: Bool {
         guard runner.isRunning == false, runner.hasFinished == false else { return false }
-        return plan.isEmpty == false
+        guard transcriptionItems.allSatisfy({ audioKindByItemID[$0.id] != nil }) else { return false }
+        return plan.contains { isSkipped($0) == false }
     }
 
     var body: some View {
@@ -76,16 +76,10 @@ struct BulkImportSheet: View {
                 if plan.isEmpty == false {
                     planSection
                 }
-                if needsTranscription {
-                    transcriptionOptionsSection
-                }
-                // AI correction toggle — hidden when no provider is set up.
-                // Reactive: reading llmUseLLM / llmKeysRevision ties the row's
-                // visibility to the configuration state, so changing Settings
-                // in another tab updates the sheet live.
-                if isLLMConfigured {
-                    aiCorrectionSection
-                }
+            }
+            // Checks each newly picked audio-only file for speech vs singing (about a second each).
+            .task(id: transcriptionItems.map(\.id)) {
+                await classifyTranscriptionItems()
             }
             .navigationTitle("Bulk Import")
             .navigationBarTitleDisplayMode(.inline)
@@ -153,22 +147,6 @@ struct BulkImportSheet: View {
         }
     }
 
-    // Shown whenever an item needs transcription — always via Qwen3-ASR, the only selectable
-    // engine. The only real option left is whether to isolate vocals first.
-    @ViewBuilder
-    private var transcriptionOptionsSection: some View {
-        Section {
-            Toggle("Isolate vocals first", isOn: $isolateVocals)
-                .disabled(runner.isRunning)
-        } header: {
-            Text("Transcription")
-        } footer: {
-            Text(isolateVocals
-                 ? "Separates vocals from the backing track first — best for songs (heavier; cached)."
-                 : "Transcribes the raw mix — right for plain speech and lowest memory.")
-        }
-    }
-
     // Renders one plan-item row including the action description and live status.
     @ViewBuilder
     private func planRow(for item: BulkImportPlanItem) -> some View {
@@ -186,6 +164,10 @@ struct BulkImportSheet: View {
             Text(BulkImportPlanner.actionDescription(item))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+
+            if BulkImportPlanner.requiresTranscription(item), progress == nil {
+                audioCheckLine(for: item)
+            }
 
             if case .running = progress?.status, BulkImportPlanner.requiresTranscription(item) {
                 // Stage + percentage above the bar (e.g. "Isolating vocals…   42%"), matching the
@@ -270,51 +252,52 @@ struct BulkImportSheet: View {
         }
     }
 
-    // Launches the runner with the current plan. After the runner finishes, hands the
-    // newly-created note IDs to the LLM correction queue when the user has opted in. The
-    // queue runs in the background so the sheet doesn't block on it — the user can dismiss
-    // immediately and corrections trickle in afterward.
+    // Launches the runner with the current plan minus skipped sung items. Speech transcribes the
+    // raw audio; sung items transcribed anyway isolate the vocals first.
     private func startImport() async {
-        let snapshot = plan
-        await runner.run(plan: snapshot, whisperModelURL: nil)
-        if autoCorrectImports && isLLMConfigured {
-            let created = runner.createdNoteIDs
-            if created.isEmpty == false {
-                llmCorrectionQueue.enqueue(noteIDs: created)
-            }
+        let items = plan.filter { isSkipped($0) == false }
+        var isolate: [String: Bool] = [:]
+        for item in items where BulkImportPlanner.requiresTranscription(item) {
+            isolate[item.id] = audioKindByItemID[item.id] == .singing
         }
+        await runner.run(plan: items, whisperModelURL: nil, isolateVocalsByItemID: isolate)
     }
 
-    // Mirrors ReadView.isLLMConfigured. Re-reads each render via the @AppStorage
-    // properties so the toggle row appears/disappears the moment LLM setup
-    // changes elsewhere.
-    private var isLLMConfigured: Bool {
-        _ = llmKeysRevision
-        if llmUseLLM {
-            let provider = LLMSettings.correctionProvider()
-            if provider == .appleIntelligence {
-                return AppleIntelligenceAvailability.isAvailable
-            }
-            return LLMSettings.apiKey(for: provider) != nil
-        }
-        // Stub mode counts as configured for parity with the sparkles button.
-        let stub = UserDefaults.standard.string(forKey: LLMSettings.stubResponseKey) ?? ""
-        return stub.isEmpty == false
-    }
-
-    // Section with the auto-correct toggle and a one-line explanation of what
-    // it does. Disabled mid-run to avoid the toggle flipping under the user's
-    // feet while a batch is in flight.
+    // The row's speech-check line: checking, will be transcribed, or (sung) the recommendation to
+    // add lyrics with a Transcribe Anyway toggle.
     @ViewBuilder
-    private var aiCorrectionSection: some View {
-        Section {
-            Toggle("Auto-correct imported notes", isOn: $autoCorrectImports)
-                .disabled(runner.isRunning)
-        } header: {
-            Text("AI Correction")
-        } footer: {
-            Text("After import, each note's segmentation and furigana are corrected by the configured LLM provider. Runs in the background — you can dismiss this sheet.")
+    private func audioCheckLine(for item: BulkImportPlanItem) -> some View {
+        switch audioKindByItemID[item.id] {
+        case nil:
+            Text("Checking audio…")
+                .font(.caption)
                 .foregroundStyle(.secondary)
+        case .speech?, .unclear?:
+            Text("Speech — will be transcribed")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .singing?:
+            Text("Sounds sung — we recommend adding the song's lyrics")
+                .font(.caption)
+                .foregroundStyle(.orange)
+            Toggle("Transcribe Anyway", isOn: Binding(
+                get: { transcribeAnywayItemIDs.contains(item.id) },
+                set: { on in
+                    if on { transcribeAnywayItemIDs.insert(item.id) } else { transcribeAnywayItemIDs.remove(item.id) }
+                }
+            ))
+            .font(.caption)
+        }
+    }
+
+    // Classifies every audio-only item that hasn't been checked yet, one at a time.
+    private func classifyTranscriptionItems() async {
+        for item in transcriptionItems where audioKindByItemID[item.id] == nil {
+            guard let url = item.audioURL else { continue }
+            let didStart = url.startAccessingSecurityScopedResource()
+            let kind = await AudioContentClassifier.classify(url)
+            if didStart { url.stopAccessingSecurityScopedResource() }
+            audioKindByItemID[item.id] = kind
         }
     }
 

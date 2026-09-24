@@ -2,21 +2,13 @@ import SwiftUI
 
 // The AI section of Settings, extracted from SettingsView to keep the parent file under the
 // project's 1000-line invariant. All @AppStorage / @State it uses live on SettingsView; this
-// extension just shapes the UI. On-device Apple Intelligence isn't a picker choice — it's a
-// capability the app uses on its own for Correction whenever the toggle is on and the device
-// has it (Breakdown can't use it at all). The Provider picker is the shared remote model
-// (None / OpenAI / Claude), used for Breakdown always and for Correction whenever on-device
-// isn't in play.
+// extension just shapes the UI. The Provider picker is the remote model song breakdowns use
+// (None / OpenAI, plus Claude in debug builds).
 extension SettingsView {
-    // On-device toggle, the shared remote Provider picker, and its key/search/temperature controls.
+    // The Provider picker and the selected provider's API key.
     @ViewBuilder
     var aiCorrectionSection: some View {
         Section {
-            if AppleIntelligenceAvailability.isAvailable {
-                Toggle("On-device Apple Intelligence", isOn: $appleIntelligenceEnabled)
-            } else {
-                LabeledContent("On-device Apple Intelligence", value: "Not available")
-            }
             Picker("Provider", selection: $llmProviderRaw) {
                 ForEach(LLMProvider.allCases, id: \.rawValue) { provider in
                     if isProviderSelectable(provider) {
@@ -57,30 +49,6 @@ extension SettingsView {
                         }
                 }
             }
-            // Gated on the picker itself, not on whether Correction would currently route there —
-            // Correction preferring on-device Apple Intelligence (the default whenever it's
-            // available) would otherwise hide this permanently even with a remote provider
-            // picked, since correctionRoutesToRemote would never be true. Breakdown always uses
-            // the picked provider regardless of the on-device toggle, so the picker alone is the
-            // right signal. Claude gets the server-side web_search tool; OpenAI swaps to its
-            // search model. Costs more per call.
-            if selectedRemoteProvider != .none {
-                Toggle("Web Search", isOn: $useWebSearch)
-            }
-            // Temperature: same reasoning — gate on the picker, OpenAI only (Claude rejects the
-            // parameter, on-device pins its own).
-            if selectedRemoteProvider == .openAI {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Temperature")
-                        Spacer()
-                        Text(String(format: "%.2f", temperature))
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                    Slider(value: $temperature, in: 0.0...1.0, step: 0.05)
-                }
-            }
         } header: {
             Text("AI")
         }
@@ -89,15 +57,20 @@ extension SettingsView {
     // The picker's current value as a provider (Apple values from older builds read as none).
     private var selectedRemoteProvider: LLMProvider {
         let provider = LLMProvider(rawValue: llmProviderRaw) ?? .none
-        return provider.isAppleIntelligence ? .none : provider
+        if provider.isAppleIntelligence { return .none }
+        if provider == .claude, LLMSettings.isClaudeAvailable == false { return .none }
+        return provider
     }
 
-    // Only remote providers are choices; Apple's variants are capabilities or unavailable.
+    // Only remote providers are choices; Apple's variants are capabilities or unavailable, and
+    // Claude is offered in debug builds only (see LLMSettings.isClaudeAvailable).
     private func isProviderSelectable(_ provider: LLMProvider) -> Bool {
         switch provider {
         case .appleIntelligence, .appleIntelligenceCloud, .appleIntelligenceCloudPro:
             return false
-        case .none, .openAI, .claude:
+        case .claude:
+            return LLMSettings.isClaudeAvailable
+        case .none, .openAI:
             return true
         }
     }

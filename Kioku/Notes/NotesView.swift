@@ -43,9 +43,7 @@ struct NotesView: View {
 
     var body: some View {
         NavigationStack {
-            // Displays the selectable/reorderable list of notes. Correction-queue
-            // progress is shown by CorrectionProgressOverlay (mounted globally in
-            // ContentView so it follows the user between tabs), not inline here.
+            // Displays the selectable/reorderable list of notes.
             List(selection: $selectedNoteIDs) {
                 ForEach(displayedNotes) { note in
                     // Renders a single note row with title and content preview.

@@ -54,6 +54,18 @@ extension SongStepperView {
         liveListen.playLine(line.index)
     }
 
+    // The mini player's play on a line: that line only when lines pause at their end, else on
+    // through the rest of the song from it.
+    func playListenFromMiniPlayer(line: SongLine) {
+        guard pauseAfterEachLine == false else {
+            playListen(line: line)
+            return
+        }
+        isListening = true
+        configureLiveListen()
+        liveListen.play(fromLine: line.index)
+    }
+
     // Card tap while its line is speaking, or the toolbar pause.
     func pauseListen() {
         liveListen.pause()
@@ -82,8 +94,17 @@ extension SongStepperView {
     func configureLiveListen() {
         guard let breakdown = cachedBreakdown else { return }
         let ranges = effectiveListenLineRanges
-        let steps = SongListenScript.build(from: breakdown, lineRanges: ranges)
+        // Word snippets are cut from the same cues the line clips come from, so they exist only
+        // when line clips do.
+        let lineCues = ranges.isEmpty ? [:] : SongLineCueMatcher.matchedCues(lines: displayItems.map(\.line), cues: noteCues)
+        let steps = SongListenScript.build(
+            from: breakdown,
+            lineRanges: ranges,
+            lineCues: lineCues,
+            wordRepeatCount: wordRepeatCount
+        )
         let originalByIndex = Dictionary(breakdown.lines.map { ($0.index, $0.original) }, uniquingKeysWith: { first, _ in first })
+        liveListen.pauseAfterEachLine = pauseAfterEachLine
         liveListen.configure(steps: steps, sourceAudioURL: listenSourceAudioURL, originalByLineIndex: originalByIndex)
     }
 

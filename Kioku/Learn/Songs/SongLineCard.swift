@@ -147,7 +147,7 @@ struct SongLineCard: View {
         case .wordSurface:
             return listenHighlight.text == word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
         case .wordDefinition:
-            return listenHighlight.text == SongLineCard.truncatingAtSemicolon(SongLineCard.stripInlineMarkdown(word.definition))
+            return listenHighlight.text == SongDefinitionCleaner.clean(word.definition)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         case .sentence, .translation, .patternNote:
             return false
@@ -461,10 +461,30 @@ struct SongLineCard: View {
     // (chorus, refrain) and value-based identity would collide and break SwiftUI's diffing.
     private var wordsList: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(effectiveWords.enumerated()), id: \.offset) { _, word in
+            ForEach(Array(effectiveWords.enumerated()), id: \.offset) { offset, word in
                 wordEntryRow(word)
+                    .id(wordRowScrollID(for: word, at: offset))
             }
         }
+    }
+
+    // The scroll id for one word row. A word's first occurrence in the line gets the id
+    // `wordRowID` names, so the mini player can scroll to it by surface; later repeats of the
+    // same surface get a positional id that can't collide with it.
+    private func wordRowScrollID(for word: SongWord, at offset: Int) -> String {
+        let surface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isFirstOccurrence = effectiveWords.prefix(offset).contains {
+            $0.surface.trimmingCharacters(in: .whitespacesAndNewlines) == surface
+        } == false
+        return isFirstOccurrence
+            ? SongLineCard.wordRowID(lineIndex: line.index, surface: surface)
+            : "word-\(line.index)-#\(offset)"
+    }
+
+    // The scroll id of a word's row in a line's card — shared by the card that tags the row and
+    // the Breakdown view that scrolls to it.
+    static func wordRowID(lineIndex: Int, surface: String) -> String {
+        "word-\(lineIndex)-\(surface)"
     }
 
     // Pattern-to-bank note (the prompt's "optional grammar pattern worth memorizing").
@@ -530,17 +550,6 @@ struct SongLineCard: View {
         return trimmed
     }
 
-    // Cuts a word definition off at its first semicolon. The LLM's manufactured-interpretation
-    // commentary (see SongBreakdownPrompt rule 5 — "suggests," "evokes," emotional overtones)
-    // reliably lands after a semicolon even when the prompt telling it not to write that
-    // sentence at all doesn't fully hold — a mechanical cut here is more reliable than another
-    // prompt instruction. Applied to both the on-screen definition and the narrated one (see
-    // SongListenScript) so what's spoken always matches what's shown.
-    nonisolated static func truncatingAtSemicolon(_ text: String) -> String {
-        guard let range = text.range(of: ";") else { return text }
-        return String(text[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
-    }
-
     // Renders one word entry: surface (with furigana when available), LLM definition wrapped
     // beneath. Tapping the row opens the shared lookup sheet (via onWordTapped) so the
     // breakdown's vocabulary is a jumping-off point into the dictionary, like tapping a
@@ -557,10 +566,8 @@ struct SongLineCard: View {
                         .foregroundStyle(Color.accentColor)
                 }
                 if word.definition.isEmpty == false {
-                    // Strip inline-emphasis markers so `*foo*` / `**bar**` don't leak literal
-                    // asterisks into the rendered definition, and cut anything past the first
-                    // semicolon — see truncatingAtSemicolon's doc comment.
-                    Text(SongLineCard.truncatingAtSemicolon(SongLineCard.stripInlineMarkdown(word.definition)))
+                    // Just the gloss — see SongDefinitionCleaner.
+                    Text(SongDefinitionCleaner.clean(word.definition))
                         .font(.footnote)
                         .foregroundStyle(.primary.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)

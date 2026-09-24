@@ -40,13 +40,15 @@ nonisolated enum SongListenLanguage: Equatable, Sendable {
     case english
 }
 
-// One step in the listen-along script: either a spoken segment, or a slice of the song's own
-// source audio (the sung line itself) played in verbatim. Kept distinct from
-// SongListenSegment rather than adding a `.clip` case there — a clip has no `text` or TTS
-// `language`, just a time range into a different file.
+// One step in the listen-along script: a spoken segment, a slice of the song's own source
+// audio for a whole sung line, or a slice for one sung word. Kept distinct from
+// SongListenSegment rather than adding clip cases there — a clip has no TTS `language`, just a
+// time range into a different file. A word clip carries its surface so the word's row
+// highlights while it plays, exactly as a synthesized `.wordSurface` segment would.
 nonisolated enum SongListenStep: Equatable, Sendable {
     case speech(SongListenSegment)
     case clip(lineIndex: Int, startMs: Int, endMs: Int)
+    case wordClip(lineIndex: Int, surface: String, startMs: Int, endMs: Int)
 }
 
 // One same-language stretch of a segment's text, produced by SongListenLanguageRuns. A gist

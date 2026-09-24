@@ -32,22 +32,19 @@ extension ReadView {
         }
     }
 
-    // Triggers an LLM correction request for the current note's segmentation and readings.
-    // While changes are pending, acts as a confirm button (sparkles + checkmark overlay).
-    // Always visible — disabled (not hidden) when no provider is configured, so its absence
-    // doesn't read as "this feature doesn't exist" when it's really "go set up a provider".
+    // The AI correction button. Idle: requests a correction for this note. While one streams:
+    // a spinner, and tapping cancels. While suggestions are pending: sparkles + checkmark, which
+    // opens the "apply all?" popup — nothing is applied without a decision there or in a single
+    // change's popup. Disabled (not hidden) with no provider configured, so its absence doesn't
+    // read as "this feature doesn't exist".
     var llmCorrectionButton: some View {
         Button {
             if llmCorrection.isRequestingLLMCorrection {
-                llmCorrection.isShowingLLMCancelConfirm = true
+                cancelLLMCorrection()
             } else if llmCorrection.hasPendingLLMChanges {
-                confirmLLMChanges()
-            } else if llmCorrection.hasAppliedLLMCorrectionForCurrentNote {
-                // Only warn about replacing corrections once this note has actually had one
-                // applied — a fresh note runs straight away without the confirm dialog.
-                llmCorrection.isShowingLLMRerunConfirm = true
+                llmCorrection.isShowingLLMConfirmAll = true
             } else {
-                llmCorrection.isShowingLLMStartConfirm = true
+                requestLLMCorrection()
             }
         } label: {
             Group {
@@ -56,7 +53,6 @@ extension ReadView {
                         .progressViewStyle(.circular)
                         .scaleEffect(0.7)
                 } else if llmCorrection.hasPendingLLMChanges {
-                    // Sparkles with a checkmark badge signals "confirm these AI changes".
                     ZStack(alignment: .bottomTrailing) {
                         Image(systemName: "sparkles")
                             .font(.system(size: 16, weight: .semibold))
@@ -74,10 +70,10 @@ extension ReadView {
             .background(Circle().fill(ReadToggleAppearance.background))
         }
         .buttonStyle(PlainButtonStyle())
-        .disabled(editModeScroll.isEditMode || isLLMConfigured == false)
-        .opacity(editModeScroll.isEditMode || isLLMConfigured == false ? 0.5 : 1.0)
-        .accessibilityLabel(llmCorrection.hasPendingLLMChanges ? "Confirm AI Changes" : (llmCorrection.isRequestingLLMCorrection ? "Cancel AI Correction" : "Request AI Correction"))
-        .accessibilityHint(isLLMConfigured ? "" : "Set up an AI provider in Settings to use this")
+        .disabled(editModeScroll.isEditMode || isCorrectionConfigured == false)
+        .opacity(editModeScroll.isEditMode || isCorrectionConfigured == false ? 0.5 : 1.0)
+        .accessibilityLabel(llmCorrection.hasPendingLLMChanges ? "Review AI Changes" : (llmCorrection.isRequestingLLMCorrection ? "Cancel AI Correction" : "Request AI Correction"))
+        .accessibilityHint(isCorrectionConfigured ? "" : "Set up an AI provider in Settings to use this")
     }
 
     // Resets custom segment segmentation back to computed segmentation.
@@ -413,6 +409,7 @@ extension ReadView {
         editModeButtonLabel
             .contentShape(Circle())
             .onTapGesture {
+                // Editing mid-correction would invalidate the text the answer is being staged against.
                 guard llmCorrection.isRequestingLLMCorrection == false else { return }
                 editModeScroll.isEditMode.toggle()
             }

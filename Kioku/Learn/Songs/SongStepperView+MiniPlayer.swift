@@ -55,11 +55,13 @@ extension SongStepperView {
 
             Spacer(minLength: 8)
 
-            Text(miniPlayerPositionLabel)
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+            Button {
+                listenScrollRequest += 1
+            } label: {
+                miniPlayerLabel
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Scrolls back to what's playing")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -68,6 +70,69 @@ extension SongStepperView {
         .padding(.horizontal, 18)
         .padding(.bottom, 8)
         .accessibilityElement(children: .contain)
+    }
+
+    // The bar's label: the word being played in front of its line position, or just the
+    // position when no word is on.
+    private var miniPlayerLabel: some View {
+        HStack(spacing: 6) {
+            if let listenWordFocus {
+                Text(listenWordFocus.surface)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+            }
+            Text(miniPlayerPositionLabel)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .minimumScaleFactor(0.7)
+        .contentShape(Rectangle())
+    }
+
+    // Tracks which word is on from the segment listen-along just moved to: a word's surface
+    // sets it, its definition keeps it, anything else on the line (or another line) clears it.
+    func updateListenWordFocus(_ segment: SongListenSegment?) {
+        guard let segment else {
+            listenWordFocus = nil
+            return
+        }
+        switch segment.kind {
+        case .wordSurface:
+            listenWordFocus = SongWordFocus(lineIndex: segment.lineIndex, surface: segment.text)
+        case .wordDefinition:
+            if listenWordFocus?.lineIndex != segment.lineIndex { listenWordFocus = nil }
+        case .sentence, .translation, .patternNote:
+            listenWordFocus = nil
+        }
+    }
+
+    // Scrolls back to what's playing after the user has scrolled away: the word's row when a
+    // word is on, else the current line's card. The card is expanded and scrolled to first —
+    // its rows only exist once the lazy stack has built the card — then the word row is.
+    func scrollBackToListenPosition(proxy: ScrollViewProxy, items: [SongLineDisplayItem]) {
+        let lineIndex: Int
+        if let listenWordFocus {
+            lineIndex = listenWordFocus.lineIndex
+        } else if case .line(let index) = currentPlaybackStep {
+            lineIndex = index
+        } else {
+            return
+        }
+        guard let item = items.first(where: { $0.line.index == lineIndex }) else { return }
+        expandedByLineIndex.insert(lineIndex)
+        withAnimation(.easeInOut(duration: 0.3)) {
+            proxy.scrollTo(item.id, anchor: .center)
+        }
+        guard let surface = listenWordFocus?.surface else { return }
+        let rowID = SongLineCard.wordRowID(lineIndex: lineIndex, surface: surface)
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            withAnimation(.easeInOut(duration: 0.25)) {
+                proxy.scrollTo(rowID, anchor: .center)
+            }
+        }
     }
 
     // The label the bar shows for `currentPlaybackStep`.
@@ -150,7 +215,7 @@ extension SongStepperView {
         case .line(let index):
             introOutroPlayback.pause()
             if let line = displayItems.first(where: { $0.line.index == index })?.line {
-                playListen(line: line)
+                playListenFromMiniPlayer(line: line)
             } else {
                 playAllListen()
             }
