@@ -14,6 +14,10 @@ final class SubtitleImportUIState {
     var isCancellingAlignment = false
     var alignmentCancellationToken = AlignmentCancellationToken()
     var audioTranscriptionErrorMessage = ""
+    // An imported audio file that sounded sung, held (as its temporary copy) while the
+    // "find the lyrics online" recommendation is showing; transcribed only on Transcribe Anyway.
+    var pendingSungAudioURL: URL? = nil
+    var isShowingSungAudioRecommendation = false
     var lyricAlignmentErrorMessage = ""
     var lyricAlignmentProgressMessage = ""
     var lyricAlignmentSourceFilename = ""

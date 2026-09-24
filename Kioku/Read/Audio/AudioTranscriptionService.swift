@@ -37,6 +37,14 @@ enum AudioTranscriptionService {
         switch engine {
         case .qwen3:
             return try await qwen3(url: url, isolateVocals: isolateVocals, onProgress: onProgress, onStatus: onStatus)
+        case .appleTranscriber:
+            guard #available(iOS 26.0, *) else {
+                return try await qwen3(url: url, isolateVocals: isolateVocals, onProgress: onProgress, onStatus: onStatus)
+            }
+            let work = try await inputURL(for: url, isolateVocals: isolateVocals, onProgress: onProgress, onStatus: onStatus)
+            let cues = try await AppleSpeechTranscription.transcribe(url: work, onStatus: onStatus)
+            if cues.isEmpty { throw EngineError.empty }
+            return cues
         case .whisper:
             let work = try await inputURL(for: url, isolateVocals: isolateVocals, onProgress: onProgress, onStatus: onStatus)
             let base = isolateVocals ? 0.5 : 0.0, span = isolateVocals ? 0.5 : 1.0

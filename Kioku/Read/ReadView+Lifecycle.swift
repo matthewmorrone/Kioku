@@ -28,6 +28,12 @@ extension ReadView {
             } message: {
                 Text(lyricRealign.cueRealignErrorMessage)
             }
+            .alert("This Sounds Like Singing", isPresented: $subtitleImport.isShowingSungAudioRecommendation) {
+                Button("Transcribe Anyway") { transcribePendingSungAudio() }
+                Button("Cancel", role: .cancel) { discardPendingSungAudio() }
+            } message: {
+                Text("We recommend finding the song's lyrics online.")
+            }
             .alert("AI Correction", isPresented: $llmCorrection.isShowingLLMCorrectionError) {
                 Button("OK", role: .cancel) {
                     llmCorrection.llmCorrectionErrorMessage = ""
