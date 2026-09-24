@@ -69,4 +69,26 @@ final class FuriganaSongLineRegressionTests: XCTestCase {
     // 振 must get ふ and 子 must get こ. Plus the full line it sits in.
     func testFurikoEveryKanjiHasRuby() throws { try assertEveryKanjiHasRuby("振り子") }
     func testLyricLineFurikoEveryKanjiHasRuby() throws { try assertEveryKanjiHasRuby("振り子の様止まらず流されてたゆた") }
+
+    // 月色チャイのん: merging の + 様 + に must show よう. The merged surface の様に is a dictionary
+    // phrase read のように, so the resolver gives よう over 様; the merge then has to let that
+    // replace the さま the lone 様 had (see ReadView.markFuriganaReplaceable).
+    func testMergedNoYouNiReadsYou() throws {
+        let (resolver, _, map) = try realPipeline()
+        let line = "映画の様に"
+        let start = line.index(line.startIndex, offsetBy: 2)
+        let edge = LatticeEdge(start: start, end: line.endIndex, surface: "の様に")
+        let resolved = resolver.build(for: line, edges: [edge], surfaceReadingData: map)
+        XCTAssertEqual(resolved.byLocation[3], "よう")
+        XCTAssertEqual(resolved.lengthByLocation[3], 1)
+    }
+
+    // Only entries wholly inside a merged range become replaceable; neighbours keep their readings.
+    func testFuriganaLocationsInsideMergedRange() {
+        let locations = ReadView.furiganaLocations(
+            inside: [NSRange(location: 2, length: 3)],
+            lengthByLocation: [0: 2, 3: 1, 4: 2]
+        )
+        XCTAssertEqual(locations, [3])
+    }
 }

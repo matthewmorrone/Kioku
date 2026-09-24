@@ -93,6 +93,7 @@ extension ReadView {
 
         var updatedEdges = document.segmentEdges
         var resultIndex = mergeBounds.lowerBound
+        var mergedRanges: [NSRange] = [NSRange(mergedStart..<mergedEnd, in: document.text)]
 
         if shouldApplyChangesGlobally {
             // Apply the same merge to every adjacent pair matching the source surfaces.
@@ -109,6 +110,7 @@ extension ReadView {
                        rightEdge.surface == sourceRightSurface,
                        isMergeAllowed(between: leftEdge, and: rightEdge) {
                         let globalMergedSurface = String(document.text[leftEdge.start..<rightEdge.end])
+                        mergedRanges.append(NSRange(leftEdge.start..<rightEdge.end, in: document.text))
                         globallyMergedEdges.append(
                             LatticeEdge(
                                 start: leftEdge.start,
@@ -134,6 +136,7 @@ extension ReadView {
             updatedEdges.replaceSubrange(mergeBounds, with: [mergedEdge])
         }
 
+        markFuriganaReplaceable(inside: mergedRanges)
         applySegmentEdges(updatedEdges, persistOverride: true)
 
         if updateSelection, document.segmentEdges.indices.contains(resultIndex) {
@@ -145,6 +148,28 @@ extension ReadView {
         }
 
         return resultIndex
+    }
+
+    // Lets the dictionary reading of a freshly merged word replace the readings its pieces had.
+    // Backfill keeps any existing same-range entry that isn't marked synthesized, so without this
+    // the default さま of a lone 様 would outlive a merge into の様に (read のように) as if the user
+    // had pinned it. Entries inside the merged ranges stay in place for compound synthesis (月色)
+    // when the merged surface has no dictionary reading of its own.
+    func markFuriganaReplaceable(inside ranges: [NSRange]) {
+        document.synthesizedFuriganaLocations.formUnion(
+            Self.furiganaLocations(inside: ranges, lengthByLocation: document.furiganaLengthBySegmentLocation)
+        )
+    }
+
+    // The furigana entries that lie wholly inside any of `ranges`. Static so the containment rule
+    // behind markFuriganaReplaceable is testable without a live view.
+    static func furiganaLocations(inside ranges: [NSRange], lengthByLocation: [Int: Int]) -> Set<Int> {
+        Set(lengthByLocation.compactMap { location, length in
+            let isInside = ranges.contains { range in
+                location >= range.location && location + length <= range.location + range.length
+            }
+            return isInside ? location : nil
+        })
     }
 
     // Shared split primitive — the single source of truth for splitting an edge in two.
