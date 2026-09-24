@@ -377,17 +377,21 @@ own sections.)
 - [ ] **Context-chosen readings for homographs (様 さま/よう, 方, 何, 間, 上…)** — added 2026-09-24.
       Furigana picks a reading by surface alone: `FuriganaResolver.readingForSegment` takes the
       top-ranked hiragana reading, so 様 is always さま, including の様に / 様な / 様だ where it is よう
-      (seen in 月色チャイのん). The path search already has the context — transition classes over
-      the next segment — but it can't use it for readings: POS bits in the trie are per surface (the
-      union of every entry spelled that way), so 様 has one class and the chosen path never records
-      which entry/reading won. Plan: (1) store POS per (surface, reading) in the dictionary
-      (`Resources/generate_db.py`; a rebuild takes ~30 s); (2) emit one lattice edge per reading
-      whose POS differs, each priced and classed by its own entry, and carry the winning reading on
-      the segment into furigana; (3) re-count the transition table if the per-reading classes need it
-      (Tatoeba gold marks readings on some tokens, e.g. 様(よう)). Start by counting how many common
-      surfaces have readings with differing POS. No hand-written rules or new JSON rule files.
-      Re-measure held2k / kana2k / fresh5k and the lyric lines before shipping. Existing notes pick
-      it up via Reset on the note's segmentation.
+      (seen in 月色チャイのん). The path search has the context (transition classes over the next
+      segment) but each edge is one surface with its entries' POS unioned, and the chosen path never
+      records which entry/reading won.
+      Already in place: per-entry POS is loaded in memory (`Segmenter.partOfSpeechByEntryID`, entry IDs
+      per trie surface — used today only to gate deinflection); edges carry IPAdic context IDs; a MeCab
+      backend exists whose IPAdic output carries an in-context reading (not used by furigana).
+      The catch, checked for 様: JMdict tags さま (51237) `suf`/`n` and よう (56931) `n-suf,n` — nearly
+      the same class — and the harvested IPAdic IDs are per surface (all four 様 entries share 1314/1314).
+      So per-reading edges from JMdict POS alone would not separate them. Candidate sources of a real
+      per-reading signal: harvest IPAdic IDs per (surface, reading) at build time (`generate_db.py`
+      already runs mecab; a rebuild takes ~30 s), or consult MeCab's in-context reading for
+      multi-reading surfaces. Then: one lattice edge per reading, carry the winner into furigana.
+      Start by counting how many common surfaces have readings whose class would actually differ.
+      No hand-written rules or new JSON rule files. Re-measure held2k / kana2k / fresh5k and the
+      lyric lines before shipping. Existing notes pick it up via Reset on the note's segmentation.
 
 ### Intentionally unrecognized
 
