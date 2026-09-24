@@ -125,6 +125,7 @@ extension ReadView {
 
                 // Persist segments with furigana now that readings are fully resolved.
                 rebuildAndPersistSegments(recordRuntime: true)
+                SegmentLookupSheet.shared.refreshOpenSheetReading()
             }
         }
     }

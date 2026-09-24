@@ -19,6 +19,15 @@ extension SegmentLookupSheet {
         (presentedSheetController as? SurfaceSheetViewController)?.updateSplitFrequencyLabel()
     }
 
+    // Re-reads the open sheet's reading header after the note's furigana changes underneath it.
+    // A merge presents the sheet at once, but the merged word's reading (の様に → よう) only lands
+    // when the async furigana recompute finishes, so the header would keep the pieces' old reading.
+    @MainActor
+    func refreshOpenSheetReading() {
+        guard hasActivePresentedSheetController else { return }
+        (presentedSheetController as? SurfaceSheetViewController)?.updateReadingFurigana()
+    }
+
     // Picks the dictionary entry whose reading matches the one `SurfaceSheetViewController`
     // will paint first, so the gloss panel and the reading header agree on initial open.
     // Mirrors the controller's initial-reading-pick logic (override-if-known else readings[0]),
