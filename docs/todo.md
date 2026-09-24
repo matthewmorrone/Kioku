@@ -678,6 +678,12 @@ own sections.)
 
 ## Audio & Alignment
 
+- [ ] **Moon Heart Sequence: repetition + wrong duration** — noted 2026-09-24. Two issues on
+      `muunhaatoshiikuensu` (fixture in `KiokuTests/Fixtures/alignment/`): (1) repeated lyrics
+      still land on the wrong occurrence — same class of bug as the tsukiiro-chainon
+      repeated-lyric item in Major Feature Additions; (2) the song's length is reported as
+      5:13 when it's actually 4:10. Check where duration comes from (AVAsset/AVAudioPlayer
+      duration vs. a VBR-MP3 estimate or last-cue end time) before touching the aligner.
 - [x] Expand karaoke alignment benchmark dataset and add CI evaluation job
       (`AlignmentQualityTests.swift` runs in `tests.yml`; 16 SailorMoon songs aligned via stable-ts large-v3)
 - [x] Vocal-vs-instrumental detection — Addressed at alignment time rather than via real-time
