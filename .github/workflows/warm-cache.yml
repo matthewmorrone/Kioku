@@ -31,6 +31,17 @@ jobs:
         with:
           submodules: recursive
 
+      # The restored DerivedData can only be reused if unchanged sources look unchanged to the
+      # build system. A checkout gives every file a new mtime and inode, which on its own made the
+      # PR run recompile all of Kioku plus the local packages (SwiftWhisper, zinnia-swift,
+      # SwiftWhisperAlign). The script stamps each tracked file with an mtime derived from its
+      # content hash, and the default makes XCBuild ignore inode/device changes. warm-cache.yml
+      # and tests.yml must both do this, so the stamps match.
+      - name: Pin source mtimes
+        run: |
+          python3 scripts/ci_pin_source_mtimes.py .
+          defaults write com.apple.dt.XCBuild IgnoreFileSystemDeviceInodeChanges -bool YES
+
       # Same Xcode as tests.yml — the cache key names it, and a different toolchain would leave
       # every restored product stale.
       - name: Select Xcode 26.5
@@ -47,9 +58,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build
-          key: deriveddata-${{ runner.os }}-xcode26.5-${{ hashFiles('Kioku.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          key: deriveddata-${{ runner.os }}-xcode26.5-pinned-mtimes-${{ hashFiles('Kioku.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: |
-            deriveddata-${{ runner.os }}-xcode26.5-
+            deriveddata-${{ runner.os }}-xcode26.5-pinned-mtimes-
 
       - name: Download dictionary.sqlite
         run: bash scripts/ensure_dictionary.sh

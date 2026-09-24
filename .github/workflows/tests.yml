@@ -35,6 +35,17 @@ jobs:
         with:
           submodules: recursive
 
+      # The restored DerivedData can only be reused if unchanged sources look unchanged to the
+      # build system. A checkout gives every file a new mtime and inode, which on its own made the
+      # PR run recompile all of Kioku plus the local packages (SwiftWhisper, zinnia-swift,
+      # SwiftWhisperAlign). The script stamps each tracked file with an mtime derived from its
+      # content hash, and the default makes XCBuild ignore inode/device changes. warm-cache.yml
+      # and tests.yml must both do this, so the stamps match.
+      - name: Pin source mtimes
+        run: |
+          python3 scripts/ci_pin_source_mtimes.py .
+          defaults write com.apple.dt.XCBuild IgnoreFileSystemDeviceInodeChanges -bool YES
+
       # The project targets iOS 26.2 / Xcode 26+. The runner image carries
       # several Xcode versions side-by-side; pick the newest stable so the
       # symbol SVG asset compiler matches the source format.
@@ -65,6 +76,32 @@ jobs:
       - name: List available iOS simulators
         run: xcrun simctl list devices available | grep -E 'iPhone (15|16|17)' | head -10
 
+      # Boot the simulator the Build & test destination resolves to (iPhone 17, newest iOS) now,
+      # so it boots while the dependencies download and the build runs. In run 35956854815,
+      # about 2.7 minutes passed between the end of the build and the first test starting,
+      # mostly spent booting and installing on the simulator.
+      - name: Pre-boot simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, re, sys
+          devices = json.load(sys.stdin)["devices"]
+          candidates = []
+          for runtime, entries in devices.items():
+              match = re.search(r"iOS-(\d+)-(\d+)", runtime)
+              if not match:
+                  continue
+              for device in entries:
+                  if device["name"] == "iPhone 17":
+                      candidates.append(((int(match[1]), int(match[2])), device["udid"]))
+          print(max(candidates)[1] if candidates else "")
+          ')
+          if [[ -z "$udid" ]]; then
+            echo "No iPhone 17 simulator found; xcodebuild will boot one itself."
+            exit 0
+          fi
+          echo "Booting $udid"
+          xcrun simctl boot "$udid" || true
+
       # Restores the DerivedData (resolved package checkouts + already-compiled package products)
       # that warm-cache.yml saves from main, so a PR only compiles what it changed instead of the
       # whole SwiftPM graph (MLX, swift-nio, HuggingFace, whisper.cpp, …) — ~10 of a cold run's
@@ -77,9 +114,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: build
-          key: deriveddata-${{ runner.os }}-xcode26.5-${{ hashFiles('Kioku.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          key: deriveddata-${{ runner.os }}-xcode26.5-pinned-mtimes-${{ hashFiles('Kioku.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: |
-            deriveddata-${{ runner.os }}-xcode26.5-
+            deriveddata-${{ runner.os }}-xcode26.5-pinned-mtimes-
 
       # The dictionary sqlite is downloaded from the GitHub Release pinned in
       # DictionaryDownloadManager.swift (not committed — the raw file, ~365 MB,
