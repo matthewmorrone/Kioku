@@ -73,35 +73,11 @@ jobs:
       - name: Ensure Metal Toolchain
         run: xcodebuild -downloadComponent MetalToolchain || true
 
+      # Don't pre-boot the simulator in an earlier step: booting alongside the cache restore and
+      # build stretches the boot to ~8 min on these runners (vs ~2.5 min booted by xcodebuild
+      # after the build), so it made runs slower (runs 35959658405, 35979275850).
       - name: List available iOS simulators
         run: xcrun simctl list devices available | grep -E 'iPhone (15|16|17)' | head -10
-
-      # Boot the simulator the Build & test destination resolves to (iPhone 17, newest iOS) now,
-      # so it boots while the dependencies download and the build runs. In run 35956854815,
-      # about 2.7 minutes passed between the end of the build and the first test starting,
-      # mostly spent booting and installing on the simulator.
-      - name: Pre-boot simulator
-        run: |
-          udid=$(xcrun simctl list devices available -j | python3 -c '
-          import json, re, sys
-          devices = json.load(sys.stdin)["devices"]
-          candidates = []
-          for runtime, entries in devices.items():
-              match = re.search(r"iOS-(\d+)-(\d+)", runtime)
-              if not match:
-                  continue
-              for device in entries:
-                  if device["name"] == "iPhone 17":
-                      candidates.append(((int(match[1]), int(match[2])), device["udid"]))
-          print(max(candidates)[1] if candidates else "")
-          ')
-          if [[ -z "$udid" ]]; then
-            echo "No iPhone 17 simulator found; xcodebuild will boot one itself."
-            exit 0
-          fi
-          echo "Booting $udid"
-          echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
-          xcrun simctl boot "$udid" || true
 
       # Restores the DerivedData (resolved package checkouts + already-compiled package products)
       # that warm-cache.yml saves from main, so a PR only compiles what it changed instead of the
@@ -131,15 +107,6 @@ jobs:
       # this the Copy Bundle Resources phase fails (CpResource handwriting-ja.model).
       - name: Decompress handwriting-ja.model
         run: bash scripts/ensure_handwriting_model.sh
-
-      # Diagnostic: how much simulator boot is still outstanding when the build is about to start.
-      # If this step takes ~0 s, the idle stretch between build and first test is not boot.
-      - name: Wait for simulator
-        if: env.SIM_UDID != ''
-        run: |
-          start=$(date +%s)
-          xcrun simctl bootstatus "$SIM_UDID" -b || true
-          echo "Simulator boot wait: $(( $(date +%s) - start )) s"
 
       # Parallel testing (Xcode's default for simulator destinations) spins up multiple
       # simulator "clones" that run test classes concurrently on the runner's finite cores.
@@ -200,33 +167,6 @@ jobs:
             -resultBundlePath build/Kioku.xcresult \
             "${plugin_flag[@]}" \
             CODE_SIGNING_ALLOWED=NO
-
-      # Diagnostic: the test action's phases (preparing, installing, launching, running) with
-      # durations, from the result bundle, since xcodebuild logs nothing between the build ending
-      # and the app launching.
-      - name: Test action timeline
-        if: always()
-        run: |
-          if [[ ! -d build/Kioku.xcresult ]]; then
-            echo "No xcresult"
-            exit 0
-          fi
-          xcrun xcresulttool get log --type action --path build/Kioku.xcresult --compact > /tmp/action-log.json || exit 0
-          python3 -c '
-          import json, sys
-          root = json.load(open("/tmp/action-log.json"))
-          def walk(section, depth):
-              if depth > 5 or "testDetails" in section:
-                  return
-              duration = section.get("duration", 0)
-              if duration >= 0.5 or depth <= 1:
-                  start = section.get("startTime", 0)
-                  title = section.get("title", "?")
-                  print(f"{duration:8.1f}s  start {start:.0f}  " + "  " * depth + title)
-              for child in section.get("subsections", []):
-                  walk(child, depth + 1)
-          walk(root, 0)
-          '
 
       # Emit a per-target line-coverage summary into the workflow run page so
       # PR reviewers see coverage without downloading the artifact. xccov reads
