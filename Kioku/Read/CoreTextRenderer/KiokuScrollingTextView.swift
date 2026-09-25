@@ -117,7 +117,7 @@ final class KiokuScrollingTextView: UIScrollView, UIScrollViewDelegate {
         var lexicalSegmentNSRanges: [NSRange] = []
         var furiganaByLocation: [Int: String] = [:]
         var furiganaLengthByLocation: [Int: Int] = [:]
-        var baseFont: UIFont = UIFont.systemFont(ofSize: 18)
+        var baseFont: UIFont = ReadingFont.body(size: 18)
         var furiganaFont: UIFont = UIFont.systemFont(ofSize: 9)
         var isFuriganaVisible: Bool = true
     }

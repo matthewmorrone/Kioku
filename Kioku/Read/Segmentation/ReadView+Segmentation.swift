@@ -291,6 +291,13 @@ extension ReadView {
         return overriddenSegmentRanges == computedSegmentRanges
     }
 
+    // Whether the segment starting at UTF-16 `location` is only whitespace, punctuation or symbols.
+    private func isNonLexicalSegment(at location: Int) -> Bool {
+        let text = document.text
+        guard let range = document.segmentRanges.first(where: { $0.lowerBound.utf16Offset(in: text) == location }) else { return false }
+        return SegmentClassifier.isNonLexical(String(text[range]))
+    }
+
     // Updates selection state and shows a UIKit popover with the highest-priority dictionary definition for the tapped segment.
     func handleReadModeSegmentTap(_ tappedSegmentLocation: Int?, tappedSegmentRect: CGRect?, sourceView: UIScrollView?) {
         // Single canonical entry point for tap timing regardless of origin (main CoreText view
@@ -310,7 +317,13 @@ extension ReadView {
             return
         }
 
-        guard let tappedSegmentLocation else {
+        // Spaces, punctuation and symbols (a full-width space, ＆) are segments too, since every
+        // character belongs to one, but there's nothing to look up; a tap on one is a tap on
+        // empty space.
+        let tappedLexicalLocation = tappedSegmentLocation.flatMap { location in
+            isNonLexicalSegment(at: location) ? nil : location
+        }
+        guard let tappedSegmentLocation = tappedLexicalLocation else {
             TapDiagnostics.mark("BAIL: tappedSegmentLocation is nil (tapped empty space)")
             segmentSelection.selectedSegmentLocation = nil
             segmentSelection.selectedHighlightRangeOverride = nil

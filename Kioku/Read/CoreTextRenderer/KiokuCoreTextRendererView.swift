@@ -278,7 +278,7 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
                 .map { uiView.convertContentRectToHost($0) }
             onSegmentLongPressed(match.location, rect, uiView)
         }
-        let font = UIFont.systemFont(ofSize: textSize)
+        let font = ReadingFont.body(size: textSize)
         let furiganaFont = UIFont.systemFont(ofSize: furiganaSizeOverride ?? (textSize * 0.5))
 
         // Fingerprint the typography-affecting inputs. Selection state and highlight bands
@@ -529,7 +529,7 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         // first laid out with width=0 (preview) still gets accurate geometry once the
         // real width arrives.
         let nsText = text as NSString
-        let baseFont = UIFont.systemFont(ofSize: textSize)
+        let baseFont = ReadingFont.body(size: textSize)
         let lexicalSegmentNSRanges: [NSRange] = uiView.cachedSegmentNSRanges.filter { range in
             let surface = nsText.substring(with: range)
             return SegmentClassifier.isNonLexical(surface) == false
