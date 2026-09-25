@@ -682,6 +682,20 @@ own sections.)
       `KiokuTests/Fixtures/alignment/`) still has lines whose highlight starts late. Measure the
       per-line onset error against `muunpuraido.ground-truth.srt` via `AlignmentQualityTests`
       to find which lines lag and by how much before changing the aligner.
+      Lines the user flagged (2026-09-13: "went sideways after the line starting with 自ら";
+      2026-09-21: 自ら戦う意志 "totally wrong", plus the すべて line), with the 13 Sep 12-song
+      phone-run starts against the reference voters (Whisper W1 / Japanese wav2vec2 X):
+      - 自ら戦う意志 — 7.1 s late (phone 62.9 s, reference 55.8 s). The previous line
+        それは王子様に運命投げず stretches to fill the gap (52.5–61.5 s).
+      - シャイニーメイクアップ輝くよ星空を集めて — ~4–6 s late (phone 64.4 s; W1 58.6 / X 60.5).
+      - ただ守られるだけのか弱い存在じゃないわ — 1.5 s late (phone 66.7 s, reference 65.3 s).
+      - シャイニーメイクアップ煌くよ星空に抱かれて — ~2.5 s late (phone 118.9 s; W1 116.1 / X 116.6).
+        Knock-on: すべて受け入れる強さ starts on time (+24 ms) but its highlight lingers to
+        118.9 s instead of ending at 115.2 s.
+      The two シャイニーメイクアップ lines are "disputed" in the consensus oracle, so the
+      AlignmentQualityTests score never counted them. Suspected cause (unproven): all three bad
+      spots sit just before an `MMSEmissions` window seam (60 s, 118 s) and the phone places each
+      line just after it; 42–72 s is also where Demucs silences the stem (mix-fill patches it).
 - [ ] **Moon Heart Sequence: repetition + wrong duration** — noted 2026-09-24. Two issues on
       `muunhaatoshiikuensu` (fixture in `KiokuTests/Fixtures/alignment/`): (1) repeated lyrics
       still land on the wrong occurrence — same class of bug as the tsukiiro-chainon
