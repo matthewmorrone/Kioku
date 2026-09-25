@@ -111,12 +111,16 @@ public enum VocalStemCache {
 
     // Deletes the cached stem for one song, so its next alignment isolates the vocals afresh.
     // Backs the lyric view's "Re-align from Scratch" action. No-op if nothing is cached.
+    // The song's instrumental (see `playableInstrumentalURL`) goes with it, since it was derived
+    // from that stem.
     public static func delete(for audioURL: URL) {
-        guard let url = cacheURL(for: audioURL), FileManager.default.fileExists(atPath: url.path) else { return }
-        do {
-            try FileManager.default.removeItem(at: url)
-        } catch {
-            print("[VocalStemCache] delete failed for \(url.lastPathComponent): \(error.localizedDescription)")
+        for url in [cacheURL(for: audioURL), instrumentalURL(for: audioURL)].compactMap({ $0 })
+        where FileManager.default.fileExists(atPath: url.path) {
+            do {
+                try FileManager.default.removeItem(at: url)
+            } catch {
+                print("[VocalStemCache] delete failed for \(url.lastPathComponent): \(error.localizedDescription)")
+            }
         }
     }
 
@@ -260,5 +264,75 @@ public enum VocalStemCache {
     public static func playableStemURL(for audioURL: URL) -> URL? {
         guard let url = cacheURL(for: audioURL), FileManager.default.fileExists(atPath: url.path) else { return nil }
         return url
+    }
+
+    // Cache-file URL for the song's instrumental, beside its stem under the same key.
+    private static func instrumentalURL(for audioURL: URL) -> URL? {
+        guard let dir = cacheDir() else { return nil }
+        return dir.appendingPathComponent(fnv1a(contentKey(for: audioURL)) + ".instrumental.m4a")
+    }
+
+    // The song with the isolated vocals taken out, as a playable stereo file. The aligner writes it
+    // beside the stem (`storeInstrumental`); a song aligned before that existed gets it built here
+    // on first request from the cached stem and a fresh decode. nil when no stem is cached yet (the
+    // song hasn't been aligned) or the build fails.
+    public static func playableInstrumentalURL(for audioURL: URL) async -> URL? {
+        guard let url = instrumentalURL(for: audioURL) else { return nil }
+        if FileManager.default.fileExists(atPath: url.path) { return url }
+        guard let vocals = load(for: audioURL),
+              let mix = try? await CTCForcedAligner.decodeStereoFloat(from: audioURL), mix.count == 2 else { return nil }
+        storeInstrumental(mix: mix, vocals: vocals, for: audioURL)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    // Writes the instrumental — the stereo mix minus the mono vocal stem on each channel — unless
+    // one is already cached. Called by the aligner while both are in memory, so switching the lyrics
+    // view to Instrumental never has to decode the song again.
+    static func storeInstrumental(mix: [[Float]], vocals: [Float], for audioURL: URL) {
+        guard mix.count == 2, let url = instrumentalURL(for: audioURL),
+              FileManager.default.fileExists(atPath: url.path) == false else { return }
+        let frames = min(vocals.count, mix[0].count, mix[1].count)
+        guard frames > 0 else { return }
+        var left = [Float](repeating: 0, count: frames), right = left
+        for i in 0..<frames {
+            left[i] = mix[0][i] - vocals[i]
+            right[i] = mix[1][i] - vocals[i]
+        }
+        guard writeStereoSamples(left, right, to: url) else { return }
+        enforceBudget()
+    }
+
+    // Encodes two channels as 16-bit stereo Apple Lossless at `url`, via a partial file moved into
+    // place like `writeSamples`.
+    private static func writeStereoSamples(_ left: [Float], _ right: [Float], to url: URL) -> Bool {
+        let settings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatAppleLossless, AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: 2, AVEncoderBitDepthHintKey: 16,
+        ]
+        let partial = url.deletingLastPathComponent().appendingPathComponent("." + url.lastPathComponent + ".partial.m4a")
+        try? FileManager.default.removeItem(at: partial)
+        do {
+            do {
+                let file = try AVAudioFile(forWriting: partial, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+                guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: chunkFrames),
+                      let channels = buffer.floatChannelData else { return false }
+                var offset = 0
+                while offset < left.count {
+                    let count = min(Int(chunkFrames), left.count - offset)
+                    left.withUnsafeBufferPointer { channels[0].update(from: $0.baseAddress! + offset, count: count) }
+                    right.withUnsafeBufferPointer { channels[1].update(from: $0.baseAddress! + offset, count: count) }
+                    buffer.frameLength = AVAudioFrameCount(count)
+                    try file.write(from: buffer)
+                    offset += count
+                }
+            }
+            try? FileManager.default.removeItem(at: url)
+            try FileManager.default.moveItem(at: partial, to: url)
+            return true
+        } catch {
+            print("[VocalStemCache] instrumental write failed: \(error.localizedDescription)")
+            try? FileManager.default.removeItem(at: partial)
+            return false
+        }
     }
 }

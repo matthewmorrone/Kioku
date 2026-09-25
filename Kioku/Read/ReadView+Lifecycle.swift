@@ -344,7 +344,10 @@ extension ReadView {
                     isReAligning: lyricAlignment.isAligning,
                     reAlignMessage: lyricAlignment.progressMessage,
                     onCancelReAlign: { cancelAlignment() },
-                    isCancellingReAlign: subtitleImport.isCancellingAlignment
+                    isCancellingReAlign: subtitleImport.isCancellingAlignment,
+                    audioSource: audioPlayback.audioSource,
+                    isSwitchingAudioSource: audioPlayback.isSwitchingAudioSource,
+                    onCycleAudioSource: { cycleLyricAudioSource() }
                 )
                 .opacity(audioPlayback.isShowingLyricsView ? 1 : 0)
                 .allowsHitTesting(audioPlayback.isShowingLyricsView)

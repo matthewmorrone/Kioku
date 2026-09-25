@@ -105,6 +105,7 @@ public struct CTCForcedAligner {
             VocalStemCache.store(mono, for: input.audioURL)
             vocalMono = mono
         }
+        VocalStemCache.storeInstrumental(mix: stereo, vocals: vocalMono, for: input.audioURL)
         onProgress?(0.4)
 
         onStage?("Preparing aligner…")
@@ -314,7 +315,7 @@ public struct CTCForcedAligner {
 
     // Decodes any audio file to 44.1 kHz stereo 32-bit float PCM via AVAssetReader.
     // Deinterleaves into [left, right].
-    private static func decodeStereoFloat(from url: URL) async throws -> [[Float]] {
+    static func decodeStereoFloat(from url: URL) async throws -> [[Float]] {
         let asset = AVURLAsset(url: url)
         let tracks = try await asset.loadTracks(withMediaType: .audio)
         guard let track = tracks.first else {
