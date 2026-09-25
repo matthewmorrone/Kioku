@@ -333,7 +333,7 @@ struct NotesView: View {
                 }
             }
         } label: {
-            Image(systemName: sortField == .manual ? "arrow.up.arrow.down" : "arrow.up.arrow.down.circle.fill")
+            Image(systemName: "arrow.up.arrow.down")
                 .font(.system(size: 16))
                 .frame(width: 32, height: 32)
         }
