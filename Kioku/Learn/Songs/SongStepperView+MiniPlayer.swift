@@ -177,15 +177,12 @@ extension SongStepperView {
         }
     }
 
-    // Reads a local audio file's total duration via its header alone (no decode) — used only
+    // Reads a local audio file's exact total duration — used only
     // to gate whether outro playback actually has anything after the last matched line, so the
     // "Next" button isn't left enabled-but-a-no-op when the last line already reaches the end
     // of the source file.
     private static func sourceAudioDurationMs(_ url: URL) -> Int? {
-        guard let file = try? AVAudioFile(forReading: url) else { return nil }
-        let sampleRate = file.processingFormat.sampleRate
-        guard sampleRate > 0 else { return nil }
-        return Int(Double(file.length) / sampleRate * 1000)
+        AudioFileDuration.seconds(of: url).map { Int($0 * 1000) }
     }
 
     // MARK: - Transport

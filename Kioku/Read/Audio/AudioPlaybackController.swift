@@ -95,7 +95,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         }
         var info: [String: Any] = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
         info[MPMediaItemPropertyTitle] = nowPlayingTitle ?? info[MPMediaItemPropertyTitle] ?? "Kioku"
-        info[MPMediaItemPropertyPlaybackDuration] = player.duration
+        info[MPMediaItemPropertyPlaybackDuration] = duration
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = player.currentTime
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
@@ -134,7 +134,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         player = newPlayer
         self.cues = cues
         nowPlayingTitle = title
-        duration = newPlayer.duration
+        duration = AudioFileDuration.seconds(of: audioURL) ?? newPlayer.duration
         currentTimeMs = 0
         syncTimeAndCue()
         updateNowPlayingInfo()
@@ -156,8 +156,8 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         stopTimer()
         player = newPlayer
         cues = keptCues
-        duration = newPlayer.duration
-        newPlayer.currentTime = min(max(0, positionSec), max(0, newPlayer.duration - 0.05))
+        duration = AudioFileDuration.seconds(of: audioURL) ?? newPlayer.duration
+        newPlayer.currentTime = min(max(0, positionSec), max(0, duration - 0.05))
         if wasPlaying {
             configureAudioSession()
             try? AVAudioSession.sharedInstance().setActive(true)

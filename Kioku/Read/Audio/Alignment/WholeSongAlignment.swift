@@ -37,8 +37,8 @@ enum WholeSongAlignment {
         let durationMs: Int
         if let knownDurationMs, knownDurationMs > 0 {
             durationMs = knownDurationMs
-        } else if let seconds = try? await AVURLAsset(url: audioURL).load(.duration), seconds.isNumeric {
-            durationMs = Int(CMTimeGetSeconds(seconds) * 1000)
+        } else if let seconds = AudioFileDuration.seconds(of: audioURL) {
+            durationMs = Int(seconds * 1000)
         } else {
             durationMs = 0
         }
