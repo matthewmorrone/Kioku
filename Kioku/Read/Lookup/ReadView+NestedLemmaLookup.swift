@@ -117,9 +117,9 @@ extension ReadView {
                     defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
                 )
             },
-            sheetOpenWordDetail: { [weak nestedSheet] in
-                guard let entry = resolvedEntry() else { return }
-                let reading = nestedSheet?.currentSheetUniqueReadings.first
+            sheetOpenWordDetail: { [weak nestedSheet] shownReading, shownEntry in
+                guard let entry = shownEntry ?? resolvedEntry() else { return }
+                let reading = shownReading ?? nestedSheet?.currentSheetUniqueReadings.first
                 onOpenWordDetail?(entry.entryId, lemma, reading, [])
             },
             sheetWordComponentsProvider: { nil },

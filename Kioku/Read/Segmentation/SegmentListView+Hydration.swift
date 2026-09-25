@@ -117,7 +117,7 @@ extension SegmentListView {
             },
             // The chevron "see details" still navigates to the full page — keeps the user's
             // tap=sheet, details=page mental model intact.
-            sheetOpenWordDetail: {
+            sheetOpenWordDetail: { _, _ in
                 presentWordDetail(canonicalEntryID: canonicalEntryID, surface: normalizedSurface)
             }
         )

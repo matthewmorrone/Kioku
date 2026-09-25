@@ -38,13 +38,25 @@ extension WordDetailView {
         wordsStore.words.first { $0.canonicalEntryID == activeEntryID }?.selectedReading
     }
 
+    // The reading of the text occurrence this view was opened from (the lookup sheet's header), when
+    // it differs from the card's pinned reading. The Words list passes the pinned reading itself, so
+    // a differing value can only come from an occurrence, and it wins so the header matches the sheet
+    // the user just left (抱かれながら read だ in the text must not open as いだ). Nil once the
+    // switcher flips or the entry is re-pointed.
+    var occurrenceReading: String? {
+        guard displayedReading == nil, activeEntryID == word.canonicalEntryID,
+              let reading, reading != savedChosenReading else { return nil }
+        return reading
+    }
+
     // The reading to render above the headword. Once the switcher flips (either case), displayedReading
-    // is authoritative. Then a reading persisted by an earlier flip — a deliberate choice, so it
-    // outranks both the sheet-supplied reading and the entry default — projected onto the surface the
-    // same way a live flip is. Otherwise: the exact reading handed in by the lookup sheet while still
-    // on the opened entry, else the active homograph's projected reading (いだかれ → だかれ).
+    // is authoritative. Then the occurrence reading from the lookup sheet (see occurrenceReading).
+    // Then a reading persisted by an earlier flip — a deliberate choice, so it outranks the entry
+    // default — projected onto the surface the same way a live flip is. Otherwise: the opened reading
+    // while still on the opened entry, else the active homograph's projected reading (いだかれ → だかれ).
     func headerReading(entry: DictionaryEntry?) -> String? {
         if let displayedReading { return displayedReading }
+        if let occurrenceReading { return occurrenceReading }
         if let chosen = savedChosenReading {
             let forms = switchableReadings.first { $0.reading == chosen }?.entry ?? entry
             guard let forms else { return chosen }

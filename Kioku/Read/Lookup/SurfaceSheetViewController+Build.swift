@@ -427,8 +427,11 @@ extension SurfaceSheetViewController {
 
         openDetailButton.addAction(UIAction { [weak self] _ in
             let openWordDetail = self?.sheet?.sheetOpenWordDetail
+            // Captured before dismissal tears the header down.
+            let shownReading = self?.displayedReading()
+            let shownEntry = self?.sheet?.currentSheetDictionaryEntry
             self?.sheet?.dismissPopover(notifyDismissal: false) {
-                DispatchQueue.main.async { openWordDetail?() }
+                DispatchQueue.main.async { openWordDetail?(shownReading, shownEntry) }
             }
         }, for: .touchUpInside)
 

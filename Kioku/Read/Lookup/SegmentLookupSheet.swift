@@ -78,8 +78,10 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     // Powers the save button's long-press learned-state menu, mirroring the Words tab's star.
     var sheetLearnedStateProvider: (() -> LearnedState)?
     var sheetSetLearnedState: ((LearnedState) -> Void)?
-    // Opens the word detail screen for the current segment's resolved lemma.
-    var sheetOpenWordDetail: (() -> Void)?
+    // Opens the word detail screen for the current segment's resolved lemma. Receives the reading
+    // and entry the sheet is showing when the button is tapped, so the detail opens on the same
+    // pair (the reading arrows can re-point the entry, e.g. さわる ↔ ふれる).
+    var sheetOpenWordDetail: ((String?, DictionaryEntry?) -> Void)?
     // Provides tappable word components: (surface, first gloss) pairs.
     var sheetWordComponentsProvider: (() -> [(surface: String, gloss: String?)]?)?
     var currentSheetWordComponents: [(surface: String, gloss: String?)] = []
@@ -502,7 +504,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetSaveToggle: (() -> Void)? = nil,
         sheetLearnedStateProvider: (() -> LearnedState)? = nil,
         sheetSetLearnedState: ((LearnedState) -> Void)? = nil,
-        sheetOpenWordDetail: (() -> Void)? = nil,
+        sheetOpenWordDetail: ((String?, DictionaryEntry?) -> Void)? = nil,
         sheetWordComponentsProvider: (() -> [(surface: String, gloss: String?)]?)? = nil,
         sheetCompoundComponentsProvider: (() -> [(lemma: String, gloss: String?)]?)? = nil,
         onWillDismiss: ((@escaping () -> Void) -> Void)? = nil,

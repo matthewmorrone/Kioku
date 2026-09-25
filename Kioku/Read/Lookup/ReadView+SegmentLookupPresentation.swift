@@ -228,10 +228,10 @@ extension ReadView {
                 sheetSaveToggle: { toggleSegmentSaved() },
                 sheetLearnedStateProvider: { currentSegmentLearnedState() },
                 sheetSetLearnedState: { setCurrentSegmentLearnedState($0) },
-                sheetOpenWordDetail: {
+                sheetOpenWordDetail: { shownReading, shownEntry in
                     guard let surface = currentSelectedSurface(),
-                          let entry = resolvedDictionaryEntryForCurrentSelectedSegment() else { return }
-                    let reading = SegmentLookupSheet.shared.currentSheetUniqueReadings.first
+                          let entry = shownEntry ?? resolvedDictionaryEntryForCurrentSelectedSegment() else { return }
+                    let reading = shownReading ?? SegmentLookupSheet.shared.currentSheetUniqueReadings.first
                     let paths = LatticeEdge.validPaths(from: SegmentLookupSheet.shared.currentSheetSublatticeEdges)
                     onOpenWordDetail?(entry.entryId, surface, reading, paths)
                 },
