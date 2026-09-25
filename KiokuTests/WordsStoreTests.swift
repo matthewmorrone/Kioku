@@ -287,121 +287,31 @@ final class WordsStoreTests: XCTestCase {
         XCTAssertEqual(store.words[0].sourceNoteIDs, [noteID])
     }
 
-    // Toggling on an existing card from a NEW note context adds that note's attribution and
-    // adds the encountered surface — even if the surface was already in the set. When the card
-    // already carries a DIFFERENT note's attribution, "wasSavedHere" depends on BOTH the surface
-    // AND this specific note being present, not just the surface — see
-    // testToggleRemovesGloballySavedCardOnFirstToggleFromNoteContext for the sibling case where
-    // the card carries NO note attribution at all, which must remove on one tap instead.
-    func testToggleAddsNoteAttributionWhenSurfaceAlreadyKnownButNoteNew() {
+    // A word saved from one note reads as saved everywhere, so toggling it from any other note
+    // unsaves it on the first tap rather than attaching that note.
+    func testToggleFromAnotherNoteRemovesTheCard() {
         let noteA = UUID(), noteB = UUID()
         let store = makeStore()
-        store.toggle(
-            canonicalEntryID: 1,
-            storedSurface: "食べる",
-            encounteredSurface: "食べる",
-            sourceNoteID: noteA
-        )
-
-        store.toggle(
-            canonicalEntryID: 1,
-            storedSurface: "食べる",
-            encounteredSurface: "食べる",
-            sourceNoteID: noteB
-        )
-
-        XCTAssertEqual(Set(store.words[0].sourceNoteIDs), Set([noteA, noteB]))
-        XCTAssertEqual(store.words[0].encounteredSurfaces, Set(["食べる"]))
-    }
-
-    // Regression: a word saved globally (Words tab, history, browse — no note attribution at
-    // all) renders its star FILLED in every note, per ComputedSavedWordState.isStarFilled's
-    // "no note attribution counts as filled" rule. Tapping that filled star from within a note
-    // must remove the card on the FIRST tap, matching what the star visually shows — not attach
-    // the current note (which would leave the star still filled, so tap 1 appears to do nothing
-    // and the user has to tap again).
-    func testToggleRemovesGloballySavedCardOnFirstToggleFromNoteContext() {
-        let noteID = UUID()
-        let store = makeStore()
-        store.toggle(canonicalEntryID: 1, storedSurface: "食べる")
-        XCTAssertEqual(store.words.count, 1)
-        XCTAssertTrue(store.words[0].sourceNoteIDs.isEmpty)
-
-        store.toggle(canonicalEntryID: 1, storedSurface: "食べる", encounteredSurface: "食べる", sourceNoteID: noteID)
-
-        XCTAssertTrue(store.words.isEmpty)
-    }
-
-    // Unsaving the only encountered surface from the only attached note removes the whole card.
-    func testToggleRemovesCardWhenLastSurfaceAndLastNoteCleared() {
-        let noteID = UUID()
-        let store = makeStore()
-        store.toggle(
-            canonicalEntryID: 1,
-            storedSurface: "食べる",
-            encounteredSurface: "食べる",
-            sourceNoteID: noteID
-        )
-        XCTAssertEqual(store.words.count, 1)
-
-        store.toggle(
-            canonicalEntryID: 1,
-            storedSurface: "食べる",
-            encounteredSurface: "食べる",
-            sourceNoteID: noteID
-        )
-
-        XCTAssertTrue(store.words.isEmpty)
-    }
-
-    // Without a note context, unsaving the last encountered surface removes the card.
-    func testToggleRemovesCardWhenLastSurfaceClearedWithoutNoteContext() {
-        let store = makeStore()
-        store.toggle(canonicalEntryID: 1, storedSurface: "食べる")
-        XCTAssertEqual(store.words.count, 1)
-
-        store.toggle(canonicalEntryID: 1, storedSurface: "食べる")
-        XCTAssertTrue(store.words.isEmpty)
-    }
-
-    // Unsaving one of multiple encountered surfaces keeps the card. The card stays because the
-    // other surface keeps it alive — the star on that other surface should still be lit.
-    func testToggleKeepsCardWhenOtherEncounteredSurfacesRemain() {
-        let noteID = UUID()
-        let store = makeStore()
-        store.toggle(canonicalEntryID: 1, storedSurface: "食べる", encounteredSurface: "食べた", sourceNoteID: noteID)
-        store.toggle(canonicalEntryID: 1, storedSurface: "食べる", encounteredSurface: "食べる", sourceNoteID: noteID)
-        XCTAssertEqual(store.words[0].encounteredSurfaces, Set(["食べた", "食べる"]))
-
-        // Unsave 食べる only.
-        store.toggle(canonicalEntryID: 1, storedSurface: "食べる", encounteredSurface: "食べる", sourceNoteID: noteID)
-
-        XCTAssertEqual(store.words.count, 1)
-        XCTAssertEqual(store.words[0].encounteredSurfaces, Set(["食べた"]))
-        XCTAssertEqual(store.words[0].sourceNoteIDs, [noteID], "note attribution persists while another encountered surface remains")
-    }
-
-    // Note attribution is dropped when its last encountered surface is removed; the card itself
-    // persists because the other note still keeps it alive.
-    func testToggleDropsNoteAttributionOnLastSurfaceForThatNote() {
-        let noteA = UUID(), noteB = UUID()
-        let store = makeStore()
-        // Save 食べる from note A.
         store.toggle(canonicalEntryID: 1, storedSurface: "食べる", encounteredSurface: "食べる", sourceNoteID: noteA)
-        // Save 食べた from note B (different encountered surface, different note).
         store.toggle(canonicalEntryID: 1, storedSurface: "食べる", encounteredSurface: "食べた", sourceNoteID: noteB)
-        XCTAssertEqual(Set(store.words[0].sourceNoteIDs), Set([noteA, noteB]))
-        XCTAssertEqual(store.words[0].encounteredSurfaces, Set(["食べる", "食べた"]))
+        XCTAssertTrue(store.words.isEmpty)
+    }
 
-        // Unsave 食べる from note A — both surfaces still present (食べた from B), so card stays.
-        // Production behavior: noteA is dropped only when the encountered set becomes empty
-        // *after* the removal — which it doesn't here.
-        store.toggle(canonicalEntryID: 1, storedSurface: "食べる", encounteredSurface: "食べる", sourceNoteID: noteA)
+    // A globally saved card (no note attribution) is removed by one tap from inside a note.
+    func testToggleRemovesGloballySavedCardFromNoteContext() {
+        let store = makeStore()
+        store.toggle(canonicalEntryID: 1, storedSurface: "食べる")
+        store.toggle(canonicalEntryID: 1, storedSurface: "食べる", encounteredSurface: "食べる", sourceNoteID: UUID())
+        XCTAssertTrue(store.words.isEmpty)
+    }
 
+    // Without a note context, a second toggle removes the card.
+    func testToggleRemovesCardWithoutNoteContext() {
+        let store = makeStore()
+        store.toggle(canonicalEntryID: 1, storedSurface: "食べる")
         XCTAssertEqual(store.words.count, 1)
-        XCTAssertEqual(store.words[0].encounteredSurfaces, Set(["食べた"]))
-        XCTAssertEqual(Set(store.words[0].sourceNoteIDs), Set([noteA, noteB]),
-                       "noteA stays attached because the encountered set still has members from other paths")
+        store.toggle(canonicalEntryID: 1, storedSurface: "食べる")
+        XCTAssertTrue(store.words.isEmpty)
     }
 
     // MARK: - SavedWordStorage.normalizedEntries (the helper that handles duplicates)
@@ -608,18 +518,6 @@ final class WordsStoreTests: XCTestCase {
         let store = makeStore()
         store.setReading(id: 999, reading: "なだ")
         XCTAssertTrue(store.words.isEmpty)
-    }
-
-    // Toggling note/surface membership rebuilds the card, so the reading has to be carried through
-    // explicitly or a later save/unsave would silently reset the display back to the default kana.
-    func testToggleSurfaceMembershipPreservesChosenReading() {
-        let store = makeStore()
-        let noteID = UUID()
-        store.add(SavedWord(canonicalEntryID: 100, surface: "涙", encounteredSurfaces: ["涙"], selectedReading: "なだ"))
-
-        store.toggle(canonicalEntryID: 100, storedSurface: "涙", encounteredSurface: "涙だ", sourceNoteID: noteID)
-
-        XCTAssertEqual(store.words.first?.selectedReading, "なだ")
     }
 
     // The dedup pass also rebuilds cards; an explicit reading on either duplicate has to survive it.

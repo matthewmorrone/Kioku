@@ -37,12 +37,8 @@ struct ContentView: View {
     @AppStorage("kioku.lastActiveNoteID") private var lastActiveNoteID = ""
     // Drives the live re-apply of nav/tab bar chrome when the user toggles the theme in Settings.
     @AppStorage(Theme.storageKey) private var japaneseTheme = false
-    @AppStorage(SegmenterSettings.backendKey) private var segmenterBackendSetting = SegmenterSettings.defaultBackend
-    @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionarySetting = SegmenterSettings.defaultMeCabDictionary
     @AppStorage(SegmenterSettings.strategyKey)
     private var segmentationStrategySetting: SegmentationStrategy = SegmenterSettings.defaultStrategy
-    @AppStorage(SegmenterSettings.splitsParticleClustersKey)
-    private var splitsParticleClustersSetting = SegmenterSettings.defaultSplitsParticleClusters
     // Observes the same shared instance the AppDelegate registered the notification handler against,
     // so a deep-link target published from didReceive reaches this view.
     @ObservedObject private var wotdNavigation = WordOfTheDayNavigation.shared
@@ -201,19 +197,8 @@ struct ContentView: View {
             pendingReadScrollTarget = target
             readNoteNavigation.pendingTarget = nil
         }
-        // Rebuild the segmenter when the user switches backend or MeCab dictionary in Settings.
-        .onChange(of: segmenterBackendSetting) { _, _ in
-            rebuildReadResources()
-        }
-        .onChange(of: mecabDictionarySetting) { _, _ in
-            rebuildReadResources()
-        }
         // Bump the segmenter revision so ReadView re-segments existing text with the new strategy.
         .onChange(of: segmentationStrategySetting) { _, _ in
-            rebuildReadResources()
-        }
-        // Same for the particle-cluster option: existing text re-segments at the new granularity.
-        .onChange(of: splitsParticleClustersSetting) { _, _ in
             rebuildReadResources()
         }
         // Validate WOTD scheduling after startup has settled rather than on the critical path.
@@ -440,10 +425,6 @@ struct ContentView: View {
     // segmenter + lexicon + prewarmed maps (POS bits, canonical entry ids, surface readings)
     // follow afterwards on a slower path and overwrite the partial state once ready.
     private func rebuildReadResources() {
-        let backend = UserDefaults.standard.string(forKey: SegmenterSettings.backendKey) ?? SegmenterSettings.defaultBackend
-        let mecabDict = UserDefaults.standard.string(forKey: SegmenterSettings.mecabDictionaryKey)
-            ?? SegmenterSettings.defaultMeCabDictionary
-
         let currentRevision = readResources.segmenterRevision
         Task.detached(priority: .userInitiated) {
             // Stage 1 — fast path: open the read-only SQLite handle so the dictionary search bar is
@@ -471,10 +452,9 @@ struct ContentView: View {
 
             // Stage 2 — slow path: full segmenter/lexicon build + DictionaryStore prewarming. Reuses
             // the reading map already built above so it isn't scanned a second time.
-            let result = Self.makeReadResources(backend: backend, mecabDictionary: mecabDict, prebuiltSurfaceReadingData: earlyReadingData)
+            let result = Self.makeReadResources(prebuiltSurfaceReadingData: earlyReadingData)
             await MainActor.run {
-                // Preserve the placeholder Segmenter's identity when the backend didn't change
-                // (the common case): any closure that captured a reference to it before this
+                // Preserve the placeholder Segmenter's identity: any closure that captured a reference to it before this
                 // point — e.g. a SwiftUI view's implicit `self` capture inside a UIKit-bridged
                 // tap callback built before startup finished — keeps seeing the SAME object,
                 // now populated with real data, instead of being stuck with an empty trie
@@ -505,10 +485,7 @@ struct ContentView: View {
     }
 
     // Builds the read-tab segmenter and dictionary store used for furigana lookup.
-    // Uses the specified backend and MeCab dictionary when MeCab is selected.
     private nonisolated static func makeReadResources(
-        backend: String,
-        mecabDictionary: String,
         prebuiltSurfaceReadingData: [String: SurfaceReadingData]? = nil
     ) -> (segmenter: any TextSegmenting, dictionaryStore: DictionaryStore?, lexicon: Lexicon?, surfaceReadingData: SurfaceReadingDataMap, kanjiReadingFallback: KanjiReadingFallbackMap, frequencyRankBySurface: FrequencyRankMap) {
         StartupTimer.mark("makeReadResources started")
@@ -617,22 +594,13 @@ struct ContentView: View {
             (try? dictionaryStore?.fetchBestRankBySurface()) ?? [:]
         }
 
-        // Choose segmenter based on the user's backend preference.
-        let segmenter: any TextSegmenting = StartupTimer.measure("Segmenter.init (backend: \(backend))") {
-            if backend == SegmenterBackend.mecab.rawValue,
-               let dict = MeCabDictionary(rawValue: mecabDictionary),
-               let mecabSegmenter = MeCabSegmenter(dictionary: dict) {
-                return mecabSegmenter
-            } else if backend == SegmenterBackend.nlTokenizer.rawValue {
-                return NLTokenizerSegmenter()
-            } else {
-                return Segmenter(
-                    trie: trie,
-                    deinflector: deinflector,
-                    partOfSpeechByEntryID: partOfSpeechByEntryID,
-                    frequenciesFrom: dictionaryStore
-                )
-            }
+        let segmenter: any TextSegmenting = StartupTimer.measure("Segmenter.init") {
+            Segmenter(
+                trie: trie,
+                deinflector: deinflector,
+                partOfSpeechByEntryID: partOfSpeechByEntryID,
+                frequenciesFrom: dictionaryStore
+            )
         }
 
         if let deinflector {

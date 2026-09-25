@@ -2,9 +2,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UserNotifications
 
-// Single-screen settings, organized top-to-bottom: appearance (typography, theme),
-// reading behavior (audio, word of the day, clipboard), segmentation tuning, AI provider,
-// developer tools, and data transfer. Footer prose is intentionally omitted — rows stand alone.
+// Single-screen settings, organized top-to-bottom: typography preview (tap for the slider
+// sheet), theme and highlight colors, lookup, AI, learning, word of the day, data transfer,
+// dictionary, developer tools and storage. Footer prose is intentionally omitted — rows stand alone.
 struct SettingsView: View {
     let dictionaryStore: DictionaryStore?
     // Hosts the on-demand local-network MCP listener whose UI lives in BridgeSettingsSection.
@@ -21,16 +21,8 @@ struct SettingsView: View {
     // colors when "Custom Token Colors" is off. See ThemeID for available themes.
     @AppStorage(Theme.themeIDKey) var themeIDRaw: String = ThemeID.system.rawValue
 
-    @AppStorage(TypographySettings.textSizeKey) private var textSize = TypographySettings.defaultTextSize
-    @AppStorage(TypographySettings.lineSpacingKey) private var lineSpacing = TypographySettings.defaultLineSpacing
-    @AppStorage(TypographySettings.kerningKey) private var kerning = TypographySettings.defaultKerning
-    @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
-    @AppStorage(TypographySettings.customFuriganaSizeEnabledKey) private var customFuriganaSizeEnabled = false
-    @AppStorage(TypographySettings.furiganaSizeKey) private var furiganaSize = TypographySettings.defaultFuriganaSize
-    @AppStorage(LyricsHighlightGranularity.storageKey)
-    private var lyricsHighlightGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
-    @AppStorage(AudioSettings.backgroundPlaybackKey) private var backgroundPlayback: Bool = AudioSettings.defaultBackgroundPlayback
-    @AppStorage(AudioSettings.autoAdvanceToNextNoteKey) private var autoAdvanceToNextNote: Bool = AudioSettings.defaultAutoAdvanceToNextNote
+    // Typography sliders live in TypographySettingsSheet, opened by tapping the preview.
+    @State private var isShowingTypographySheet = false
     @AppStorage(ClipboardSettings.autoDetectKey) private var clipboardAutoDetect: Bool = ClipboardSettings.defaultAutoDetect
     @AppStorage(DictionarySettings.includeArchaicReadingsKey)
     var includeArchaicReadings: Bool = DictionarySettings.defaultIncludeArchaicReadings
@@ -60,7 +52,6 @@ struct SettingsView: View {
     @AppStorage(TokenColorSettings.savedColorKey) var savedHex: String = TokenColorSettings.defaultSavedHex
     @AppStorage(TokenColorSettings.savedLearnedColorKey) var savedLearnedHex: String = TokenColorSettings.defaultSavedLearnedHex
     @AppStorage(TokenColorSettings.savedNotLearnedColorKey) var savedNotLearnedHex: String = TokenColorSettings.defaultSavedNotLearnedHex
-    @AppStorage(TokenColorSettings.savedElsewhereColorKey) var savedElsewhereHex: String = TokenColorSettings.defaultSavedElsewhereHex
     // Custom Theme: when on, the four hexes below override the active theme's chrome colors
     // (background / surface / ink / accent). Other palette slots keep the theme's values so a
     // half-customized palette stays coherent. The Read view's toolbar still owns the on/off
@@ -75,19 +66,11 @@ struct SettingsView: View {
     @AppStorage(WordOfTheDayScheduler.hourKey) private var wotdHour: Int = 9
     @AppStorage(WordOfTheDayScheduler.minuteKey) private var wotdMinute: Int = 0
 
-    // Auto-mark-as-learned: a word clears the bar in flashcard reviews → it's flagged learned.
+    // Auto-mark-as-learned: one right answer in every kind of question → learned (see AutoLearnPolicy).
     @AppStorage(LearnedSettings.enabledKey) private var autoLearnEnabled: Bool = false
-    @AppStorage(LearnedSettings.ruleKey) private var autoLearnRuleRaw: String = AutoLearnRule.accuracyAndMinReviews.rawValue
-    @AppStorage(LearnedSettings.thresholdKey) private var autoLearnThreshold: Double = LearnedSettings.defaultThreshold
-    @AppStorage(LearnedSettings.minReviewsKey) private var autoLearnMinReviews: Int = LearnedSettings.defaultMinReviews
-    @AppStorage(LearnedSettings.streakKey) private var autoLearnStreak: Int = LearnedSettings.defaultStreak
     // Whether the Learn tab's study modes skip Learned/Mastered words. Read by each mode through
     // StudyWordPool; this is the single place it's set.
     @AppStorage(LearnedSettings.excludeLearnedKey) private var excludeLearnedInStudy: Bool = LearnedSettings.defaultExcludeLearned
-    @AppStorage(QuizAssistSettings.smarterOptionsKey) private var smarterQuizOptions: Bool = QuizAssistSettings.defaultSmarterOptions
-    @AppStorage(SegmenterSettings.backendKey) var segmenterBackend: String = SegmenterSettings.defaultBackend
-    @AppStorage(SegmenterSettings.mecabDictionaryKey) var mecabDictionary: String = SegmenterSettings.defaultMeCabDictionary
-    @AppStorage(SegmenterSettings.splitsParticleClustersKey) var splitsParticleClusters = SegmenterSettings.defaultSplitsParticleClusters
 
     @AppStorage(DebugSettings.pixelRulerKey) var debugPixelRuler: Bool = false
     @AppStorage(DebugSettings.furiganaRectsKey) var debugFuriganaRects: Bool = false
@@ -139,193 +122,63 @@ struct SettingsView: View {
     // reports its own deletions back so the Clear Caches readout re-measures too.
     @State private var storageRefreshToken = 0
 
-    // engineSettings (the segmentation, dictionary, diagnostics and debug sections) lives in
+    // engineSettings (the dictionary, diagnostics and debug sections) lives in
     // SettingsView+EngineSections.swift to keep this file under the line-count guardrail.
 
     var body: some View {
         NavigationStack {
             Form {
-                // MARK: Appearance — live preview + typography sliders.
+                // MARK: Typography — the live preview; tapping it opens the slider sheet. The
+                // clear overlay takes the tap ahead of the renderer's own UIKit gestures.
                 Section {
-                    SettingsPreviewRenderer(
-                        textSize: $textSize,
-                        lineSpacing: lineSpacing,
-                        kerning: kerning,
-                        furiganaGap: furiganaGap,
-                        debugFuriganaRects: debugFuriganaRects,
-                        debugHeadwordRects: debugHeadwordRects,
-                        debugHeadwordLineBands: debugHeadwordLineBands,
-                        debugFuriganaLineBands: debugFuriganaLineBands,
-                        debugBisectorHeadword: debugBisectorHeadword,
-                        debugBisectorFurigana: debugBisectorFurigana,
-                        debugEnvelopeRects: debugEnvelopeRects,
-                        debugLeftInsetGuide: debugLeftInsetGuide,
-                        debugPixelRuler: debugPixelRuler,
-                        debugHeadwordLineNumbers: debugHeadwordLineNumbers,
-                        debugRubyLineNumbers: debugRubyLineNumbers
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    // Vertical padding for breathing room; negative horizontal padding cancels
-                    // the renderer's hardcoded textContainerInset.left = 4 so the first glyph
-                    // sits flush with the chrome's left edge inside the Form's already-inset row.
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, -4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(.secondarySystemBackground))
-                    )
-
-                    // Label switches to "Headword Size" when furigana size is decoupled.
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text(customFuriganaSizeEnabled ? "Headword Size" : "Text Size")
-                            Spacer()
-                            Text(String(format: "%.0f", textSize))
-                                .foregroundStyle(.secondary)
+                    TypographyPreview()
+                        .overlay {
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture { isShowingTypographySheet = true }
                         }
-                        Slider(value: $textSize, in: TypographySettings.textSizeRange, step: 1)
-                    }
-
-                    if customFuriganaSizeEnabled {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Furigana Size")
-                                Spacer()
-                                Text(String(format: "%.0f", furiganaSize))
-                                    .foregroundStyle(.secondary)
-                            }
-                            Slider(value: $furiganaSize, in: TypographySettings.furiganaSizeRange, step: 1)
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Line Spacing")
-                            Spacer()
-                            Text(String(format: "%.0f", lineSpacing))
-                                .foregroundStyle(.secondary)
-                        }
-                        Slider(value: $lineSpacing, in: TypographySettings.lineSpacingRange, step: 1)
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Furigana Spacing")
-                            Spacer()
-                            Text(String(format: "%.1f", furiganaGap))
-                                .foregroundStyle(.secondary)
-                        }
-                        Slider(value: $furiganaGap, in: TypographySettings.furiganaGapRange, step: 0.5)
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Kerning")
-                            Spacer()
-                            Text(String(format: "%.1f", kerning))
-                                .foregroundStyle(.secondary)
-                        }
-                        Slider(value: $kerning, in: TypographySettings.kerningRange, step: 1)
-                    }
-
-                    Toggle("Custom Furigana Size", isOn: $customFuriganaSizeEnabled)
+                        .accessibilityAddTraits(.isButton)
                 } header: {
                     Text("Typography")
                 }
 
-                // Per-state colors for the Read tab's "Saved Highlight" display option
-                // (Save/unmarked reuses the Highlight Color above). Its own section since
-                // it's independent of Custom Token Colors — Saved Highlight has its own
-                // on/off toggle in the Read toolbar.
-                Section {
-                    savedHighlightColorRows
-                } header: {
-                    Text("Saved Highlight")
-                }
-
-                // MARK: Theme — selects the visual identity (chrome + default token colors) and
-                // exposes optional customization on top. Theme picker, then optional overrides,
-                // all in one section because the user reads them as one concept. Section body
-                // is built out of three @ViewBuilder helpers below to keep the Swift type-checker
-                // out of trouble (the inline version blew past its expression budget).
+                // MARK: Theme — the theme picker, its optional overrides, and the per-state
+                // Saved Highlight colors (switched on from the Read toolbar), all one section.
+                // Built from @ViewBuilder helpers in SettingsView+ThemeSection.swift to keep the
+                // Swift type-checker within its expression budget.
                 Section {
                     themePickerMenu
                     customThemeRows
                     customTokenColorRows
+                    savedHighlightColorRows
                 } header: {
                     Text("Theme")
                 }
 
-                // MARK: Lookup — how the word popover behaves.
+                // MARK: Lookup — how the word popover behaves, and clipboard pickup.
                 Section {
                     Toggle("Show Japanese in Popover", isOn: $showJapaneseInPopover)
                     Toggle("Open Full Lookup on Tap", isOn: $prefersSheetDirectSegmentActions)
+                    Toggle("Auto-detect Japanese in Clipboard", isOn: $clipboardAutoDetect)
                 } header: {
                     Text("Lookup")
-                }
-
-                // MARK: Audio
-                Section {
-                    Picker("Highlight Granularity", selection: $lyricsHighlightGranularityRaw) {
-                        ForEach(LyricsHighlightGranularity.allCases, id: \.rawValue) { granularity in
-                            Text(granularity.displayName).tag(granularity.rawValue)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    Toggle("Background Audio", isOn: $backgroundPlayback)
-                    Toggle("Continue to Next Note", isOn: $autoAdvanceToNextNote)
-                } header: {
-                    Text("Audio")
                 }
 
                 // MARK: AI — body lives in SettingsView+AICorrectionSection.swift
                 aiCorrectionSection
 
-                // MARK: Learning — auto-mark words as learned past a chosen bar, and whether the
-                // Learn tab keeps drilling words that have got there.
+                // MARK: Learning — auto-mark words as learned once every kind of question about
+                // them has been answered right, and whether the Learn tab keeps drilling them.
                 Section {
-                    // On-device only, and only where the device can actually do it — hidden rather
-                    // than shown disabled, since there's nothing the user could do to enable it.
-                    if AppleIntelligenceAvailability.isAvailable {
-                        Toggle("Smarter Quiz Options", isOn: $smarterQuizOptions)
-                    }
-
                     Toggle("Skip Learned Words", isOn: $excludeLearnedInStudy)
-
                     Toggle("Auto-mark as Learned", isOn: $autoLearnEnabled)
-                    if autoLearnEnabled {
-                        Picker("Rule", selection: $autoLearnRuleRaw) {
-                            ForEach(AutoLearnRule.allCases) { rule in
-                                Text(rule.title).tag(rule.rawValue)
-                            }
-                        }
-                        let rule = AutoLearnRule(rawValue: autoLearnRuleRaw) ?? .accuracyAndMinReviews
-                        if rule == .accuracyAndMinReviews || rule == .accuracyOnly {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text("Accuracy Threshold")
-                                    Spacer()
-                                    Text("\(Int((autoLearnThreshold * 100).rounded()))%")
-                                        .foregroundStyle(.secondary)
-                                        .monospacedDigit()
-                                }
-                                Slider(value: $autoLearnThreshold, in: 0.5...1.0, step: 0.05)
-                            }
-                        }
-                        if rule == .accuracyAndMinReviews {
-                            Stepper("Minimum Reviews: \(autoLearnMinReviews)", value: $autoLearnMinReviews, in: 1...20)
-                        }
-                        if rule == .consecutiveCorrect {
-                            Stepper("Correct in a Row: \(autoLearnStreak)", value: $autoLearnStreak, in: 1...20)
-                        }
-                    }
                 } header: {
                     Text("Learning")
                 }
 
-                // MARK: System — Word of the Day notifications and clipboard detection.
+                // MARK: Word of the Day — daily notification time and permission.
                 Section {
-                    Toggle("Word of the Day", isOn: $wotdEnabled)
+                    Toggle("Daily Notification", isOn: $wotdEnabled)
                         .onChange(of: wotdEnabled) { _, _ in rescheduleWordOfTheDay() }
 
                     if wotdEnabled {
@@ -351,9 +204,8 @@ struct SettingsView: View {
                             .disabled(wotdPermissionStatus == .denied)
                         }
                     }
-                    Toggle("Auto-detect Japanese in Clipboard", isOn: $clipboardAutoDetect)
                 } header: {
-                    Text("System")
+                    Text("Word of the Day")
                 }
                 .task {
                     await refreshWotdStatus()
@@ -380,7 +232,7 @@ struct SettingsView: View {
                     Text("Data")
                 }
 
-                // MARK: Segmentation, dictionary, diagnostics and debug sections. See engineSettings.
+                // MARK: Dictionary, diagnostics and debug sections. See engineSettings.
                 engineSettings
                 // MARK: Storage — models, isolated vocals and caches (own file: self-contained
                 // @State + alerts). Its Clear Caches state stays on this view.
@@ -413,6 +265,9 @@ struct SettingsView: View {
         // share the active theme's accent.
         .themedTint()
         .toolbar(.visible, for: .tabBar)
+        .sheet(isPresented: $isShowingTypographySheet) {
+            TypographySettingsSheet()
+        }
         .fileExporter(
             isPresented: $isShowingExporter,
             document: exportDocument,

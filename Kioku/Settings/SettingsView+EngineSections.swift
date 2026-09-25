@@ -1,35 +1,12 @@
 import SwiftUI
 
-// The segmentation, dictionary, diagnostics and debug sections of the main Settings screen.
+// The dictionary, diagnostics and debug sections of the main Settings screen.
 // Split out of SettingsView.swift to keep that file under the line-count guardrail; shares the same @State/@AppStorage as the main file
 // (see SettingsView.swift for the properties this reads/writes — several are also read by
 // SettingsPreviewRenderer in `body`, which is why they're internal rather than private).
 extension SettingsView {
     @ViewBuilder
     var engineSettings: some View {
-        // MARK: Segmentation — engine and granularity.
-        Section {
-            Picker("Engine", selection: $segmenterBackend) {
-                ForEach(SegmenterBackend.allCases, id: \.rawValue) { backend in
-                    Text(backend.displayName).tag(backend.rawValue)
-                }
-            }
-
-            if segmenterBackend == SegmenterBackend.mecab.rawValue {
-                Picker("Dictionary", selection: $mecabDictionary) {
-                    ForEach(MeCabDictionary.allCases, id: \.rawValue) { dict in
-                        Text(dict.displayName).tag(dict.rawValue)
-                    }
-                }
-            }
-
-            if segmenterBackend == SegmenterBackend.trie.rawValue {
-                Toggle("Split Particle Clusters", isOn: $splitsParticleClusters)
-            }
-        } header: {
-            Text("Segmentation")
-        }
-
         // MARK: Dictionary — engine-level lookup knobs.
         Section {
             Toggle("Include Archaic & Obscure Readings", isOn: $includeArchaicReadings)

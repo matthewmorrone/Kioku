@@ -110,7 +110,7 @@ extension SegmentListView {
             },
             // Wire the star button on the sheet to the same per-surface toggle the row uses.
             sheetIsSavedProvider: {
-                isSavedForCurrentNote(normalizedSurface: normalizedSurface)
+                isSavedSurface(normalizedSurface: normalizedSurface)
             },
             sheetSaveToggle: {
                 toggleSavedWord(normalizedSurface)

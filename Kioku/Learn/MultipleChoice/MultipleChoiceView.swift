@@ -78,9 +78,6 @@ struct MultipleChoiceView: View {
     // it a real choice, short enough that the small context window doesn't blunt its judgement.
     private static let refinementCandidateCount = 10
 
-    // Whether to let Apple Intelligence rewrite option sets in the background. Off means every
-    // question keeps the heuristic options it was built with.
-    @AppStorage(QuizAssistSettings.smarterOptionsKey) private var smarterOptions = QuizAssistSettings.defaultSmarterOptions
     // The in-flight refinement pass, cancelled when the session ends so it can't outlive the quiz
     // it was improving.
     @State private var refinementTask: Task<Void, Never>?
@@ -382,7 +379,7 @@ struct MultipleChoiceView: View {
             // heuristic distractors. Awaited under the same resolving spinner already covering the
             // dictionary lookup above, so the cost is one brief, expected wait rather than an
             // in-session rewrite.
-            if smarterOptions, AppleIntelligenceAvailability.isAvailable, #available(iOS 26.0, *),
+            if AppleIntelligenceAvailability.isAvailable, #available(iOS 26.0, *),
                let refinement = await fetchRefinement(for: 0) {
                 apply(refinement, to: 0)
             }
@@ -422,7 +419,7 @@ struct MultipleChoiceView: View {
     // someone who is looking at it.
     private func startRefinement() {
         refinementTask?.cancel()
-        guard smarterOptions, AppleIntelligenceAvailability.isAvailable else { return }
+        guard AppleIntelligenceAvailability.isAvailable else { return }
         refinementTask = Task { @MainActor in
             guard #available(iOS 26.0, *) else { return }
             for position in questions.indices {

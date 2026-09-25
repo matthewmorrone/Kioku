@@ -96,7 +96,7 @@ nonisolated enum Attributions {
         ),
         Library(
             name: "MeCab",
-            purpose: "Morphological analyzer powering the .mecab segmentation backend.",
+            purpose: "Morphological analyzer used for segmentation comparisons.",
             sourceURL: "https://github.com/matthewmorrone/mecab"
         ),
         Library(

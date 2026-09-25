@@ -609,13 +609,10 @@ final class SurfaceSheetViewController: UIViewController {
         invalidateContentDetentIfPresented()
     }
 
-    // Refreshes the save button icon and tint to reflect the current saved state. Same
-    // three-state encoding as the extract-words list stars: filled yellow = saved for this
-    // note, hollow yellow = saved only in other notes, hollow gray = not saved anywhere.
-    // Shape carries "saved here"; color carries "saved anywhere".
+    // Refreshes the save button icon and tint to reflect the current saved state, the same
+    // encoding as the extract-words list stars: filled yellow = saved, hollow gray = not saved.
     func updateSaveButtonAppearance() {
         let isSaved = sheet?.sheetIsSavedProvider?() ?? false
-        let isSavedElsewhere = isSaved == false && (sheet?.sheetIsSavedElsewhereProvider?() ?? false)
         let learnedState = sheet?.sheetLearnedStateProvider?() ?? .unmarked
         let icon: String
         switch learnedState {
@@ -624,8 +621,8 @@ final class SurfaceSheetViewController: UIViewController {
         case .unmarked:   icon = isSaved ? "star.fill" : "star"
         }
         saveButton.setImage(UIImage(systemName: icon), for: .normal)
-        saveButton.tintColor = (learnedState != .unmarked || isSaved || isSavedElsewhere) ? .systemYellow : .secondaryLabel
-        saveButton.accessibilityLabel = isSaved ? "Unsave" : (isSavedElsewhere ? "Save to This Note" : "Save")
+        saveButton.tintColor = (learnedState != .unmarked || isSaved) ? .systemYellow : .secondaryLabel
+        saveButton.accessibilityLabel = isSaved ? "Unsave" : "Save"
         // Rebuilt on every refresh so the menu's setState closure always targets the currently
         // shown word, mirroring SegmentLookupSheet's popover star (see its refresh comment).
         if let setLearnedState = sheet?.sheetSetLearnedState {

@@ -28,7 +28,6 @@ extension SegmentLookupSheet {
         let capturedSheetLemmaInfoByReadingProvider = self.sheetLemmaInfoByReadingProvider
         let capturedSheetDictionaryEntryProvider = self.sheetDictionaryEntryProvider
         let capturedSheetIsSavedProvider = self.sheetIsSavedProvider
-        let capturedSheetIsSavedElsewhereProvider = self.sheetIsSavedElsewhereProvider
         let capturedSheetSaveToggle = self.sheetSaveToggle
         // Without these two the save button's long-press Save/Learned/Not Learned menu would
         // never appear on the fresh-present path: resetSheetPresentationState nils them during the
@@ -54,7 +53,6 @@ extension SegmentLookupSheet {
             self.sheetLemmaInfoByReadingProvider = capturedSheetLemmaInfoByReadingProvider
             self.sheetDictionaryEntryProvider = capturedSheetDictionaryEntryProvider
             self.sheetIsSavedProvider = capturedSheetIsSavedProvider
-            self.sheetIsSavedElsewhereProvider = capturedSheetIsSavedElsewhereProvider
             self.sheetSaveToggle = capturedSheetSaveToggle
             self.sheetLearnedStateProvider = capturedSheetLearnedStateProvider
             self.sheetSetLearnedState = capturedSheetSetLearnedState
@@ -204,7 +202,6 @@ extension SegmentLookupSheet {
         pathSegmentFrequencyProvider = nil
         sheetDictionaryEntryProvider = nil
         sheetIsSavedProvider = nil
-        sheetIsSavedElsewhereProvider = nil
         sheetSaveToggle = nil
         sheetLearnedStateProvider = nil
         sheetSetLearnedState = nil

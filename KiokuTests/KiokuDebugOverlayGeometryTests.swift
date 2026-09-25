@@ -152,12 +152,14 @@ final class KiokuDebugOverlayGeometryTests: XCTestCase {
 
     // MARK: - Line bands
 
-    func test_lineGeometry_splitsBandsCorrectly() {
+    // The line frame is the headword row; the ruby row sits above it, `furiganaGap` clear of it.
+    func test_lineGeometry_placesRubyBandAboveHeadwordRow() {
         let frame = CGRect(x: 0, y: 100, width: 300, height: 30)
-        let inputs = makeInputs(rects: [:], ranges: [], lines: [frame], bandHeight: 10)
+        var inputs = makeInputs(rects: [:], ranges: [], lines: [frame], bandHeight: 10)
+        inputs.furiganaGap = 2
         let lines = KiokuDebugOverlayGeometry.lines(inputs)
         XCTAssertEqual(lines.count, 1)
-        XCTAssertEqual(lines[0].furiganaBandRect, CGRect(x: 0, y: 100, width: 300, height: 10))
-        XCTAssertEqual(lines[0].headwordBandRect, CGRect(x: 0, y: 110, width: 300, height: 20))
+        XCTAssertEqual(lines[0].headwordBandRect, frame)
+        XCTAssertEqual(lines[0].furiganaBandRect, CGRect(x: 0, y: 88, width: 300, height: 10))
     }
 }

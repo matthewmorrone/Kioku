@@ -225,7 +225,6 @@ extension ReadView {
                     resolvedDictionaryEntryForCurrentSelectedSegment()
                 },
                 sheetIsSavedProvider: { isSegmentSaved() },
-                sheetIsSavedElsewhereProvider: { isSegmentSavedElsewhere() },
                 sheetSaveToggle: { toggleSegmentSaved() },
                 sheetLearnedStateProvider: { currentSegmentLearnedState() },
                 sheetSetLearnedState: { setCurrentSegmentLearnedState($0) },

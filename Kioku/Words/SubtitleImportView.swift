@@ -345,9 +345,8 @@ struct SubtitleImportView: View {
         let listIDs = resolveListIDs()
 
         // Create the note FIRST (when requested) so its id can attribute the saved words. Attribution
-        // drives both the in-note highlight (isSavedForNote → filled star + glow) and the
-        // note-deletion "associated words" cascade — without it, imported words render hollow and the
-        // delete prompt finds nothing to offer.
+        // drives the Words tab's note filter and the note-deletion "associated words" cascade —
+        // without it, the delete prompt finds nothing to offer.
         var noteIDs: [UUID] = []
         if saveAsNote, assembledText.isEmpty == false {
             // Title from the subtitle's name (extension stripped), preferring the user's list name.

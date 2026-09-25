@@ -49,11 +49,10 @@ struct CoverageStudySelection: Identifiable {
 struct CoverageDetailView: View {
     let note: Note
     let dictionaryStore: DictionaryStore?
-    // Every identity SegmentListView's vocabRowCountsAsSaved marks as already-saved-for-this-note
-    // — the exact rule backing Vocab's "N already saved" count. `coverage` filters against this
-    // directly instead of independently re-deriving its own sourceNoteIDs/encounteredSurfaces
-    // logic, so the two screens' totals can't drift apart from two separately-coded versions of
-    // "is this word attributed to this note."
+    // Every word in this note that SegmentListView's vocabRowCountsAsSaved marks as saved — the
+    // exact rule backing Vocab's "N already saved" count. `coverage` filters against this directly
+    // instead of re-deriving its own "is this word saved" logic, so the two screens' totals can't
+    // drift apart.
     let savedIdentitiesForThisNote: Set<String>
 
     @EnvironmentObject private var wordsStore: WordsStore
@@ -78,7 +77,7 @@ struct CoverageDetailView: View {
     // already-saved, never an independently-derived approximation of it.
     private var coverage: NoteCoverage {
         let words = wordsStore.words.filter { word in
-            word.encounteredSurfaces.contains {
+            savedIdentitiesForThisNote.contains(word.surface) || word.encounteredSurfaces.contains {
                 savedIdentitiesForThisNote.contains($0.trimmingCharacters(in: .whitespacesAndNewlines))
             }
         }

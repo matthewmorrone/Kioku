@@ -229,16 +229,16 @@ final class WordsStore: ObservableObject {
         word.reviewStats = st
         word.markedWrong = false
         lifetimeCorrect += 1
-        // Auto-promote to "learned" when every recognition direction's evidence clears whatever
-        // bar the user configured in Settings. Only acts on a word the user hasn't marked either
+        // Auto-promote to "learned" once every recognition direction has been answered right at
+        // least once (when Auto-mark as Learned is on in Settings). Only acts on a word the user hasn't marked either
         // way (unmarked) — an explicit Learned is already done, and an explicit Not Learned is a
         // deliberate signal we don't override from behind their back.
         if word.learnedMark == .unmarked,
            AutoLearnPolicy.shouldMarkLearned(directionStats: st.directionStats, hasKanjiForm: st.hasKanjiForm ?? true) {
             word.learnedMark = .learned
         }
-        // Auto-promote to "mastered" once every direction — recognition AND production — clears
-        // the bar too. Doesn't require `.unmarked`: mastery normally follows an already-Learned
+        // Auto-promote to "mastered" once every direction — recognition AND production — has been
+        // answered right at least once. Doesn't require `.unmarked`: mastery normally follows an already-Learned
         // word, so it only excludes an explicit "not learned" mark.
         if word.learnedMark != .notLearned, word.mastered == false,
            AutoLearnPolicy.shouldMarkMastered(directionStats: st.directionStats, hasKanjiForm: st.hasKanjiForm ?? true) {
@@ -580,23 +580,14 @@ final class WordsStore: ObservableObject {
 
     // Canonical save/unsave entry point. All UI surfaces (Words tab search, history rows,
     // browse-frequency sheet, segment-list star, in-text lookup-sheet star, nested-lookup
-    // star) go through this method so the bookkeeping stays in one place — encountered-
-    // surface tracking, per-note attribution, default sense-ID seeding, and card-removal
-    // semantics can't drift between surfaces.
+    // star) go through this method so the bookkeeping stays in one place.
     //
-    // Toggle semantics: for an existing card, flip membership of `encounteredSurface` in
-    // the card's `encounteredSurfaces` set and of `sourceNoteID` in its `sourceNoteIDs`
-    // attribution. The card is removed only when BOTH sets become empty — so a "save"
-    // attributed to one note doesn't accidentally remove the card's attribution from
-    // another note. For a brand-new card, the stored surface is lemma-normalized at
-    // create time (callers pass the lemma form as `storedSurface` and the encountered
-    // form — the user's clicked surface — as `encounteredSurface`), so star state on
-    // the lemma row and the encountered row both light up correctly.
-    //
-    // Callers without segment context (Words tab, history, browse) pass nil for
-    // `encounteredSurface` (defaulting to `storedSurface`) and nil for `sourceNoteID`,
-    // which collapses to "toggle the card globally" — the card is removed when its
-    // only encountered surface is the toggled one and no note attributions exist.
+    // A word is saved or it isn't — there is no per-note "saved elsewhere" state. So an
+    // existing card is removed outright, whichever note (if any) the tap came from, and a
+    // missing card is created. On create, the stored surface is the lemma form callers pass as
+    // `storedSurface`, the clicked form is recorded as `encounteredSurface` (defaulting to the
+    // stored surface), and `sourceNoteID`, when given, attributes the card to that note for the
+    // Words tab's note filter.
     func toggle(
         canonicalEntryID: Int64,
         storedSurface: String,
@@ -604,88 +595,20 @@ final class WordsStore: ObservableObject {
         sourceNoteID: UUID? = nil,
         defaultSenseIDs: [Int64] = []
     ) {
-        let encountered = encounteredSurface ?? storedSurface
         var entries = words
         if let existingIndex = entries.firstIndex(where: { $0.canonicalEntryID == canonicalEntryID }) {
-            let existingEntry = entries[existingIndex]
-            var encounteredSet = existingEntry.encounteredSurfaces
-            var noteIDs = Set(existingEntry.sourceNoteIDs)
-
-            let surfaceWasInSet = encounteredSet.contains(encountered)
-            let noteWasAttached = sourceNoteID.map { noteIDs.contains($0) } ?? false
-            // "Saved here" must mirror ComputedSavedWordState.isStarFilled — the predicate that
-            // decides whether the star renders filled — or a single tap on an already-filled
-            // star can silently no-op (attach this note to a globally-saved card, which the
-            // star still renders as filled) instead of removing it, requiring a second tap.
-            // Filled means: attributed to this note, OR saved with no note attribution at all
-            // (`noteIDs.isEmpty`) — a global save with zero note attributions. Without a note
-            // context, surface membership alone determines it.
-            let wasSavedHere: Bool = {
-                guard sourceNoteID != nil else { return surfaceWasInSet }
-                return surfaceWasInSet && (noteWasAttached || noteIDs.isEmpty)
-            }()
-
-            if wasSavedHere {
-                encounteredSet.remove(encountered)
-                if let sourceNoteID, encounteredSet.isEmpty {
-                    // Last encountered surface gone for this card → drop this note's
-                    // attribution. The card disappears entirely if no other note
-                    // still has it on file.
-                    noteIDs.remove(sourceNoteID)
-                }
-            } else {
-                encounteredSet.insert(encountered)
-                if let sourceNoteID {
-                    noteIDs.insert(sourceNoteID)
-                }
-            }
-
-            if encounteredSet.isEmpty && noteIDs.isEmpty {
-                // Only a true full removal (no encountered surfaces, no note attributions left
-                // anywhere) counts as "unsaved" — detaching one note/surface while the card
-                // survives elsewhere must NOT touch review data, and here the whole row (review
-                // fields included) simply goes away with it.
-                entries.remove(at: existingIndex)
-            } else {
-                let orderedNoteIDs = noteIDs.sorted { $0.uuidString < $1.uuidString }
-                entries[existingIndex] = SavedWord(
-                    canonicalEntryID: existingEntry.canonicalEntryID,
-                    surface: existingEntry.surface,
-                    sourceNoteIDs: orderedNoteIDs,
-                    wordListIDs: existingEntry.wordListIDs,
-                    personalNote: existingEntry.personalNote,
-                    savedAt: existingEntry.savedAt,
-                    selectedSenseIDs: existingEntry.selectedSenseIDs,
-                    selectedGlosses: existingEntry.selectedGlosses,
-                    encounteredSurfaces: encounteredSet,
-                    entSeq: existingEntry.entSeq,
-                    hasBeenOrphaned: existingEntry.hasBeenOrphaned || orderedNoteIDs.isEmpty,
-                    // Toggling note/surface membership must not disturb the reading the user
-                    // picked with the detail-view switcher — it's a display choice, not provenance.
-                    selectedReading: existingEntry.selectedReading,
-                    // Nor must it disturb the word's review history — GUARD AGAINST RECURRENCE:
-                    // every field added to SavedWord has to be threaded through here too, or a
-                    // plain note/surface toggle silently resets it (this is exactly the bug this
-                    // comment exists to prevent for the review fields specifically).
-                    learnedMark: existingEntry.learnedMark,
-                    mastered: existingEntry.mastered,
-                    markedWrong: existingEntry.markedWrong,
-                    reviewStats: existingEntry.reviewStats
-                )
-            }
+            entries.remove(at: existingIndex)
         } else {
-            let noteIDs: [UUID] = sourceNoteID.map { [$0] } ?? []
             entries.append(
                 SavedWord(
                     canonicalEntryID: canonicalEntryID,
                     surface: storedSurface,
-                    sourceNoteIDs: noteIDs,
+                    sourceNoteIDs: sourceNoteID.map { [$0] } ?? [],
                     selectedSenseIDs: defaultSenseIDs,
-                    encounteredSurfaces: [encountered]
+                    encounteredSurfaces: [encounteredSurface ?? storedSurface]
                 )
             )
         }
-
         replaceAll(with: entries)
     }
 

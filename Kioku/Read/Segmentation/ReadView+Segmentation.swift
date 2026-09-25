@@ -395,7 +395,6 @@ extension ReadView {
             definition: definitionPayload.definition,
             surface: definitionPayload.surface,
             isSavedProvider: { isSegmentSaved() },
-            isSavedElsewhereProvider: { isSegmentSavedElsewhere() },
             onSaveToggle: { toggleSegmentSaved() },
             learnedStateProvider: { currentSegmentLearnedState() },
             onSetLearnedState: { setCurrentSegmentLearnedState($0) },
@@ -514,8 +513,8 @@ extension ReadView {
 
     // The ONE dictionary-entry resolution for an arbitrary surface, shared by every caller that
     // needs to answer "which saved word (if any) does this piece of text refer to" — the lookup
-    // sheet's star/learned-state button (via currentSegmentDictionaryEntry, isSegmentSaved,
-    // isSegmentSavedElsewhere below) and the Read-tab/LyricsView in-text coloring
+    // sheet's star/learned-state button (via currentSegmentDictionaryEntry, isSegmentSaved
+    // below) and the Read-tab/LyricsView in-text coloring
     // (ReadView+Editor.computeSavedSegmentLocations) all resolve through this single function, so they can
     // never disagree about which entry a given piece of text belongs to.
     func resolvedDictionaryEntry(forSurface surface: String) -> DictionaryEntry? {
@@ -548,16 +547,6 @@ extension ReadView {
     func isSegmentSaved() -> Bool {
         guard let entry = currentSegmentDictionaryEntry() else { return false }
         return wordsStore.words.contains { $0.canonicalEntryID == entry.entryId }
-    }
-
-    // Hollow-yellow star: saved, but attributed only to other notes. Same entry-ID resolution as
-    // isSegmentSaved above.
-    func isSegmentSavedElsewhere() -> Bool {
-        guard let entry = currentSegmentDictionaryEntry(),
-              let saved = wordsStore.words.first(where: { $0.canonicalEntryID == entry.entryId })
-        else { return false }
-        guard let activeNoteID = document.activeNoteID else { return false }
-        return saved.sourceNoteIDs.isEmpty == false && saved.sourceNoteIDs.contains(activeNoteID) == false
     }
 
     // Toggles the saved state for the current segment's resolved lemma. Prefers the

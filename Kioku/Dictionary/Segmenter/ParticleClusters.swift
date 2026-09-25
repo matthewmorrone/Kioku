@@ -1,8 +1,8 @@
 import Foundation
 
 // Dictionary entries that are nothing but particles (and だ / です) written together — には, ですか,
-// よね. JMdict lists them as expressions, so the path search picks them as single units. With
-// SegmenterSettings.splitsParticleClusters on, each is shown as its parts instead, which is what a
+// よね. JMdict lists them as expressions, so the path search picks them as single units. The
+// segmenter shows each as its parts instead, which is what a
 // learner looks up: に and は, not には.
 //
 // The list is curated, not derived. JMdict tags い, し, さ and ど as particles too, so "every entry

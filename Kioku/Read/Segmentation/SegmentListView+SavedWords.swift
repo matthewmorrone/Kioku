@@ -8,47 +8,24 @@ nonisolated private final class UncheckedSendableBox<T>: @unchecked Sendable {
 }
 
 // Saved-word state management for SegmentListView: per-surface star toggling,
-// canonical-id-backed persistence into WordsStore, and the in-memory caches
-// (`savedWordSurfaces`, `savedWordSourceNoteIDsBySurface`) that drive star
-// rendering. Includes the legacy-card lemma expansion in `applySavedWordState`
+// canonical-id-backed persistence into WordsStore, and the in-memory cache
+// (`savedWordSurfaces`) that drives star rendering. Includes the legacy-card lemma expansion in `applySavedWordState`
 // so historical conjugated saves still light up the lemma row.
 extension SegmentListView {
     // Toggles one segment surface in the saved-word list storage.
     // `lemma` is the dictionary headword. New cards store `surface = lemma`
     // (lemma-normalized at save time), with the user-clicked surface added to
-    // `encounteredSurfaces`. Existing cards have only their encountered set
-    // updated — the stored surface is preserved.
+    // `encounteredSurfaces`. An existing card is unsaved outright.
     func toggleSavedWord(_ surface: String, lemma: String = "") {
         let normalizedSurface = normalizedSurfaceForFiltering(surface)
         let normalizedLemma = normalizedSurfaceForFiltering(lemma)
         let previousSavedWordSurfaces = savedWordSurfaces
-        let previousSourceNoteIDsBySurface = savedWordSourceNoteIDsBySurface
 
-        // Optimistic UI: flip the by-surface caches before the canonical lookup
+        // Optimistic UI: flip the by-surface cache before the canonical lookup
         // resolves so the star repaints immediately. Persistence happens in the
         // inner toggle once we have the canonical ID; if hydration fails we
-        // restore from the snapshots captured above.
-        let wasSavedForCurrentNote: Bool = {
-            guard let sourceNoteID else { return savedWordSurfaces.contains(normalizedSurface) }
-            return savedWordSourceNoteIDsBySurface[normalizedSurface]?.contains(sourceNoteID) ?? false
-        }()
-
-        if let sourceNoteID {
-            var sourceNoteIDs = savedWordSourceNoteIDsBySurface[normalizedSurface] ?? Set<UUID>()
-            if wasSavedForCurrentNote {
-                sourceNoteIDs.remove(sourceNoteID)
-            } else {
-                sourceNoteIDs.insert(sourceNoteID)
-            }
-
-            if sourceNoteIDs.isEmpty {
-                savedWordSourceNoteIDsBySurface.removeValue(forKey: normalizedSurface)
-                savedWordSurfaces.remove(normalizedSurface)
-            } else {
-                savedWordSourceNoteIDsBySurface[normalizedSurface] = sourceNoteIDs
-                savedWordSurfaces.insert(normalizedSurface)
-            }
-        } else if wasSavedForCurrentNote {
+        // restore from the snapshot captured above.
+        if isSavedSurface(normalizedSurface: normalizedSurface) {
             savedWordSurfaces.remove(normalizedSurface)
         } else {
             savedWordSurfaces.insert(normalizedSurface)
@@ -63,7 +40,6 @@ extension SegmentListView {
             guard let canonicalEntryID = hydratedEntryIDs[normalizedSurface] else {
                 // Reverts optimistic UI state when no canonical entry is available for persistence.
                 savedWordSurfaces = previousSavedWordSurfaces
-                savedWordSourceNoteIDsBySurface = previousSourceNoteIDsBySurface
                 return
             }
 
@@ -132,8 +108,6 @@ extension SegmentListView {
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     savedWordEntryIDs = state.savedWordEntryIDs
-                    savedWordSourceNoteIDsByEntryID = state.savedWordSourceNoteIDsByEntryID
-                    savedWordSourceNoteIDsBySurface = state.savedWordSourceNoteIDsBySurface
                     savedWordSurfaces = state.savedWordSurfaces
                     lemmaCacheByStoredSurface.merge(updatedCache) { _, new in new }
                 }
@@ -141,18 +115,16 @@ extension SegmentListView {
         }
     }
 
-    // Snapshot of the four saved-word star-state caches that `applySavedWordState`
+    // Snapshot of the saved-word star-state caches that `applySavedWordState`
     // and its off-main twin compute. Bundled so the background path can return
     // them in one go and the main-thread assignment hopper applies them in one
     // batch (no intermediate UI re-renders showing partial state).
     struct ComputedSavedWordState {
         var savedWordEntryIDs: Set<Int64>
-        var savedWordSourceNoteIDsByEntryID: [Int64: Set<UUID>]
-        var savedWordSourceNoteIDsBySurface: [String: Set<UUID>]
         var savedWordSurfaces: Set<String>
         // Every key in savedWordSurfaces maps back to the entry that put it there — populated in
         // lockstep with savedWordSurfaces below, so a caller that resolves a surface via
-        // resolvedSavedKey(for:lemmaResolver:) can look up the SAME entry isStarFilled matched,
+        // resolvedSavedKey(for:lemmaResolver:) can look up the SAME entry isSavedSurface matched,
         // instead of re-deriving the surface→entry mapping with separate (and potentially
         // inconsistent) logic. Last-write-wins on the rare case two entries share a surface —
         // savedWordSurfaces is already a flat union with the same ambiguity.
@@ -170,19 +142,14 @@ extension SegmentListView {
         lemmaCache: [String: String]
     ) -> (ComputedSavedWordState, [String: String]) {
         var savedWordEntryIDs = Set<Int64>()
-        var sourceNoteIDsByEntryID: [Int64: Set<UUID>] = [:]
-        var sourceNoteIDsBySurface: [String: Set<UUID>] = [:]
         var unionEncountered = Set<String>()
         var entryIDBySurface: [String: Int64] = [:]
         var updatedLemmaCache = lemmaCache
 
         savedWordEntryIDs.reserveCapacity(entries.count)
-        sourceNoteIDsByEntryID.reserveCapacity(entries.count)
 
         for entry in entries {
             savedWordEntryIDs.insert(entry.canonicalEntryID)
-            let entryNoteIDs = Set(entry.sourceNoteIDs)
-            sourceNoteIDsByEntryID[entry.canonicalEntryID] = entryNoteIDs
 
             var expandedEncountered = entry.encounteredSurfaces
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -212,16 +179,12 @@ extension SegmentListView {
 
             for surface in expandedEncountered {
                 unionEncountered.insert(surface)
-                let merged = sourceNoteIDsBySurface[surface, default: Set<UUID>()].union(entryNoteIDs)
-                sourceNoteIDsBySurface[surface] = merged
                 entryIDBySurface[surface] = entry.canonicalEntryID
             }
         }
 
         let state = ComputedSavedWordState(
             savedWordEntryIDs: savedWordEntryIDs,
-            savedWordSourceNoteIDsByEntryID: sourceNoteIDsByEntryID,
-            savedWordSourceNoteIDsBySurface: sourceNoteIDsBySurface,
             savedWordSurfaces: unionEncountered,
             savedWordEntryIDBySurface: entryIDBySurface
         )
@@ -263,49 +226,28 @@ extension SegmentListView {
         )
         savedWordEntryIDs = state.savedWordEntryIDs
         savedWordSurfaces = state.savedWordSurfaces
-        savedWordSourceNoteIDsByEntryID = state.savedWordSourceNoteIDsByEntryID
-        savedWordSourceNoteIDsBySurface = state.savedWordSourceNoteIDsBySurface
         lemmaCacheByStoredSurface = updatedCache
     }
 
-    // The four star predicates now delegate to the shared implementation on ComputedSavedWordState
+    // The star predicate delegates to the shared implementation on ComputedSavedWordState
     // (below), so the extract-words stars use the EXACT same logic the glow and lookup-sheet star
     // use. `currentSavedState` just wraps this view's @State caches into that value type — no
     // recomputation.
     private var currentSavedState: ComputedSavedWordState {
         ComputedSavedWordState(
             savedWordEntryIDs: savedWordEntryIDs,
-            savedWordSourceNoteIDsByEntryID: savedWordSourceNoteIDsByEntryID,
-            savedWordSourceNoteIDsBySurface: savedWordSourceNoteIDsBySurface,
             savedWordSurfaces: savedWordSurfaces
         )
     }
 
-    // Per-surface "saved anywhere" check (lemma-bridged).
+    // Per-surface "is this word saved" check (lemma-bridged). Saved means saved — no note scoping.
     func isSavedSurface(normalizedSurface: String) -> Bool {
         currentSavedState.isSavedSurface(normalizedSurface, lemmaResolver: lemmaForSurface)
-    }
-
-    // True when the queried surface is saved AND attributed to the active note.
-    func isSavedForCurrentNote(normalizedSurface: String) -> Bool {
-        currentSavedState.isSavedForNote(normalizedSurface, noteID: sourceNoteID, lemmaResolver: lemmaForSurface)
-    }
-
-    // True when the surface is saved but its attributions don't include the
-    // active note — the "saved elsewhere" / yellow-hollow visual state.
-    func isSavedForOtherNotes(normalizedSurface: String) -> Bool {
-        currentSavedState.isSavedForOtherNotes(normalizedSurface, noteID: sourceNoteID, lemmaResolver: lemmaForSurface)
-    }
-
-    // True when detaching the active note from this surface would still leave it known (another
-    // note attribution remains). See ComputedSavedWordState.hasAttributionBeyondCurrentNote.
-    func hasAttributionBeyondCurrentNote(normalizedSurface: String) -> Bool {
-        currentSavedState.hasAttributionBeyondCurrentNote(normalizedSurface, noteID: sourceNoteID, lemmaResolver: lemmaForSurface)
     }
 }
 
 // Shared saved-state predicate. This is THE single source of truth for "is this surface
-// saved (and how)", used by the extract-words list stars, the in-text saved glow, and the
+// saved", used by the extract-words list stars, the in-text saved glow, and the
 // lookup-sheet star — so all three stay 1:1 by construction. Operates purely on the snapshot value
 // type, so any caller that can build a ComputedSavedWordState (from WordsStore.words) gets the same
 // answers without depending on SegmentListView's @State.
@@ -325,58 +267,16 @@ extension SegmentListView.ComputedSavedWordState {
         return lemma
     }
 
-    // Saved under any note (or with no note attribution).
+    // Saved, whichever note (if any) it came from.
     func isSavedSurface(_ normalizedSurface: String, lemmaResolver: (String) -> String?) -> Bool {
         resolvedSavedKey(for: normalizedSurface, lemmaResolver: lemmaResolver) != nil
     }
 
     // The canonicalEntryID backing a saved surface, resolved through the exact same key
-    // isStarFilled/isSavedForOtherNotes use — so a caller checking "which word is this?" agrees
+    // isSavedSurface uses — so a caller checking "which word is this?" agrees
     // with whichever of those already said "yes" for this surface.
     func canonicalEntryID(for normalizedSurface: String, lemmaResolver: (String) -> String?) -> Int64? {
         guard let key = resolvedSavedKey(for: normalizedSurface, lemmaResolver: lemmaResolver) else { return nil }
         return savedWordEntryIDBySurface[key]
-    }
-
-    // Saved AND attributed to `noteID` (nil note context collapses to "saved anywhere").
-    func isSavedForNote(_ normalizedSurface: String, noteID: UUID?, lemmaResolver: (String) -> String?) -> Bool {
-        guard let noteID else {
-            return isSavedSurface(normalizedSurface, lemmaResolver: lemmaResolver)
-        }
-        guard let key = resolvedSavedKey(for: normalizedSurface, lemmaResolver: lemmaResolver),
-              let notes = savedWordSourceNoteIDsBySurface[key] else { return false }
-        return notes.contains(noteID)
-    }
-
-    // Saved but NOT attributed to `noteID` — the "saved elsewhere" hollow-yellow state.
-    func isSavedForOtherNotes(_ normalizedSurface: String, noteID: UUID?, lemmaResolver: (String) -> String?) -> Bool {
-        guard let noteID else { return false }
-        guard let key = resolvedSavedKey(for: normalizedSurface, lemmaResolver: lemmaResolver),
-              let notes = savedWordSourceNoteIDsBySurface[key] else { return false }
-        return notes.isEmpty == false && notes.contains(noteID) == false
-    }
-
-    // Whether this surface would still be known as saved even with `noteID`'s attribution set
-    // aside — i.e. it has at least one OTHER note attribution. Distinct from isSavedForOtherNotes,
-    // which excludes words simultaneously attributed to `noteID` too (exactly the case this needs
-    // to include: a word attributed to both this note and another one). Drives Vocab mode's
-    // uncheck preview — detaching a word that has nothing else backing it is a full unsave, not a
-    // detach, so the chip should preview that outcome (gray) rather than a generic warning color.
-    func hasAttributionBeyondCurrentNote(_ normalizedSurface: String, noteID: UUID?, lemmaResolver: (String) -> String?) -> Bool {
-        guard let key = resolvedSavedKey(for: normalizedSurface, lemmaResolver: lemmaResolver),
-              let notes = savedWordSourceNoteIDsBySurface[key] else { return false }
-        guard let noteID else { return notes.isEmpty == false }
-        return notes.subtracting([noteID]).isEmpty == false
-    }
-
-    // The "filled star" predicate the extract-words list renders (isSavedForCurrentNote OR saved
-    // with no note attribution at all). The in-text glow mirrors exactly this, giving the 1:1
-    // correspondence between starred words and highlighted words.
-    func isStarFilled(_ normalizedSurface: String, noteID: UUID?, lemmaResolver: (String) -> String?) -> Bool {
-        if isSavedForNote(normalizedSurface, noteID: noteID, lemmaResolver: lemmaResolver) {
-            return true
-        }
-        return isSavedSurface(normalizedSurface, lemmaResolver: lemmaResolver)
-            && isSavedForOtherNotes(normalizedSurface, noteID: noteID, lemmaResolver: lemmaResolver) == false
     }
 }

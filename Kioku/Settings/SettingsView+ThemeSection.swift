@@ -3,8 +3,8 @@ import SwiftUI
 // Theme-section helpers carved out of SettingsView so the main file stays under the 1000-line
 // build-time invariant. Contains: the Menu replacement for the Theme picker (Picker labels
 // don't honor `.tint()` on iOS 26), the Custom Theme toggle + four override pickers, the
-// Custom Token Colors toggle + three override pickers, and the hex↔Color bindings the four
-// Custom Theme pickers need.
+// Custom Token Colors toggle + three override pickers, the Saved Highlight color pickers, and
+// the hex↔Color bindings those pickers need.
 extension SettingsView {
 
     // Menu replacement for SwiftUI's Form Picker — iOS 26's Picker won't honor `.tint()` for
@@ -90,16 +90,15 @@ extension SettingsView {
         }
     }
 
-    // Learned/Not-Learned colors for the Saved Highlight display option. Unlike
+    // Saved/Learned/Not-Learned colors for the Saved Highlight display option. Unlike
     // customTokenColorRows above, these aren't gated behind a "Custom Token Colors" toggle —
     // Saved Highlight is switched on/off from the Read toolbar itself, so its colors are
     // always available to customize here.
     @ViewBuilder
     var savedHighlightColorRows: some View {
-        ColorPicker("Save", selection: savedHighlightBinding, supportsOpacity: false)
-        ColorPicker("Learned", selection: savedLearnedHighlightBinding, supportsOpacity: false)
-        ColorPicker("Not Learned", selection: savedNotLearnedHighlightBinding, supportsOpacity: false)
-        ColorPicker("Elsewhere", selection: savedElsewhereHighlightBinding, supportsOpacity: false)
+        ColorPicker("Saved Highlight", selection: savedHighlightBinding, supportsOpacity: false)
+        ColorPicker("Learned Highlight", selection: savedLearnedHighlightBinding, supportsOpacity: false)
+        ColorPicker("Not Learned Highlight", selection: savedNotLearnedHighlightBinding, supportsOpacity: false)
     }
 
     var savedHighlightBinding: Binding<Color> {
@@ -118,12 +117,6 @@ extension SettingsView {
         Binding(
             get: { Color(UIColor(hexString: savedNotLearnedHex) ?? UIColor(hexString: TokenColorSettings.defaultSavedNotLearnedHex)!) },
             set: { if let hex = UIColor($0).hexString { savedNotLearnedHex = hex } }
-        )
-    }
-    var savedElsewhereHighlightBinding: Binding<Color> {
-        Binding(
-            get: { Color(UIColor(hexString: savedElsewhereHex) ?? UIColor(hexString: TokenColorSettings.defaultSavedElsewhereHex)!) },
-            set: { if let hex = UIColor($0).hexString { savedElsewhereHex = hex } }
         )
     }
 

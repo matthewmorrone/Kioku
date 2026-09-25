@@ -163,6 +163,7 @@ final class KiokuScrollingTextView: UIScrollView, UIScrollViewDelegate {
             furiganaFont: inputs.furiganaFont,
             lineFrames: engineLines.map { $0.frame },
             furiganaBandHeight: ceil(inputs.furiganaFont.lineHeight),
+            furiganaGap: contentView.furiganaGap,
             isFuriganaVisible: inputs.isFuriganaVisible
         )
         debugOverlay.segmentGeometry = KiokuDebugOverlayGeometry.segments(geometryInputs)

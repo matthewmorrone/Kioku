@@ -43,7 +43,6 @@ final class SegmentationQualityTests: XCTestCase {
     // Returns the chosen surfaces for `text` under the shipped default strategy.
     private func segments(of text: String) throws -> [String] {
         UserDefaults.standard.removeObject(forKey: SegmenterSettings.strategyKey)
-        UserDefaults.standard.removeObject(forKey: SegmenterSettings.splitsParticleClustersKey)
         return try TestReadResources.shared().segmenter.longestMatchEdges(for: text).map(\.surface)
     }
 
@@ -57,9 +56,9 @@ final class SegmentationQualityTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: SegmenterSettings.strategyKey)
         // Measured with particle clusters left whole: the gold tokens keep には and ですか as units, and
         // this floor is about which path wins, not how finely a chosen cluster is displayed.
-        UserDefaults.standard.set(false, forKey: SegmenterSettings.splitsParticleClustersKey)
-        defer { UserDefaults.standard.removeObject(forKey: SegmenterSettings.splitsParticleClustersKey) }
         let segmenter = try TestReadResources.shared().segmenter
+        segmenter.splitsParticleClusters = false
+        defer { segmenter.splitsParticleClusters = true }
         var goldCount = 0
         var exactCount = 0
         var cutThroughCount = 0
@@ -164,9 +163,9 @@ final class SegmentationQualityTests: XCTestCase {
 
     // With the option off the path search's own units come through.
     func testParticleClustersStayWholeWhenOptionIsOff() throws {
-        UserDefaults.standard.set(false, forKey: SegmenterSettings.splitsParticleClustersKey)
-        defer { UserDefaults.standard.removeObject(forKey: SegmenterSettings.splitsParticleClustersKey) }
         let segmenter = try TestReadResources.shared().segmenter
+        segmenter.splitsParticleClusters = false
+        defer { segmenter.splitsParticleClusters = true }
         XCTAssertEqual(segmenter.longestMatchEdges(for: "そこには誰もいない").map(\.surface), ["そこ", "には", "誰も", "いない"])
     }
 

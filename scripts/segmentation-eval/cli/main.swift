@@ -27,7 +27,7 @@ if ProcessInfo.processInfo.environment["STRATEGY"] == "local" {
 }
 UserDefaults.standard.removeObject(forKey: SegmentationDemotions.storageKey)
 // Gold comparisons run with clusters whole (the path search's own output); SPLIT_CLUSTERS=1 shows the app default.
-UserDefaults.standard.set(ProcessInfo.processInfo.environment["SPLIT_CLUSTERS"] != nil, forKey: SegmenterSettings.splitsParticleClustersKey)
+segmenter.splitsParticleClusters = ProcessInfo.processInfo.environment["SPLIT_CLUSTERS"] != nil
 let separator = String(UnicodeScalar(0x1E)!)
 let mode = CommandLine.arguments[1]
 

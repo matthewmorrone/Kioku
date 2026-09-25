@@ -22,10 +22,8 @@ struct WordDetailView: View {
     var surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap()
     var kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()
     // The note this detail view was opened in the context of, if any — nil at call sites with no
-    // note context (Words tab, Kanji detail, Flashcards). When set, the header star becomes
-    // note-aware: it shows the same filled/hollow+primary/secondary "saved here / saved
-    // elsewhere / new" states Lines mode's row star uses, and toggling attaches/detaches this
-    // note instead of only ever acting on the word globally.
+    // note context (Words tab, Kanji detail, Flashcards). When set, a save from the header star
+    // attributes the new card to this note (for the Words tab's note filter).
     var noteID: UUID? = nil
 
     // Provides per-word review statistics keyed by canonicalEntryID.
@@ -107,25 +105,9 @@ struct WordDetailView: View {
     // session, otherwise the entry the view was opened with. Single source of truth for all
     // "which entry is mine" decisions across the main view and its extension files.
     var activeEntryID: Int64 { repointedEntryID ?? word.canonicalEntryID }
-    // The live saved entry for activeEntryID, if any — single lookup backing both note-aware
-    // predicates below so they can't disagree with each other or with `isSaved`.
-    private var activeSavedEntry: SavedWord? {
-        wordsStore.words.first { $0.canonicalEntryID == activeEntryID }
-    }
-    // Filled-star state: attributed to noteID, or saved with no note attribution at all — mirrors
-    // ComputedSavedWordState.isStarFilled (SegmentListView+SavedWords.swift) so a word reads the
-    // same way whether its star lives in the segment list or in this detail view. With no noteID
-    // in scope, this collapses to plain "is it saved at all," matching today's behavior.
-    private var isSavedForCurrentNoteOrStandalone: Bool {
-        guard let entry = activeSavedEntry else { return false }
-        guard let noteID else { return true }
-        return entry.sourceNoteIDs.contains(noteID) || entry.sourceNoteIDs.isEmpty
-    }
-    // Hollow-star-but-known state: saved, but only under some OTHER note — the "saved elsewhere"
-    // signal. Always false when there's no noteID in scope (nothing to be "elsewhere" relative to).
-    private var isSavedOnlyElsewhere: Bool {
-        guard let entry = activeSavedEntry, let noteID else { return false }
-        return entry.sourceNoteIDs.isEmpty == false && entry.sourceNoteIDs.contains(noteID) == false
+    // Filled-star state: the active entry is saved, whichever note (if any) it came from.
+    private var isActiveEntrySaved: Bool {
+        wordsStore.words.contains { $0.canonicalEntryID == activeEntryID }
     }
     // The reading the header shows after the switcher flips to a WITHIN-entry reading (涙 なみだ ↔ なだ
     // are one entry, so repointedEntryID can't express the flip). Nil until switched; then it is the
@@ -341,8 +323,7 @@ struct WordDetailView: View {
                     .offset(x: -34)
                 }
                 .overlay(alignment: .trailing) {
-                    let isSaved = isSavedForCurrentNoteOrStandalone
-                    let isElsewhere = isSavedOnlyElsewhere
+                    let isSaved = isActiveEntrySaved
                     let learnedState = wordsStore.learnedState(for: activeEntryID)
                     Button {
                         wordsStore.toggle(
@@ -355,12 +336,11 @@ struct WordDetailView: View {
                     } label: {
                         // Checkmark when learned, question mark when explicitly not-learned, star
                         // otherwise — the mark sits on top of saved status, so the word stays
-                        // saved either way. Filled+primary / hollow+primary / hollow+secondary
-                        // mirrors the segment list row star: saved here-or-standalone, saved only
-                        // under another note, or never saved — see isSavedForCurrentNoteOrStandalone.
+                        // saved either way. Filled+primary = saved, hollow+secondary = not saved,
+                        // mirroring the segment list row star.
                         Image(systemName: detailLearnedIcon(state: learnedState, saved: isSaved))
                             .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle((isSaved || isElsewhere) ? Color.primary : Color.secondary)
+                            .foregroundStyle(isSaved ? Color.primary : Color.secondary)
                     }
                     .buttonStyle(.plain)
                     .offset(x: 34)

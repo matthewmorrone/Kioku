@@ -16,10 +16,6 @@ enum TokenColorSettings {
     static let savedColorKey = "tokenColors.saved"
     static let savedLearnedColorKey = "tokenColors.savedLearned"
     static let savedNotLearnedColorKey = "tokenColors.savedNotLearned"
-    // "Saved under a different note" — the pre-existing hollow-yellow star's in-text
-    // counterpart, orthogonal to Learned state. Same literal/always-available treatment as the
-    // three colors above.
-    static let savedElsewhereColorKey = "tokenColors.savedElsewhere"
 
     // Seed values used as the @AppStorage default for the custom-color keys. They only matter
     // until the user picks their own color — the active theme's defaults drive colorA/colorB/
@@ -31,5 +27,4 @@ enum TokenColorSettings {
     static let defaultSavedHex = "#FFD60A"                  // yellow/gold
     static let defaultSavedLearnedHex = "#34C759"           // green
     static let defaultSavedNotLearnedHex = "#AF52DE"        // purple
-    static let defaultSavedElsewhereHex = "#FF9500"         // orange
 }

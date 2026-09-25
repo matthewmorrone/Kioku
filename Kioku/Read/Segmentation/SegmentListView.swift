@@ -45,12 +45,6 @@ struct SegmentListView: View {
     // lemma expansion applied — see `applySavedWordState`). Per-surface star
     // state in segment rows checks membership here.
     @State var savedWordSurfaces: Set<String> = []
-    @State var savedWordSourceNoteIDsByEntryID: [Int64: Set<UUID>] = [:]
-    // Maps each encountered-surface to the union of sourceNoteIDs from cards
-    // that list it. With legacy expansion, a legacy "食べた" card also
-    // contributes under its derived lemma key "食べる", so the lemma row
-    // appears saved without a write migration.
-    @State var savedWordSourceNoteIDsBySurface: [String: Set<UUID>] = [:]
     @State var canonicalEntryIDBySurface: [String: Int64] = [:]
     // Memoizes `lemmaForSurface(edge.surface)` results — populated off-main when
     // `edges` changes (see `hydrateLemmasForEdgeSurfaces`). Body row rendering,
@@ -156,21 +150,21 @@ struct SegmentListView: View {
     // multi-minute build timeout. A separate function with explicit per-statement types keeps
     // each call site a single expression for the checker to solve.
     // The checkmark/questionmark glyph is a Learned/Not-Learned mark on a SAVED word — gated on
-    // isAnySaved so unsaving a learned/not-learned word visibly reverts to a hollow star instead
+    // isSaved so unsaving a learned/not-learned word visibly reverts to a hollow star instead
     // of leaving the same glyph on screen (ReviewStore's mark is keyed by canonicalEntryID and
     // outlives the SavedWord card, so learnedState alone can't tell "still saved" from "not").
-    private func starIcon(isStarFilled: Bool, isAnySaved: Bool, learnedState: LearnedState) -> some View {
+    private func starIcon(isSaved: Bool, learnedState: LearnedState) -> some View {
         let icon: String
-        if isAnySaved {
+        if isSaved {
             switch learnedState {
             case .learned:    icon = "checkmark"
             case .notLearned: icon = "questionmark"
-            case .unmarked:   icon = isStarFilled ? "star.fill" : "star"
+            case .unmarked:   icon = "star.fill"
             }
         } else {
             icon = "star"
         }
-        let starColor: Color = isAnySaved ? .primary : .secondary
+        let starColor: Color = isSaved ? .primary : .secondary
         return Image(systemName: icon)
             .foregroundStyle(starColor)
             .font(.system(size: 16, weight: .semibold))
@@ -313,29 +307,17 @@ struct SegmentListView: View {
                                 toggleSavedWord(rowIdentity, lemma: rowLemma)
                             } label: {
                                 let normalizedSurface = normalizedSurfaceForFiltering(rowIdentity)
-                                let isSavedForCurrentNote = isSavedForCurrentNote(normalizedSurface: normalizedSurface)
-                                let isSavedForOtherNotes = isSavedForOtherNotes(normalizedSurface: normalizedSurface)
-                                let isSavedElsewhere = isSavedSurface(normalizedSurface: normalizedSurface) && isSavedForOtherNotes == false
-                                // Three visual states:
-                                //   primary filled   ★  — saved here, or saved standalone (no note attribution)
-                                //   primary hollow   ☆  — saved only in other notes (signals "seen elsewhere")
-                                //   secondary hollow ☆  — not saved anywhere
-                                // The shape carries "saved for this note"; the color carries
-                                // "saved anywhere." Previously the other-notes case was faded-gray
-                                // filled, which read as muted-yellow-ish and was easy to confuse
-                                // with the current-note state.
-                                let isStarFilled = isSavedForCurrentNote || isSavedElsewhere
-                                let isAnySaved = isStarFilled || isSavedForOtherNotes
-                                // The mark rides on the star slot, same as the Words tab: checkmark
-                                // when learned, question mark when explicitly not-learned, else the
-                                // three-state star above.
+                                // Filled primary star when saved, hollow secondary when not. The mark
+                                // rides on the star slot, same as the Words tab: checkmark when
+                                // learned, question mark when explicitly not-learned.
+                                let isSaved = isSavedSurface(normalizedSurface: normalizedSurface)
                                 let learnedState = canonicalEntryIDBySurface[normalizedSurface].map { wordsStore.learnedState(for: $0) }
                                     ?? .unmarked
-                                starIcon(isStarFilled: isStarFilled, isAnySaved: isAnySaved, learnedState: learnedState)
+                                starIcon(isSaved: isSaved, learnedState: learnedState)
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(
-                                isSavedForCurrentNote(normalizedSurface: normalizedSurfaceForFiltering(rowIdentity))
+                                isSavedSurface(normalizedSurface: normalizedSurfaceForFiltering(rowIdentity))
                                     ? "Unsave Word"
                                     : "Save Word"
                             )
@@ -408,8 +390,8 @@ struct SegmentListView: View {
                         if extractMode == .vocab {
                             // Net additions minus removals, per-request: +5/-3 nets to "Save 2
                             // Words" rather than showing both counts. Negative net reads as a
-                            // removal action instead, with destructive styling since it detaches
-                            // word(s) from this note (though never deletes the SavedWord itself).
+                            // removal action instead, with destructive styling since it unsaves
+                            // the word(s).
                             let net = netVocabChangeCount
                             Button(role: net < 0 ? .destructive : nil) {
                                 saveSelectedVocab()

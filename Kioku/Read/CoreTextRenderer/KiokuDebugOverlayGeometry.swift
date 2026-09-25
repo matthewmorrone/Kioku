@@ -31,26 +31,21 @@ enum KiokuDebugOverlayGeometry {
         let bisectorX: CGFloat
     }
 
-    // A laid-out line's frame plus the Y span reserved for ruby annotations above
-    // it. The furigana band sits in the top `furiganaBandHeight` points; the
-    // headword band fills the remainder.
+    // A laid-out line's frame plus the ruby row drawn above it. The engine's line frame is
+    // the headword row alone — ruby room is reserved in the gap ABOVE the frame, and the
+    // renderer draws each reading with its bottom `furiganaGap` points above the frame's top
+    // (KiokuCoreTextView.drawSegmentPacked / drawRuby). The bands mirror exactly that.
     struct LineGeometry: Equatable {
         let frame: CGRect
         let furiganaBandHeight: CGFloat
-        // Headword band: the lower portion of the line where base glyphs render.
-        var headwordBandRect: CGRect {
-            CGRect(
-                x: frame.minX,
-                y: frame.minY + furiganaBandHeight,
-                width: frame.width,
-                height: frame.height - furiganaBandHeight
-            )
-        }
-        // Furigana band: the top portion reserved for ruby.
+        let furiganaGap: CGFloat
+        // Headword band: the line frame, where base glyphs render.
+        var headwordBandRect: CGRect { frame }
+        // Furigana band: the ruby row, ending `furiganaGap` above the headword row.
         var furiganaBandRect: CGRect {
             CGRect(
                 x: frame.minX,
-                y: frame.minY,
+                y: frame.minY - furiganaGap - furiganaBandHeight,
                 width: frame.width,
                 height: furiganaBandHeight
             )
@@ -75,6 +70,8 @@ enum KiokuDebugOverlayGeometry {
         let furiganaFont: UIFont
         let lineFrames: [CGRect]
         let furiganaBandHeight: CGFloat
+        // Distance between the bottom of the ruby row and the top of the headword row.
+        var furiganaGap: CGFloat = 0
         // Whether to reserve a ruby row above each segment in its envelope. False means
         // furigana is currently hidden (or globally disabled), so the envelope should
         // collapse to just the headword height — otherwise toggling furigana off leaves
@@ -176,7 +173,7 @@ enum KiokuDebugOverlayGeometry {
     // Builds the per-line geometry used by the line-band debug toggles.
     static func lines(_ inputs: Inputs) -> [LineGeometry] {
         inputs.lineFrames.map {
-            LineGeometry(frame: $0, furiganaBandHeight: inputs.furiganaBandHeight)
+            LineGeometry(frame: $0, furiganaBandHeight: inputs.furiganaBandHeight, furiganaGap: inputs.furiganaGap)
         }
     }
 }

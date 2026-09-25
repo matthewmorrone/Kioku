@@ -28,6 +28,10 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     var frequencyScoreBySurface: [String: Double]
     // Transition costs between adjacent word classes on a path; nil scores paths by word costs alone.
     var transitionTable: SegmenterTransitionTable?
+    // Whether a chosen particle-cluster entry (には, ですか — see ParticleClusters) is shown as its
+    // parts. Always on in the app; the quality tests turn it off to score against gold tokens that
+    // keep clusters whole.
+    var splitsParticleClusters = true
     // Set to true locally to print POS transition decisions during Viterbi runs.
     let shouldLogPOSTransitions = false
     // Shared set of characters that are always their own segment — single source of truth for
@@ -477,12 +481,12 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     }
 
     // Replaces each chosen particle-cluster entry (には, ですか — see ParticleClusters) with its parts
-    // when SegmenterSettings.splitsParticleClusters is on. It runs after path selection, so the
+    // when splitsParticleClusters is on. It runs after path selection, so the
     // option changes how finely a cluster is shown and never which path wins. A part takes the
     // lattice's own edge for its span when there is one, so it carries the same lemma and POS it
     // would have had if the path had chosen it directly.
     private func splittingParticleClusters(in path: [LatticeEdge], lattice: [LatticeEdge], of text: String) -> [LatticeEdge] {
-        guard SegmenterSettings.splitsParticleClusters,
+        guard splitsParticleClusters,
               path.contains(where: { ParticleClusters.components[$0.surface] != nil }) else { return path }
 
         var result: [LatticeEdge] = []
