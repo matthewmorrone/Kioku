@@ -294,6 +294,17 @@ extension ReadView {
             }
 
             savedHighlightRow
+
+            // Dimmed when the note has nothing to clean up.
+            displayOptionRow(
+                title: "Cleanup",
+                systemImage: "character.book.closed.ja",
+                isEnabled: false
+            ) {
+                startCleanup()
+            }
+            .disabled(noteNeedsCleanup == false)
+            .opacity(noteNeedsCleanup ? 1 : 0.4)
         }
         .padding(12)
         .frame(width: 270)

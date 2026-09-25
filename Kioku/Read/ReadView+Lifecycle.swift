@@ -408,6 +408,14 @@ extension ReadView {
         // `selectedNote` binding: ReadView's load handler consumes `selectedNote` (sets it
         // to nil) once the note has been loaded into `text` / `activeNoteID`, so reading
         // the binding here would always see nil and render an empty sheet.
+        .sheet(isPresented: $readSheets.isShowingTextConversion) {
+            TextConversionSheet(
+                proposals: $readSheets.textConversionProposals,
+                onApply: { applyTextConversion() },
+                onCancel: { readSheets.isShowingTextConversion = false }
+            )
+            .presentationDetents([.medium, .large])
+        }
         .sheet(isPresented: $readSheets.isShowingBreakdownSheet) {
             if let note = currentDisplayedNote {
                 NavigationStack {
