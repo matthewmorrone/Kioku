@@ -223,20 +223,24 @@
       "feedsDictionary": false
     },
     {
-      "name": "mecab-ipadic-matrix",
-      "description": "IPADIC's bigram connection-cost matrix — the cost of following one word class with another. The default trie segmenter's Viterbi scorer reads it to choose between competing splits, so it is the one piece of MeCab data committed directly (3.5MB) rather than fetched: a fresh clone would otherwise segment worse with no sign anything was missing.",
-      "type": "mecab-dictionary",
-      "path": "Resources/MeCab/ipadic/matrix.bin",
+      "name": "segmenter-transitions",
+      "description": "The path search's transition costs: how likely one word class is to follow another (particle after noun, て-form before いる). The segmenter adds these to word costs to choose between competing splits.",
+      "type": "transition-table",
+      "path": "Kioku/Dictionary/Segmenter/segmenter-transitions.tsv",
       "required": true,
-      "derived": false,
-      "url": "https://pypi.org/project/ipadic/",
-      "sha256": "ee44d7350cdcb680ebd699f83e121be1dc63310f8832d55bcb537a068177611a",
-      "provenance": "IPADIC 2.7.0-20070801 bigram connection-cost matrix, byte-identical to the PyPI `ipadic` package (source: github.com/polm/ipadic-py). Only piece of MeCab data the DEFAULT trie segmenter needs — IPADicMatrix.swift feeds it into the Viterbi scorer's node-transition costs. Small enough (3.5MB) to commit directly (see .gitignore's exception carve-out) so a fresh clone's default configuration isn't silently degraded, unlike the rest of MeCab's data below.",
+      "derived": true,
+      "url": null,
+      "sha256": null,
+      "provenance": "Counted from the training half of tatoeba-jpn-indices, minus its first 2,000 sentences (train2k, kept out for fitting): every gold token is classed by the app's own TransitionClass through segcli count, and fit_transition_costs.py turns class-pair counts into smoothed PMI. The 200 commonest short kana words get a class of their own. Recount whenever deinflection rules, POS bits, edge construction or the dictionary change — the classes come from the running code, so a table counted under older code silently prices words by classes the segmenter no longer assigns. Recipe: \"Regenerating the transition table\" in scripts/segmentation-eval/README.md.",
+      "derivedFrom": [
+        "tatoeba-jpn-indices"
+      ],
+      "derivation": "segcli count + scripts/calibration/fit_transition_costs.py (lexical, pairs)",
       "feedsDictionary": false
     },
     {
       "name": "mecab-ipadic-full",
-      "description": "The complete IPADIC dictionary, for the optional MeCab segmentation backend. Reachable only via Settings > Segmentation > Engine: MeCab; the app falls back to the trie segmenter when it is absent, so it is not checked in.",
+      "description": "The complete IPADIC dictionary, read only by the debug MeCab comparison (SegmentationDiffPrinter, behind debugStartupSegmentationDiffs). The app segments with its own trie segmenter and never needs it, so it is not checked in or bundled.",
       "type": "mecab-dictionary",
       "path": "Resources/MeCab/ipadic/",
       "required": false,
@@ -244,12 +248,12 @@
       "url": "https://pypi.org/project/ipadic/",
       "sha256": "ef01f988eb59ab3dc085d7351aba25e6e9e9769c7f115ad3fc483b101ae31cf4",
       "sha256Scheme": "tree: SHA-256 of sorted \"relative/path<TAB>file-sha256\" lines joined by newlines with a trailing newline, excluding .DS_Store",
-      "provenance": "Full IPADIC 2.7.0-20070801 (sys.dic + unk.dic + char.bin + dicrc, ~49.5MB) — byte-identical to the PyPI `ipadic` package for char.bin/dicrc/matrix.bin; sys.dic/unk.dic differ by build/version of the same standard vocabulary (see repo investigation notes). Only needed for the opt-in Settings → Segmentation → Engine: MeCab backend (its default dictionary). Not required: the app falls back to the trie segmenter if these files are absent (MeCabSegmenter's failable init). Not checked in — obtain via `pip install ipadic` (extracts to the package's dicdir) or an equivalent mecab-ipadic 2.7.0 distribution, and copy sys.dic/unk.dic/char.bin/dicrc into Resources/MeCab/ipadic/.",
+      "provenance": "Full IPADIC 2.7.0-20070801 (sys.dic + unk.dic + char.bin + dicrc, ~49.5MB, plus the 3.5MB matrix.bin MeCab also needs) — byte-identical to the PyPI `ipadic` package for char.bin/dicrc/matrix.bin; sys.dic/unk.dic differ by build/version of the same standard vocabulary. Only the debug segmentation diff reads it; MeCabSegmenter's failable init returns nil when the files are absent, and the diff skips MeCab. To use it: `pip install ipadic` (or an equivalent mecab-ipadic 2.7.0 distribution) and copy its dicdir files into Resources/MeCab/ipadic/.",
       "feedsDictionary": false
     },
     {
       "name": "mecab-unidic",
-      "description": "UniDic for the MeCab backend — an alternative to IPADIC with finer-grained parts of speech. Two settings changes past the default and ~196MB, so it is deliberately kept outside the Resources/MeCab/ folder Xcode bundles wholesale, and ships to nobody.",
+      "description": "UniDic for the debug MeCab comparison — an alternative to IPADIC with finer-grained parts of speech. ~196MB, deliberately kept outside the Resources/MeCab/ folder Xcode bundles wholesale, and ships to nobody.",
       "type": "mecab-dictionary",
       "path": "Resources/MeCab-unidic-optional/unidic/",
       "required": false,
@@ -264,7 +268,7 @@
         "unidic/dicrc": "8caf337c81e7041d5ef86027d85576a556a6198c464ee3c3145cd0714d43416c",
         "unidic/matrix.bin": "88fb99efe1075d9b8b40e01bb2751e4095f1612618f2490af776eb5ed39190a9"
       },
-      "provenance": "UniDic-MeCab (~196MB) — the largest single resource in the project, and NOT bundled into the app: it lives outside Resources/MeCab/ (which Xcode bundles wholesale as a folder reference) specifically so it's excluded from the shipped app. Reachable only via Settings → Segmentation → Engine: MeCab, then Dictionary: UniDic — two manual changes past the trie default, exercised by essentially no users. Sourced from the NINJAL UniDic archive (same host family as this manifest's pitch-accent entry). To restore: download the url above (unidic-mecab-2.1.2_bin.zip, ~44MB — the pre-built binary distribution, not the larger _src.zip), extract sys.dic/unk.dic/char.bin/dicrc/matrix.bin into Resources/MeCab-unidic-optional/unidic/, verify each against perFileSHA256BeforeDeletion above, then re-add that path as a bundled Resources build-phase entry in Kioku.xcodeproj if you want it shipped again.",
+      "provenance": "UniDic-MeCab (~196MB) — the largest single resource in the project, and NOT bundled into the app: it lives outside Resources/MeCab/ (which Xcode bundles wholesale as a folder reference) specifically so it's excluded from the shipped app. Read only by the debug segmentation diff (SegmentationDiffPrinter). Sourced from the NINJAL UniDic archive (same host family as this manifest's pitch-accent entry). To restore: download the url above (unidic-mecab-2.1.2_bin.zip, ~44MB — the pre-built binary distribution, not the larger _src.zip), extract sys.dic/unk.dic/char.bin/dicrc/matrix.bin into Resources/MeCab-unidic-optional/unidic/, verify each against perFileSHA256BeforeDeletion above, then re-add that path as a bundled Resources build-phase entry in Kioku.xcodeproj if you want it shipped again.",
       "feedsDictionary": false
     },
     {
@@ -340,6 +344,19 @@
       },
       "provenance": "Tatoeba sentence-link table (id, translation id; both directions), all languages, ~150MB. Re-exported weekly, so no hash is pinned. Input to derive_sentence_pairs_rows.",
       "feedsDictionary": true
+    },
+    {
+      "name": "tatoeba-jpn-indices",
+      "description": "Tatoeba's \"Japanese indices\" (the Tanaka Corpus B lines): Japanese sentences tokenized into JMdict headwords by the JMdict maintainers. The gold word boundaries the segmenter is measured against and its transition table is counted from.",
+      "type": "source-archive",
+      "path": null,
+      "required": false,
+      "derived": false,
+      "rolling": true,
+      "url": "https://downloads.tatoeba.org/exports/jpn_indices.tar.bz2",
+      "sha256": null,
+      "provenance": "Tatoeba export, re-exported weekly, so no hash is pinned. License: CC BY 2.0 FR. scripts/segmentation-eval/prep.py joins it to Resources/sentence-pairs.tsv and splits it by sentence id (odd → held-out, even → train). The held-out sets are checked in under scripts/segmentation-eval/data/; the 73k-sentence training half is not — rebuild it with prep.py.",
+      "feedsDictionary": false
     },
     {
       "name": "jlpt-vocab-source",

@@ -63,13 +63,13 @@ headwords by the JMdict maintainers. https://downloads.tatoeba.org/exports/jpn_i
   lines, so the score is a regression list, NOT a held-out measure; the other 281 lines are unscored.
   Never print whole lyric lines; the scorer prints only the differing fragments.
 
-## Numbers to beat (2026-09-22: transitionClampNats 5.0 → 3.0)
+## Numbers to beat (2026-09-25: transition table recounted, 200 lexical words)
 
 | Set | exact | cut-through | split |
 |---|---|---|---|
-| held2k | 88.69 | 0.42 | 2.95 |
-| fresh5k | 90.88 | 0.27 | 2.88 |
-| kana2k | 85.32 | 1.32 | 3.84 |
+| held2k | 88.78 | 0.41 | 2.92 |
+| fresh5k | 90.97 | 0.27 | 2.84 |
+| kana2k | 85.47 | 1.24 | 3.90 |
 | CI fixture (300; not re-run; PR #91) | 91.64 | 0.26 | 2.77 |
 | lyric lines reviewed | 37 / 38 | | |
 
@@ -91,6 +91,14 @@ tie-breaking. Set `SWIFT_DETERMINISTIC_HASHING=1` for any before/after compariso
 precision; a plain `run`/`run` diff otherwise mixes real deltas with seed noise. This may also
 affect the shipped app (same binary, same non-determinism) — not chased here, out of scope for
 this change.
+→ table recounted (2026-09-25; 88.78 / 0.41 held2k, 90.97 / 0.27 fresh5k, 85.47 / 1.24 kana2k, lyrics 37/38).
+The 2026-09-20 table predated the particle list going greedy-only, so ん and お — top-120 words —
+had been counted as BOUNDARY and had no class. LEXICAL_WORDS 120 → 200 then gives って, けど, わ,
+しました their own classes (って was 150th in the training half): 120 alone was 82 / 261 cut-throughs
+on held2k / kana2k, 200 is 83 / 253 with exact up on all three sets. Classing a conjugated surface
+by its best-ranked lemma instead of the union (待って was aux-v via ちまう's まう), counted under
+that code, gave 80 / 247 but fresh5k 110 (from 104) — not shipped. Bare まって still comes out
+ま|って: kana ま is priced at 間's rank.
 
 Known misses on lyrics: ならして after a bare noun — **lyrics drop particles, the transition table
 is counted from prose** (noun → verb costs +2.7 nats). The transition weight is irrelevant to the

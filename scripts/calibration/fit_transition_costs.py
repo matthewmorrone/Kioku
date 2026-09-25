@@ -27,7 +27,7 @@ import collections, json, math, re, sys
 BOUNDARY = "BOUNDARY"
 SMOOTHING = 5.0
 MIN_EVIDENCE = 5.0
-LEXICAL_WORDS = 120
+LEXICAL_WORDS = 200
 
 
 def coarse(name):
