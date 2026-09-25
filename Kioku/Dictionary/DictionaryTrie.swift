@@ -25,7 +25,7 @@ nonisolated public final class DictionaryTrie {
 
     // Inserts a surface without metadata.
     public func insert(_ surface: String) {
-        insert(surface, entryIDs: [], partOfSpeech: 0, ipadicLeftID: nil, ipadicRightID: nil)
+        insert(surface, entryIDs: [], partOfSpeech: 0)
     }
 
     // Inserts one surface record so terminal nodes retain compact entry-id and POS metadata.
@@ -33,9 +33,7 @@ nonisolated public final class DictionaryTrie {
         insert(
             record.surface,
             entryIDs: record.entryIDs,
-            partOfSpeech: record.partOfSpeech,
-            ipadicLeftID: record.ipadicLeftID,
-            ipadicRightID: record.ipadicRightID
+            partOfSpeech: record.partOfSpeech
         )
     }
 
@@ -43,9 +41,7 @@ nonisolated public final class DictionaryTrie {
     public func insert(
         _ surface: String,
         entryIDs: [Int],
-        partOfSpeech: UInt64,
-        ipadicLeftID: Int32? = nil,
-        ipadicRightID: Int32? = nil
+        partOfSpeech: UInt64
     ) {
         var node = root
         var length = 0
@@ -73,11 +69,6 @@ nonisolated public final class DictionaryTrie {
         }
 
         node.partOfSpeech |= partOfSpeech
-        // Last writer wins for context IDs — same surface inserted twice with different IDs is
-        // rare (only happens if generate_db.py changes how it harvests). MeCab's lookup gives one
-        // (left_id, right_id) per surface, so consecutive inserts for the same surface should match.
-        if let ipadicLeftID { node.ipadicLeftID = ipadicLeftID }
-        if let ipadicRightID { node.ipadicRightID = ipadicRightID }
 
         if !node.isTerminal {
             node.isTerminal = true
@@ -161,20 +152,6 @@ nonisolated public final class DictionaryTrie {
     public func partOfSpeech(for surface: String) -> UInt64 {
         let nodes = terminalNodes(for: surface)
         return (nodes.literal?.partOfSpeech ?? 0) | (nodes.modern?.partOfSpeech ?? 0)
-    }
-
-    // Returns the IPADic (left_id, right_id) tagged onto this surface at dictionary-build time
-    // via Resources/generate_db.py's import_mecab_context_ids(), or nil when the surface isn't tagged.
-    // Used by Segmenter.buildLattice to populate lattice edges so Viterbi can index matrix.bin
-    // directly instead of going through POS-class buckets.
-    public func ipadicContextIDs(for surface: String) -> (left: Int32, right: Int32)? {
-        let nodes = terminalNodes(for: surface)
-        for node in [nodes.literal, nodes.modern] {
-            if let node, let lid = node.ipadicLeftID, let rid = node.ipadicRightID {
-                return (left: lid, right: rid)
-            }
-        }
-        return nil
     }
 
     // Returns compact entry-id metadata for a surface hit (as written or modernized), or nil when no

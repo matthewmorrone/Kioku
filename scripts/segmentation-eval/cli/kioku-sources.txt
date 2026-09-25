@@ -16,7 +16,6 @@ Dictionary/DictionaryStore.swift
 Dictionary/DictionarySurfaceData.swift
 Dictionary/DictionaryTrie.swift
 Dictionary/FrequencyData.swift
-Dictionary/IPADicMatrix.swift
 Dictionary/KanaData.swift
 Dictionary/KanaForm.swift
 Dictionary/KanaNormalizer.swift
@@ -33,7 +32,6 @@ Dictionary/Segmenter/SegmentationDemotions.swift
 Dictionary/Segmenter/Segmenter+LemmaResolution.swift
 Dictionary/Segmenter/Segmenter.swift
 Dictionary/Segmenter/Segmenter+Viterbi.swift
-Dictionary/Segmenter/SegmenterBackend.swift
 Dictionary/Segmenter/SegmenterConfig.swift
 Dictionary/Segmenter/SegmenterScoring.swift
 Dictionary/Segmenter/TextSegmenting.swift

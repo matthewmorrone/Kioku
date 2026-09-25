@@ -128,6 +128,18 @@ extension Segmenter {
         return LatticeEdge(start: index, end: end, surface: String(text[index..<end]))
     }
 
+    // A whole run of latin letters (ASCII or full-width) starting at `index`, as one lattice edge —
+    // offered only where the run begins. JMdict lists every full-width letter (Ｌ, ｏ) as a word, so
+    // without this an English word in Japanese text (ＬＯＶＥ, ｓｏｎｇ) only had one-letter edges and
+    // came out a letter per segment. Digits after the letters stay in the word (ＭＰ３, B2).
+    func latinRunEdge(in text: String, startingAt index: String.Index) -> LatticeEdge? {
+        guard SegmenterScoring.isLatinLetter(text[index]) else { return nil }
+        if index > text.startIndex, SegmenterScoring.isLatinWordCharacter(text[text.index(before: index)]) { return nil }
+        var end = index
+        while end < text.endIndex, SegmenterScoring.isLatinWordCharacter(text[end]) { end = text.index(after: end) }
+        return LatticeEdge(start: index, end: end, surface: String(text[index..<end]))
+    }
+
     // Frequency score and step count that price a lattice edge. A conjugated surface (流されて) has no
     // rank of its own, so the best of its lemmas (流される) supplies it. A surface that is BOTH a
     // dictionary word and a conjugated form (して, した, せよ, ならして) has two readings: itself, at its
@@ -327,10 +339,6 @@ extension Segmenter {
         edge.partOfSpeech = trie.partOfSpeech(for: prefix) | trie.partOfSpeech(for: "する")
         edge.isDictionaryMatch = true
         edge.frequencyScore = max(frequencyScore(of: prefix), frequencyScore(of: "する"))
-        if let ids = trie.ipadicContextIDs(for: "する") {
-            edge.ipadicLeftID = ids.left
-            edge.ipadicRightID = ids.right
-        }
         return edge
     }
 

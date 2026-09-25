@@ -160,6 +160,12 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                 keptMatches += 1
             }
 
+            if let latinEdge = latinRunEdge(in: text, startingAt: index) {
+                edges.append(latinEdge)
+                keptMatches += 1
+                if text.distance(from: latinEdge.start, to: latinEdge.end) > 1 { keptMultiCharacterMatch = true }
+            }
+
             var endIndex = index
 
             while endIndex < text.endIndex {
@@ -250,22 +256,6 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                         let prefix = String(surface.dropLast())
                         if trie.contains(prefix) {
                             edge.decomposesAtGrammaticalEnding = true
-                        }
-                    }
-                    // Direct surface lookup for IPADic context IDs (populated at dict-build time).
-                    // For deinflected forms whose surface isn't tagged, fall through to the lemma's
-                    // IDs — the resolved lemma is what tells us which IPADic slot the surface
-                    // belongs in (e.g. 会い → 会う → verb-stem-godan IDs).
-                    if let directIDs = trie.ipadicContextIDs(for: surface) {
-                        edge.ipadicLeftID = directIDs.left
-                        edge.ipadicRightID = directIDs.right
-                    } else {
-                        for lemma in lemmas {
-                            if let lemmaIDs = trie.ipadicContextIDs(for: lemma) {
-                                edge.ipadicLeftID = lemmaIDs.left
-                                edge.ipadicRightID = lemmaIDs.right
-                                break
-                            }
                         }
                     }
                     edges.append(edge)

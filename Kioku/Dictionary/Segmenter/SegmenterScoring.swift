@@ -74,6 +74,16 @@ nonisolated struct SegmenterScoring {
     // word costs: low enough that ２ + 時間 beats ２時 + 間, high enough that １日 and ２人 stay words.
     static let numberNats = 6.0
 
+    // True for ASCII and full-width latin letters.
+    static func isLatinLetter(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy { ScriptClassifier.unknownGrouping(for: Character($0)) == "latin" }
+    }
+
+    // True for the characters a latin word run is made of: latin letters and digits.
+    static func isLatinWordCharacter(_ character: Character) -> Bool {
+        isLatinLetter(character) || isDigit(character)
+    }
+
     // True for ASCII and full-width digits.
     static func isDigit(_ character: Character) -> Bool {
         character.unicodeScalars.allSatisfy { (0x30...0x39).contains($0.value) || (0xFF10...0xFF19).contains($0.value) }
@@ -97,6 +107,8 @@ nonisolated struct SegmenterScoring {
         guard edge.isDictionaryMatch else {
             // A number is not unknown text: it costs what a common word costs, whatever its length.
             if edge.surface.allSatisfy(isDigit) { return Int((numberNats * 100).rounded()) }
+            // A latin word (Segmenter.latinRunEdge) is one foreign word, not a string of unknown letters.
+            if let first = edge.surface.first, isLatinLetter(first), edge.surface.allSatisfy(isLatinWordCharacter) { return Int((numberNats * 100).rounded()) }
             return Int(((unknownBaseNats + unknownPerCharacterNats * Double(edge.surface.count)) * 100).rounded())
         }
 

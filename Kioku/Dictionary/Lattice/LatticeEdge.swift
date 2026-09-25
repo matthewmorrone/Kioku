@@ -32,12 +32,6 @@ struct LatticeEdge {
     // that is itself a dictionary surface. The cost model charges per step, because a conjugated
     // form is rarer than its lemma and a long contorted chain usually means a spurious span.
     var inflectionSteps: Int = 0
-    // IPADic context IDs tagged at dictionary-build time. When both are populated on adjacent
-    // edges, Viterbi looks up the connection cost directly in IPADic's matrix.bin instead of
-    // bucketing through POS classes — the same scoring fidelity MeCab itself uses. nil when
-    // the surface lacked tags (deinflected forms, fallback edges, untagged trie inserts).
-    var ipadicLeftID: Int32? = nil
-    var ipadicRightID: Int32? = nil
     // Accumulated Viterbi score for the best path ending at this edge; nil until Viterbi runs.
     var viterbiScore: Int? = nil
     // Character offset of the predecessor edge's start in the best Viterbi path; nil until Viterbi runs.
