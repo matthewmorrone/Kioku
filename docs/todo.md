@@ -693,15 +693,26 @@ own sections.)
         Knock-on: すべて受け入れる強さ starts on time (+24 ms) but its highlight lingers to
         118.9 s instead of ending at 115.2 s.
       The two シャイニーメイクアップ lines are "disputed" in the consensus oracle, so the
-      AlignmentQualityTests score never counted them. Suspected cause (unproven): all three bad
-      spots sit just before an `MMSEmissions` window seam (60 s, 118 s) and the phone places each
-      line just after it; 42–72 s is also where Demucs silences the stem (mix-fill patches it).
-- [ ] **Moon Heart Sequence: repetition + wrong duration** — noted 2026-09-24. Two issues on
-      `muunhaatoshiikuensu` (fixture in `KiokuTests/Fixtures/alignment/`): (1) repeated lyrics
-      still land on the wrong occurrence — same class of bug as the tsukiiro-chainon
-      repeated-lyric item in Major Feature Additions; (2) the song's length is reported as
-      5:13 when it's actually 4:10. Check where duration comes from (AVAsset/AVAudioPlayer
-      duration vs. a VBR-MP3 estimate or last-cue end time) before touching the aligner.
+      AlignmentQualityTests score never counted them. Re-aligned 2026-09-25: identical output.
+      Cause (2026-09-25, from the phone's own dumps): the stem has vocal energy through 44–62 s
+      (VAD region 24.5–71.2 s, so the VAD pin is NOT it) but MMS hears ~0 letter mass in it, and the
+      raw mix only 0.01–0.02 — under EmissionDropoutFill's 0.05 mix threshold, so the fill doesn't
+      start until 62.7 s. Window seams ruled out: raw-mix-only emissions with production stitching
+      place all four lines on time. Candidate "deaf fill" (stem letter mass < 0.01 for ≥ 2 s inside
+      a VAD region → mix frames, no mix threshold) on a Mac replay: fixes the 4 late lines + 私たちを
+      照らす, breaks 嗚呼…矜持 (48.3), 嗚呼…無敵 (101.5), 罪がめぐる (175.6) — net +2 on this song, other
+      11 songs ungraded. Resembles the rejected looser fill (broke ムーンライト伝説): needs a 12-song
+      device grade and the user's yes. Replay script: `~/Projects/alignment/deaf_fill.py`.
+- [ ] **Moon Heart Sequence: repeated chants** — noted 2026-09-24. `muunhaatoshiikuensu`: the four
+      セーラームーン lines are sung at 0:24, 1:08, 1:20, 1:27 (user, by ear; 0–7 s is wordless "oooo").
+      2026-09-25 re-align placed them at 4.5 / 23.8 / 25.2 / 80.5 s — all four wrong, chant 1 back in
+      the "oooo" (the 13 Sep edge-star fix had kept it out; find out why). MMS hears the chants at
+      ~0.03 letter mass and identical lines give the Viterbi nothing to tell apart, so placement is
+      VAD-slot-driven (stem phrases: 0.8–7.3, 23.0–23.7, 24.0–27.8, 65.9–75.8, 79.4–82.4 s).
+- [x] **Moon Heart Sequence: wrong duration** — fixed 2026-09-25. Header-less VBR MP3s (no
+      Xing/VBRI) made AVAudioPlayer / a default AVURLAsset estimate length from bitrate (313.9 s for a
+      250.4 s song; ムーンライト伝説 339 vs 183 s). Seeking was verified correct; durations now come
+      from the decoded frame count (`AudioFileDuration`).
 - [x] Expand karaoke alignment benchmark dataset and add CI evaluation job
       (`AlignmentQualityTests.swift` runs in `tests.yml`; 16 SailorMoon songs aligned via stable-ts large-v3)
 - [x] Vocal-vs-instrumental detection — Addressed at alignment time rather than via real-time
