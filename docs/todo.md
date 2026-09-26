@@ -38,6 +38,11 @@ written so a new session can pick it up cold.
 
 ## Segmentation & Lookup
 
+- [ ] **Dictionary rebuild pending for new `extras.json` entries** — シェノン (French *chaînon*,
+      "link in a chain"; sung in 月色Chainon) was added 2026-09-26 and is inert until the next
+      from-source rebuild. Batch it with the next dictionary change: `Resources/generate_db.py`,
+      bump `releaseTag`/`expectedSHA256` in `DictionaryDownloadManager.swift`, then
+      `scripts/publish_dictionary_release.sh`, and re-measure with `scripts/segmentation-eval`.
 - [ ] **`DictionaryTrie.Node.children` is `[Character: Node]` — consider a scalar-keyed
       dictionary instead.** Investigated 2026-07-13 while chasing cold-start latency
       (`StartupTimer` measured `trie population (456249 records)` at ~1005ms). `Character` is a
