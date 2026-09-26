@@ -587,6 +587,21 @@ final class SegmenterIntegrationTests: XCTestCase {
         }
     }
 
+    // A helper word the deinflection rules glue on (DeinflectionRule.helper) is shown as its own word,
+    // like a particle cluster: 飛び込んで|ゆく, not 飛び込んでゆく looked up as 飛び込む alone.
+    func testHelperWordsAreShownAsTheirOwnWords() throws {
+        let segmenter = try sharedResources().segmenter
+        let cases: [(String, [String])] = [
+            ("彼は飛び込んでいった", ["彼", "は", "飛び込んで", "いった"]),
+            ("友達が来てくれる", ["友達", "が", "来て", "くれる"]),
+            ("本を読んでいる", ["本", "を", "読んで", "いる"]),
+            ("忘れちゃう", ["忘れ", "ちゃう"]),
+        ]
+        for (text, expected) in cases {
+            XCTAssertEqual(segmenter.longestMatchEdges(for: text).map(\.surface), expected, text)
+        }
+    }
+
     // The absorb must NOT over-merge: a small-tsu that heads a multi-char run (って quotative, った …)
     // keeps its own segment rather than being swallowed backward. Guards the fix against regressing
     // legitimate っ-initial tokens.

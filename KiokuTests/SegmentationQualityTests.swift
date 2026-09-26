@@ -57,8 +57,8 @@ final class SegmentationQualityTests: XCTestCase {
         // Measured with particle clusters left whole: the gold tokens keep には and ですか as units, and
         // this floor is about which path wins, not how finely a chosen cluster is displayed.
         let segmenter = try TestReadResources.shared().segmenter
-        segmenter.splitsParticleClusters = false
-        defer { segmenter.splitsParticleClusters = true }
+        segmenter.splitsClusters = false
+        defer { segmenter.splitsClusters = true }
         var goldCount = 0
         var exactCount = 0
         var cutThroughCount = 0
@@ -164,8 +164,8 @@ final class SegmentationQualityTests: XCTestCase {
     // With the option off the path search's own units come through.
     func testParticleClustersStayWholeWhenOptionIsOff() throws {
         let segmenter = try TestReadResources.shared().segmenter
-        segmenter.splitsParticleClusters = false
-        defer { segmenter.splitsParticleClusters = true }
+        segmenter.splitsClusters = false
+        defer { segmenter.splitsClusters = true }
         XCTAssertEqual(segmenter.longestMatchEdges(for: "そこには誰もいない").map(\.surface), ["そこ", "には", "誰も", "いない"])
     }
 

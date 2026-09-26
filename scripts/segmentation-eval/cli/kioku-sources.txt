@@ -5,6 +5,7 @@ Diagnostics/LogFeatureSettings.swift
 Dictionary/Deinflection/DeinflectionRule.swift
 Dictionary/Deinflection/DeinflectionState.swift
 Dictionary/Deinflection/Deinflector.swift
+Dictionary/Deinflection/Deinflector+HelperWords.swift
 Dictionary/Deinflection/InflectionFormNames.swift
 Dictionary/DictionaryEntry.swift
 Dictionary/DictionaryEntrySense.swift

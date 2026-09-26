@@ -28,10 +28,11 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     var frequencyScoreBySurface: [String: Double]
     // Transition costs between adjacent word classes on a path; nil scores paths by word costs alone.
     var transitionTable: SegmenterTransitionTable?
-    // Whether a chosen particle-cluster entry (には, ですか — see ParticleClusters) is shown as its
-    // parts. Always on in the app; the quality tests turn it off to score against gold tokens that
-    // keep clusters whole.
-    var splitsParticleClusters = true
+    // Whether a chosen segment made of several words is shown as its words: a particle cluster
+    // (には, ですか — see ParticleClusters) or a form with a helper word glued on (飛び込んで|ゆく,
+    // 来て|くれる — see Deinflector.helperWordOffsets). Always on in the app; the quality tests turn
+    // it off to score against gold tokens that keep clusters whole.
+    var splitsClusters = true
     // Set to true locally to print POS transition decisions during Viterbi runs.
     let shouldLogPOSTransitions = false
     // Shared set of characters that are always their own segment — single source of truth for
@@ -396,7 +397,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             // If Viterbi fails to terminate (no path reaches text.endIndex), fall through to greedy
             // so we never return a partial / empty segmentation. This keeps the flag safe to flip.
             if !path.isEmpty {
-                return (latticeEdges: annotatedEdges, selectedEdges: splittingParticleClusters(in: absorbingBoundCharacters(in: path, of: text), lattice: annotatedEdges, of: text))
+                return (latticeEdges: annotatedEdges, selectedEdges: splittingClusters(in: absorbingBoundCharacters(in: path, of: text), lattice: annotatedEdges, of: text))
             }
         }
 
@@ -476,22 +477,23 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             }
         }
 
-        return (latticeEdges: latticeEdges, selectedEdges: splittingParticleClusters(in: selectedEdges, lattice: latticeEdges, of: text))
+        return (latticeEdges: latticeEdges, selectedEdges: splittingClusters(in: selectedEdges, lattice: latticeEdges, of: text))
     }
 
-    // Replaces each chosen particle-cluster entry (には, ですか — see ParticleClusters) with its parts
-    // when splitsParticleClusters is on. It runs after path selection, so the
-    // option changes how finely a cluster is shown and never which path wins. A part takes the
-    // lattice's own edge for its span when there is one, so it carries the same lemma and POS it
-    // would have had if the path had chosen it directly.
-    private func splittingParticleClusters(in path: [LatticeEdge], lattice: [LatticeEdge], of text: String) -> [LatticeEdge] {
-        guard splitsParticleClusters,
-              path.contains(where: { ParticleClusters.components[$0.surface] != nil }) else { return path }
+    // Replaces each chosen segment made of several words with those words when splitsClusters is on:
+    // a particle cluster (には → に|は) or a form with a helper word glued on (飛び込んでゆく →
+    // 飛び込んで|ゆく, split where the chain to the segment's lemma says the helper starts). It runs
+    // after path selection, so the option changes how finely a segment is shown and never which path
+    // wins. A part takes the lattice's own edge for its span when there is one, so it carries the
+    // same lemma and POS it would have had if the path had chosen it directly.
+    private func splittingClusters(in path: [LatticeEdge], lattice: [LatticeEdge], of text: String) -> [LatticeEdge] {
+        guard splitsClusters else { return path }
 
         var result: [LatticeEdge] = []
         result.reserveCapacity(path.count + 4)
         for edge in path {
-            guard let parts = ParticleClusters.components[edge.surface] else {
+            let parts = ParticleClusters.components[edge.surface] ?? helperWordParts(of: edge)
+            guard let parts, parts.count > 1 else {
                 result.append(edge)
                 continue
             }
@@ -511,6 +513,18 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             }
         }
         return result
+    }
+
+    // The words of a conjugated segment with a helper word glued on (飛び込んでいった → 飛び込んで,
+    // いった), following the chain to the lemma lookup shows for it; nil when it has none.
+    private func helperWordParts(of edge: LatticeEdge) -> [String]? {
+        guard edge.isDictionaryMatch, edge.inflectionSteps > 0, let deinflector,
+              let lemma = preferredLemma(for: edge.surface) else { return nil }
+        let offsets = deinflector.helperWordOffsets(in: edge.surface, lemma: lemma)
+        guard offsets.isEmpty == false else { return nil }
+        let characters = Array(edge.surface)
+        let bounds = [0] + offsets + [characters.count]
+        return zip(bounds, bounds.dropFirst()).map { String(characters[$0..<$1]) }
     }
 
     // Folds bound characters at the head of a selected edge into the segment before it, so no
