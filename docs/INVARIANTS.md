@@ -90,20 +90,19 @@ new SRT. It must be safe — never lose user-authored content — and predictabl
    ground-truth cues have a matching output cue (same text) whose start
    time is within 500ms of the ground-truth start. Median start delta ≤
    200ms. No ground-truth cue is missing from the output. Tested on the
-   in-app anchored Reconcile pipeline (the exact orchestration the editor
-   sheet calls) against a stable-ts large-v3 oracle.
+   shipped whole-song pipeline (`WholeSongAlignment`) against each
+   fixture's consensus oracle (Whisper + Japanese wav2vec2 + MMS; lines the
+   voters dispute carry a 0–0 span and aren't graded).
    - *Rationale*: the unit tests prove the plumbing — that we don't drop
-     lines, that anchors aren't disturbed, that gaps consume their preceding
-     anchor — but say nothing about whether the aligner *actually finds*
-     the right timestamps. Quality regressions (model change, parameter
-     drift, callback bug like today's TOCTOU race) need a quantitative
-     check against a known-good output, not visual eyeballing.
-   - *Status*: ⚠️ (`AlignmentQualityTests.testQuality_TsukiiroChainon`
-     runs and prints BEFORE/AFTER metrics every CI cycle; no-drop hard
-     gate passes; coverage/median thresholds wrapped in XCTExpectFailure
-     while the in-app pipeline's current floor on 月色Chainon is 29.4%
-     coverage / 792ms median Δ — substantially better than the
-     pre-reconcile baseline of 29.4% / 764ms with 3 missing lines).
+     lines and that cue structure survives — but say nothing about whether
+     the aligner *actually finds* the right timestamps. Quality regressions
+     (model change, parameter drift) need a quantitative check against a
+     known-good output, not visual eyeballing.
+   - *Status*: ⚠️ `AlignmentQualityTests.testQuality_AllFixtures` runs the
+     12 fixtures on the device and prints per-song metrics; the no-drop gate
+     passes, and the coverage/median thresholds stay wrapped in
+     XCTExpectFailure until every song clears them. Latest 12-song device
+     run (2026-09-25): 314/324 confirmed lines within ±500 ms.
    - *On the AlignmentQualityTests harness*: each fixture also asserts
      the no-drop guarantee directly. That's the only assertion not
      wrapped in expectFailure — dropping a line is a structural defect

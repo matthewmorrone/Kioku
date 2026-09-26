@@ -1,16 +1,10 @@
 import XCTest
 @testable import Kioku
 
-// Pins cases that previously failed and have since been fixed (open cases live
-// under "Still-broken segmentation cases" in docs/todo.md; resolved ones are
-// listed at the bottom of that doc). Each test asserts that the full surface
-// appears as a lattice edge, that path selection chooses it as ONE segment, and
-// that preferredLemma resolves to the expected base form — catching regressions
-// in lattice building, path selection, or lemma scoring.
-//
-// New entries land here as cases move from "Still-broken" to the
-// "Resolved / pinned" section of docs/todo.md — keeping that doc short and
-// routing the long-tail verification through the regular test suite.
+// Pins segmentation cases that are easy to get wrong. Each test asserts that the full surface
+// appears as a lattice edge, that path selection chooses it as ONE segment, and that
+// preferredLemma resolves to the expected base form — catching regressions in lattice building,
+// path selection, or lemma scoring.
 @MainActor
 final class SegmentationKnownGoodTests: XCTestCase {
 
@@ -46,39 +40,38 @@ final class SegmentationKnownGoodTests: XCTestCase {
         )
     }
 
-    // つないだ — past tense of つなぐ. Previously split as つな|いだ.
+    // つないだ — past tense of つなぐ. One segment, not つな|いだ.
     func testTsunaida() throws {
         try assertFullSpan(surface: "つないだ", expectedLemma: "つなぐ")
     }
 
-    // まけない — negative of まける. Previously split as まけ|ない.
+    // まけない — negative of まける. One segment, not まけ|ない.
     func testMakenai() throws {
         try assertFullSpan(surface: "まけない", expectedLemma: "まける")
     }
 
-    // その度 — adverbial phrase, one entry. Previously split as その|度.
+    // その度 — adverbial phrase, one entry. One segment, not その|度.
     func testSonoTabi() throws {
         try assertFullSpan(surface: "その度", expectedLemma: "その度")
     }
 
-    // 抱かれ — passive of 抱く. Previously missing readings (separate issue);
-    // segmentation now produces the full span and resolves to 抱く.
+    // 抱かれ — passive of 抱く. One segment resolving to 抱く.
     func testIdakare() throws {
         try assertFullSpan(surface: "抱かれ", expectedLemma: "抱く")
     }
 
-    // トキメク — katakana spelling of ときめく. Previously split as トキ|メク.
+    // トキメク — katakana spelling of ときめく. One segment, not トキ|メク.
     func testTokimeku() throws {
         try assertFullSpan(surface: "トキメク", expectedLemma: "ときめく")
     }
 
-    // 月色 — compound noun. Previously not recognized as one entry.
+    // 月色 — compound noun, one entry.
     func testTsukiiro() throws {
         try assertFullSpan(surface: "月色", expectedLemma: "月色")
     }
 
-    // しょげちゃうんだ — colloquial contracted form of しょげる. Previously
-    // unrecognized; deinflection now reaches the base lemma.
+    // しょげちゃうんだ — colloquial contracted form of しょげる; deinflection reaches the base
+    // lemma.
     func testShogechaunda() throws {
         try assertFullSpan(surface: "しょげちゃうんだ", expectedLemma: "しょげる")
     }
@@ -102,8 +95,7 @@ final class SegmentationKnownGoodTests: XCTestCase {
         try assertFullSpan(surface: "済まれないで", expectedLemma: "済む")
     }
 
-    // かけましょ — 〜ましょ volitional of かける. Previously not recognized; the
-    // ましょ deinflection chain now resolves it.
+    // かけましょ — 〜ましょ volitional of かける, resolved by the ましょ deinflection chain.
     func testKakemasho() throws {
         try assertFullSpan(surface: "かけましょ", expectedLemma: "かける")
     }

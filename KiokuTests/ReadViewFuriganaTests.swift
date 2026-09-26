@@ -162,7 +162,7 @@ final class ReadViewFuriganaTests: XCTestCase {
 
         // Only the per-kanji entries are present — the compound 抜け殻 is intentionally missing
         // so projection cannot succeed. Without a multi-run-aware fallback both runs would be
-        // dropped, which is exactly what the user reported.
+        // dropped.
         let surfaceReadingData = makeSurfaceReadingData([
             "抜": ["ぬ"],
             "殻": ["から"]
@@ -209,9 +209,9 @@ final class ReadViewFuriganaTests: XCTestCase {
         XCTAssertNil(furigana.furiganaByLocation[1], "no ruby should attach to the kana り")
     }
 
-    // Regression: 眩しげ (the appearance "-げ" form of 眩しい) doesn't deinflect to its base
-    // adjective and has no surface-reading entry for either the surface or the bare kanji 眩,
-    // so every dictionary path produces nothing — the user saw a kanji with no furigana at all.
+    // 眩しげ (the appearance "-げ" form of 眩しい) doesn't deinflect to its base adjective and
+    // has no surface-reading entry for either the surface or the bare kanji 眩, so every
+    // dictionary path produces nothing.
     // The KANJIDIC2 single-kanji fallback must paint the kanji's standalone reading so *some*
     // ruby always appears over a kanji. The reading need not match the in-context pronunciation.
     func testBuildFuriganaBySegmentLocationUsesKanjiFallbackWhenNoDictionaryReading() throws {

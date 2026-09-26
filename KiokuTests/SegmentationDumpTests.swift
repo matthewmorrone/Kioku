@@ -1,8 +1,8 @@
 import XCTest
 @testable import Kioku
 
-// One-off dump of segmentation output for phrases the user flagged as suspicious in
-// ムーンライト伝説. Prints the full lattice and the chosen path for both local and
+// Diagnostic dump of segmentation output for phrases with known boundary traps. Prints the
+// full lattice and the chosen path for both local and
 // global longest-match strategies so we can see exactly where boundaries land — not derived
 // from pixel-color inspection of a screenshot.
 //
@@ -20,11 +20,11 @@ final class SegmentationDumpTests: XCTestCase {
         "命は闇の中のまたたく光だ",
         // local-longest-match over-consume — expected path: 流されて / たゆたう / の / この / まま.
         // Local grabs 流されてた (流される past-progressive contraction) and strands ゆた/う,
-        // the amputated tail of たゆたう (揺蕩う = "to drift/sway"). 月色Chainon.
+        // the amputated tail of たゆたう (揺蕩う = "to drift/sway").
         "流されてたゆたうのこのまま",
         // reduplicated-adverb trap — expected path: もっと / もっと / 愛している.
         // Local grabs もっとも (尤も = "most/extremely") and strands a bare っ (never a valid
-        // morpheme) plus と. Same shape as ずっとずっと, きっときっと. タキシードミラージュ.
+        // morpheme) plus と. Same shape as ずっとずっと, きっときっと.
         "もっともっと愛している",
     ]
 

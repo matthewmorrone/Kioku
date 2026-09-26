@@ -165,7 +165,7 @@ final class TextGridParserTests: XCTestCase {
         XCTAssertEqual(grid.tiers[0].spans.count, 0)
     }
 
-    // Round-trips a fixture lifted from the user's ムーンライト伝説.TextGrid (truncated to the first
+    // Round-trips a real forced-aligner TextGrid (ムーンライト伝説, truncated to the first
     // few intervals of each tier). Asserts the parser handles real forced-aligner output structure.
     func testParsesRealWorldFixture() throws {
         let content = """
