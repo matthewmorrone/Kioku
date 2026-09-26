@@ -23,7 +23,7 @@ extension LyricsView {
                         .frame(width: 36, height: 36)
                         .overlay(
                             Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 14, weight: .semibold))
+                                .scaledFont(size: 14, weight: .semibold)
                                 .foregroundStyle(Color(.systemOrange))
                         )
                 }
@@ -40,7 +40,7 @@ extension LyricsView {
                     .frame(width: 36, height: 36)
                     .overlay(
                         Image(systemName: "backward.end.fill")
-                            .font(.system(size: 14, weight: .semibold))
+                            .scaledFont(size: 14, weight: .semibold)
                             .foregroundStyle(Color.secondary)
                     )
                     .onTapGesture {
@@ -83,7 +83,7 @@ struct LyricsScrubber: View {
     var body: some View {
         HStack(spacing: 6) {
             Text(formatted(ms: displayTimeMs))
-                .font(.system(size: 10, design: .monospaced))
+                .scaledFont(size: 10, design: .monospaced)
                 .foregroundStyle(.secondary)
                 .frame(minWidth: 30, alignment: .trailing)
                 .animation(.none, value: displayTimeMs)
@@ -109,7 +109,7 @@ struct LyricsScrubber: View {
             .tint(Color(.systemOrange))
 
             Text(formattedDuration)
-                .font(.system(size: 10, design: .monospaced))
+                .scaledFont(size: 10, design: .monospaced)
                 .foregroundStyle(.secondary)
                 .frame(minWidth: 30, alignment: .leading)
         }

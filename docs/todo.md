@@ -867,13 +867,6 @@ own sections.)
 
 ## Ship Readiness
 
-- [ ] **Smoke-test an optimized Release build on a device before the next distribution.** Added
-      2026-09-21. Until `cd01581` / `181d27f` (2026-09-21) the app target's Release configuration was
-      `SWIFT_OPTIMIZATION_LEVEL = -Onone` with `ENABLE_TESTABILITY = YES`, so no Release build had
-      ever been optimized. It is now `-O` (Debug is untouched; tests build Debug). Optimized builds
-      occasionally expose latent timing / undefined-behaviour bugs, and every deploy so far has been
-      Debug. Build Release for the phone (`/deploy --release`) and exercise the hot paths: open a long
-      note in Read (lattice + furigana layout), a song with alignment, lookup, and cold launch.
 - [x] Hide/gate debug section and diagnostic toggles from release builds
 - [x] Add explicit pre-import confirmation for backup restore
 - [x] Progressive disclosure in dictionary detail UI (`DisclosureGroup` in `WordsView+Search.swift`, `SongLineCard.swift`)
@@ -898,17 +891,16 @@ own sections.)
       `@State`/`@AppStorage`, content unchanged). The main screen keeps everything user-facing —
       Typography, Theme, Audio, Notifications/WOTD, Clipboard, Dictionary, Transcription, Learning,
       About, Data.
-- [~] Accessibility pass — Partial; **audited 2026-07-02** (findings recorded so it's now scoped,
-      not vague). VoiceOver labels are well covered (79× `.accessibilityLabel`); `@ScaledMetric` is
-      used in `ClozeStudyView`. **Good news:** there are **no Dynamic Type *caps*** anywhere
-      (`grep dynamicTypeSize(` / sizeCategory overrides = 0) — the app never actively blocks the
-      user's text-size setting. **Remaining work:** **96 fixed-size fonts** (`.font(.system(size:))`)
-      that don't scale, concentrated in `LyricsView.swift` (23), `ReadView+Toolbar.swift` (11),
-      `SubtitleEditorSheet.swift` (7), `WordsView+ListContent`/`ReadView+SubtitleSubmission`/`NotesView`
-      (5 each) — mostly toolbar icons + some labels; plus a contrast audit. Deliberately **not**
-      swept blind: converting 96 sites risks breaking tuned layouts at large accessibility sizes with
-      no way to visually verify headless. Needs an on-device pass (run at the largest Dynamic Type
-      size, fix per view) — the reading *content* stays on the manual typography sliders by design.
+- [x] Accessibility pass — Dynamic Type done 2026-09-26 (user-checked on device). VoiceOver labels
+      were already well covered and nothing caps Dynamic Type. 67 fixed `.font(.system(size:))` sites
+      now use `.scaledFont(size:weight:design:)` (`Kioku/Theme/ScaledSystemFont.swift`), which scales
+      each designed size along the nearest text style's curve, so layouts at the default size are
+      unchanged. Deliberately fixed: display glyphs ≥ 28 pt (kanji detail 96 pt, headwords, song
+      screens), sizes computed from the typography sliders or cell geometry (lyrics rows, kana chart),
+      the pitch-accent dots (text drawn inside fixed-size circles), and the debug ruler. A contrast
+      audit was never done.
+- [x] **Smoke-test an optimized Release build on a device** — done 2026-09-26: Release (`-O`)
+      built and installed on Camelopardalis, core screens checked by the user.
 - [x] App Store packaging artifacts and release QA checklist — Checklist done 2026-07-01:
       `docs/RELEASE.md` is the pre-submission gate (repo state, CI gates, version bump, a
       manual core-loop QA smoke, archive/upload, TestFlight on the iOS-18 floor, submit,

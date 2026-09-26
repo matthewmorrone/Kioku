@@ -93,7 +93,7 @@ extension ReadView {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: hasFile ? "checkmark.circle.fill" : icon)
-                    .font(.system(size: 15, weight: .semibold))
+                    .scaledFont(size: 15, weight: .semibold)
                     .foregroundStyle(hasFile ? Color.green : Color.accentColor)
                     .frame(width: 28, height: 28)
                     .background(

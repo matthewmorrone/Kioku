@@ -24,7 +24,7 @@ extension ReadView {
                 }
             } label: {
                 Image(systemName: audioPlayback.audioController.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 14, weight: .semibold))
+                    .scaledFont(size: 14, weight: .semibold)
                     .foregroundStyle(Color.accentColor)
                     .frame(width: 20, height: 36)
                     .contentShape(Rectangle())
@@ -47,7 +47,7 @@ extension ReadView {
                 audioPlayback.isShowingLyricsView = true
             } label: {
                 Image(systemName: "music.note")
-                    .font(.system(size: 14, weight: .semibold))
+                    .scaledFont(size: 14, weight: .semibold)
                     .foregroundStyle(Color.accentColor)
                     .frame(width: 20, height: 36)
                     .contentShape(Rectangle())

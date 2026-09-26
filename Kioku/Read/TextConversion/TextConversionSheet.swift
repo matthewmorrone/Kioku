@@ -34,7 +34,7 @@ struct TextConversionSheet: View {
                             proposal.isAccepted.toggle()
                         } label: {
                             Image(systemName: proposal.isAccepted ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 20))
+                                .scaledFont(size: 20)
                                 .foregroundStyle(proposal.isAccepted ? Color.accentColor : Color.secondary)
                         }
                         .buttonStyle(.plain)

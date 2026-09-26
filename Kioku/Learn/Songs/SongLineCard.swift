@@ -196,7 +196,7 @@ struct SongLineCard: View {
     private func playButton(_ state: SongLineCardPlayState) -> some View {
         Button(action: onPlayLine) {
             Image(systemName: playButtonSymbol(state))
-                .font(.system(size: 22))
+                .scaledFont(size: 22)
                 .foregroundStyle(Color.accentColor)
                 .accessibilityLabel(playButtonLabel(state))
         }

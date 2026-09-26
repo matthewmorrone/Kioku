@@ -419,7 +419,7 @@ struct LyricsView: View {
                     }
                     if isTranslationVisible, let translation = displayedTranslation(for: displayIndex) {
                         Text(translation)
-                            .font(.system(size: 12))
+                            .scaledFont(size: 12)
                             .foregroundStyle(.secondary)
                             .italic()
                             .multilineTextAlignment(.center)
@@ -431,7 +431,7 @@ struct LyricsView: View {
                                 .fill(Color.orange)
                                 .frame(width: 5, height: 5)
                             Text("Subtitle: \(cues[displayIndex].text)")
-                                .font(.system(size: 11))
+                                .scaledFont(size: 11)
                                 .foregroundStyle(.orange)
                                 .lineLimit(1)
                         }

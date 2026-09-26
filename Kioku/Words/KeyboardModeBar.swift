@@ -27,12 +27,12 @@ struct KeyboardModeBar: View {
             )
             modeButton(
                 .handwriting,
-                label: { Image(systemName: "hand.point.up.left").font(.system(size: 18, weight: .medium)) },
+                label: { Image(systemName: "hand.point.up.left").scaledFont(size: 18, weight: .medium) },
                 accessibility: "Handwriting input"
             )
             modeButton(
                 .keyboard,
-                label: { Image(systemName: "keyboard").font(.system(size: 18, weight: .medium)) },
+                label: { Image(systemName: "keyboard").scaledFont(size: 18, weight: .medium) },
                 accessibility: "System keyboard"
             )
             Spacer(minLength: 0)
@@ -76,7 +76,7 @@ struct KeyboardModeBar: View {
             action()
         } label: {
             Image(systemName: systemImage)
-                .font(.system(size: 18, weight: .medium))
+                .scaledFont(size: 18, weight: .medium)
                 .frame(width: 40, height: 32)
                 .foregroundStyle(Color.primary)
         }

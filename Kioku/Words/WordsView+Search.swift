@@ -67,7 +67,7 @@ extension WordsView {
             Image(systemName: hasActiveSearchControls
                 ? "line.3.horizontal.decrease.circle.fill"
                 : "line.3.horizontal.decrease.circle")
-                .font(.system(size: 22))
+                .scaledFont(size: 22)
                 .foregroundStyle(hasActiveSearchControls ? Color.accentColor : Color.secondary)
         }
         .accessibilityLabel("Filter Search Results")

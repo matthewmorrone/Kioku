@@ -24,7 +24,7 @@ extension LyricsView {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.mini)
                         Text(reAlignMessage.isEmpty ? "Re-aligning…" : reAlignMessage)
-                            .font(.system(size: 12, weight: .semibold))
+                            .scaledFont(size: 12, weight: .semibold)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
@@ -47,9 +47,9 @@ extension LyricsView {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "wand.and.stars")
-                            .font(.system(size: 12, weight: .semibold))
+                            .scaledFont(size: 12, weight: .semibold)
                         Text(cues.isEmpty ? "Align" : "Re-align")
-                            .font(.system(size: 12, weight: .semibold))
+                            .scaledFont(size: 12, weight: .semibold)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
@@ -85,10 +85,10 @@ extension LyricsView {
                             ProgressView().controlSize(.mini)
                         } else {
                             Image(systemName: audioSource.systemImage)
-                                .font(.system(size: 12, weight: .semibold))
+                                .scaledFont(size: 12, weight: .semibold)
                         }
                         Text(audioSource.label)
-                            .font(.system(size: 12, weight: .semibold))
+                            .scaledFont(size: 12, weight: .semibold)
                             .lineLimit(1)
                     }
                     .foregroundStyle(audioSource == .mix ? Color.secondary : Color.accentColor)
@@ -106,7 +106,7 @@ extension LyricsView {
                 isShowingSettingsPopup = true
             } label: {
                 Image(systemName: "gearshape")
-                    .font(.system(size: 12, weight: .semibold))
+                    .scaledFont(size: 12, weight: .semibold)
                     .foregroundStyle(Color.secondary)
                     .padding(.horizontal, 12)
                     .frame(height: 28)

@@ -75,7 +75,7 @@ struct DictionarySearchResultRow: View {
             } label: {
                 Image(systemName: starIcon)
                     .foregroundStyle(starColor)
-                    .font(.system(size: 16, weight: .semibold))
+                    .scaledFont(size: 16, weight: .semibold)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(isSaved ? "Unsave Word" : "Save Word")

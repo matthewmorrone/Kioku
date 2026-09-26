@@ -144,7 +144,7 @@ extension WordsView {
                 }
             } label: {
                 Image(systemName: editMode == .active ? "checkmark.circle.fill" : "ellipsis.circle")
-                    .font(.system(size: 22))
+                    .scaledFont(size: 22)
                     .foregroundStyle(editMode == .active ? Color.accentColor : Color.secondary)
             }
             .accessibilityLabel("More actions")
@@ -214,7 +214,7 @@ extension WordsView {
                         Image(systemName: isFilterActive
                             ? "line.3.horizontal.decrease.circle.fill"
                             : "line.3.horizontal.decrease.circle")
-                            .font(.system(size: 22))
+                            .scaledFont(size: 22)
                             .foregroundStyle(filterTint)
                     }
                 }

@@ -165,7 +165,7 @@ struct NotesView: View {
                         isShowingBulkImportSheet = true
                     } label: {
                         Image(systemName: "tray.and.arrow.down")
-                            .font(.system(size: 16))
+                            .scaledFont(size: 16)
                             .frame(width: 32, height: 32)
                     }
                     .accessibilityLabel("Import Files")
@@ -184,7 +184,7 @@ struct NotesView: View {
                             queuePendingDeletion(PendingNoteDeletion(noteIDs: selectedNoteIDs, title: nil))
                         } label: {
                             Image(systemName: "trash")
-                                .font(.system(size: 16))
+                                .scaledFont(size: 16)
                                 .frame(width: 32, height: 32)
                         }
                         .accessibilityLabel("Delete Selected Notes")
@@ -196,7 +196,7 @@ struct NotesView: View {
                         editMode = editMode == .active ? .inactive : .active
                     } label: {
                         Image(systemName: editMode == .active ? "checkmark.circle" : "pencil")
-                            .font(.system(size: 16))
+                            .scaledFont(size: 16)
                             .frame(width: 32, height: 32)
                     }
                     .accessibilityLabel(editMode == .active ? "Done Editing" : "Edit All")
@@ -210,7 +210,7 @@ struct NotesView: View {
                         }
                     } label: {
                         Image(systemName: "square.and.pencil")
-                            .font(.system(size: 16))
+                            .scaledFont(size: 16)
                             .frame(width: 32, height: 32)
                     }
                     .accessibilityLabel("New Note")
@@ -334,7 +334,7 @@ struct NotesView: View {
             }
         } label: {
             Image(systemName: "arrow.up.arrow.down")
-                .font(.system(size: 16))
+                .scaledFont(size: 16)
                 .frame(width: 32, height: 32)
         }
         .accessibilityLabel("Sort Notes")
@@ -367,7 +367,7 @@ struct NotesView: View {
                         .accessibilityLabel("Has a generated breakdown")
                 }
             }
-            .font(.system(size: 14, weight: .medium))
+            .scaledFont(size: 14, weight: .medium)
         }
     }
 

@@ -71,7 +71,7 @@ extension WordsView {
                 } label: {
                     Image(systemName: "speaker.wave.2.fill")
                         .foregroundStyle(japaneseTheme ? Color.white : Color.primary)
-                        .font(.system(size: 15, weight: .semibold))
+                        .scaledFont(size: 15, weight: .semibold)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Play pronunciation")
@@ -115,7 +115,7 @@ extension WordsView {
                     // Tapping toggles save; the mark is set via the long-press context menu.
                     Image(systemName: learnedIcon(state: learnedState, saved: saved))
                         .foregroundStyle(learnedIconColor(state: learnedState, saved: saved))
-                        .font(.system(size: 16, weight: .semibold))
+                        .scaledFont(size: 16, weight: .semibold)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(saved ? "Unsave" : "Save")
@@ -395,7 +395,7 @@ extension WordsView {
             let isSelected = selectedKanjiLiterals.contains(saved.literal)
             HStack(spacing: 12) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 22))
+                    .scaledFont(size: 22)
                     .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
                 kanjiResultRowContent(info)
             }
@@ -437,7 +437,7 @@ extension WordsView {
         } label: {
             Image(systemName: saved ? "star.fill" : "star")
                 .foregroundStyle(japaneseTheme ? Color.white : (saved ? Color.primary : Color.secondary))
-                .font(.system(size: 16, weight: .semibold))
+                .scaledFont(size: 16, weight: .semibold)
         }
         .buttonStyle(.plain)
         // Include the literal so VoiceOver distinguishes one kanji star from another in a
@@ -591,7 +591,7 @@ extension WordsView {
             Spacer(minLength: 0)
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-                .font(.system(size: 16, weight: .semibold))
+                .scaledFont(size: 16, weight: .semibold)
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())

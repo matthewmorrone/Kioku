@@ -20,7 +20,7 @@ extension SongStepperView {
                 previousMiniPlayerStep()
             } label: {
                 Image(systemName: "backward.end.fill")
-                    .font(.system(size: 15, weight: .semibold))
+                    .scaledFont(size: 15, weight: .semibold)
                     .foregroundStyle(canStepPrevious ? Color.primary : Color.secondary.opacity(0.4))
             }
             .buttonStyle(.plain)
@@ -35,7 +35,7 @@ extension SongStepperView {
                     .frame(width: 40, height: 40)
                     .overlay(
                         Image(systemName: isMiniPlayerPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 16, weight: .semibold))
+                            .scaledFont(size: 16, weight: .semibold)
                             .foregroundStyle(Color(.systemOrange))
                     )
             }
@@ -46,7 +46,7 @@ extension SongStepperView {
                 nextMiniPlayerStep()
             } label: {
                 Image(systemName: "forward.end.fill")
-                    .font(.system(size: 15, weight: .semibold))
+                    .scaledFont(size: 15, weight: .semibold)
                     .foregroundStyle(canStepNext ? Color.primary : Color.secondary.opacity(0.4))
             }
             .buttonStyle(.plain)

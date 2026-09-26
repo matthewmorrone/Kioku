@@ -340,7 +340,7 @@ struct WordDetailView: View {
                         // saved either way. Filled+primary = saved, hollow+secondary = not saved,
                         // mirroring the segment list row star.
                         Image(systemName: detailLearnedIcon(state: learnedState, saved: isSaved))
-                            .font(.system(size: 18, weight: .semibold))
+                            .scaledFont(size: 18, weight: .semibold)
                             .foregroundStyle(isSaved ? Color.primary : Color.secondary)
                     }
                     .buttonStyle(.plain)

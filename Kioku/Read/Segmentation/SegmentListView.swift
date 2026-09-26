@@ -167,7 +167,7 @@ struct SegmentListView: View {
         let starColor: Color = isSaved ? .primary : .secondary
         return Image(systemName: icon)
             .foregroundStyle(starColor)
-            .font(.system(size: 16, weight: .semibold))
+            .scaledFont(size: 16, weight: .semibold)
     }
 
     var body: some View {
@@ -397,7 +397,7 @@ struct SegmentListView: View {
                                 saveSelectedVocab()
                             } label: {
                                 Text(net < 0 ? "Remove \(-net) Words" : "Save \(net) Words")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .scaledFont(size: 13, weight: .semibold)
                                     .lineLimit(1)
                                     .fixedSize(horizontal: true, vertical: false)
                                     .padding(.horizontal, 12)
@@ -412,7 +412,7 @@ struct SegmentListView: View {
                                 addAllVisibleWords()
                             } label: {
                                 Text("Add All")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .scaledFont(size: 13, weight: .semibold)
                                     .lineLimit(1)
                                     .fixedSize(horizontal: true, vertical: false)
                                     .padding(.horizontal, 12)
@@ -426,7 +426,7 @@ struct SegmentListView: View {
 
                     if let addAllFeedbackMessage {
                         Text(addAllFeedbackMessage)
-                            .font(.system(size: 12, weight: .semibold))
+                            .scaledFont(size: 12, weight: .semibold)
                             .foregroundStyle(Color.secondary)
                             .frame(maxWidth: .infinity, alignment: .trailing)
                             .transition(.opacity)
@@ -527,7 +527,7 @@ struct SegmentListView: View {
             action()
         } label: {
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
+                .scaledFont(size: 13, weight: .semibold)
                 .foregroundStyle(ReadToggleAppearance.foreground(isOn: isOn))
                 .padding(.horizontal, 10)
                 .frame(height: 30)

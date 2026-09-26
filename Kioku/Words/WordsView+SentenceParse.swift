@@ -63,7 +63,7 @@ extension WordsView {
                 } label: {
                     Image(systemName: learnedIcon(state: learnedState, saved: saved))
                         .foregroundStyle(learnedIconColor(state: learnedState, saved: saved))
-                        .font(.system(size: 16, weight: .semibold))
+                        .scaledFont(size: 16, weight: .semibold)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(saved ? "Unsave Word" : "Save Word")
