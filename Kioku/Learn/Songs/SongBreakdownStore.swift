@@ -94,6 +94,12 @@ final class SongBreakdownStore: ObservableObject {
         return healed
     }
 
+    // Whether a breakdown exists for the note, without reading it off disk — cheap enough for a
+    // view body (the Read tab's breakdown button colours itself by it).
+    func hasBreakdown(forNoteID id: UUID) -> Bool {
+        breakdownsByNoteID[id] != nil || diskMemoCache[id] != nil || knownNoteIDsOnDisk.contains(id)
+    }
+
     // Returns true when a breakdown exists (in cache or on disk) and its sourceTextHash
     // disagrees with `currentTextHash` — i.e. the note text changed since generation.
     // Used to drive the "lyrics changed since generation" banner.

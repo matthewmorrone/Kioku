@@ -125,8 +125,11 @@ extension ReadView {
     // (list.bullet), and open the LLM breakdown sheet (sparkles in a circle). All three are
     // visual peers — same capsule background, same accent treatment — so the row reads as
     // "actions for the currently-open note."
+    // Accent (blue) once the note has an alignment — any timed lyric line, not just ♪ markers —
+    // or while the lyrics view is open; secondary otherwise.
     var titleLyricsButton: some View {
-        titleActionLabel(systemImage: "music.note", foreground: ReadToggleAppearance.foreground(isOn: audioPlayback.isShowingLyricsView))
+        let isAligned = audioPlayback.audioAttachmentCues.contains { SubtitleParser.isNonSpeechCue($0.text.trimmingCharacters(in: .whitespacesAndNewlines)) == false }
+        return titleActionLabel(systemImage: "music.note", foreground: ReadToggleAppearance.foreground(isOn: isAligned || audioPlayback.isShowingLyricsView))
             .contentShape(Capsule())
             .onTapGesture {
                 // Nothing attached yet → the lyric view would be empty, so jump straight to the
@@ -211,7 +214,10 @@ extension ReadView {
                     .background(Capsule().fill(ReadToggleAppearance.background))
                     .contentShape(Rectangle())
             } else {
-                titleActionLabel(systemImage: "sparkles.rectangle.stack", foreground: .accentColor)
+                // Accent (blue) once the note has a breakdown, secondary before — as the ♪ button does
+                // for an alignment.
+                let hasBreakdown = document.activeNoteID.map { songBreakdownStore.hasBreakdown(forNoteID: $0) } ?? false
+                titleActionLabel(systemImage: "sparkles.rectangle.stack", foreground: ReadToggleAppearance.foreground(isOn: hasBreakdown))
             }
         }
         .buttonStyle(.plain)
