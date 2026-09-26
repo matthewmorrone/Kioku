@@ -537,12 +537,9 @@ own sections.)
       lifetime accuracy with flashcards). Objective grading with green/red feedback + Next.
       Gated at ≥4 words in selection. Emits the `CardsPageDotsHidden`/`StudySessionActive`
       preferences so the pager locks swipe + hides dots mid-quiz.
-      - **Done (found 2026-09-26):** dictionary-fallback distractors now exist
-        (`DistractorSelector`, `DictionaryStore+DistractorPool`). Original deferral note: dictionary-fallback distractors when the saved-word pool has fewer
-        than 4 distinct answer-side strings. Today distractors come only from the pool, so a
-        thin/duplicate-meaning selection yields 2–3 options instead of 4 (still valid, just
-        easier). Wire dictionary-sampled distractors (random common entries of the same POS)
-        as a follow-up if the small-pool case proves common.
+      - **Dictionary-fallback distractors: done.** When the saved-word pool has fewer than 4
+        distinct answer-side strings, `DistractorSelector` fills the rest from
+        `DictionaryStore+DistractorPool`, so thin selections still get 4 options.
       - **Enhancements (2026-06-02):** added a **Mixed** direction (per-question, seeded by
         entry id) and a question-count cap (numeric field, blank/0 = all) with swipe-down +
         keyboard-Done dismissal. Fixed answered-state feedback to paint explicit green ✓ /
