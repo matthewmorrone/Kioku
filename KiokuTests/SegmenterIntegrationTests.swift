@@ -596,6 +596,8 @@ final class SegmenterIntegrationTests: XCTestCase {
             ("友達が来てくれる", ["友達", "が", "来て", "くれる"]),
             ("本を読んでいる", ["本", "を", "読んで", "いる"]),
             ("忘れちゃう", ["忘れ", "ちゃう"]),
+            // A katakana noun + する compound reads its helper from the する part.
+            ("自信持ってクリアしてゆくの", ["自信", "持って", "クリアして", "ゆく", "の"]),
         ]
         for (text, expected) in cases {
             XCTAssertEqual(segmenter.longestMatchEdges(for: text).map(\.surface), expected, text)
