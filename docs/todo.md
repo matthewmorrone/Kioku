@@ -370,6 +370,28 @@ own sections.)
 - ✅ **の + またたく** — 命は闇の中のまたたく光だ now segments 命|は|闇|の|中|の|またたく|光|だ (9).
   The 闇 → くらい reading can no longer happen: `surface_readings` has only やみ for 闇.
 
+Original reports (kept for history):
+
+- **ニュームーン → ニューム + ーン (katakana long-vowel run split wrong)** — the katakana
+  loanword ニュームーン ("new moon") mis-segments into ニューム + ーン, with the second
+  piece (ーン, a bare long-vowel mark + ン) unrecognized. The katakana long-vowel mark (ー)
+  inside a loanword run is being treated as a segment boundary instead of part of the
+  preceding mora. Should resolve to a single segment ニュームーン. Likely the same
+  katakana long-vowel handling that the トキメク / ショーブ expansion cases exercise — audit
+  how ー is normalized/expanded mid-run during longest-match. Add a pin in
+  `SegmentationKnownGoodTests` once fixed.
+
+- **の + またたく → のまたたく (fused)** — sentence `命は闇の中のまたたく光だ`
+  parses to 8 segments instead of 9. The Viterbi/MeCab path fuses the possessive
+  particle の with the following verb またたく into a single surface のまたたく
+  (sometimes also splits as のま + たたく, with のま resolving to the 連用形 of
+  飲ます "to make drink"). Hypothesis: bigram cost of の-prt + またたく-verb is
+  higher than のま-verb + たたく-verb, even though the former is correct here.
+  Same sentence also misreads 闇 (やみ) as くらい — the reading for 暗い, an
+  unrelated entry, suggesting the homograph lookup is picking the wrong sense.
+  Fix path: revisit Viterbi bigram calibration for prt→verb transitions and
+  audit whether 闇's canonical kana row is being passed over for 暗い's.
+
 - [ ] **Context-chosen readings for homographs (様 さま/よう, 方, 何, 間, 上…)** — added 2026-09-24.
       Furigana picks a reading by surface alone: `FuriganaResolver.readingForSegment` takes the
       top-ranked hiragana reading, so a lone 様 is さま even in の様止まらず (よう). Measured
@@ -441,6 +463,58 @@ own sections.)
       no context. A cheaper alternative to re-merging: send the note's current segments + readings
       into the breakdown prompt as fixed input, so the breakdown annotates our segments instead of
       re-deriving its own.
+      - **Original plan (kept for history):**
+      1. **Extract `LLMClient`** owning provider dispatch (OpenAI/Claude/stub), HTTP,
+         validation, errors. Both services currently duplicate `callOpenAI` /
+         `callClaude` / `validate` (~150 LOC each). Per-call-site policy stays a
+         parameter: timeouts (5min for songs vs 60s for segmentation), max_tokens (8192
+         vs 4096), system-message use, stub-key (`kioku.llm.song.stubResponse` vs
+         `LLMSettings.stubResponseKey` + bundled `llm_stub.txt` fallback).
+      2. **Merge the song call** so one LLM round-trip returns both corrected
+         segmentation *and* breakdown in a single structured-JSON response.
+         Segmentation has song context (better splits for poetic compounds); breakdown
+         references segments by id, so surfaces stay in sync and romaji is derived
+         from the assigned readings at render time rather than re-emitted by the
+         model. Use OpenAI `response_format: { type: "json_schema", strict: true }`
+         and Anthropic forced-tool-use for schema enforcement.
+      - **Wire format:** structured JSON (option C). Schema sketch:
+        ```json
+        {
+          "segments": [{"id": 0, "line": 1, "surface": "朽ち", "reading": "くち"}, ...],
+          "lines": [{
+            "index": 1,
+            "gist": "Twilight wings rest on decayed petals.",
+            "words": [{"segment_ids": [0,1], "definition": "..."}, ...],
+            "grammar_note": null,
+            "reference": null   // or {"kind":"same_as","line":N} / {"kind":"parallel","line":N,"substitution":"X → Y"}
+          }, ...]
+        }
+        ```
+        `segments[]` is the single source of truth — no `romaji` field anywhere
+        (derived from `reading` via existing kana→romaji at display). Per-word bullets
+        reference segments by id, not retyped surface — editing a segment in Read view
+        propagates to the bullet automatically. `words[]` is sparse — pure case
+        particles (が/を/に) don't get bullets, matching today's prompt rule 5.
+        `original` field omitted on purpose (reconstructable from segments filtered by
+        line; one less drift surface).
+      - **Render rule (option B):** drop romaji from prompt entirely; renderer derives
+        it from each segment's `reading`. Existing kana→romaji converter handles this.
+      - **Migration:** existing cached breakdowns are markdown — either invalidate on
+        first read or keep `SongBreakdownParser` around for one transitional version and
+        re-fetch lazily. Stub mode becomes JSON; ship a one-shot converter from an
+        existing markdown stub to seed the new format.
+      - **OPEN QUESTION (needs decision before implementation):** triggering rule when
+        the user taps "Improve segmentation" in Read view on a song note. Options:
+        (a) cheap path — segmentation-only call (~4k tokens), breakdown stays a
+        separate later call; (b) merged path — always fire the full ~8k-token call so
+        the breakdown is pre-cached. (b) is strictly cheaper if a breakdown will ever
+        be requested; (a) wastes nothing for segmentation-only users. Suggested
+        default: merged path if a breakdown exists or has ever been requested for the
+        same lyric hash; cheap path otherwise.
+      - Files touched: new `Kioku/LLM/LLMClient.swift` (or similar), `LLMCorrectionService.swift`,
+        `SongBreakdownService.swift`, `SongBreakdownPrompt.swift`, `SongBreakdownParser.swift`
+        (replaced by JSON decoder), `SongLine`/`SongWord` models (gain `segmentIDs` field),
+        breakdown UI (`SongLineCard.swift` — render romaji from referenced segments).
 - [x] **Active-word (karaoke) highlight has poor text contrast** — Done 2026-09-03, using
       recommended option A. Confirmed the root cause exactly: `LyricsView`'s active-cue render
       passed `playbackHighlightColor: UIColor.label.withAlphaComponent(0.32)` (the translucent
@@ -964,11 +1038,18 @@ Things that aren't broken but could become so. Not actionable today — just wor
 
 - ✅ **`print()` migration done 2026-09-26.** 33 ad-hoc `print()` calls moved to `AppLog` under new `LogFeature` categories (`.dictionary`, `.audioPlayback`, `.furigana`, `.storage`), and `VocalStemCache` (in the SwiftWhisperAlign package, which can't see `AppLog`) moved its 6 to its own `os.Logger`. The remaining 9 are deliberate console output: `StartupTimer` and `TapInstrumentation` mirror their measurement lines to the Xcode console, and `CrashLogger` dumps prior crash records at launch.
 - ✅ **File-size guardrail cleared (2026-05-25).** Splits landed: `ForcedAlignmentProvider.swift` 819 → 580 (extracted `AlignmentTimestampMath`, `AlignmentNonSpeechCueBuilder`, `WhisperAudioFrameDecoder`); `ReadView+AudioTranscription.swift` 722 → 293 (extracted `AudioTranscriptionHelpers`); `SubtitleEditorSheet.swift` 758 → ~660 (extracted `SubtitleEditorTimingTools`); `ReadView+LLMCorrection.swift` 741 → 405 (extracted `LLMCorrectionDiagnostics`). `ReadView+Segmentation.swift` 735 still pending the preventive split.
-- ⚠️  **`ReadView` extension sprawl — the architectural one.** See the dedicated section below.
+- ✅ **`ReadView` extension sprawl** — state is grouped into per-area structs; closed 2026-09-26, see the section below.
 - ✅ **`SWIFT_VERSION = 6.0`** (was 5.0) — strict-concurrency now active. Done 2026-05-25 across 13 src files + 14 test targets: nonisolated logger/statics/callbacks, `Sendable` conformances on dict types, MainActor isolation for tests. 373/373 passing.
 - ✅ **Force-unwrap audit done** — each surviving `!` either has a one-line `// invariant: …` justification or has been replaced with safe unwrap.
 
-## ReadView decomposition (architectural, deferred)
+## ReadView decomposition (architectural) — closed 2026-09-26
+
+**Status.** Closed: the state grouping this asked for happened piecemeal. `ReadView.swift` is
+224 lines and its state lives in per-area structs (`TitleEditUIState`, `ReadDocumentState`,
+`SegmentSelectionUIState`, `EditModeScrollUIState`, `ReadSheetsUIState`, `SubtitleImportUIState`,
+`LyricAlignmentUIState`, `AudioPlaybackUIState`, `LLMCorrectionUIState`). They still sit on one view,
+so any extension can reach any slice; enforcing that (per-area objects with explicit interfaces)
+isn't worth the churn unless subsystems start breaking each other. The original analysis follows.
 
 **Problem.** 19 `ReadView+*.swift` files in `Kioku/Read/` total 6,427 LOC and
 all live as extensions on the same `ReadView` struct, sharing one `@State`
