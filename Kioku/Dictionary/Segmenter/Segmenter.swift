@@ -518,11 +518,14 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
     // Joins a と-taking adverb and the と after it into one segment (ピッ|と → ピッと, see
     // adverbialToPrefix): together they are one adverb, and lookup resolves the pair to the adverb.
+    // Only a segment read as the word itself: あいたい chosen as 会いたい shares its spelling with
+    // an adverb that takes と, but it is a verb form here and its と is a particle.
     private func mergingAdverbialTo(_ path: [LatticeEdge]) -> [LatticeEdge] {
         var result: [LatticeEdge] = []
         result.reserveCapacity(path.count)
         for edge in path {
             if edge.surface == "と", let previous = result.last, previous.end == edge.start,
+               previous.isDictionaryMatch, previous.inflectionSteps == 0,
                adverbialToPrefix(for: previous.surface + edge.surface) != nil {
                 var merged = LatticeEdge(start: previous.start, end: edge.end, surface: previous.surface + edge.surface)
                 merged.lemma = previous.surface

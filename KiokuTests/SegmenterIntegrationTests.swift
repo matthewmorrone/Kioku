@@ -609,6 +609,8 @@ final class SegmenterIntegrationTests: XCTestCase {
         XCTAssertEqual(segmenter.longestMatchEdges(for: "ピッと押す").map(\.surface), ["ピッと", "押す"])
         XCTAssertEqual(segmenter.longestMatchEdges(for: "あっさりと断った").map(\.surface), ["あっさりと", "断った"])
         XCTAssertEqual(segmenter.longestMatchEdges(for: "彼と話す").map(\.surface), ["彼", "と", "話す"])
+        // あいたい here is 会いたい, not the adverb spelled the same way.
+        XCTAssertEqual(segmenter.longestMatchEdges(for: "あいたいとささやく").map(\.surface), ["あいたい", "と", "ささやく"])
         XCTAssertEqual(segmenter.adverbialToPrefix(for: "ピッと"), "ピッ")
     }
 
