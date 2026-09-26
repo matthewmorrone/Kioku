@@ -134,6 +134,16 @@ enum LLMSettings {
         defaultOpenAIModel
     }
 
+    // True when a request goes to a paid remote provider (OpenAI / Claude) and is billed to the
+    // user's API key — AI on, not the developer stub. Such requests are confirmed before they run.
+    static func isPaid() -> Bool {
+        guard isEnabled() else { return false }
+        switch remoteProvider() {
+        case .openAI, .claude: return true
+        case .none, .appleIntelligence, .appleIntelligenceCloud, .appleIntelligenceCloudPro: return false
+        }
+    }
+
     // Returns true when useLLM is on and the remote provider has a key, or when useLLM is off
     // and a stub is set — i.e. a breakdown request has somewhere to go.
     static func isConfigured() -> Bool {

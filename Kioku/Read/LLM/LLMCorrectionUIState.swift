@@ -13,6 +13,8 @@ final class LLMCorrectionUIState {
     var inFlightLineIndex: Int?
     // The "apply all pending changes?" popup behind the sparkles checkmark.
     var isShowingLLMConfirmAll = false
+    // The "run AI correction?" popup shown before a request that bills an API key (LLMSettings.isPaid).
+    var isShowingLLMRunConfirm = false
     var isShowingLLMCorrectionError = false
     var llmCorrectionErrorMessage = ""
 

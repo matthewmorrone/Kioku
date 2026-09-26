@@ -43,6 +43,8 @@ extension ReadView {
                 cancelLLMCorrection()
             } else if llmCorrection.hasPendingLLMChanges {
                 llmCorrection.isShowingLLMConfirmAll = true
+            } else if LLMSettings.isPaid() {
+                llmCorrection.isShowingLLMRunConfirm = true
             } else {
                 requestLLMCorrection()
             }
