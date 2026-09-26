@@ -1,8 +1,8 @@
 import SwiftUI
 
-// Renders the typography editor sheet opened from the Settings preview: the live preview pinned
-// at the top, then one slider per typography value (text size, furigana size, line spacing,
-// furigana spacing, kerning).
+// Renders the full-height typography editor sheet opened from the Settings preview: the live
+// preview at the top, then one slider per typography value (text size, furigana size, line
+// spacing, furigana spacing, kerning) plus the furigana auto-size toggle.
 struct TypographySettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -15,19 +15,26 @@ struct TypographySettingsSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                TypographyPreview()
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                Form {
+            Form {
+                // The preview sits in the form as its own card row, so it shares the slider
+                // section's side margins.
+                Section {
+                    TypographyPreview()
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                }
+                Section {
                     sliderRow("Text Size", value: $textSize, range: TypographySettings.textSizeRange, step: 1, format: "%.0f")
-                    sliderRow("Furigana Size", value: furiganaSizeBinding, range: TypographySettings.furiganaSizeRange, step: 1, format: "%.0f")
+                    Toggle("Auto Furigana Size", isOn: autoFuriganaSizeBinding)
+                    if customFuriganaSizeEnabled {
+                        sliderRow("Furigana Size", value: $furiganaSize, range: TypographySettings.furiganaSizeRange, step: 1, format: "%.0f")
+                    }
                     sliderRow("Line Spacing", value: $lineSpacing, range: TypographySettings.lineSpacingRange, step: 1, format: "%.0f")
                     sliderRow("Furigana Spacing", value: $furiganaGap, range: TypographySettings.furiganaGapRange, step: 0.5, format: "%.1f")
                     sliderRow("Kerning", value: $kerning, range: TypographySettings.kerningRange, step: 1, format: "%.1f")
                 }
-                .scrollContentBackground(.hidden)
             }
+            .scrollContentBackground(.hidden)
             .washiBackground()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -36,7 +43,7 @@ struct TypographySettingsSheet: View {
             }
         }
         .themedTint()
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large])
     }
 
     // One labelled slider with its current value on the right — the shape every row here shares.
@@ -59,18 +66,18 @@ struct TypographySettingsSheet: View {
         }
     }
 
-    // Furigana follows half the text size (and so tracks pinch-zoom in the Read tab) until this
-    // slider is first moved; from then on it's the size the user picked.
-    private var furiganaSizeBinding: Binding<Double> {
+    // On = furigana tracks half the text size and the Furigana Size slider is hidden; off = the
+    // slider appears and furigana keeps the size set on it.
+    private var autoFuriganaSizeBinding: Binding<Bool> {
         Binding(
-            get: {
-                customFuriganaSizeEnabled
-                    ? furiganaSize
-                    : (textSize * Double(TypographySettings.furiganaSizeFactor)).rounded()
-            },
-            set: {
-                furiganaSize = $0
-                customFuriganaSizeEnabled = true
+            get: { !customFuriganaSizeEnabled },
+            set: { isAuto in
+                // Turning auto off starts the slider at the size furigana was just tracking, so
+                // nothing jumps.
+                if !isAuto {
+                    furiganaSize = (textSize * Double(TypographySettings.furiganaSizeFactor)).rounded()
+                }
+                customFuriganaSizeEnabled = !isAuto
             }
         )
     }

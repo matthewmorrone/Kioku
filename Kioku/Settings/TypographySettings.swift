@@ -28,12 +28,12 @@ nonisolated enum TypographySettings {
     // defaultFuriganaSize = defaultTextSize * this factor mirrors).
     static let furiganaSizeFactor: CGFloat = 0.5
 
-    static let defaultTextSize = 18.0
+    static let defaultTextSize = 20.0
     static let defaultLineSpacing = 6.0
     static let defaultKerning = 1.0
     static let defaultFuriganaGap = 2.0
     // Matches `defaultTextSize * 0.5` so flipping the toggle on is initially a no-op.
-    static let defaultFuriganaSize = 9.0
+    static let defaultFuriganaSize = 10.0
 
     static let textSizeRange = 12.0...36.0
     static let lineSpacingRange = 0.0...24.0

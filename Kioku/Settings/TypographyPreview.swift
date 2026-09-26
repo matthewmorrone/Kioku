@@ -40,14 +40,16 @@ struct TypographyPreview: View {
             debugRubyLineNumbers: debugRubyLineNumbers
         )
         .frame(maxWidth: .infinity, alignment: .leading)
-        // Vertical padding for breathing room; negative horizontal padding cancels the
-        // renderer's hardcoded textContainerInset.left = 4 so the first glyph sits flush with
-        // the card's left edge.
-        .padding(.vertical, 8)
-        .padding(.horizontal, -4)
+        // Same card as the Read view's reader surface (ReadView+Editor): 8 pt padding around the
+        // renderer's own 4 pt inset and a hairline border; corners match the grouped form sections.
+        .padding(8)
         .background(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 26)
                 .fill(Color(.secondarySystemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 26)
+                .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
         )
     }
 }

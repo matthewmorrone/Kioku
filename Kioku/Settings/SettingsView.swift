@@ -138,6 +138,9 @@ struct SettingsView: View {
                                 .onTapGesture { isShowingTypographySheet = true }
                         }
                         .accessibilityAddTraits(.isButton)
+                        // The card is the row: no list-row inset or background around it.
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
                 } header: {
                     Text("Typography")
                 }
