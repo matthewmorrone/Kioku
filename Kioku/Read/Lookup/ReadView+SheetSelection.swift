@@ -138,15 +138,25 @@ extension ReadView {
     // sheet. When the segment sits past the natural bottom of the note, also adds a temporary
     // contentInset.bottom so the scroll offset can hold instead of bouncing back. The applied
     // delta is tracked in `editModeScroll.appliedSheetBottomInset` so dismissal removes exactly that much.
+    // `replanningFromStart` re-plans the last scroll from where it started (sheetScrollStartOffsetY)
+    // instead of from the current offset — used when the sheet reports its real height.
     func preScrollSegmentForSheetVisibility(
         sourceView: UIScrollView?,
         tappedSegmentRect: CGRect?,
         animated: Bool = true,
+        replanningFromStart: Bool = false,
         completion: (() -> Void)? = nil
     ) {
         guard let sourceView, let tappedSegmentRect else {
             completion?()
             return
+        }
+        let startOffsetY: CGFloat
+        if replanningFromStart, let recorded = editModeScroll.sheetScrollStartOffsetY {
+            startOffsetY = recorded
+        } else {
+            startOffsetY = sourceView.contentOffset.y
+            editModeScroll.sheetScrollStartOffsetY = startOffsetY
         }
 
         // Compute the planner context against the SHALLOW (un-augmented) scroll geometry. The
@@ -162,15 +172,23 @@ extension ReadView {
             sourceView.contentSize.height - sourceView.bounds.height + naturalBottomInset
         )
 
+        // Once the sheet has measured itself, keep the word above its real top: the part of its
+        // height that overlaps this view (the view may end above the screen bottom). Before that,
+        // guess — the sheet is content-sized, so the guess is often taller than the sheet.
+        let coveredHeight: CGFloat? = SegmentLookupSheet.shared.presentedSheetHeight.flatMap { sheetHeight in
+            guard let window = sourceView.window, let container = sourceView.superview else { return nil }
+            let viewBottomInWindow = container.convert(sourceView.frame, to: window).maxY
+            return max(0, sheetHeight - (window.bounds.maxY - viewBottomInWindow))
+        }
         let context = ReadViewSheetVisibilityScrollContext(
-            currentOffsetY: sourceView.contentOffset.y,
+            currentOffsetY: startOffsetY,
             minOffsetY: minOffsetY,
             maxOffsetY: maxContentOffsetY,
             viewportHeight: sourceView.bounds.height,
             adjustedTopInset: sourceView.adjustedContentInset.top,
             selectedSegmentRectInContent: tappedSegmentRect,
-            estimatedSheetHeight: 360,
-            estimatedRelativeCoverage: 0.64,
+            estimatedSheetHeight: coveredHeight ?? 360,
+            estimatedRelativeCoverage: coveredHeight == nil ? 0.64 : 0,
             // Must sit ABOVE estimatedRelativeCoverage or the cap unconditionally wins and the
             // estimate is dead. The lookup sheet is a `.medium()` detent (~half the SCREEN), but
             // this viewport is the shorter read area (no nav/tab bars), so the sheet actually
@@ -182,6 +200,32 @@ extension ReadView {
             topPadding: 24,
             bottomPadding: 16
         )
+
+        // Re-planning with the real height: go to wherever the plan from the start offset lands —
+        // back to the start itself when the word needs no room there — dropping any overscroll the
+        // guessed first scroll injected beyond what that target needs.
+        // A shrinking inset is trimmed only after the scroll lands: trimming first would put the
+        // current offset past the new maximum and snap the view.
+        if replanningFromStart {
+            let adjustment = ReadViewSheetVisibilityScrollPlanner.adjustment(for: context)
+            let targetOffsetY = adjustment?.targetOffsetY ?? startOffsetY
+            let targetInset = adjustment?.temporaryBottomInset ?? 0
+            let insetGrows = targetInset > editModeScroll.appliedSheetBottomInset
+            if insetGrows {
+                applyAdditionalBottomInset(targetInset, on: sourceView, animated: animated)
+            }
+            guard abs(targetOffsetY - sourceView.contentOffset.y) > 0.5 else {
+                if insetGrows == false { applyAdditionalBottomInset(targetInset, on: sourceView, animated: animated) }
+                completion?()
+                return
+            }
+            editModeScroll.sharedScrollOffsetY = targetOffsetY
+            animateContentOffset(for: sourceView, targetOffsetY: targetOffsetY, animated: animated) {
+                if insetGrows == false { applyAdditionalBottomInset(targetInset, on: sourceView, animated: false) }
+                completion?()
+            }
+            return
+        }
 
         guard let adjustment = ReadViewSheetVisibilityScrollPlanner.adjustment(for: context) else {
             // Already in a good spot — no scroll. But the CURRENT offset may itself rely on

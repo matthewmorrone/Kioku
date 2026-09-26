@@ -79,13 +79,16 @@ extension ReadView {
     // Resets custom segment segmentation back to computed segmentation.
     // While LLM changes are pending, shows a red X badge to signal "reject all AI changes".
     var resetButton: some View {
-        // Enabled only when the user has actually changed this note's segmentation or readings
-        // (or there are pending AI changes to reject) and the note isn't in edit mode. Uses the
+        // Enabled only when the user has actually changed this note's segmentation or readings, the
+        // note no longer matches what the segmenter produces (differsFromDefault — a segmenter
+        // change with no edit to the note), or there are pending AI changes to reject; and the note
+        // isn't in edit mode. Uses the
         // explicit edit marker rather than `segments != nil`, which is true even for imported /
         // precomputed notes that were never touched. Per the toggle standard, an enabled reset
         // reads as "on" (accent) and a disabled one as "off" (secondary); the red reject badge
         // overrides while AI changes are pending.
-        let isEnabled = (document.hasManualSegmentationEdits || llmCorrection.hasPendingLLMChanges) && editModeScroll.isEditMode == false
+        let isEnabled = (document.hasManualSegmentationEdits || document.differsFromDefault || llmCorrection.hasPendingLLMChanges)
+            && editModeScroll.isEditMode == false
         return Button {
             if llmCorrection.hasPendingLLMChanges {
                 // Nothing has been written to the document yet — just drop the proposal,
@@ -166,9 +169,20 @@ extension ReadView {
             }
     }
 
-    // Runs the segmenter and reading resolver fresh for the note, off the main thread, and shows
-    // how the note's current segmentation and readings differ from that default.
+    // Shows how the note's current segmentation and readings differ from the default.
     func showChangesFromDefault() {
+        Task {
+            guard let lines = await changesFromDefault() else { return }
+            readSheets.changesFromDefault = lines
+            readSheets.isShowingChangesFromDefault = true
+        }
+    }
+
+    // Runs the segmenter and reading resolver fresh for the note, off the main thread, and lists how
+    // the note's current segmentation and readings differ from that default. Nil when the text
+    // changed while it ran. The one comparison behind both "Changes from Default" and
+    // differsFromDefault, so the reset button and the list agree.
+    func changesFromDefault() async -> [String]? {
         let text = document.text
         let currentEdges = document.segmentEdges
         let currentFurigana = (
@@ -177,22 +191,42 @@ extension ReadView {
         )
         let resolver = FuriganaResolver(segmenter: segmenter, kanjiReadingFallback: kanjiReadingFallback)
         let readingData = surfaceReadingData
-        Task {
-            let lines = await Task.detached(priority: .userInitiated) { [segmenter] in
-                let defaultEdges = segmenter.longestMatchResult(for: text).selectedEdges
-                let defaultFurigana = resolver.build(for: text, edges: currentEdges, surfaceReadingData: readingData)
-                return SegmentationChangeList.lines(
-                    text: text,
-                    defaultEdges: defaultEdges,
-                    currentEdges: currentEdges,
-                    defaultFurigana: defaultFurigana,
-                    currentFurigana: currentFurigana
-                )
-            }.value
-            guard document.text == text else { return }
-            readSheets.changesFromDefault = lines
-            readSheets.isShowingChangesFromDefault = true
+        let lines = await Task.detached(priority: .utility) { [segmenter] in
+            let defaultEdges = segmenter.longestMatchResult(for: text).selectedEdges
+            let defaultFurigana = resolver.build(for: text, edges: currentEdges, surfaceReadingData: readingData)
+            return SegmentationChangeList.lines(
+                text: text,
+                defaultEdges: defaultEdges,
+                currentEdges: currentEdges,
+                defaultFurigana: defaultFurigana,
+                currentFurigana: currentFurigana
+            )
+        }.value
+        guard document.text == text else { return nil }
+        return lines
+    }
+
+    // What the default comparison depends on; differsFromDefault is recomputed when it changes.
+    var defaultComparisonKey: DefaultComparisonKey {
+        DefaultComparisonKey(
+            text: document.text,
+            segmentRanges: document.segmentRanges,
+            furigana: document.furiganaBySegmentLocation,
+            segmenterRevision: segmenterRevision,
+            resourcesReady: readResourcesReady,
+            isEditing: editModeScroll.isEditMode
+        )
+    }
+
+    // Recomputes differsFromDefault for the note on screen. Skipped until the segmenter is loaded
+    // and while the note is being edited, when the comparison would be against a moving target.
+    func refreshDiffersFromDefault() async {
+        guard readResourcesReady, editModeScroll.isEditMode == false, document.text.isEmpty == false else {
+            document.differsFromDefault = false
+            return
         }
+        guard let lines = await changesFromDefault(), Task.isCancelled == false else { return }
+        document.differsFromDefault = lines.isEmpty == false
     }
 
     // True while a breakdown generation is in flight for the currently-open note — surfaced

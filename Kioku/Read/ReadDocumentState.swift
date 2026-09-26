@@ -29,6 +29,11 @@ final class ReadDocumentState {
     // segments. This flag is set only at genuine user-mutation funnels and cleared on note load
     // and reset, so it stays false for precomputed-but-unedited notes.
     var hasManualSegmentationEdits = false
+    // True when the note's segmentation or readings differ from what the segmenter and reading
+    // resolver produce for it now — e.g. after a segmenter change, with no edit to the note. The
+    // same comparison as "Changes from Default" (ReadView.changesFromDefault), recomputed in the
+    // background whenever the text, segments, readings or segmenter change. Also enables reset.
+    var differsFromDefault = false
     var segmentationRefreshTask: Task<Void, Never>?
     var pendingAutoSegQueue: [PendingAutoSegRequest] = []
 

@@ -24,6 +24,7 @@ extension SegmentLookupSheet {
         // Capture reading/save callbacks before dismissPopover, since dismissSheet clears them.
         let capturedOnReadingSelected = self.onReadingSelected
         let capturedSplitCostsProvider = self.splitCostsProvider
+        let capturedOnSheetHeightChanged = self.onSheetHeightChanged
         let capturedSheetLemmaInfoProvider = self.sheetLemmaInfoProvider
         let capturedSheetLemmaInfoByReadingProvider = self.sheetLemmaInfoByReadingProvider
         let capturedSheetDictionaryEntryProvider = self.sheetDictionaryEntryProvider
@@ -49,6 +50,7 @@ extension SegmentLookupSheet {
             self.onReadingSelected = capturedOnReadingSelected
             self.onReadingReset = capturedOnReadingReset
             self.splitCostsProvider = capturedSplitCostsProvider
+            self.onSheetHeightChanged = capturedOnSheetHeightChanged
             self.sheetLemmaInfoProvider = capturedSheetLemmaInfoProvider
             self.sheetLemmaInfoByReadingProvider = capturedSheetLemmaInfoByReadingProvider
             self.sheetDictionaryEntryProvider = capturedSheetDictionaryEntryProvider
@@ -200,6 +202,8 @@ extension SegmentLookupSheet {
         sheetLemmaInfoByReadingProvider = nil
         activeReadingOverrideProvider = nil
         splitCostsProvider = nil
+        presentedSheetHeight = nil
+        onSheetHeightChanged = nil
         sheetDictionaryEntryProvider = nil
         sheetIsSavedProvider = nil
         sheetSaveToggle = nil

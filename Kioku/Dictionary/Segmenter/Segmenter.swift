@@ -541,11 +541,18 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     }
 
     // The words of a conjugated segment with a helper word glued on (飛び込んでいった → 飛び込んで,
-    // いった), following the chain to the lemma lookup shows for it; nil when it has none.
+    // いった), following the chain to the lemma lookup shows for it; nil when it has none. A katakana
+    // noun + する compound (クリアしてゆく) is read as its する part (してゆく → する) after the noun.
     private func helperWordParts(of edge: LatticeEdge) -> [String]? {
-        guard edge.isDictionaryMatch, edge.inflectionSteps > 0, let deinflector,
-              let lemma = preferredLemma(for: edge.surface) else { return nil }
-        let offsets = deinflector.helperWordOffsets(in: edge.surface, lemma: lemma)
+        guard edge.isDictionaryMatch, let deinflector else { return nil }
+        let offsets: [Int]
+        if let noun = suruCompoundPrefix(for: edge.surface) {
+            let suruPart = String(edge.surface.dropFirst(noun.count))
+            offsets = deinflector.helperWordOffsets(in: suruPart, lemma: "する").map { $0 + noun.count }
+        } else {
+            guard edge.inflectionSteps > 0, let lemma = preferredLemma(for: edge.surface) else { return nil }
+            offsets = deinflector.helperWordOffsets(in: edge.surface, lemma: lemma)
+        }
         guard offsets.isEmpty == false else { return nil }
         let characters = Array(edge.surface)
         let bounds = [0] + offsets + [characters.count]
