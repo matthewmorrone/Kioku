@@ -276,7 +276,7 @@ final class SegmentationQualityTests: XCTestCase {
     // equivalent — being reintroduced without re-checking kana2k.
     func testDoesNotFalselyResolveOyoOrIyoAsAnImperative() throws {
         XCTAssertEqual(try segments(of: "およせください"), ["お", "よせ", "ください"])
-        XCTAssertEqual(try segments(of: "およみになる"), ["お", "よ", "みになる"])
+        XCTAssertEqual(try segments(of: "およみになる"), ["お", "よみ", "に", "なる"])
         XCTAssertEqual(try segments(of: "がいようのみにしよう"), ["がいよう", "のみ", "に", "しよう"])
     }
 

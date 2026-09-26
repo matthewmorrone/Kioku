@@ -231,7 +231,7 @@
       "derived": true,
       "url": null,
       "sha256": null,
-      "provenance": "Counted from the training half of tatoeba-jpn-indices, minus its first 2,000 sentences (train2k, kept out for fitting): every gold token is classed by the app's own TransitionClass through segcli count, and fit_transition_costs.py turns class-pair counts into smoothed PMI. The 200 commonest short kana words get a class of their own. Recount whenever deinflection rules, POS bits, edge construction or the dictionary change — the classes come from the running code, so a table counted under older code silently prices words by classes the segmenter no longer assigns. Recipe: \"Regenerating the transition table\" in scripts/segmentation-eval/README.md.",
+      "provenance": "Counted from the training half of tatoeba-jpn-indices, minus its first 2,000 sentences (train2k, kept out for fitting): every gold token is classed by the app's own TransitionClass through segcli count, and fit_transition_costs.py turns class-pair counts into smoothed PMI. The 120 commonest short kana words get a class of their own. Recount whenever deinflection rules, POS bits, edge construction or the dictionary change — the classes come from the running code, so a table counted under older code silently prices words by classes the segmenter no longer assigns. Recipe: \"Regenerating the transition table\" in scripts/segmentation-eval/README.md.",
       "derivedFrom": [
         "tatoeba-jpn-indices"
       ],
