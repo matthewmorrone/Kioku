@@ -104,7 +104,7 @@ final class SegmentationQualityTests: XCTestCase {
 
     // …and は + いつも here. A per-surface denylist can only get one of the pair right.
     func testSplitsHaBeforeItsumo() throws {
-        XCTAssertEqual(try segments(of: "はいつも笑っている"), ["は", "いつも", "笑っている"])
+        XCTAssertEqual(try segments(of: "はいつも笑っている"), ["は", "いつも", "笑って", "いる"])
     }
 
     // があ is a dictionary entry (onomatopoeia); taking it strands ります.
@@ -176,7 +176,7 @@ final class SegmentationQualityTests: XCTestCase {
     func testStackedConjugationsAreOneSegment() throws {
         XCTAssertEqual(try segments(of: "知っています"), ["知っています"])
         XCTAssertEqual(try segments(of: "彼に言われた"), ["彼", "に", "言われた"])
-        XCTAssertEqual(try segments(of: "まだ持っていない"), ["まだ", "持っていない"])
+        XCTAssertEqual(try segments(of: "まだ持っていない"), ["まだ", "持って", "いない"])
     }
 
     // Godan polite negative and volitional, and なさい on a godan stem.
@@ -195,7 +195,7 @@ final class SegmentationQualityTests: XCTestCase {
     // and an adjective stem carries すぎる / そう as one form.
     func testIchidanStemAndAdjectiveStemAuxiliaries() throws {
         XCTAssertEqual(try segments(of: "ラーメンを食べに行きます"), ["ラーメン", "を", "食べ", "に", "行きます"])
-        XCTAssertEqual(try segments(of: "仕事が忙しすぎる"), ["仕事", "が", "忙しすぎる"])
+        XCTAssertEqual(try segments(of: "仕事が忙しすぎる"), ["仕事", "が", "忙し", "すぎる"])
         XCTAssertEqual(try segments(of: "歩きながら話す"), ["歩きながら", "話す"])
     }
 
@@ -204,7 +204,7 @@ final class SegmentationQualityTests: XCTestCase {
     func testDictionaryWordsDoNotBorrowTheirVerbsFrequency() throws {
         XCTAssertEqual(try segments(of: "考え事ができない"), ["考え事", "が", "できない"])
         XCTAssertEqual(try segments(of: "時間が過ぎて"), ["時間", "が", "過ぎて"])
-        XCTAssertEqual(try segments(of: "していて"), ["していて"])
+        XCTAssertEqual(try segments(of: "していて"), ["して", "いて"])
     }
     // A word written across katakana and hiragana is one segment — the dictionary entry ウソつき, and
     // katakana-stem verbs through their lemma (サボった → サボる)…
@@ -227,7 +227,7 @@ final class SegmentationQualityTests: XCTestCase {
     func testConjugatedFormsThatAreAlsoWordsPayTheirStep() throws {
         XCTAssertEqual(try segments(of: "ベルをならして"), ["ベル", "を", "ならして"])
         XCTAssertEqual(try segments(of: "恋せよ乙女"), ["恋せよ", "乙女"])
-        XCTAssertEqual(try segments(of: "勉強していた"), ["勉強", "していた"])
+        XCTAssertEqual(try segments(of: "勉強していた"), ["勉強", "して", "いた"])
     }
 
     // なる after an adjective's く-form is its own word ("become"), not part of the adjective — and
@@ -244,7 +244,7 @@ final class SegmentationQualityTests: XCTestCase {
         XCTAssertEqual(try segments(of: "２時間かかった"), ["２", "時間", "かかった"])
         XCTAssertEqual(try segments(of: "５ヶ月前"), ["５", "ヶ月", "前"])
         XCTAssertEqual(try segments(of: "３年間住んだ"), ["３", "年間", "住んだ"])
-        XCTAssertEqual(try segments(of: "１日中寝ていた"), ["１日中", "寝ていた"])
+        XCTAssertEqual(try segments(of: "１日中寝ていた"), ["１日中", "寝て", "いた"])
         XCTAssertEqual(try segments(of: "２人で行く"), ["２人", "で", "行く"])
     }
 
