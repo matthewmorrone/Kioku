@@ -248,11 +248,10 @@ extension ReadView {
                     refreshSegmentationRanges()
                 }
 
-                // Resources just became ready. A lookup/split sheet opened while they were still
-                // loading captured empty frequency maps and shows all-zero scores; re-install the
-                // provider with the now-loaded `self` so the open readout fills in automatically.
-                SegmentLookupSheet.shared.refreshOpenSheetFrequencyProvider { surface in
-                    frequencyData(forSurface: surface)
+                // Resources just became ready. A split editor opened while they were still loading has
+                // no costs; re-install the provider with the now-loaded segmenter so it fills in.
+                SegmentLookupSheet.shared.refreshOpenSheetSplitCostsProvider { candidates in
+                    splitCostsForCurrentSelectedSegment(candidates)
                 }
 
                 // Replays a tap that arrived before resources were ready (see
@@ -268,14 +267,6 @@ extension ReadView {
                         tappedSegmentRect: pending.rect,
                         sourceView: pending.sourceView
                     )
-                }
-            }
-            // The surface-reading/frequency map publishes in Stage 1, ahead of the full engine. When it
-            // lands, fill in a split readout that opened during loading — without waiting for the trie.
-            .onChange(of: frequencyDataReady) { _, ready in
-                guard ready else { return }
-                SegmentLookupSheet.shared.refreshOpenSheetFrequencyProvider { surface in
-                    frequencyData(forSurface: surface)
                 }
             }
     }

@@ -54,15 +54,6 @@ extension SegmentLookupSheet {
         return label
     }
 
-    // Converts frequency data to a unified Zipf-equivalent score (higher = more frequent).
-    // jpdbRank is preferred; wordfreqZipf used as fallback. Both land on a ~0–7 scale.
-    func normalizedSheetFrequencyScore(_ data: [String: FrequencyData]) -> Double? {
-        if let rank = data.values.compactMap({ $0.jpdbRank }).min() {
-            return max(0.0, 7.0 - log10(Double(rank)))
-        }
-        return data.values.compactMap({ $0.wordfreqZipf }).max()
-    }
-
     // Builds a small section header label.
     func makeSheetSectionHeader(_ text: String) -> UILabel {
         let label = UILabel()

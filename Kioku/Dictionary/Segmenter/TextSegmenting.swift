@@ -25,6 +25,11 @@ nonisolated protocol TextSegmenting: Sendable {
     // katakana noun prefix (e.g. "キス") when it holds, else nil. See Segmenter.suruCompoundPrefix.
     func suruCompoundPrefix(for surface: String) -> String?
 
+    // What this backend's path search charges for the whole of `text` when the segment at `range`
+    // is cut into each candidate's pieces (lower is cheaper), or nil per candidate when it has no
+    // cost model. The split editor shows these instead of scoring pieces itself. See Segmenter.splitCosts.
+    func splitCosts(of range: Range<String.Index>, in text: String, candidates: [[String]]) -> [Int?]
+
     // Builds a debug summary showing how the resolver pipeline admits one emitted lemma for a surface.
     func debugResolutionSummary(for surface: String, lemma: String) -> String
 }

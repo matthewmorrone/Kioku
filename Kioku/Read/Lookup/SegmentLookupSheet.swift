@@ -35,7 +35,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     weak var presentedSheetController: UIViewController?
     // True once the app's frequency maps have finished loading. The split readout shows a loading
     // state (not misleading zeros) until this flips; ReadView sets it at present time and on resource-ready.
-    var frequencyResourcesReady = false
+    var splitCostsReady = false
     // Not private: also read/written by dismissSheet / resetSheetPresentationState /
     // presentationControllerShouldDismiss in SegmentLookupSheet+Presentation.swift.
     var isPreparingSheetDismissal = false
@@ -66,8 +66,9 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     var sheetLemmaInfoByReadingProvider: (() -> [String: (lemma: String, chain: [String], entry: DictionaryEntry?)])?
     // Returns the currently persisted reading override for the selected segment, if any.
     var activeReadingOverrideProvider: (() -> String?)?
-    // Looks up frequency data for any surface in the note — used to annotate sublattice paths.
-    var pathSegmentFrequencyProvider: ((String) -> [String: FrequencyData]?)?
+    // Prices candidate cuts of the current segment with the segmenter's own path costs, in the
+    // context of the segment's line (Segmenter.splitCosts) — the split editor's only source of scores.
+    var splitCostsProvider: (([[String]]) -> [Int?])?
     // Provides the minimal dictionary entry needed to render visible senses for the current segment.
     var sheetDictionaryEntryProvider: (() -> DictionaryEntry?)?
     var currentSheetDictionaryEntry: DictionaryEntry? = nil
@@ -498,7 +499,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         onReadingSelected: ((String) -> Void)? = nil,
         onReadingReset: (() -> Void)? = nil,
         activeReadingOverrideProvider: (() -> String?)? = nil,
-        pathSegmentFrequencyProvider: ((String) -> [String: FrequencyData]?)? = nil,
+        splitCostsProvider: (([[String]]) -> [Int?])? = nil,
         sheetDictionaryEntryProvider: (() -> DictionaryEntry?)? = nil,
         sheetIsSavedProvider: (() -> Bool)? = nil,
         sheetSaveToggle: (() -> Void)? = nil,
@@ -522,7 +523,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         self.onReadingSelected = onReadingSelected
         self.onReadingReset = onReadingReset
         self.activeReadingOverrideProvider = activeReadingOverrideProvider
-        self.pathSegmentFrequencyProvider = pathSegmentFrequencyProvider
+        self.splitCostsProvider = splitCostsProvider
         self.sheetLemmaInfoProvider = sheetLemmaInfoProvider
         self.sheetLemmaInfoByReadingProvider = sheetLemmaInfoByReadingProvider
         self.sheetDictionaryEntryProvider = sheetDictionaryEntryProvider

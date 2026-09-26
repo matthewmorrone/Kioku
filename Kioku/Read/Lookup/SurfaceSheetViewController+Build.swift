@@ -196,7 +196,7 @@ extension SurfaceSheetViewController {
         ])
 
         // One row per possible split, each with its full score breakdown (numberOfLines = 0,
-        // left-aligned). Per-line font/weight is set via attributedText in updateSplitFrequencyLabel.
+        // left-aligned). Per-line font/weight is set via attributedText in updateSplitCostLabel.
         let frequencyLabel = UILabel()
         frequencyLabel.translatesAutoresizingMaskIntoConstraints = false
         frequencyLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
@@ -204,7 +204,7 @@ extension SurfaceSheetViewController {
         frequencyLabel.textAlignment = .left
         frequencyLabel.numberOfLines = 0
         frequencyLabel.lineBreakMode = .byClipping
-        splitFrequencyLabel = frequencyLabel
+        splitCostLabel = frequencyLabel
 
         // The fixed `.medium` detent can't always fit a row per cut (a long word has many), so the
         // readout lives in a scroll view: it hugs its content up to a cap, and scrolls beyond it,
@@ -226,7 +226,7 @@ extension SurfaceSheetViewController {
             frequencyHugsContent,
             frequencyHeightCap,
         ])
-        splitFrequencyScroll = frequencyScroll
+        splitCostScroll = frequencyScroll
 
         // Selectable candidate chips sit above the inputs so the full set of valid two-way splits
         // is visible at a glance (and one-tap selectable), not just the single auto-proposed best.
@@ -262,7 +262,7 @@ extension SurfaceSheetViewController {
         splitPanelContainer.addArrangedSubview(splitInputsRow)
         splitPanelContainer.addArrangedSubview(frequencyScroll)
         splitPanelContainer.addArrangedSubview(splitActionsRow)
-        updateSplitFrequencyLabel()
+        updateSplitCostLabel()
     }
 
     // Constructs the word-actions row (speak, save, open) and segmentation-actions row (merge-left, split, merge-right).

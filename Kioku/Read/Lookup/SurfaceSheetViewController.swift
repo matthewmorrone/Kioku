@@ -31,8 +31,8 @@ final class SurfaceSheetViewController: UIViewController {
 
     // MARK: - Split state
 
-    var leftSplitValue = "" { didSet { updateSplitFrequencyLabel(); refreshSplitCandidateSelection() } }
-    var rightSplitValue = "" { didSet { updateSplitFrequencyLabel(); refreshSplitCandidateSelection() } }
+    var leftSplitValue = "" { didSet { updateSplitCostLabel(); refreshSplitCandidateSelection() } }
+    var rightSplitValue = "" { didSet { updateSplitCostLabel(); refreshSplitCandidateSelection() } }
     var splitEntryLeftValue = ""
     var splitEntryRightValue = ""
     var isSplitEditorVisible = false
@@ -62,19 +62,20 @@ final class SurfaceSheetViewController: UIViewController {
     var splitButton: UIButton!
     var cancelSplitButton: UIButton!
     var applySplitButton: UIButton!
-    // Shows the per-piece frequency scores behind the current split (below the [] ↔ [] inputs).
-    var splitFrequencyLabel: UILabel?
+    // Shows the segmenter's cost for every cut of the segment (below the [] ↔ [] inputs).
+    var splitCostLabel: UILabel?
     // Scroll container for the split readout; lets it scroll instead of clipping when there are more
     // cut rows than the fixed medium detent can show.
-    var splitFrequencyScroll: UIScrollView?
-    // Horizontally-scrolling row of selectable two-way split candidates (one chip per valid
-    // sublattice split). Surfaces the full set — e.g. both どこ・かに and どこか・に — instead of
-    // only the single auto-proposed best split. Hidden when there are fewer than two candidates.
+    var splitCostScroll: UIScrollView?
+    // Horizontally-scrolling row of selectable two-way split candidates (one chip per cut, left to
+    // right) — a cut is one tap away instead of nudging the boundary character-by-character.
+    // Hidden when there are fewer than two candidates.
     var splitCandidatesScroll: UIScrollView?
     var splitCandidatesRow: UIStackView?
-    // Backing data for the candidate chips: each entry is a [left, right] two-segment path. Chip
-    // tag is its index here, so taps and the active-selection highlight can resolve back to a path.
-    var splitCandidatePaths: [[String]] = []
+    // Every way to cut the segment in two, left to right, each with the segmenter's cost for the line
+    // cut that way (Segmenter.splitCosts; nil while it isn't ready). The one list the readout, the
+    // chips and the default pick all read. Chip tag is its index here.
+    var splitCandidates: [(path: [String], cost: Int?)] = []
     var mergeLeftButton: UIButton!
     var mergeRightButton: UIButton!
     var saveButton: UIButton!
@@ -371,25 +372,17 @@ final class SurfaceSheetViewController: UIViewController {
         }
     }
 
-    // Resets left and right split values to the highest-scoring two-segment sublattice path,
-    // falling back to a midpoint split when no two-segment path exists.
+    // Resets left and right split values to the cut the segmenter prices cheapest, falling back to a
+    // midpoint split while no costs are available.
     func resetSplitInputs(using outcomeSurface: String) {
-        guard let sheet else { return }
+        rebuildSplitCandidates(for: outcomeSurface)
 
-        // Looks up the frequency-based score for a single segment candidate.
-        func segmentScore(_ segment: String) -> Double {
-            sheet.pathSegmentFrequencyProvider?(segment).flatMap { sheet.normalizedSheetFrequencyScore($0) } ?? 0
-        }
-
-        // Averages segment scores across a full path to find the highest-quality two-segment split.
-        func pathScore(_ path: [String]) -> Double {
-            path.map(segmentScore).reduce(0, +) / max(1, Double(path.count))
-        }
-
-        let twoPaths = sheet.sublatticeValidPaths(from: sheet.currentSheetSublatticeEdges).filter { $0.count == 2 }
-        if let best = twoPaths.max(by: { pathScore($0) < pathScore($1) }) {
-            leftSplitValue = best[0]
-            rightSplitValue = best[1]
+        let cheapest = splitCandidates
+            .compactMap { candidate in candidate.cost.map { (path: candidate.path, cost: $0) } }
+            .min { $0.cost < $1.cost }
+        if let cheapest {
+            leftSplitValue = cheapest.path[0]
+            rightSplitValue = cheapest.path[1]
         } else {
             let characters = Array(outcomeSurface)
             if characters.count <= 1 {
@@ -412,8 +405,6 @@ final class SurfaceSheetViewController: UIViewController {
         rightInputTapButton.isEnabled = leftSplitValue.isEmpty == false
         rightInputTapButton.alpha = rightInputTapButton.isEnabled ? 1 : 0.45
 
-        rebuildSplitCandidates()
-
         // The readout's row count (and thus the fitted content height) just changed for this segment;
         // recompute the custom detent so the sheet resizes to match instead of keeping the prior word's height.
         if isSplitEditorVisible {
@@ -421,38 +412,27 @@ final class SurfaceSheetViewController: UIViewController {
         }
     }
 
-    // Rebuilds the chip row from every distinct two-segment sublattice split, highest average
-    // frequency first (the same signal resetSplitInputs averages to pick its default). Surfaces
-    // the full set — どこかに yields both どこ・かに and どこか・に — so a non-default split is one tap
-    // away instead of requiring the user to nudge the boundary character-by-character. Hidden when
-    // there are fewer than two candidates (nothing to choose between).
-    func rebuildSplitCandidates() {
-        guard let row = splitCandidatesRow, let sheet else { return }
+    // Recomputes splitCandidates for `surface` — every cut, left to right, costed once by the
+    // segmenter through the sheet's splitCostsProvider — and rebuilds the chips and readout from it.
+    // Called when the segment changes and again when the segmenter becomes ready.
+    func rebuildSplitCandidates(for surface: String) {
+        let characters = Array(surface)
+        let paths = characters.count >= 2
+            ? (1..<characters.count).map { [String(characters[..<$0]), String(characters[$0...])] }
+            : []
+        let costs = sheet?.splitCostsReady == true ? sheet?.splitCostsProvider?(paths) ?? [] : []
+        splitCandidates = paths.enumerated().map { index, path in
+            (path: path, cost: costs.indices.contains(index) ? costs[index] : nil)
+        }
+
+        guard let row = splitCandidatesRow else { return }
         row.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        splitCandidatesScroll?.isHidden = splitCandidates.count < 2
+        updateSplitCostLabel()
+        guard splitCandidates.count >= 2 else { return }
 
-        // Looks up the frequency-based score for a single segment candidate.
-        func segmentScore(_ segment: String) -> Double {
-            sheet.pathSegmentFrequencyProvider?(segment).flatMap { sheet.normalizedSheetFrequencyScore($0) } ?? 0
-        }
-        // Averages segment scores across a full path to rank candidate splits.
-        func pathScore(_ path: [String]) -> Double {
-            path.map(segmentScore).reduce(0, +) / max(1, Double(path.count))
-        }
-
-        var seen: Set<String> = []
-        let twoPaths = sheet.sublatticeValidPaths(from: sheet.currentSheetSublatticeEdges)
-            .filter { $0.count == 2 }
-            .filter { seen.insert($0.joined(separator: "·")).inserted }
-            .sorted { pathScore($0) > pathScore($1) }
-        splitCandidatePaths = twoPaths
-
-        splitCandidatesScroll?.isHidden = twoPaths.count < 2
-        // Re-evaluate the frequency readout's gate now that splitCandidatePaths reflects THIS segment
-        // (its didSet-driven update ran earlier against the previous segment's count).
-        updateSplitFrequencyLabel()
-        guard twoPaths.count >= 2 else { return }
-
-        for (index, path) in twoPaths.enumerated() {
+        for (index, candidate) in splitCandidates.enumerated() {
+            let path = candidate.path
             let chip = UIButton(type: .system)
             var config = UIButton.Configuration.gray()
             config.title = path.joined(separator: "・")
@@ -484,111 +464,68 @@ final class SurfaceSheetViewController: UIViewController {
     func refreshSplitCandidateSelection() {
         guard let row = splitCandidatesRow else { return }
         for case let chip as UIButton in row.arrangedSubviews {
-            let path = splitCandidatePaths.indices.contains(chip.tag) ? splitCandidatePaths[chip.tag] : []
+            let path = splitCandidates.indices.contains(chip.tag) ? splitCandidates[chip.tag].path : []
             let isActive = path == [leftSplitValue, rightSplitValue]
             chip.configuration?.baseBackgroundColor = isActive ? UIColor.systemBlue.withAlphaComponent(0.25) : nil
             chip.configuration?.baseForegroundColor = isActive ? .systemBlue : .label
         }
     }
 
-    // Lists EVERY available way to cut the segment currently being split (all sublattice paths, not
-    // just two-piece cuts), each shown with its full score calculation: every segment's frequency
-    // score and their sum. This is the exact signal that ranks the candidates, laid bare so the user
-    // can see *why* one split outscores another rather than trusting an opaque number. The currently
-    // selected split is bolded and marked with ▸ so this transparency view stays tied to the chips /
-    // [] ↔ [] inputs. Driven by the leftSplitValue/rightSplitValue didSet observers and re-invoked by
-    // rebuildSplitCandidates whenever the sublattice changes.
-    func updateSplitFrequencyLabel() {
-        guard let label = splitFrequencyLabel else { return }
-        guard let sheet else {
+    // Lists every cut of the segment, left to right, each with what the segmenter charges for the
+    // line cut that way (in nats; lower is what segmentation would pick). The numbers come from
+    // splitCandidates — the segmenter's own path costs — so the readout cannot disagree with the
+    // segmentation. The current split is bolded and marked with ▸ so the readout stays tied to the
+    // chips / [] ↔ [] inputs. Driven by the leftSplitValue/rightSplitValue didSet observers and
+    // re-invoked by rebuildSplitCandidates whenever the segment or the segmenter changes.
+    func updateSplitCostLabel() {
+        guard let label = splitCostLabel else { return }
+        guard let sheet, splitCandidates.isEmpty == false else {
             label.attributedText = nil
             label.isHidden = true
             return
         }
 
-        // The frequency maps build a few seconds after launch; a split editor opened before they're
-        // ready would score every piece 0. Show a loading state instead of misleading zeros — the
-        // readout refreshes itself once resources land (see refreshOpenSheetFrequencyProvider).
-        guard sheet.frequencyResourcesReady else {
+        // The segmenter loads a few seconds after launch; a split editor opened before then has no
+        // costs. Show a loading state — the readout refreshes itself once it lands (see
+        // refreshOpenSheetSplitCostsProvider).
+        guard sheet.splitCostsReady else {
             label.isHidden = false
-            label.attributedText = NSAttributedString(string: "Loading frequencies…", attributes: [
+            label.attributedText = NSAttributedString(string: "Loading…", attributes: [
                 .font: UIFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular),
                 .foregroundColor: UIColor.tertiaryLabel,
             ])
             return
         }
 
-        // Frequency score for a single segment surface (0 when it has no frequency data).
-        func segmentScore(_ surface: String) -> Double {
-            sheet.pathSegmentFrequencyProvider?(surface).flatMap { sheet.normalizedSheetFrequencyScore($0) } ?? 0
-        }
-
-        // One row per possibility the menu can actually produce: a single left/right cut at EVERY
-        // character boundary of the segment (どこかに → ど・こかに, どこ・かに, どこか・に), not just the
-        // dictionary-valid sublattice paths — those dropped legitimate cuts like ど・こかに. Each piece
-        // is scored independently (0 when it isn't a known word). Rows stay in left-to-right cut order
-        // (cut after char 1, then 2, …) so the list reads in the same direction as the text.
-        let characters = Array(currentSurface)
-        let scored = characters.count >= 2
-            ? (1..<characters.count).map { cut -> (path: [String], scores: [Double], sum: Double) in
-                let left = String(characters[0..<cut])
-                let right = String(characters[cut...])
-                let scores = [segmentScore(left), segmentScore(right)]
-                return ([left, right], scores, scores.reduce(0, +))
-            }
-            : []
-
-        guard scored.isEmpty == false else {
-            label.attributedText = nil
-            label.isHidden = true
-            return
-        }
-
-        // Every row is exactly two pieces (seg1 score1 + seg2 score2 = total), so the SCORES can be
-        // aligned into columns even though the Japanese segment text is variable width. Tab stops are
-        // placed by measuring the widest seg1/seg2 in this set:
-        //   ▸ どこか 3.0 + に  4.3 = 7.3
-        //     どこ   3.1 + かに 2.8 = 5.9
-        // Marker, seg1-start, score1, and score2 each get a tab stop; "+ ", " = " and the total ride
-        // inline (score cells are fixed-width monospaced digits, so the total stays put after them).
+        // marker \t left・right \t cost — the cost column is placed past the widest cut.
         let activeSplit = [leftSplitValue, rightSplitValue]
-        // Rendered width of a string in the readout font, used to position the score tab stops.
-        // Measured at the bold weight (the widest any row renders) so plain rows never overrun a stop.
+        // Rendered width of a string in the readout font, used to position the cost tab stop.
+        // Measured at the bold weight (the widest any row renders) so plain rows never overrun it.
         func glyphWidth(_ string: String) -> CGFloat {
             let font = UIFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
             return ceil((string as NSString).size(withAttributes: [.font: font]).width)
         }
-        let gap: CGFloat = 8
-        let seg1Column: CGFloat = 14                                   // after the ▸ marker
-        let maxSeg1 = scored.map { glyphWidth($0.path[0]) }.max() ?? 0
-        let score1Column = seg1Column + maxSeg1 + gap
-        let interWidth = glyphWidth("0.0 + ")                          // score1 + " + " (fixed width)
-        let maxSeg2 = scored.map { glyphWidth($0.path[1]) }.max() ?? 0
-        let score2Column = score1Column + interWidth + maxSeg2 + gap
-
+        let cutColumn: CGFloat = 14                                    // after the ▸ marker
+        let maxCut = splitCandidates.map { glyphWidth($0.path.joined(separator: "・")) }.max() ?? 0
         let paragraph = NSMutableParagraphStyle()
         paragraph.tabStops = [
-            NSTextTab(textAlignment: .left, location: seg1Column, options: [:]),
-            NSTextTab(textAlignment: .left, location: score1Column, options: [:]),
-            NSTextTab(textAlignment: .left, location: score2Column, options: [:]),
+            NSTextTab(textAlignment: .left, location: cutColumn, options: [:]),
+            NSTextTab(textAlignment: .left, location: cutColumn + maxCut + 12, options: [:]),
         ]
         paragraph.lineBreakMode = .byClipping
 
         let body = NSMutableAttributedString()
-        for (index, entry) in scored.enumerated() {
-            let isActive = entry.path == activeSplit
-            let score1 = String(format: "%.1f", entry.scores[0])
-            let score2 = String(format: "%.1f", entry.scores[1])
-            let total = String(format: "%.1f", entry.sum)
-            // marker \t seg1 \t score1 + seg2 \t score2 = total
-            let line = "\(isActive ? "▸" : "")\t\(entry.path[0])\t\(score1) + \(entry.path[1])\t\(score2) = \(total)"
+        for (index, candidate) in splitCandidates.enumerated() {
+            let isActive = candidate.path == activeSplit
+            let cost = candidate.cost.map { String(format: "%.1f", Double($0) / 100) } ?? "–"
+            let line = "\(isActive ? "▸" : "")\t\(candidate.path.joined(separator: "・"))\t\(cost)"
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: UIFont.monospacedDigitSystemFont(ofSize: 12, weight: isActive ? .semibold : .regular),
                 .foregroundColor: isActive ? UIColor.label : UIColor.secondaryLabel,
                 .paragraphStyle: paragraph,
             ]
             body.append(NSAttributedString(string: line, attributes: attributes))
-            if index < scored.count - 1 { body.append(NSAttributedString(string: "\n")) }
+            if index < splitCandidates.count - 1 { body.append(NSAttributedString(string: "\n")) }
         }
         label.isHidden = false
         label.attributedText = body

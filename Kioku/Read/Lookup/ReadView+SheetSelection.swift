@@ -500,6 +500,21 @@ extension ReadView {
         return lines.joined(separator: "\n")
     }
 
+    // Prices each candidate cut of the selected segment with the segmenter's own path costs
+    // (Segmenter.splitCosts), in the context of the segment's line so the words on either side count
+    // exactly as they do in segmentation. The split editor's only source of scores.
+    func splitCostsForCurrentSelectedSegment(_ candidates: [[String]]) -> [Int?] {
+        let none = candidates.map { _ in Int?.none }
+        guard let segmentRange = currentMergedSelectionNSRange() else { return none }
+        let text = document.text as NSString
+        guard NSMaxRange(segmentRange) <= text.length else { return none }
+        let lineRange = text.paragraphRange(for: segmentRange)
+        let line = text.substring(with: lineRange)
+        let localRange = NSRange(location: segmentRange.location - lineRange.location, length: segmentRange.length)
+        guard let range = Range(localRange, in: line) else { return none }
+        return segmenter.splitCosts(of: range, in: line, candidates: candidates)
+    }
+
     // Returns the base lemma and inflection chain for the current selection when it is a conjugated/inflected form.
     // Returns nil when the surface matches its own lemma (i.e. no inflection occurred).
     func lemmaInfoForCurrentSelectedSegment() -> (lemma: String, chain: [String])? {

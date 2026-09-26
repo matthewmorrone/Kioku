@@ -14,12 +14,39 @@ extension Segmenter {
         return viterbiSelect(from: edges, in: text).path
     }
 
+    // What the path search charges for the whole of `text` when the segment at `range` is cut into
+    // each candidate's pieces — one total per candidate, in centi-nats (lower is cheaper). The line's
+    // lattice is built once; every edge outside the segment stays, the segment's interior is limited
+    // to the candidate's pieces, and viterbiSelect prices the line exactly as segmentation does,
+    // including the transitions into the words on either side. A piece with no lattice edge (こかに
+    // in ど|こかに) is priced as unknown text, as the segmenter prices any text the dictionary doesn't
+    // cover. The split editor shows these costs rather than scoring pieces itself, so it cannot
+    // disagree with the segmentation. Nil for a candidate whose pieces don't spell the segment.
+    func splitCosts(of range: Range<String.Index>, in text: String, candidates: [[String]]) -> [Int?] {
+        let lattice = buildLattice(for: text)
+        let outside = lattice.filter { $0.end <= range.lowerBound || $0.start >= range.upperBound }
+        let segment = String(text[range])
+        return candidates.map { pieces in
+            guard pieces.joined() == segment, pieces.allSatisfy({ $0.isEmpty == false }) else { return nil }
+            var edges = outside
+            var start = range.lowerBound
+            for piece in pieces {
+                let end = text.index(start, offsetBy: piece.count)
+                let matches = lattice.filter { $0.start == start && $0.end == end }
+                edges += matches.isEmpty ? [LatticeEdge(start: start, end: end, surface: piece)] : matches
+                start = end
+            }
+            return viterbiSelect(from: edges, in: text).cost
+        }
+    }
+
     // Runs Viterbi search over an already-built lattice. Returns the edges (annotated in place with
-    // per-edge score / predecessor metadata for the diagnostic overlay) and the chosen path.
+    // per-edge score / predecessor metadata for the diagnostic overlay), the chosen path, and its
+    // total cost (nil when no path spans the text).
     // Pulled out of viterbiBestPath so longestMatchResult can share its lattice instead of rebuilding.
-    func viterbiSelect(from inputEdges: [LatticeEdge], in text: String) -> (edges: [LatticeEdge], path: [LatticeEdge]) {
+    func viterbiSelect(from inputEdges: [LatticeEdge], in text: String) -> (edges: [LatticeEdge], path: [LatticeEdge], cost: Int?) {
         var edges = inputEdges
-        guard !edges.isEmpty else { return (edges: [], path: []) }
+        guard !edges.isEmpty else { return (edges: [], path: [], cost: nil) }
 
         var edgesByEnd: [String.Index: [Int]] = [:]
         for (i, edge) in edges.enumerated() { edgesByEnd[edge.end, default: []].append(i) }
@@ -115,13 +142,13 @@ extension Segmenter {
         guard let best = terminals.min(by: {
             (terminalScore($0), tieRank[$0] ?? 0) < (terminalScore($1), tieRank[$1] ?? 0)
         }) else {
-            return (edges: edges, path: [])
+            return (edges: edges, path: [], cost: nil)
         }
 
         var pathIndices: [Int] = []
         var cur: Int? = best
         while let idx = cur { pathIndices.append(idx); cur = back[idx] ?? nil }
         let path = pathIndices.reversed().map { edges[$0] }
-        return (edges: edges, path: path)
+        return (edges: edges, path: path, cost: terminalScore(best))
     }
 }
