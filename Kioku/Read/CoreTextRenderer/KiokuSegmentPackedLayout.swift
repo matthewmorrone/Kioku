@@ -185,7 +185,26 @@ enum KiokuSegmentPackedLayout {
             // so single-line cards (LyricsView active card) get overflow + clip instead.
             if inputs.isLineWrappingEnabled,
                cursorX > inputs.leftInset && cursorX + footprintWidth > inputs.leftInset + inputs.availableWidth {
+                // Kinsoku: a mark that may not start a line (、。」 …) takes the segment
+                // before it down to the new line, so the line ends short instead.
+                let carried = isLineStartProhibited(surface)
+                    ? carriedPlacements(from: &placements, onLine: lineIndex, nsString: nsString)
+                    : []
                 startNewLine()
+                for moved in carried {
+                    placements.append(Placement(
+                        location: moved.location,
+                        length: moved.length,
+                        lineIndex: lineIndex,
+                        originX: cursorX,
+                        footprintWidth: moved.footprintWidth,
+                        headwordWidth: moved.headwordWidth,
+                        rubyWidth: moved.rubyWidth,
+                        leftOverhang: moved.leftOverhang,
+                        rightOverhang: moved.rightOverhang
+                    ))
+                    cursorX += moved.footprintWidth
+                }
             }
 
             placements.append(Placement(
@@ -228,6 +247,43 @@ enum KiokuSegmentPackedLayout {
             lines: lines,
             contentSize: CGSize(width: maxRight, height: totalHeight)
         )
+    }
+
+    // Marks that Japanese line breaking (JIS X 4051 kinsoku) keeps off the start of a line:
+    // sentence punctuation, closing brackets and quotes, and the middle dot / ellipses.
+    static let lineStartProhibitedCharacters: Set<Character> = Set(
+        "、。，．,.！？!?：；:;・…‥」』）)】〕〉》］]｝}〙〗〟’”"
+    )
+
+    // Whether a segment's surface begins with a mark that must not start a line — the
+    // trigger for carrying the preceding segment down with it.
+    static func isLineStartProhibited(_ surface: String) -> Bool {
+        guard let first = surface.first else { return false }
+        return lineStartProhibitedCharacters.contains(first)
+    }
+
+    // Removes and returns the trailing placements of the current line that must move to
+    // the next line with a line-start-prohibited segment: the last segment, plus any run of
+    // prohibited marks directly before it (」。 moves as a unit with its word). Never takes
+    // every segment on the line — a line of nothing but punctuation stays put rather than
+    // leaving an empty line behind.
+    private static func carriedPlacements(
+        from placements: inout [Placement],
+        onLine lineIndex: Int,
+        nsString: NSString
+    ) -> [Placement] {
+        let lineStart = placements.lastIndex { $0.lineIndex != lineIndex }.map { $0 + 1 } ?? 0
+        var cut = placements.count - 1
+        while cut > lineStart {
+            let placement = placements[cut]
+            let surface = nsString.substring(with: NSRange(location: placement.location, length: placement.length))
+            guard isLineStartProhibited(surface) else { break }
+            cut -= 1
+        }
+        guard cut > lineStart else { return [] }
+        let carried = Array(placements[cut...])
+        placements.removeSubrange(cut...)
+        return carried
     }
 
     // Measures the full typographic advance of a string in the given font. Uses NSString
