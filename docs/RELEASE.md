@@ -7,7 +7,7 @@ Pre-submission checklist for shipping a Kioku build to the App Store. Pair with
 ## 1. Repo state
 - [ ] On `main`, working tree clean (`git status`), latest pulled.
 - [ ] CI green on the release commit: **tests.yml** and **invariants.yml** both passing.
-- [ ] No `[~]`/`[ ]` blockers in [todo.md](todo.md) that this release claims to fix.
+- [ ] No open blockers in [todo.md](todo.md) that this release claims to fix.
 
 ## 2. Automated gates (must pass locally too)
 - [ ] `xcodebuild test` (Kioku scheme) — full unit suite green.
@@ -24,7 +24,7 @@ Pre-submission checklist for shipping a Kioku build to the App Store. Pair with
 
 ## 4. Manual QA smoke — core user loop
 Run on a device (or simulator) before archiving. Until the automated UI smoke
-tests land (todo: "UI smoke tests for core user loop"), this is done by hand.
+tests land (todo: "UI automation tests for the core loop"), this is done by hand.
 - [ ] **Notes**: create a note, paste Japanese text, segmentation renders with furigana.
 - [ ] **Lookup/save**: tap a word → lookup sheet shows reading/lemma/inflected-form label;
       star it → appears in Words ▸ Saved with the glow in Read view.
