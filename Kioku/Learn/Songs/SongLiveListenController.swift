@@ -417,7 +417,7 @@ final class SongLiveListenController: NSObject, ObservableObject {
         }
         let (tightStartMs, tightEndMs) = stemTrimURL.map { tightenedClipRange(stemURL: $0, startMs: startMs, endMs: endMs) }
             ?? (startMs, endMs)
-        let clampedEndMs = min(tightEndMs, Int(player.duration * 1000))
+        let clampedEndMs = min(tightEndMs, Int((AudioFileDuration.seconds(of: sourceAudioURL) ?? player.duration) * 1000))
         let durationMs = max(0, clampedEndMs - tightStartMs)
         player.currentTime = TimeInterval(tightStartMs) / 1000
         player.play()

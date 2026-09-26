@@ -114,7 +114,7 @@ final class KiokuTextLayoutEngine {
     // Body font used for headword-width measurement in segment packing. Captured separately
     // from the attributed string's font attribute so the engine can measure even when the
     // attributed string is empty (e.g. during early init).
-    private var bodyFont: UIFont = UIFont.systemFont(ofSize: 18)
+    private var bodyFont: UIFont = ReadingFont.body(size: 18)
 
     init(
         attributedString: NSAttributedString = NSAttributedString(),
@@ -205,7 +205,7 @@ final class KiokuTextLayoutEngine {
         enabled: Bool,
         furiganaByLocation: [Int: String] = [:],
         furiganaLengthByLocation: [Int: Int] = [:],
-        bodyFont: UIFont = UIFont.systemFont(ofSize: 18),
+        bodyFont: UIFont = ReadingFont.body(size: 18),
         furiganaFont: UIFont = UIFont.systemFont(ofSize: 9)
     ) {
         let changed = isSegmentPackingEnabled != enabled

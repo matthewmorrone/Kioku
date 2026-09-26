@@ -6,7 +6,9 @@ import SwiftUI
 // notes in sequence while that cue is the one actually playing, as a "still going" signal.
 // Persisted cue text itself is untouched (still a plain "♪" — SubtitleParser.isNonSpeechCue
 // keeps working on it); this is a display-time expansion in both the active card and the
-// scrolling rows.
+// scrolling rows. The active card's notes follow the music: their size tracks its loudness and
+// their pulse its busyness (InterludeRhythm), so a quiet intro gets small, gently pulsing notes
+// and a loud section big, quick ones.
 extension LyricsView {
     // Whether the cue at `index` is a non-speech (♪) marker rather than a sung line.
     func isNonSpeechCue(at index: Int) -> Bool {
@@ -27,9 +29,8 @@ extension LyricsView {
     // The active card's version: each note pulses independently, staggered left-to-right.
     // `isActive` gates the animation entirely — a cue merely scrolled into view (dragging)
     // shows the notes at rest, and the pulse only renders while that cue is actually playing.
-    // The pulse phase is derived from `controller.currentTimeMs` (the audio clock) rather than
-    // a free-running UI timer, so it stays "in time" with the music: pausing freezes it exactly
-    // in place, and resuming continues from the same phase instead of restarting.
+    // The pulse phase and size come from the controller's rhythm tracker, which only advances
+    // while audio plays: pausing freezes the notes in place and resuming continues from there.
     @ViewBuilder
     func interludeNotesRow(durationMs: Int, isActive: Bool, fontSize: CGFloat) -> some View {
         let count = Self.interludeNoteCount(durationMs: durationMs)
@@ -39,7 +40,7 @@ extension LyricsView {
                     ForEach(0..<count, id: \.self) { i in
                         Text("♪")
                             .font(.system(size: fontSize))
-                            .modifier(InterludeNotePulse(timeMs: controller.currentTimeMs, index: i))
+                            .modifier(InterludeNotePulse(phase: controller.rhythmPhase, loudness: controller.rhythmLoudness, index: i))
                     }
                 }
             }
@@ -53,26 +54,24 @@ extension LyricsView {
     }
 }
 
-// Scale/opacity pulse driven purely by the playback clock: `phase` is `timeMs` reduced modulo
-// the pulse period, offset per note index so the row reads as a left-to-right wave. Being a pure
-// function of `timeMs` (rather than a `repeatForever` animation kicked off in `onAppear`) means
-// the wave's position always matches where the song actually is, instead of an independent timer
-// that drifts relative to playback across pause/resume/seek.
+// Scale/opacity pulse from the rhythm tracker: `phase` (in cycles) offset per note index so the row
+// reads as a left-to-right wave, and `loudness` setting the notes' resting size and pulse depth.
 private struct InterludeNotePulse: ViewModifier {
-    let timeMs: Int
+    let phase: Double
+    let loudness: Double
     let index: Int
 
-    private static let periodMs: Double = 1100
-    private static let staggerMs: Double = 150
+    // Fraction of a cycle each note trails the one before it.
+    private static let stagger = 0.14
 
-    // Computes this note's phase from `timeMs` and applies the resulting scale/opacity.
+    // Applies this note's size and opacity for the current phase and loudness.
     func body(content: Content) -> some View {
-        let offset = Double(timeMs) - Double(index) * Self.staggerMs
-        let rawRemainder = offset.truncatingRemainder(dividingBy: Self.periodMs)
-        let phase = (rawRemainder < 0 ? rawRemainder + Self.periodMs : rawRemainder) / Self.periodMs
-        let wave = sin(phase * Double.pi)
+        let p = phase - Double(index) * Self.stagger
+        let wave = sin((p - p.rounded(.down)) * Double.pi)
+        // Quiet (~-35 dB) → 0, loud (~-15 dB) → 1.
+        let energy = min(1, max(0, (loudness - 0.3) / 0.4))
         content
-            .scaleEffect(1.0 + wave * 0.3)
-            .opacity(0.5 + wave * 0.5)
+            .scaleEffect((0.7 + energy * 0.7) * (1.0 + wave * (0.15 + energy * 0.25)))
+            .opacity(0.45 + wave * 0.55)
     }
 }

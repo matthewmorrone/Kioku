@@ -119,7 +119,7 @@ enum KiokuCoreTextAttributedStringBuilder {
     // compensation for ruby overhang. Ruby itself is returned as data — the view draws each
     // entry manually so the kanji↔ruby gap is tunable (see file header for the rationale).
     static func build(_ inputs: Inputs) -> Output {
-        let baseFont = UIFont.systemFont(ofSize: inputs.textSize)
+        let baseFont = ReadingFont.body(size: inputs.textSize)
         let paragraph = NSMutableParagraphStyle()
         // Don't set paragraph.lineSpacing here: with CoreText, CTRubyAnnotation already
         // inflates each line's ascent to reserve the ruby row, and the engine adds the

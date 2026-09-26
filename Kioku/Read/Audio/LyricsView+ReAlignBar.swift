@@ -2,8 +2,8 @@ import SwiftUI
 import SwiftWhisperAlign
 
 // Top action bar for the karaoke view: Re-align (one forced-alignment pass over the whole song;
-// press and hold for Re-align from Scratch, which isolates the vocals again first) and the
-// settings-popup gear (LyricsView+SettingsPopup.swift). Not private: called from panel(geo:) in
+// press and hold for Re-align from Scratch, which isolates the vocals again first), the
+// Mix / Vocals / Instrumental source toggle, and the settings-popup gear (LyricsView+SettingsPopup.swift). Not private: called from panel(geo:) in
 // LyricsView.swift.
 extension LyricsView {
     // The attached song's audio file, which keys its cached vocal stem.
@@ -72,6 +72,35 @@ extension LyricsView {
             }
 
             Spacer(minLength: 0)
+
+            // Source toggle: cycles playback between the original mix, the isolated vocal stem and
+            // the instrumental. Shown once a stem is cached (the song has been aligned) and hidden
+            // while a re-align may be regenerating it.
+            if isReAligning == false, attachmentAudioURL.map(VocalStemCache.hasStem(for:)) == true {
+                Button {
+                    onCycleAudioSource()
+                } label: {
+                    HStack(spacing: 6) {
+                        if isSwitchingAudioSource {
+                            ProgressView().controlSize(.mini)
+                        } else {
+                            Image(systemName: audioSource.systemImage)
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        Text(audioSource.label)
+                            .font(.system(size: 12, weight: .semibold))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(audioSource == .mix ? Color.secondary : Color.accentColor)
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
+                    .background((audioSource == .mix ? Color.secondary : Color.accentColor).opacity(0.16))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(isSwitchingAudioSource)
+                .accessibilityLabel("Playing \(audioSource.label). Tap to switch to \(audioSource.next.label).")
+            }
 
             Button {
                 isShowingSettingsPopup = true

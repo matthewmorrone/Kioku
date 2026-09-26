@@ -16,6 +16,11 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // rhythm signal — louder samples pulse bigger. Set to 0 when paused/stopped so visuals can
     // react to the playback state without an additional gate.
     @Published var audioLevel: Double = 0
+    // Loudness and pulse phase for the lyrics view's interlude notes (see InterludeRhythm).
+    @Published var rhythmLoudness: Double = 0
+    @Published var rhythmPhase: Double = 0
+    private let rhythm = InterludeRhythm()
+    private var lastRhythmTick: Date?
     // Fired when AVAudioPlayer stops on its own having reached the end of the file — distinct
     // from an explicit `pause()`/`stop()` call (including `playRange`'s scheduled auto-pause at
     // a line's end, which always calls `pause()` before the player would reach true EOF). Used
@@ -95,7 +100,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         }
         var info: [String: Any] = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
         info[MPMediaItemPropertyTitle] = nowPlayingTitle ?? info[MPMediaItemPropertyTitle] ?? "Kioku"
-        info[MPMediaItemPropertyPlaybackDuration] = player.duration
+        info[MPMediaItemPropertyPlaybackDuration] = duration
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = player.currentTime
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
@@ -134,7 +139,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         player = newPlayer
         self.cues = cues
         nowPlayingTitle = title
-        duration = newPlayer.duration
+        duration = AudioFileDuration.seconds(of: audioURL) ?? newPlayer.duration
         currentTimeMs = 0
         syncTimeAndCue()
         updateNowPlayingInfo()
@@ -156,8 +161,8 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         stopTimer()
         player = newPlayer
         cues = keptCues
-        duration = newPlayer.duration
-        newPlayer.currentTime = min(max(0, positionSec), max(0, newPlayer.duration - 0.05))
+        duration = AudioFileDuration.seconds(of: audioURL) ?? newPlayer.duration
+        newPlayer.currentTime = min(max(0, positionSec), max(0, duration - 0.05))
         if wasPlaying {
             configureAudioSession()
             try? AVAudioSession.sharedInstance().setActive(true)
@@ -406,6 +411,15 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         let normalized = max(0.0, min(1.0, Double((avgDb + 50) / 50)))
         // Exponential smoothing — 0.35 of new sample, 0.65 retained.
         audioLevel = audioLevel * 0.65 + normalized * 0.35
+        // The interlude rhythm reads the raw level; ticks more than a second apart (a pause) restart
+        // its onset history rather than counting the gap as time.
+        let now = Date()
+        let dt = lastRhythmTick.map { now.timeIntervalSince($0) } ?? 0.05
+        if dt > 1 { rhythm.reset() }
+        rhythm.feed(level: normalized, dt: min(dt, 0.1), at: now.timeIntervalSinceReferenceDate)
+        lastRhythmTick = now
+        rhythmLoudness = rhythm.loudness
+        rhythmPhase = rhythm.phase
     }
 
     // Reads the current player position and resolves which cue is active at that time.

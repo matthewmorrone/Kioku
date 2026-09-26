@@ -678,6 +678,30 @@ own sections.)
 
 ## Audio & Alignment
 
+- [x] **Moon Pride: delayed lines** — mostly fixed 2026-09-25 (user-confirmed on device). Cause: the
+      stem has singing through 44–62 s but MMS hears ~0 letters in it, and the raw mix (0.01–0.02)
+      stayed under the dropout fill's 0.05 bar, so 自ら戦う意志 sat 7 s late and two lines after it
+      stalled. Fix: `EmissionDropoutFill.fillDeaf` — inside energy-VAD regions, stem letter mass
+      < 0.003 for ≥ 4 s is filled from the mix if the mix has ≥ 3 frames with a letter ≥ 0.15.
+      Now 自ら 55.8 ✓, 輝くよ 60.0 ✓, ただ 65.0 ✓; 嗚呼…無敵 moved to 101.8 (ref 103.9–105.3) and
+      煌くよ is still ~2.5 s late. 12-song device run 314/324 confirmed lines; Mac replay of 9 songs:
+      deaf fill changes Moon Pride only (24 → 26 of 29). Thresholds were set from two cases (Moon
+      Pride helped, ニュームーンに恋して hurt before the mix-heard gate) — suspect them first if a new
+      song stalls or jumps in a passage the model can't hear.
+- [x] **Moon Heart Sequence: repeated chants** — fixed 2026-09-25 (user-confirmed on device). The
+      four セーラームーン lines are sung at 0:24, 1:08, 1:20, 1:27; MMS hears chant 1 faintly and chants
+      2–4 not at all (not loudness, tempo or window context — probed on the phone's CoreML export).
+      Fixes in `CTCAlignmentCore`: sung regions before the first region with any letter ≥ 0.05 (stem
+      or mix) are a wordless intro, no lyric starts there (chant 1 off the "oooo"); and
+      `RepeatedLineSpreader` re-spreads identical consecutive lines that stack into one phrase, one per
+      phrase, with a moved copy's checkpoints spaced evenly by span. Now 23.8 / 65.9 / 79.4 / 86.4 s.
+      Known remainder: chants 2–3 start on their phrase's "oooo" lead-in (~2 s early) — no evidence to
+      split it without the model hearing the word. Replayed unchanged on Moon Pride, 素敵だね,
+      私たちになりたくて; the other 8 songs not yet graded.
+- [x] **Moon Heart Sequence: wrong duration** — fixed 2026-09-25. Header-less VBR MP3s (no
+      Xing/VBRI) made AVAudioPlayer / a default AVURLAsset estimate length from bitrate (313.9 s for a
+      250.4 s song; ムーンライト伝説 339 vs 183 s). Seeking was verified correct; durations now come
+      from the decoded frame count (`AudioFileDuration`).
 - [x] Expand karaoke alignment benchmark dataset and add CI evaluation job
       (`AlignmentQualityTests.swift` runs in `tests.yml`; 16 SailorMoon songs aligned via stable-ts large-v3)
 - [x] Vocal-vs-instrumental detection — Addressed at alignment time rather than via real-time

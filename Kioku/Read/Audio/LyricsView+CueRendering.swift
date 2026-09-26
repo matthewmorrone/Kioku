@@ -129,7 +129,7 @@ extension LyricsView {
     // never shrinks below half its default — beyond that, clipping is preferable.
     func activeCueFontScale(text: String, availableWidth: CGFloat) -> CGFloat {
         guard text.isEmpty == false, availableWidth > 0 else { return 1.0 }
-        let baseFont = UIFont.systemFont(ofSize: TypographySettings.defaultTextSize)
+        let baseFont = ReadingFont.body(size: TypographySettings.defaultTextSize)
         let measured = (text as NSString).size(withAttributes: [.font: baseFont]).width
         guard measured > availableWidth else { return 1.0 }
         return max(0.5, min(1.0, availableWidth / measured))

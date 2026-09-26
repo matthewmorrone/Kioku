@@ -23,6 +23,13 @@ REPO_ROOT="${CI_PRIMARY_REPOSITORY_PATH:-$(cd "$(dirname "$0")/.." && pwd)}"
 
 echo "→ ci_post_clone: REPO_ROOT=$REPO_ROOT"
 
+# Xcode Cloud refuses to run a package plugin or macro it hasn't been told to trust, and
+# mlx-swift ships a build plugin (CudaBuild), so every archive failed at "Validate plug-in".
+# These are the cloud equivalent of the -skipPackagePluginValidation / -skipMacroValidation
+# flags local builds pass. ("Validatation" is Xcode's own spelling of the key.)
+defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
+defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
+
 # Xcode Cloud's macOS image ships with Homebrew preinstalled but not every CLI
 # tool — install zstd on demand (cheap when already cached). The ensure scripts
 # also check for zstd, but installing here keeps their failure path unreached.

@@ -2,9 +2,9 @@
 //
 // On-device forced alignment of lyric lines to a song. Pipeline: isolate vocals (HTDemucs
 // CoreML, cached per audio file) → 16 kHz → per-frame CTC log-probabilities from Meta's MMS
-// forced aligner (wav2vec2, CoreML, see [[MMSEmissions]]) over the whole stem → pin the
-// frames outside the sung regions (energy VAD) to blank → one CTC Viterbi pass over the whole
-// romanized lyric → per-line/per-span times.
+// forced aligner (wav2vec2, CoreML, see [[MMSEmissions]]) over the whole stem and the raw mix →
+// [[CTCAlignmentCore]]: mix fill, energy-VAD pin, one CTC Viterbi pass over the whole romanized
+// lyric, per-line/per-span times.
 //
 // The aligner reads romanized text, so the caller supplies each line's romanization as spans
 // that carry the UTF-16 range of the line text they cover ([[RomanizedSpan]]); those spans
@@ -17,17 +17,6 @@ import CoreML
 
 public struct CTCForcedAligner {
     public init() {}
-
-    // CTC fires a token at the end of its phone, so a token's spike lands late by roughly a
-    // consonant. The letter probability ramps up over the frames before the spike as the syllable
-    // begins; a start is read at the foot of that ramp (walking back while the letter mass stays
-    // above `onsetMassThreshold`, at most `onsetMaxBack` s). Measured on 12 songs against the
-    // consensus reference: median line error 210 → 40 ms, early bias 210 → 10 ms, +4 lines,
-    // versus the fixed 0.20 s lead this replaces.
-    static let onsetMassThreshold: Float = 0.10
-    static let onsetMaxBack = 0.4
-    // Frames this far outside a sung region are pinned to blank.
-    static let regionMargin = 0.5
 
     // Aligns lyric lines to the audio, returning one AlignedLine per input line plus per-span
     // checkpoints. Progress is reported both as a fraction and as human-readable stage text.
@@ -105,6 +94,7 @@ public struct CTCForcedAligner {
             VocalStemCache.store(mono, for: input.audioURL)
             vocalMono = mono
         }
+        VocalStemCache.storeInstrumental(mix: stereo, vocals: vocalMono, for: input.audioURL)
         onProgress?(0.4)
 
         onStage?("Preparing aligner…")
@@ -114,7 +104,7 @@ public struct CTCForcedAligner {
 
         onStage?("Aligning lyrics…")
         let audio16k = try MMSEmissions.resample(vocalMono, from: 44_100)
-        var matrix = try MMSEmissions.logProbs(
+        let matrix = try MMSEmissions.logProbs(
             model: model, audio: audio16k, cancellationCheck: cancellationCheck,
             onProgress: { frac in
                 onProgress?(0.45 + 0.25 * frac)
@@ -137,72 +127,16 @@ public struct CTCForcedAligner {
         Self.debugDump(mixMatrix.values.withUnsafeBufferPointer { Data(buffer: $0) },
                        name: "\(VocalStemCache.identityKey(for: input.audioURL)).mix-emissions.f32")
         #endif
-        let filled = EmissionDropoutFill.fill(stem: &matrix, mix: mixMatrix)
-        Self.breadcrumb("mix filled \(filled.frames) stem-quiet frames in \(filled.runs) run(s)")
-
-        // Outside the sung regions the emissions are weak and near-blank, and the DP would
-        // happily start the next line anywhere inside an interlude. Pinning those frames to
-        // blank makes the sung regions the only place text can land.
-        let regions = EnergyVAD.regions(vocalMono, sampleRate: 44_100)
-        Self.breadcrumb("energy-VAD \(regions.count) regions: " + regions.prefix(12).map { String(format: "%.0f-%.0f", $0.start, $0.end) }.joined(separator: " "))
-        if regions.isEmpty == false {
-            var sung = [Bool](repeating: false, count: matrix.frames)
-            for r in regions {
-                let f0 = max(0, Int((r.start - Self.regionMargin) / matrix.frameSec))
-                let f1 = min(matrix.frames, Int((r.end + Self.regionMargin) / matrix.frameSec))
-                if f1 > f0 { for f in f0..<f1 { sung[f] = true } }
-            }
-            let C = MMSEmissions.classes
-            for f in 0..<matrix.frames where sung[f] == false {
-                for c in 0..<C { matrix.values[f * C + c] = -1e4 }
-                matrix.values[f * C + MMSEmissions.blank] = 0
-            }
-        }
-
-        // Flatten every span's romaji into one token sequence, remembering each span's range. An
-        // optional star (MMS's "any vocal" class) at each end of the song absorbs wordless intros and
-        // fades so they can't capture the first or last line. Between lines it would also eat weak
-        // short lines (measured: セラヴィ's 駆け抜けて), so it is only placed at the edges.
-        let star = MMSEmissions.labels.firstIndex(of: "*")
-        var tokens: [Int] = star.map { [$0] } ?? []
-        var spanTokenRanges: [[Range<Int>]] = []   // per line, per span
-        for lineSpans in input.romanization {
-            var ranges: [Range<Int>] = []
-            for span in lineSpans {
-                let start = tokens.count
-                for ch in span.romaji {
-                    if let idx = MMSEmissions.labels.firstIndex(of: ch), idx != MMSEmissions.blank {
-                        tokens.append(idx)
-                    }
-                }
-                ranges.append(start..<tokens.count)
-            }
-            spanTokenRanges.append(ranges)
-        }
         #if DEBUG
         Self.debugDump(Data(input.romanization.map { $0.map(\.romaji).joined(separator: "|") }.joined(separator: "\n").utf8),
                        name: "\(VocalStemCache.identityKey(for: input.audioURL)).romaji.txt")
         #endif
-        guard tokens.count > (star == nil ? 0 : 1) else {
-            throw NSError(domain: "SwiftWhisperAlign.CTC", code: 4,
-                          userInfo: [NSLocalizedDescriptionKey: "The lyrics romanized to nothing alignable."])
-        }
-        if let star { tokens.append(star) }
-        var optional = [Bool](repeating: false, count: tokens.count)
-        if star != nil { optional[0] = true; optional[tokens.count - 1] = true }
-        guard let spans = CTCViterbi.align(logProbs: matrix.values, frames: matrix.frames,
-                                           classes: MMSEmissions.classes, tokens: tokens, optional: optional) else {
-            throw NSError(domain: "SwiftWhisperAlign.CTC", code: 5,
-                          userInfo: [NSLocalizedDescriptionKey: "The lyrics don't fit the sung audio (more text than the song can hold)."])
-        }
-        Self.breadcrumb("viterbi placed \(tokens.count) tokens")
-        onProgress?(0.95)
-
-        let onsets = Self.onsetFrames(matrix: matrix)
-        let (lines, lineTokens) = Self.lineTimings(
-            lines: input.lines, romanization: input.romanization, spanTokenRanges: spanTokenRanges,
-            tokenSpans: spans, onsetOf: { onsets[$0] }, frameSec: matrix.frameSec, durationSec: Double(vocalMono.count) / 44_100
+        let (lines, lineTokens) = try CTCAlignmentCore.align(
+            stem: matrix, mix: mixMatrix, vocalMono: vocalMono,
+            lines: input.lines, romanization: input.romanization,
+            log: { Self.breadcrumb($0) }
         )
+        onProgress?(0.95)
         onSegment?(lines)
         onProgress?(1.0)
         return AlignmentResult(lines: lines, lineTokens: lineTokens)
@@ -234,87 +168,9 @@ public struct CTCForcedAligner {
         return mono
     }
 
-    // For every frame, the frame where the letter-mass ramp leading up to it begins (see
-    // `onsetMassThreshold`): a token whose spike is at frame f starts at onsets[f].
-    private static func onsetFrames(matrix: MMSEmissions.Matrix) -> [Int] {
-        let C = MMSEmissions.classes, blank = MMSEmissions.blank, star = MMSEmissions.labels.firstIndex(of: "*")
-        var mass = [Float](repeating: 0, count: matrix.frames)
-        for f in 0..<matrix.frames {
-            var m: Float = 0
-            for c in 0..<C where c != blank && c != star { m += exp(matrix.values[f * C + c]) }
-            mass[f] = m
-        }
-        let maxBack = Int(onsetMaxBack / matrix.frameSec)
-        return (0..<matrix.frames).map { spike in
-            var f = spike
-            while f > 0, spike - f < maxBack, mass[f - 1] >= onsetMassThreshold { f -= 1 }
-            return f
-        }
-    }
-
-    // Turns token spans into per-line timings and per-span checkpoints. A line starts at the
-    // onset of its first placed token and ends at its last; the end is bridged to the
-    // next line's start when the gap is short (a held final vowel plus a breath — CTC leaves
-    // the token as soon as the phone is recognizable, so its own end lands well before the
-    // singer stops), while a longer gap stays open for a ♪ marker.
-    private static func lineTimings(
-        lines: [String], romanization: [[RomanizedSpan]], spanTokenRanges: [[Range<Int>]],
-        tokenSpans: [(start: Int, end: Int)], onsetOf: (Int) -> Int, frameSec: Double, durationSec: Double
-    ) -> (lines: [AlignedLine], lineTokens: [[AlignedToken]]) {
-        let sustainedVowelGap = 4.0
-        let bridgeMargin = 0.05
-        let perceptualOffset = 0.20
-        func time(_ frame: Int) -> Double { Double(frame) * frameSec }
-
-        // Per line: first/last placed token frames (nil when the line romanized to nothing).
-        var lineStart: [Double?] = []
-        var lineEnd: [Double?] = []
-        for ranges in spanTokenRanges {
-            let placed = ranges.flatMap { Array($0) }
-            if let first = placed.first, let last = placed.last {
-                lineStart.append(time(onsetOf(tokenSpans[first].start)))
-                lineEnd.append(time(tokenSpans[last].end))
-            } else {
-                lineStart.append(nil); lineEnd.append(nil)
-            }
-        }
-        // A line with no tokens borrows its neighbours' boundary so it is never dropped.
-        for i in lines.indices where lineStart[i] == nil {
-            let prevEnd = (0..<i).reversed().compactMap { lineEnd[$0] }.first ?? 0
-            let nextStart = ((i + 1)..<lines.count).compactMap { lineStart[$0] }.first ?? durationSec
-            lineStart[i] = prevEnd
-            lineEnd[i] = min(nextStart, prevEnd + 0.3)
-        }
-
-        var result: [AlignedLine] = []
-        var lineTokens: [[AlignedToken]] = []
-        for i in lines.indices {
-            let start = lineStart[i]!
-            let nextBound = (i + 1 < lines.count) ? lineStart[i + 1]! : durationSec
-            let ctcEnd = lineEnd[i]! + perceptualOffset
-            let gapAfter = nextBound - ctcEnd
-            let extendedEnd = (gapAfter > 0 && gapAfter <= sustainedVowelGap) ? nextBound - bridgeMargin : ctcEnd
-            let end = max(start + 0.3, min(extendedEnd, nextBound, start + 9.0))
-            result.append(AlignedLine(text: lines[i], start: start, end: end))
-
-            var tokens: [AlignedToken] = []
-            var lastStart = -Double.infinity
-            for (span, range) in zip(romanization[i], spanTokenRanges[i]) {
-                guard let first = range.first else { continue }
-                var t = max(start, time(onsetOf(tokenSpans[first].start)))
-                // Keep checkpoints distinct and forward-only, clamped to the line end.
-                if t < lastStart + 0.1 { t = min(lastStart + 0.1, end) }
-                lastStart = t
-                tokens.append(AlignedToken(start: t, charOffsetUTF16: span.charOffsetUTF16, charLengthUTF16: span.charLengthUTF16))
-            }
-            lineTokens.append(tokens)
-        }
-        return (result, lineTokens)
-    }
-
     // Decodes any audio file to 44.1 kHz stereo 32-bit float PCM via AVAssetReader.
     // Deinterleaves into [left, right].
-    private static func decodeStereoFloat(from url: URL) async throws -> [[Float]] {
+    static func decodeStereoFloat(from url: URL) async throws -> [[Float]] {
         let asset = AVURLAsset(url: url)
         let tracks = try await asset.loadTracks(withMediaType: .audio)
         guard let track = tracks.first else {

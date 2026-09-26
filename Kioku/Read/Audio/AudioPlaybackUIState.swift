@@ -20,4 +20,8 @@ final class AudioPlaybackUIState {
     var activePlaybackCueIndex: Int? = nil
     var activeAudioAttachmentID: UUID? = nil
     var isShowingLyricsView = false
+    // Which version of the song is playing (mix / isolated vocals / instrumental), and whether a
+    // switch is still building its file.
+    var audioSource: LyricsAudioSource = .mix
+    var isSwitchingAudioSource = false
 }

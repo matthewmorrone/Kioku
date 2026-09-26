@@ -57,7 +57,7 @@ extension LyricsView {
     // Calculates the scale factor needed to fit the active cue on a single line without wrapping.
     // Measures the text at default size and scales down if necessary to fit within available width.
     func scaleFactorForActiveCue(text: String, availableWidth: CGFloat, defaultFontSize: CGFloat) -> CGFloat {
-        let font = UIFont.systemFont(ofSize: defaultFontSize)
+        let font = ReadingFont.body(size: defaultFontSize)
         let textSize = (text as NSString).size(withAttributes: [.font: font])
         let requiredScale = min(1.0, availableWidth / textSize.width)
         // Clamp to reasonable bounds: don't go below 0.5x or above 1.0x

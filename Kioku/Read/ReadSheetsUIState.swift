@@ -17,4 +17,9 @@ final class ReadSheetsUIState {
     // readings (SegmentationChangeList), shown in an alert.
     var isShowingChangesFromDefault = false
     var changesFromDefault: [String] = []
+    // English → katakana review sheet (display-options popover): the proposals and the note text
+    // they were computed against, so a stale proposal is never spliced into edited text.
+    var isShowingTextConversion = false
+    var textConversionProposals: [TextConversion] = []
+    var textConversionSourceText = ""
 }

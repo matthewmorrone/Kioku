@@ -23,6 +23,7 @@ extension ReadView {
 
         StartupTimer.mark("loadAudioAttachmentIfNeeded start")
         audioPlayback.isShowingLyricsView = false
+        audioPlayback.audioSource = .mix
         audioPlayback.activeAudioAttachmentID = attachmentID
         let cues = StartupTimer.measure("loadAudioAttachmentIfNeeded.loadCues") {
             NotesAudioStore.shared.loadCues(for: attachmentID)
@@ -56,6 +57,48 @@ extension ReadView {
             audioPlayback.audioAttachmentHighlightRanges = []
             audioPlayback.playbackHighlightRangeOverride = nil
             audioPlayback.activePlaybackCueIndex = nil
+        }
+    }
+
+    // Moves the lyrics view's playback to the next source (Mix → Vocals → Instrumental), keeping
+    // the playhead and play state. The instrumental is built from the cached stem on first use, so
+    // the switch waits for it off the main thread; if a source isn't available (no stem cached) the
+    // cycle skips past it.
+    func cycleLyricAudioSource() {
+        guard audioPlayback.isSwitchingAudioSource == false,
+              let id = audioPlayback.activeAudioAttachmentID,
+              let originalURL = NotesAudioStore.shared.audioURL(for: id) else { return }
+        audioPlayback.isSwitchingAudioSource = true
+        let target = audioPlayback.audioSource.next
+        Task {
+            let resolved: (LyricsAudioSource, URL) = await {
+                var candidate = target
+                for _ in 0..<3 {
+                    let url: URL?
+                    switch candidate {
+                    case .mix: url = originalURL
+                    case .vocals: url = VocalStemCache.playableStemURL(for: originalURL)
+                    case .instrumental:
+                        url = await Task.detached(priority: .userInitiated) {
+                            await VocalStemCache.playableInstrumentalURL(for: originalURL)
+                        }.value
+                    }
+                    if let url { return (candidate, url) }
+                    candidate = candidate.next
+                }
+                return (.mix, originalURL)
+            }()
+            await MainActor.run {
+                defer { audioPlayback.isSwitchingAudioSource = false }
+                // The user may have closed this song while the instrumental was building.
+                guard audioPlayback.activeAudioAttachmentID == id else { return }
+                do {
+                    try audioPlayback.audioController.switchSource(to: resolved.1)
+                    audioPlayback.audioSource = resolved.0
+                } catch {
+                    print("[ReadView] audio source switch to \(resolved.0.label) failed: \(error.localizedDescription)")
+                }
+            }
         }
     }
 }
