@@ -101,7 +101,7 @@ new SRT. It must be safe — never lose user-authored content — and predictabl
    - *Status*: ⚠️ (`AlignmentQualityTests.testQuality_TsukiiroChainon`
      runs and prints BEFORE/AFTER metrics every CI cycle; no-drop hard
      gate passes; coverage/median thresholds wrapped in XCTExpectFailure
-     while the in-app pipeline's current floor on 月色チャイのん is 29.4%
+     while the in-app pipeline's current floor on 月色Chainon is 29.4%
      coverage / 792ms median Δ — substantially better than the
      pre-reconcile baseline of 29.4% / 764ms with 3 missing lines).
    - *On the AlignmentQualityTests harness*: each fixture also asserts

@@ -1,7 +1,7 @@
 import XCTest
 @testable import Kioku
 
-// Regression for the user-reported 月色チャイのん furigana drop. Drives the REAL segmenter + REAL
+// Regression for the user-reported 月色Chainon furigana drop. Drives the REAL segmenter + REAL
 // surface_readings so it mirrors production exactly. The defect was 生きてゆく: the surface okurigana
 // 〜てゆく failed to phonetically match the stored reading いきていく (〜ていく), so the kanji-run reading
 // was rejected and 生 rendered with no ruby at all (and being a dictionary match, the per-kanji
@@ -70,7 +70,7 @@ final class FuriganaSongLineRegressionTests: XCTestCase {
     func testFurikoEveryKanjiHasRuby() throws { try assertEveryKanjiHasRuby("振り子") }
     func testLyricLineFurikoEveryKanjiHasRuby() throws { try assertEveryKanjiHasRuby("振り子の様止まらず流されてたゆた") }
 
-    // 月色チャイのん: merging の + 様 + に must show よう. The merged surface の様に is a dictionary
+    // 月色Chainon: merging の + 様 + に must show よう. The merged surface の様に is a dictionary
     // phrase read のように, so the resolver gives よう over 様; the merge then has to let that
     // replace the さま the lone 様 had (see ReadView.markFuriganaReplaceable).
     func testMergedNoYouNiReadsYou() throws {

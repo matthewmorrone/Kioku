@@ -48,7 +48,7 @@ final class AlignmentQualityTests: XCTestCase {
     // dir, runs the aligner, and compares against the oracle. Keep them named
     // testQuality_* so a future name-pattern filter can include/exclude.
 
-    // 月色チャイのん — Sailor Moon Eternal theme. Oracle generated with stable-ts
+    // 月色Chainon — Sailor Moon Eternal theme. Oracle generated with stable-ts
     // large-v3 (forced align, original_split=True) — verified to contain all 34
     // note lines including the 3 previously-missing ones (アムール詩人の様に奏でて,
     // いま暗闇の淵, 抜け殻抱きしめて) that the on-device aligner historically

@@ -20,7 +20,7 @@ final class SegmentationDumpTests: XCTestCase {
         "命は闇の中のまたたく光だ",
         // local-longest-match over-consume — expected path: 流されて / たゆたう / の / この / まま.
         // Local grabs 流されてた (流される past-progressive contraction) and strands ゆた/う,
-        // the amputated tail of たゆたう (揺蕩う = "to drift/sway"). 月色チャイのん.
+        // the amputated tail of たゆたう (揺蕩う = "to drift/sway"). 月色Chainon.
         "流されてたゆたうのこのまま",
         // reduplicated-adverb trap — expected path: もっと / もっと / 愛している.
         // Local grabs もっとも (尤も = "most/extremely") and strands a bare っ (never a valid
