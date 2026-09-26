@@ -678,31 +678,16 @@ own sections.)
 
 ## Audio & Alignment
 
-- [ ] **Moon Pride: delayed lines** — noted 2026-09-24. `muunpuraido` (fixture in
-      `KiokuTests/Fixtures/alignment/`) still has lines whose highlight starts late. Measure the
-      per-line onset error against `muunpuraido.ground-truth.srt` via `AlignmentQualityTests`
-      to find which lines lag and by how much before changing the aligner.
-      Lines the user flagged (2026-09-13: "went sideways after the line starting with 自ら";
-      2026-09-21: 自ら戦う意志 "totally wrong", plus the すべて line), with the 13 Sep 12-song
-      phone-run starts against the reference voters (Whisper W1 / Japanese wav2vec2 X):
-      - 自ら戦う意志 — 7.1 s late (phone 62.9 s, reference 55.8 s). The previous line
-        それは王子様に運命投げず stretches to fill the gap (52.5–61.5 s).
-      - シャイニーメイクアップ輝くよ星空を集めて — ~4–6 s late (phone 64.4 s; W1 58.6 / X 60.5).
-      - ただ守られるだけのか弱い存在じゃないわ — 1.5 s late (phone 66.7 s, reference 65.3 s).
-      - シャイニーメイクアップ煌くよ星空に抱かれて — ~2.5 s late (phone 118.9 s; W1 116.1 / X 116.6).
-        Knock-on: すべて受け入れる強さ starts on time (+24 ms) but its highlight lingers to
-        118.9 s instead of ending at 115.2 s.
-      The two シャイニーメイクアップ lines are "disputed" in the consensus oracle, so the
-      AlignmentQualityTests score never counted them. Re-aligned 2026-09-25: identical output.
-      Cause (2026-09-25, from the phone's own dumps): the stem has vocal energy through 44–62 s
-      (VAD region 24.5–71.2 s, so the VAD pin is NOT it) but MMS hears ~0 letter mass in it, and the
-      raw mix only 0.01–0.02 — under EmissionDropoutFill's 0.05 mix threshold, so the fill doesn't
-      start until 62.7 s. Window seams ruled out: raw-mix-only emissions with production stitching
-      place all four lines on time. Candidate "deaf fill" (stem letter mass < 0.01 for ≥ 2 s inside
-      a VAD region → mix frames, no mix threshold) on a Mac replay: fixes the 4 late lines + 私たちを
-      照らす, breaks 嗚呼…矜持 (48.3), 嗚呼…無敵 (101.5), 罪がめぐる (175.6) — net +2 on this song, other
-      11 songs ungraded. Resembles the rejected looser fill (broke ムーンライト伝説): needs a 12-song
-      device grade and the user's yes. Replay script: `~/Projects/alignment/deaf_fill.py`.
+- [x] **Moon Pride: delayed lines** — mostly fixed 2026-09-25 (user-confirmed on device). Cause: the
+      stem has singing through 44–62 s but MMS hears ~0 letters in it, and the raw mix (0.01–0.02)
+      stayed under the dropout fill's 0.05 bar, so 自ら戦う意志 sat 7 s late and two lines after it
+      stalled. Fix: `EmissionDropoutFill.fillDeaf` — inside energy-VAD regions, stem letter mass
+      < 0.003 for ≥ 4 s is filled from the mix if the mix has ≥ 3 frames with a letter ≥ 0.15.
+      Now 自ら 55.8 ✓, 輝くよ 60.0 ✓, ただ 65.0 ✓; 嗚呼…無敵 moved to 101.8 (ref 103.9–105.3) and
+      煌くよ is still ~2.5 s late. 12-song device run 314/324 confirmed lines; Mac replay of 9 songs:
+      deaf fill changes Moon Pride only (24 → 26 of 29). Thresholds were set from two cases (Moon
+      Pride helped, ニュームーンに恋して hurt before the mix-heard gate) — suspect them first if a new
+      song stalls or jumps in a passage the model can't hear.
 - [x] **Moon Heart Sequence: repeated chants** — fixed 2026-09-25 (user-confirmed on device). The
       four セーラームーン lines are sung at 0:24, 1:08, 1:20, 1:27; MMS hears chant 1 faintly and chants
       2–4 not at all (not loudness, tempo or window context — probed on the phone's CoreML export).
