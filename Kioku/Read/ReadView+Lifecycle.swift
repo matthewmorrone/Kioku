@@ -183,6 +183,10 @@ extension ReadView {
             .onChange(of: pendingScrollTarget) { _, _ in
                 jumpToPendingScrollSurfaceIfReady()
             }
+            // Keeps the reset button's differsFromDefault current; a newer key cancels the older run.
+            .task(id: defaultComparisonKey) {
+                await refreshDiffersFromDefault()
+            }
             .onChange(of: document.activeNoteID) { _, _ in
                 // activeNoteID and text update together (loadSelectedNoteIfNeeded), but that load
                 // can finish either before or after pendingScrollTarget arrives from ContentView —
