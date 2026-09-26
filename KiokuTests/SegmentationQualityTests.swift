@@ -230,9 +230,12 @@ final class SegmentationQualityTests: XCTestCase {
         XCTAssertEqual(try segments(of: "勉強していた"), ["勉強", "していた"])
     }
 
-    // Adjective + くなる is one conjugating form, so 切|なくなったり cannot cut through 切ない.
-    func testAdjectiveKuNaruIsOneForm() throws {
-        XCTAssertEqual(try segments(of: "切なくなったり"), ["切なくなったり"])
+    // なる after an adjective's く-form is its own word ("become"), not part of the adjective — and
+    // the く-form must not be swallowed by なくなる ("to disappear"): not 切|なくなったり, でき|なくなる.
+    func testAdjectiveKuFormAndNaruAreSeparateWords() throws {
+        XCTAssertEqual(try segments(of: "切なくなったり"), ["切なく", "なったり"])
+        XCTAssertEqual(try segments(of: "制御ができなくなる。"), ["制御", "が", "できなく", "なる", "。"])
+        XCTAssertEqual(try segments(of: "泣きたくなるようなムーンライト"), ["泣きたく", "なる", "ような", "ムーンライト"])
     }
     // A number is a token of its own, priced like a common word — not unknown text — so the counter
     // after it is read whole (２ + 時間, not ２時 + 間). ヶ月 keeps its ヶ even though ヶ can never start a

@@ -228,13 +228,9 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                         continue
                     }
                     // Populate POS + dict flag: the path search classes each edge by its POS bits (TransitionClass).
-                    // POS comes from the surface's own trie node first; falls back to the union of
-                    // POS bits across resolved lemmas when the surface is a deinflected form whose
-                    // trie node isn't tagged directly.
-                    var posBits = trie.partOfSpeech(for: surface)
-                    if posBits == 0 {
-                        for lemma in lemmas { posBits |= trie.partOfSpeech(for: lemma) }
-                    }
+                    // POS comes from the surface's own trie node, plus the POS of the lemma the edge is
+                    // priced as (pricedReading) when that reading wins.
+                    let posBits = trie.partOfSpeech(for: surface)
                     var edge = LatticeEdge(
                         start: surfaceRange.lowerBound,
                         end: surfaceRange.upperBound,

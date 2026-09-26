@@ -3343,17 +3343,6 @@
       "rulesOut": [
         "adj-i"
       ]
-    },
-    {
-      "kanaIn": "くなる",
-      "kanaOut": "い",
-      "rulesIn": [
-        "adj-i",
-        "v5"
-      ],
-      "rulesOut": [
-        "adj-i"
-      ]
     }
   ],
   "conditionalForms": [
