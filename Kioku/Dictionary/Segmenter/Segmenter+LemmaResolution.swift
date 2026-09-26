@@ -153,19 +153,25 @@ extension Segmenter {
         inflectionSteps: Int
     ) -> (score: Double, inflectionSteps: Int, lemmaPartOfSpeech: UInt64) {
         let ownScore = frequencyScore(of: surface)
+        // The edge is priced as ONE lemma's form, so it takes that lemma's POS alone. A union over
+        // every candidate classed できなく as an auxiliary (でる has an aux-v entry). Sorted so a
+        // score tie picks the same lemma every run.
         var lemmaScore = 0.0
-        for lemma in lemmas where lemma != surface {
+        var pricedLemma: String?
+        for lemma in lemmas.sorted() where lemma != surface {
             let score = frequencyScore(of: lemma)
-            if score > lemmaScore { lemmaScore = score }
+            if pricedLemma == nil || score > lemmaScore {
+                lemmaScore = score
+                pricedLemma = lemma
+            }
         }
+        let lemmaBits = pricedLemma.map { trie.partOfSpeech(for: $0) } ?? 0
         guard trie.contains(surface) else {
-            return (max(ownScore, lemmaScore), inflectionSteps, 0)
+            return (max(ownScore, lemmaScore), inflectionSteps, lemmaBits)
         }
         let usesLemma = lemmaScore > 0 && SegmenterScoring.wordNats(score: lemmaScore, inflectionSteps: inflectionSteps)
             < SegmenterScoring.wordNats(score: ownScore, inflectionSteps: 0)
         guard usesLemma else { return (ownScore, 0, 0) }
-        var lemmaBits: UInt64 = 0
-        for lemma in lemmas where lemma != surface { lemmaBits |= trie.partOfSpeech(for: lemma) }
         return (lemmaScore, inflectionSteps, lemmaBits)
     }
 
