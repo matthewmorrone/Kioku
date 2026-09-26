@@ -245,13 +245,13 @@ extension ReadView {
                 // buildFuriganaBySegmentLocation always pairs reading with length — a missing
                 // length here means the recompute produced inconsistent output. Skip and warn
                 // rather than silently install a degenerate zero-length entry.
-                print("furiganaAfterApplyingNewAnnotations: missing length for reading '\(newReading)' at location \(newLocation); skipping")
+                AppLog.error(.furigana, "furiganaAfterApplyingNewAnnotations: missing length for reading '\(newReading)' at location \(newLocation); skipping")
                 continue
             }
             guard newLength > 0 else {
                 // Zero-length entries are filtered by buildFuriganaBySegmentLocation at source;
                 // reaching here implies corrupted persisted data or a producer bug.
-                print("furiganaAfterApplyingNewAnnotations: zero-length entry at location \(newLocation) (reading '\(newReading)'); skipping")
+                AppLog.error(.furigana, "furiganaAfterApplyingNewAnnotations: zero-length entry at location \(newLocation) (reading '\(newReading)'); skipping")
                 continue
             }
             let newEnd = newLocation + newLength
@@ -346,11 +346,11 @@ extension ReadView {
 
                 let entriesInRun = resultByLocation.keys.compactMap { entryLocation -> Int? in
                     guard let entryLength = resultLengthByLocation[entryLocation] else {
-                        print("furiganaAfterSynthesizingCompoundReadings: missing length for entry at location \(entryLocation); skipping")
+                        AppLog.error(.furigana, "furiganaAfterSynthesizingCompoundReadings: missing length for entry at location \(entryLocation); skipping")
                         return nil
                     }
                     guard entryLength > 0 else {
-                        print("furiganaAfterSynthesizingCompoundReadings: zero-length entry at location \(entryLocation); skipping")
+                        AppLog.error(.furigana, "furiganaAfterSynthesizingCompoundReadings: zero-length entry at location \(entryLocation); skipping")
                         return nil
                     }
                     guard entryLocation >= runLocation, entryLocation + entryLength <= runEnd else {

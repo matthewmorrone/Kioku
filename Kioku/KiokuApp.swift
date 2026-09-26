@@ -32,10 +32,10 @@ struct KiokuApp: App {
         // Bring the vocal-stem cache back under VocalStemCache.maxBytes; store() keeps it there
         // after this. Off the main thread so the directory scan and deletes never delay launch.
         Task.detached(priority: .utility) {
-            print("[KiokuApp] launch-time VocalStemCache.enforceBudget starting")
+            AppLog.info(.storage, "[KiokuApp] launch-time VocalStemCache.enforceBudget starting")
             VocalStemCache.enforceBudget()
             let freed = CachesCleaner.sweepStaleDownloads()
-            print("[KiokuApp] launch-time stale-download sweep freed \(freed / 1_000_000) MB")
+            AppLog.info(.storage, "[KiokuApp] launch-time stale-download sweep freed \(freed / 1_000_000) MB")
         }
     }
 

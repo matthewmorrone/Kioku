@@ -9,7 +9,7 @@ id `FEB1FCF4-369B-5AE3-B521-24AA1FEA25D9`, was the previous connected device and
 `unavailable` now — if this device id stops working, run `xcrun devicectl list devices` to find
 the current `available (paired)` iPhone and update this file.)
 Bundle ID: `matthewmorrone.Kioku`.
-Built `.app` ends up at `/tmp/kioku-build/Build/Products/Debug-iphoneos/Kioku Reader.app`.
+Built `.app` ends up at `~/Library/Caches/kioku-build/Build/Products/Debug-iphoneos/Kioku Reader.app` (not `/tmp`: macOS purges old files there and leaves the folders, which hollows out the Swift package checkouts).
 
 `devicectl` talks to a device-communication daemon over IPC; under a sandboxed shell this hangs
 or times out with "Timed out waiting for CoreDeviceService to fully initialize" instead of failing
@@ -19,12 +19,12 @@ Steps to perform — run them in order, stopping if any fails. If `$ARGUMENTS` c
 
 1. **Build for the device.** Run in the background and wait for completion. Treat `BUILD FAILED` or any `error:` line as fatal.
    ```bash
-   xcodebuild -scheme Kioku -configuration Debug -destination 'platform=iOS,id=00008150-00140DC10123C01C' -derivedDataPath /tmp/kioku-build build
+   xcodebuild -scheme Kioku -configuration Debug -destination 'platform=iOS,id=00008150-00140DC10123C01C' -derivedDataPath ~/Library/Caches/kioku-build -skipPackagePluginValidation -skipMacroValidation build
    ```
 
 2. **Install the app on the device.** This replaces any prior install of the same bundle ID.
    ```bash
-   xcrun devicectl device install app --device 00008150-00140DC10123C01C "/tmp/kioku-build/Build/Products/Debug-iphoneos/Kioku Reader.app"
+   xcrun devicectl device install app --device 00008150-00140DC10123C01C ~/Library/Caches/kioku-build/"Build/Products/Debug-iphoneos/Kioku Reader.app"
    ```
 
 3. **Terminate any running Kioku process.** Install replaces the bundle on disk but doesn't kill the running app, so the next launch would just foreground the old process and reuse stale in-memory state (e.g. the dictionary trie built once at startup). Safe no-op when Kioku isn't running.

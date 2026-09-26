@@ -322,12 +322,12 @@ extension ReadView {
             guard let length = furiganaLengthByLocation[location] else {
                 // No matching length entry means the maps drifted apart (corrupted persisted
                 // data or producer bug). Drop the orphan reading and warn.
-                print("pruneFuriganaForSegmentation: missing length for entry at location \(location); dropping")
+                AppLog.error(.furigana, "pruneFuriganaForSegmentation: missing length for entry at location \(location); dropping")
                 prunedByLocation.removeValue(forKey: location)
                 continue
             }
             guard length > 0 else {
-                print("pruneFuriganaForSegmentation: zero-length entry at location \(location); dropping")
+                AppLog.error(.furigana, "pruneFuriganaForSegmentation: zero-length entry at location \(location); dropping")
                 prunedByLocation.removeValue(forKey: location)
                 prunedLengthByLocation.removeValue(forKey: location)
                 continue
