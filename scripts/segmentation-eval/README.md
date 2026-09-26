@@ -63,13 +63,13 @@ headwords by the JMdict maintainers. https://downloads.tatoeba.org/exports/jpn_i
   lines, so the score is a regression list, NOT a held-out measure; the other 281 lines are unscored.
   Never print whole lyric lines; the scorer prints only the differing fragments.
 
-## Numbers to beat (2026-09-25: transition table recounted, 200 lexical words)
+## Numbers to beat (2026-09-25: table recounted with 200 lexical words; lone-kana penalty)
 
 | Set | exact | cut-through | split |
 |---|---|---|---|
-| held2k | 88.78 | 0.41 | 2.92 |
+| held2k | 88.79 | 0.41 | 2.91 |
 | fresh5k | 90.97 | 0.27 | 2.84 |
-| kana2k | 85.47 | 1.24 | 3.90 |
+| kana2k | 85.49 | 1.24 | 3.90 |
 | CI fixture (300; not re-run; PR #91) | 91.64 | 0.26 | 2.77 |
 | lyric lines reviewed | 37 / 38 | | |
 
@@ -97,8 +97,13 @@ had been counted as BOUNDARY and had no class. LEXICAL_WORDS 120 → 200 then gi
 しました their own classes (って was 150th in the training half): 120 alone was 82 / 261 cut-throughs
 on held2k / kana2k, 200 is 83 / 253 with exact up on all three sets. Classing a conjugated surface
 by its best-ranked lemma instead of the union (待って was aux-v via ちまう's まう), counted under
-that code, gave 80 / 247 but fresh5k 110 (from 104) — not shipped. Bare まって still comes out
-ま|って: kana ま is priced at 間's rank.
+that code, gave 80 / 247 but fresh5k 110 (from 104) — not shipped.
+→ lone-kana penalty (SegmenterScoring.loneKanaPenalty, 1.5 zipf): a single kana that is neither a
+classed function word nor a counter is rarely a word (ま: 1 gold token in 15,959 occurrences) but
+JPDB ranks kana ま at 896, so ま|って beat 待って on a line of its own. Pricing such kana as unranked
+broke kana-written 間 (すこしのま, ながいま; kana2k 253 → 258). train2k is flat from 1.0 to 2.5;
+1.5 is the smallest that keeps まって whole, 2.0 loses ながいま. Held-out: 88.79 / 0.41, 90.97 / 0.27
+(identical output), 85.49 / 1.24.
 
 Known misses on lyrics: ならして after a bare noun — **lyrics drop particles, the transition table
 is counted from prose** (noun → verb costs +2.7 nats). The transition weight is irrelevant to the

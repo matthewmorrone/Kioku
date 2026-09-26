@@ -260,6 +260,16 @@ final class SegmentationQualityTests: XCTestCase {
         XCTAssertEqual(try segments(of: "見てよ空"), ["見て", "よ", "空"])
     }
 
+    // A lone kana with no transition class of its own is priced below its JPDB rank
+    // (SegmenterScoring.loneKanaPenalty): ま|って beat 待って on a line of its own. Kana-written 間
+    // must still stand alone, and full-width English must stay one word per run.
+    func testLoneKanaDoesNotSplitATeForm() throws {
+        XCTAssertEqual(try segments(of: "まって"), ["まって"])
+        XCTAssertEqual(try segments(of: "まってよ"), ["まって", "よ"])
+        XCTAssertEqual(try segments(of: "すこしのまおつきあいください"), ["すこし", "の", "ま", "おつきあい", "ください"])
+        XCTAssertEqual(try segments(of: "ＬＯＶＥがほしい"), ["ＬＯＶＥ", "が", "ほしい"])
+    }
+
     // The ichidan imperative よ deinflection rule (よ→る for a v1 stem) was tried and reverted
     // (commit 4851340): on kana-only text it let および／いよ resolve as imperatives of おる／いる,
     // breaking these three sentences. The rule stays out; these guard against it — or an

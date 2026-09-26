@@ -49,6 +49,11 @@ nonisolated struct SegmenterScoring {
     // Score assumed for a dictionary word with no frequency rank at all: rarer than any ranked word.
     static let unrankedDictionaryScore = 1.0
 
+    // Zipf units taken off a lone kana's score when it is neither a classed function word nor a
+    // counter (Segmenter.buildLattice). Flat on train2k from 1.0 to 2.5; 1.5 is the smallest that
+    // keeps まって whole, and 2.0 starts losing kana-written 間 (ながいま → な|が|いま).
+    static let loneKanaPenalty = 1.5
+
     // Unknown (non-dictionary) text: a flat word cost plus a steep per-character cost, in nats, so
     // stranding a fragment is always worse than any parse that covers it with real words.
     static let unknownBaseNats = 12.0
