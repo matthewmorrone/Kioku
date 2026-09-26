@@ -8,7 +8,7 @@ extension ReadView {
     var titleView: some View {
         VStack(spacing: 8) {
             Text(displayTitle)
-                .font(.system(size: 24, weight: .bold))
+                .scaledFont(size: 24, weight: .bold)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)

@@ -31,6 +31,15 @@
 
 import AVFoundation
 import Foundation
+import os
+
+private let logger = Logger(subsystem: "matthewmorrone.SwiftWhisperAlign", category: "VocalStemCache")
+
+// Routes cache housekeeping messages to os.Logger so they are filterable in Console instead of
+// going to stdout. Takes a prebuilt String so call sites can interpolate anything.
+private func logCache(_ level: OSLogType, _ message: String) {
+    logger.log(level: level, "\(message, privacy: .public)")
+}
 
 public enum VocalStemCache {
     // Sample rate the stem is produced, stored and consumed at: both the producer (HTDemucs) and
@@ -122,7 +131,7 @@ public enum VocalStemCache {
             do {
                 try FileManager.default.removeItem(at: url)
             } catch {
-                print("[VocalStemCache] delete failed for \(url.lastPathComponent): \(error.localizedDescription)")
+                logCache(.error, "delete failed for \(url.lastPathComponent): \(error.localizedDescription)")
             }
         }
     }
@@ -224,13 +233,13 @@ public enum VocalStemCache {
     // after every store.
     public static func enforceBudget(maxBytes: Int = VocalStemCache.maxBytes) {
         guard let dir = cacheDir() else {
-            print("[VocalStemCache] enforceBudget: no cache dir, skipping")
+            logCache(.info, "enforceBudget: no cache dir, skipping")
             return
         }
         let keys: Set<URLResourceKey> = [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey]
         guard let items = try? FileManager.default.contentsOfDirectory(
             at: dir, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles]) else {
-            print("[VocalStemCache] enforceBudget: contentsOfDirectory failed at \(dir.path)")
+            logCache(.error, "enforceBudget: contentsOfDirectory failed at \(dir.path)")
             return
         }
         var files: [(url: URL, size: Int, mtime: Date)] = []
@@ -242,7 +251,7 @@ public enum VocalStemCache {
             total += size
         }
         let mb = { (b: Int) in String(format: "%.1f MB", Double(b) / 1_048_576) }
-        print("[VocalStemCache] enforceBudget scan: \(files.count) files, \(mb(total)) total, cap \(mb(maxBytes)) — at \(dir.path)")
+        logCache(.info, "enforceBudget scan: \(files.count) files, \(mb(total)) total, cap \(mb(maxBytes)) — at \(dir.path)")
         guard total > maxBytes else { return }
         var evicted = 0
         let startTotal = total
@@ -256,7 +265,7 @@ public enum VocalStemCache {
                 evicted += 1
             }
         }
-        print("[VocalStemCache] enforceBudget evicted \(evicted) files, freed \(mb(startTotal - total)), now \(mb(total))")
+        logCache(.info, "enforceBudget evicted \(evicted) files, freed \(mb(startTotal - total)), now \(mb(total))")
     }
 
     // Whether a cached stem exists for `audioURL` (cheap existence check, no decode) — drives
@@ -339,7 +348,7 @@ public enum VocalStemCache {
             try FileManager.default.moveItem(at: partial, to: url)
             return true
         } catch {
-            print("[VocalStemCache] instrumental write failed: \(error.localizedDescription)")
+            logCache(.error, "instrumental write failed: \(error.localizedDescription)")
             try? FileManager.default.removeItem(at: partial)
             return false
         }

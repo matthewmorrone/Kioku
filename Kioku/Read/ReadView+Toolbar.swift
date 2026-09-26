@@ -57,14 +57,14 @@ extension ReadView {
                 } else if llmCorrection.hasPendingLLMChanges {
                     ZStack(alignment: .bottomTrailing) {
                         Image(systemName: "sparkles")
-                            .font(.system(size: 16, weight: .semibold))
+                            .scaledFont(size: 16, weight: .semibold)
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 10, weight: .bold))
+                            .scaledFont(size: 10, weight: .bold)
                             .offset(x: 4, y: 4)
                     }
                 } else {
                     Image(systemName: "sparkles")
-                        .font(.system(size: 16, weight: .semibold))
+                        .scaledFont(size: 16, weight: .semibold)
                 }
             }
             .foregroundStyle(llmCorrection.hasPendingLLMChanges ? Color.green : Color.accentColor)
@@ -104,15 +104,15 @@ extension ReadView {
                 if llmCorrection.hasPendingLLMChanges {
                     ZStack(alignment: .bottomTrailing) {
                         Image(systemName: "arrow.counterclockwise")
-                            .font(.system(size: 16, weight: .semibold))
+                            .scaledFont(size: 16, weight: .semibold)
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 10, weight: .bold))
+                            .scaledFont(size: 10, weight: .bold)
                             .offset(x: 4, y: 4)
                     }
                     .foregroundStyle(Color.red)
                 } else {
                     Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 16, weight: .semibold))
+                        .scaledFont(size: 16, weight: .semibold)
                         .foregroundStyle(ReadToggleAppearance.foreground(isOn: isEnabled))
                 }
             }
@@ -273,7 +273,7 @@ extension ReadView {
     // the other title-row icons exactly.
     func titleActionLabel(systemImage: String, foreground: Color) -> some View {
         Image(systemName: systemImage)
-            .font(.system(size: 16, weight: .semibold))
+            .scaledFont(size: 16, weight: .semibold)
             .foregroundStyle(foreground)
             .frame(width: 36, height: 36)
             .background(Capsule().fill(ReadToggleAppearance.background))
@@ -369,11 +369,11 @@ extension ReadView {
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: isSavedHighlightEnabled ? "star.fill" : "star")
-                        .font(.system(size: 15, weight: .semibold))
+                        .scaledFont(size: 15, weight: .semibold)
                         .foregroundStyle(ReadToggleAppearance.foreground(isOn: isSavedHighlightEnabled))
                         .frame(width: 20)
                     Text("Saved Highlight")
-                        .font(.system(size: 12, weight: .semibold))
+                        .scaledFont(size: 12, weight: .semibold)
                         .foregroundStyle(ReadToggleAppearance.foreground(isOn: isSavedHighlightEnabled))
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
@@ -381,7 +381,7 @@ extension ReadView {
                     Spacer(minLength: 0)
                     if isSavedHighlightEnabled {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .bold))
+                            .scaledFont(size: 12, weight: .bold)
                             .foregroundStyle(Color.accentColor)
                     }
                 }
@@ -392,7 +392,7 @@ extension ReadView {
                 readSheets.isShowingSavedHighlightCategories = true
             } label: {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
+                    .scaledFont(size: 11, weight: .semibold)
                     .foregroundStyle(.secondary)
                     .frame(width: 24, height: 24)
             }
@@ -456,12 +456,12 @@ extension ReadView {
         Button(action: action) {
             HStack(spacing: 10) {
                 image
-                    .font(.system(size: 15, weight: .semibold))
+                    .scaledFont(size: 15, weight: .semibold)
                     .foregroundStyle(ReadToggleAppearance.foreground(isOn: isEnabled))
                     .frame(width: 20)
 
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold))
+                    .scaledFont(size: 12, weight: .semibold)
                     .foregroundStyle(ReadToggleAppearance.foreground(isOn: isEnabled))
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
@@ -471,7 +471,7 @@ extension ReadView {
 
                 if isEnabled {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 12, weight: .bold))
+                        .scaledFont(size: 12, weight: .bold)
                         .foregroundStyle(Color.accentColor)
                 }
             }
@@ -524,7 +524,7 @@ extension ReadView {
     // to attach taps and long-presses to without nesting them inside a Button.
     private var editModeButtonLabel: some View {
         Image(systemName: "character.cursor.ibeam.ja")
-            .font(.system(size: 16, weight: .semibold))
+            .scaledFont(size: 16, weight: .semibold)
             .foregroundStyle(ReadToggleAppearance.foreground(isOn: editModeScroll.isEditMode))
             .frame(width: 36, height: 36)
             .background(Circle().fill(ReadToggleAppearance.background))

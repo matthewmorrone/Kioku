@@ -124,7 +124,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
                 try session.setCategory(.ambient, mode: .default)
             }
         } catch {
-            print("[AudioPlaybackController] setCategory failed: \(error.localizedDescription)")
+            AppLog.error(.audioPlayback, "[AudioPlaybackController] setCategory failed: \(error.localizedDescription)")
         }
     }
 
@@ -198,7 +198,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         do {
             try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         } catch {
-            print("[AudioPlaybackController] setActive(false) failed: \(error.localizedDescription)")
+            AppLog.error(.audioPlayback, "[AudioPlaybackController] setActive(false) failed: \(error.localizedDescription)")
         }
         updateNowPlayingInfo()
     }
@@ -214,7 +214,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         do {
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
-            print("[AudioPlaybackController] play setActive(true) failed: \(error.localizedDescription)")
+            AppLog.error(.audioPlayback, "[AudioPlaybackController] play setActive(true) failed: \(error.localizedDescription)")
         }
         player.play()
         isPlaying = true
@@ -230,7 +230,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         do {
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
-            print("[AudioPlaybackController] playFromStart setActive(true) failed: \(error.localizedDescription)")
+            AppLog.error(.audioPlayback, "[AudioPlaybackController] playFromStart setActive(true) failed: \(error.localizedDescription)")
         }
         player.currentTime = 0
         currentTimeMs = 0

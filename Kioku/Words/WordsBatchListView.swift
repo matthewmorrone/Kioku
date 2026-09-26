@@ -112,7 +112,7 @@ struct WordsBatchListView: View {
                         dismiss()
                     } label: {
                         Image(systemName: "checkmark.circle")
-                            .font(.system(size: 16))
+                            .scaledFont(size: 16)
                             .frame(width: 32, height: 32)
                     }
                     .accessibilityLabel("Done")

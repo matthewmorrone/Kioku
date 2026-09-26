@@ -47,7 +47,7 @@ extension NotesView {
                         .controlSize(.small)
                 } else {
                     Image(systemName: "text.viewfinder")
-                        .font(.system(size: 16))
+                        .scaledFont(size: 16)
                 }
             }
             .frame(width: 32, height: 32)

@@ -53,7 +53,7 @@ final class SpeechSynthesisHelper {
             try session.setCategory(.playback, mode: .spokenAudio, options: [.mixWithOthers, .duckOthers])
             try session.setActive(true)
         } catch {
-            print("[SpeechSynthesisHelper] audio session activation failed: \(error.localizedDescription)")
+            AppLog.error(.audioPlayback, "[SpeechSynthesisHelper] audio session activation failed: \(error.localizedDescription)")
         }
     }
 }

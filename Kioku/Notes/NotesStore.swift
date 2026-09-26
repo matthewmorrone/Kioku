@@ -603,7 +603,7 @@ final class NotesStore: ObservableObject {
             } catch {
                 // Single-note decode failure is loud but non-destructive: file stays on
                 // disk for a future build to interpret; the rest of the collection loads.
-                print("[NotesStore] could not decode note \(id): \(error)")
+                AppLog.error(.storage, "[NotesStore] could not decode note \(id): \(error)")
             }
         }
 
@@ -642,7 +642,7 @@ final class NotesStore: ObservableObject {
         do {
             try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
         } catch {
-            print("[NotesStore] could not create notes directory: \(error)")
+            AppLog.error(.storage, "[NotesStore] could not create notes directory: \(error)")
         }
     }
 

@@ -33,7 +33,7 @@ extension ReadView {
                         .controlSize(.small)
                 } else {
                     Image(systemName: "waveform")
-                        .font(.system(size: 14, weight: .semibold))
+                        .scaledFont(size: 14, weight: .semibold)
                 }
             }
             .foregroundStyle(subtitleImport.isPerformingAudioTranscription ? Color.secondary : Color.accentColor)

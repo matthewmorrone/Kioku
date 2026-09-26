@@ -17,6 +17,10 @@ enum LogFeature: String, CaseIterable, Identifiable {
     case clipboardLookup
     case segmentation
     case audioAlignment
+    case audioPlayback
+    case dictionary
+    case furigana
+    case storage
 
     var id: String { rawValue }
 
@@ -33,6 +37,10 @@ enum LogFeature: String, CaseIterable, Identifiable {
         case .clipboardLookup: return "Clipboard Lookup"
         case .segmentation: return "Segmentation Engine"
         case .audioAlignment: return "Audio Alignment / Karaoke"
+        case .audioPlayback: return "Audio Playback"
+        case .dictionary: return "Dictionary Loading / Lookup"
+        case .furigana: return "Furigana"
+        case .storage: return "Storage"
         }
     }
 
@@ -50,6 +58,10 @@ enum LogFeature: String, CaseIterable, Identifiable {
         case .clipboardLookup: return "Clipboard-triggered dictionary lookups."
         case .segmentation: return "MeCab/lattice segmentation diagnostics."
         case .audioAlignment: return "Lyric/subtitle alignment and karaoke playback timing."
+        case .audioPlayback: return "Audio session and player failures."
+        case .dictionary: return "Dictionary map loading at startup and lookup query failures."
+        case .furigana: return "Dropped or malformed furigana annotations."
+        case .storage: return "Note, breakdown, and cache file reads, writes, and cleanup."
         }
     }
 }

@@ -217,7 +217,7 @@ struct BulkImportSheet: View {
                 Image(systemName: "waveform").foregroundStyle(.secondary)
             }
         }
-        .font(.system(size: 12, weight: .medium))
+        .scaledFont(size: 12, weight: .medium)
     }
 
     // Renders a per-row status badge: queued (clock), running (spinner), done (check),

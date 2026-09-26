@@ -138,7 +138,7 @@ struct BrowseKanjiFrequencyView: View {
             } label: {
                 Image(systemName: saved ? "star.fill" : "star")
                     .foregroundStyle(saved ? Color.yellow : Color.secondary)
-                    .font(.system(size: 18, weight: .semibold))
+                    .scaledFont(size: 18, weight: .semibold)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(saved ? "Remove from saved kanji" : "Save kanji")

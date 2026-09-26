@@ -54,7 +54,7 @@ extension ReadView {
                     .controlSize(.small)
             } else {
                 Image(systemName: "captions.bubble")
-                    .font(.system(size: 14, weight: .semibold))
+                    .scaledFont(size: 14, weight: .semibold)
             }
         }
         .foregroundStyle(canOpenSubtitleFlow ? Color.accentColor : Color.secondary)

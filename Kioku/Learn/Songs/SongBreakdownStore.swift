@@ -141,7 +141,7 @@ final class SongBreakdownStore: ObservableObject {
             }
             try data.write(to: url, options: .atomic)
         } catch {
-            print("[SongBreakdownStore] write failed for \(breakdown.noteID): \(error)")
+            AppLog.error(.storage, "[SongBreakdownStore] write failed for \(breakdown.noteID): \(error)")
         }
     }
 
@@ -157,7 +157,7 @@ final class SongBreakdownStore: ObservableObject {
             do {
                 try fileManager.removeItem(at: url)
             } catch {
-                print("[SongBreakdownStore] delete failed for \(id): \(error)")
+                AppLog.error(.storage, "[SongBreakdownStore] delete failed for \(id): \(error)")
             }
         }
     }
@@ -310,7 +310,7 @@ final class SongBreakdownStore: ObservableObject {
         } catch {
             // Directory creation failure is recoverable — reads will fall through to nil and
             // writes will retry. Surface to console; do not crash the app.
-            print("[SongBreakdownStore] could not create directory: \(error)")
+            AppLog.error(.storage, "[SongBreakdownStore] could not create directory: \(error)")
         }
     }
 
