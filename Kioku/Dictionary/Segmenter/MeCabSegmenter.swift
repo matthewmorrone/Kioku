@@ -79,6 +79,11 @@ nonisolated final class MeCabSegmenter: TextSegmenting, @unchecked Sendable {
         nil
     }
 
+    // No cost model here: the split editor shows its cuts without costs for this backend.
+    func splitCosts(of range: Range<String.Index>, in text: String, candidates: [[String]]) -> [Int?] {
+        candidates.map { _ in nil }
+    }
+
     // Returns a debug summary for MeCab's analysis of a surface/lemma pair.
     func debugResolutionSummary(for surface: String, lemma: String) -> String {
         let nodes = tokenizer.tokenize(surface)

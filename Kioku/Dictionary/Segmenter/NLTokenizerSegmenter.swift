@@ -53,6 +53,11 @@ nonisolated final class NLTokenizerSegmenter: TextSegmenting, @unchecked Sendabl
         nil
     }
 
+    // No cost model here: the split editor shows its cuts without costs for this backend.
+    func splitCosts(of range: Range<String.Index>, in text: String, candidates: [[String]]) -> [Int?] {
+        candidates.map { _ in nil }
+    }
+
     // Returns a debug summary for NLTokenizer's analysis of a surface.
     func debugResolutionSummary(for surface: String, lemma: String) -> String {
         let edges = longestMatchEdges(for: surface)

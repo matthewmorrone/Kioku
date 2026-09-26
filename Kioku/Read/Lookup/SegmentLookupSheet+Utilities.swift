@@ -8,15 +8,15 @@ import UIKit
 // and the queue were removed.
 
 extension SegmentLookupSheet {
-    // Re-installs the split readout's frequency provider with freshly-loaded resources and recomputes
-    // the readout on an already-open sheet. A split editor opened before the frequency maps finished
-    // loading captures empty maps and shows all-zero scores; called when resources become ready so the
-    // open readout fills in by itself instead of forcing the user to dismiss, wait, and reopen.
+    // Re-installs the split editor's cost provider once the segmenter is loaded and re-costs the cuts
+    // on an already-open sheet. A split editor opened before then has no costs; called when resources
+    // become ready so the open readout fills in by itself instead of forcing the user to reopen it.
     @MainActor
-    func refreshOpenSheetFrequencyProvider(_ provider: @escaping (String) -> [String: FrequencyData]?) {
-        frequencyResourcesReady = true
-        pathSegmentFrequencyProvider = provider
-        (presentedSheetController as? SurfaceSheetViewController)?.updateSplitFrequencyLabel()
+    func refreshOpenSheetSplitCostsProvider(_ provider: @escaping ([[String]]) -> [Int?]) {
+        splitCostsReady = true
+        splitCostsProvider = provider
+        guard let controller = presentedSheetController as? SurfaceSheetViewController else { return }
+        controller.rebuildSplitCandidates(for: controller.currentSurface)
     }
 
     // Re-reads the open sheet's reading header after the note's furigana changes underneath it.

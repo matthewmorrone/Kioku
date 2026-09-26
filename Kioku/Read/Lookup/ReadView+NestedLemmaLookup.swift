@@ -85,9 +85,7 @@ extension ReadView {
             onReadingSelected: nil,
             onReadingReset: nil,
             activeReadingOverrideProvider: nil,
-            pathSegmentFrequencyProvider: { surface in
-                frequencyForSurface(surface)
-            },
+            splitCostsProvider: nil,
             sheetDictionaryEntryProvider: { resolvedEntry() },
             sheetIsSavedProvider: { [weak nestedSheet] in
                 guard let entry = nestedSheet?.currentSheetDictionaryEntry else { return false }

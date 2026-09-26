@@ -502,10 +502,10 @@ extension ReadView {
     // Resolves ordered lookup candidates for the current selected segment by surface first, then lemma fallback.
     private func currentSelectedLookupCandidates() -> [String] {
         guard let surface = currentSelectedSurface() else { return [] }
-        return orderedLookupCandidates(
-            surface: surface,
-            lemma: lemmaInfoForCurrentSelectedSegment()?.lemma
-        )
+        // Two-part display lemmas ("泣く + なる", "さがす + つづける") look up by their base part.
+        let lemma = lemmaInfoForCurrentSelectedSegment()?.lemma
+            .components(separatedBy: " + ").first
+        return orderedLookupCandidates(surface: surface, lemma: lemma)
     }
 
     // Returns the first query candidate for the current segment that has a dictionary hit.

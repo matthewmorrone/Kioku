@@ -33,10 +33,10 @@ extension ReadView {
             TapDiagnostics.mark("about to preScroll")
             preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: tappedSegmentRect)
             TapDiagnostics.mark("preScroll returned, about to presentSheet")
-            // Tell the sheet whether frequency data is loaded yet so its split readout shows a loading
-            // state instead of all-zero scores when opened mid-startup; onChange(of: frequencyDataReady)
-            // flips it true and refreshes the open readout once the reading map lands (Stage 1, ~1s).
-            SegmentLookupSheet.shared.frequencyResourcesReady = frequencyDataReady
+            // Tell the sheet whether the segmenter is loaded yet so its split readout shows a loading
+            // state instead of missing costs when opened mid-startup; the segmenterRevision change in
+            // ReadView+Lifecycle flips it true and re-costs the open readout once it lands.
+            SegmentLookupSheet.shared.splitCostsReady = readResourcesReady
             SegmentLookupSheet.shared.presentSheet(
                 surface: segmentSurface,
                 leftNeighborSurface: adjacentSurfaces.left,
@@ -214,12 +214,8 @@ extension ReadView {
                     let reading = reconstructedReading(for: edge.surface, at: location)
                     return reading.isEmpty ? nil : reading
                 },
-                pathSegmentFrequencyProvider: { surface in
-                    // Shared resolver: direct surface entry, then deinflected lemmas, skipping
-                    // frequency-less entries so a bare split fragment still reports its lemma's
-                    // score instead of a "—". (Was an inline copy that short-circuited on the
-                    // empty-but-present case — see frequencyData(forSurface:).)
-                    frequencyData(forSurface: surface)
+                splitCostsProvider: { candidates in
+                    splitCostsForCurrentSelectedSegment(candidates)
                 },
                 sheetDictionaryEntryProvider: {
                     resolvedDictionaryEntryForCurrentSelectedSegment()

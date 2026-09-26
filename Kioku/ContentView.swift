@@ -8,10 +8,6 @@ nonisolated private struct ReadResources {
     var surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap()
     var kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()
     var frequencyRankBySurface: FrequencyRankMap = FrequencyRankMap()
-    // True once `surfaceReadingData` is populated — published in Stage 1, BEFORE the heavy trie/lexicon
-    // build (`ready`). The lookup/split frequency readout only needs the reading map, so this lets it
-    // resolve scores in ~1s instead of waiting for the full engine. Distinct from `ready`.
-    var frequencyDataReady: Bool = false
     var ready: Bool = false
     var segmenterRevision: Int = 0
 }
@@ -77,7 +73,6 @@ struct ContentView: View {
                 surfaceReadingData: readResources.surfaceReadingData,
                 kanjiReadingFallback: readResources.kanjiReadingFallback,
                 frequencyRankBySurface: readResources.frequencyRankBySurface,
-                frequencyDataReady: readResources.frequencyDataReady,
                 segmenterRevision: readResources.segmenterRevision,
                 readResourcesReady: readResources.ready,
                 onOpenWordDetail: handleOpenWordDetail,
@@ -444,7 +439,6 @@ struct ContentView: View {
                     }
                     if let publishedReadingData {
                         readResources.surfaceReadingData = SurfaceReadingDataMap(publishedReadingData)
-                        readResources.frequencyDataReady = true
                         StartupTimer.mark("surfaceReadingData published (early)")
                     }
                 }
@@ -475,7 +469,6 @@ struct ContentView: View {
                     surfaceReadingData: result.surfaceReadingData,
                     kanjiReadingFallback: result.kanjiReadingFallback,
                     frequencyRankBySurface: result.frequencyRankBySurface,
-                    frequencyDataReady: true,
                     ready: true,
                     segmenterRevision: currentRevision + 1
                 )

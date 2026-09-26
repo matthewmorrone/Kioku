@@ -396,7 +396,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         let latticeEdges = buildLattice(for: text)
 
         if SegmenterSettings.usesGlobalLongestMatch {
-            let (annotatedEdges, path) = viterbiSelect(from: latticeEdges, in: text)
+            let (annotatedEdges, path, _) = viterbiSelect(from: latticeEdges, in: text)
             // If Viterbi fails to terminate (no path reaches text.endIndex), fall through to greedy
             // so we never return a partial / empty segmentation. This keeps the flag safe to flip.
             if !path.isEmpty {
