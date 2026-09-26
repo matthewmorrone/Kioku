@@ -25,6 +25,9 @@ nonisolated final class Deinflector {
     //   きる (切る godan vs 着る ichidan), へる (減る godan vs 経る ichidan).
     private let knownNonIchidanRuVerbs: Set<String>
 
+    // The helper word (DeinflectionRule.helper) of each rule that has one, keyed by transitionKey.
+    let helperByTransition: [String: String]
+
     // Stores deinflection rules used by candidate generation.
     init(rules: [DeinflectionRule], trie: DictionaryTrie, nonIchidanRuVerbs: Set<String> = []) {
         self.rules = rules.sorted { lhs, rhs in
@@ -35,6 +38,7 @@ nonisolated final class Deinflector {
         }
         self.trie = trie
         self.knownNonIchidanRuVerbs = nonIchidanRuVerbs
+        self.helperByTransition = Self.helperIndex(self.rules)
     }
 
     // Stores grouped deinflection rules while preserving group labels used for chain reporting.
@@ -55,6 +59,7 @@ nonisolated final class Deinflector {
         }
         self.trie = trie
         self.knownNonIchidanRuVerbs = nonIchidanRuVerbs
+        self.helperByTransition = Self.helperIndex(self.rules)
     }
 
     // The non-rule sibling key alongside the rule groups (teForms, pastForms, …) in deinflection.json.
