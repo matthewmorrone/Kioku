@@ -34,6 +34,12 @@ extension ReadView {
             } message: {
                 Text(llmCorrection.llmCorrectionErrorMessage)
             }
+            .alert("Run AI Correction?", isPresented: $llmCorrection.isShowingLLMRunConfirm) {
+                Button("Run") { requestLLMCorrection() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This sends the note to \(LLMSettings.remoteProvider().displayName), billed to your API key.")
+            }
             .alert("Apply AI Changes?", isPresented: $llmCorrection.isShowingLLMConfirmAll) {
                 Button("Apply All") { confirmLLMChanges() }
                 Button("Reject All", role: .destructive) { rejectAllPendingLLMChanges() }
