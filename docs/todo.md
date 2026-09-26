@@ -703,12 +703,16 @@ own sections.)
       照らす, breaks 嗚呼…矜持 (48.3), 嗚呼…無敵 (101.5), 罪がめぐる (175.6) — net +2 on this song, other
       11 songs ungraded. Resembles the rejected looser fill (broke ムーンライト伝説): needs a 12-song
       device grade and the user's yes. Replay script: `~/Projects/alignment/deaf_fill.py`.
-- [ ] **Moon Heart Sequence: repeated chants** — noted 2026-09-24. `muunhaatoshiikuensu`: the four
-      セーラームーン lines are sung at 0:24, 1:08, 1:20, 1:27 (user, by ear; 0–7 s is wordless "oooo").
-      2026-09-25 re-align placed them at 4.5 / 23.8 / 25.2 / 80.5 s — all four wrong, chant 1 back in
-      the "oooo" (the 13 Sep edge-star fix had kept it out; find out why). MMS hears the chants at
-      ~0.03 letter mass and identical lines give the Viterbi nothing to tell apart, so placement is
-      VAD-slot-driven (stem phrases: 0.8–7.3, 23.0–23.7, 24.0–27.8, 65.9–75.8, 79.4–82.4 s).
+- [x] **Moon Heart Sequence: repeated chants** — fixed 2026-09-25 (user-confirmed on device). The
+      four セーラームーン lines are sung at 0:24, 1:08, 1:20, 1:27; MMS hears chant 1 faintly and chants
+      2–4 not at all (not loudness, tempo or window context — probed on the phone's CoreML export).
+      Fixes in `CTCAlignmentCore`: sung regions before the first region with any letter ≥ 0.05 (stem
+      or mix) are a wordless intro, no lyric starts there (chant 1 off the "oooo"); and
+      `RepeatedLineSpreader` re-spreads identical consecutive lines that stack into one phrase, one per
+      phrase, with a moved copy's checkpoints spaced evenly by span. Now 23.8 / 65.9 / 79.4 / 86.4 s.
+      Known remainder: chants 2–3 start on their phrase's "oooo" lead-in (~2 s early) — no evidence to
+      split it without the model hearing the word. Replayed unchanged on Moon Pride, 素敵だね,
+      私たちになりたくて; the other 8 songs not yet graded.
 - [x] **Moon Heart Sequence: wrong duration** — fixed 2026-09-25. Header-less VBR MP3s (no
       Xing/VBRI) made AVAudioPlayer / a default AVURLAsset estimate length from bitrate (313.9 s for a
       250.4 s song; ムーンライト伝説 339 vs 183 s). Seeking was verified correct; durations now come
