@@ -442,14 +442,11 @@ own sections.)
       segment's own color" job, just not wired to the playback highlight here — passed the same
       `cueLocalPlaybackHighlightRange(...)` as `playbackHighlightRange`, so the override always
       exactly covers the highlighted span.
-- [ ] **Extract-words "Vocab" tab wrongly empty** — from app-usage triage 2026-07-03, on 月色チャイのん.
-      Needs one device check before more work: open that note's Extract sheet and see whether Vocab
-      is still empty. `ebfd619` (2026-07-22, "vocab/coverage bugs") rewrote much of
-      `SegmentListView`, and the prime suspect is now loud: a failed `populateCanonicalEntryIDMap`
-      (which empties every lemma → entry lookup) logs under `AppLog` `.dictionary` and trips an
-      `assertionFailure` in Debug instead of a bare `print` (`ContentView.makeReadResources`, 2026-09-26).
-      If it is still empty with no assertion, the remaining suspect is conjugated surfaces whose
-      `preferredLemma` isn't canonical being dropped in `SubtitleVocabExtractor.extract`.
+- [x] **Extract-words "Vocab" tab wrongly empty** — closed 2026-09-26: the user confirmed
+      月色チャイのん's Extract sheet lists vocab. Most likely fixed by `ebfd619` (2026-07-22), which
+      rewrote much of `SegmentListView`. A failed `populateCanonicalEntryIDMap` (which would empty
+      every lemma → entry lookup) now logs under `AppLog` `.dictionary` and asserts in Debug, so
+      that cause can't come back silently.
 
 ## Words & Dictionary
 
