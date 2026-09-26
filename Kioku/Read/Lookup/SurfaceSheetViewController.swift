@@ -149,10 +149,12 @@ final class SurfaceSheetViewController: UIViewController {
         ).height
         guard abs(fitted - measuredContentHeight) > 0.5 else { return }
         measuredContentHeight = fitted
+        sheet?.presentedSheetHeight = fittedSheetHeight()
         // Off this layout pass: invalidateDetents resizes the sheet, which lays out again.
         // The guard above is what stops the second pass from scheduling a third.
         DispatchQueue.main.async { [weak self] in
             self?.invalidateContentDetentIfPresented()
+            self?.sheet?.onSheetHeightChanged?()
         }
     }
 
@@ -342,9 +344,14 @@ final class SurfaceSheetViewController: UIViewController {
             // pass has run there is nothing measured, and the sheet opens at a middling height
             // that the pass then corrects.
             guard self.measuredContentHeight > 0 else { return min(340, context.maximumDetentValue) }
-            let fitted = self.measuredContentHeight + self.pendingBottomSafeAreaInset()
-            return min(max(fitted, 240), context.maximumDetentValue)
+            return min(self.fittedSheetHeight(), context.maximumDetentValue)
         }
+    }
+
+    // The sheet's height for its measured content, before the detent's maximum: what the detent
+    // resolves to, and what the read view keeps the selected word above (presentedSheetHeight).
+    func fittedSheetHeight() -> CGFloat {
+        max(measuredContentHeight + pendingBottomSafeAreaInset(), 240)
     }
 
     // The home-indicator inset the fitted measurement above is still missing. `systemLayoutSizeFitting`

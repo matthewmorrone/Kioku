@@ -20,4 +20,8 @@ final class EditModeScrollUIState {
     // of the note. Tracked here so dismissal removes exactly what was added, regardless of
     // any other inset changes the scroll view's owner might have made in the meantime.
     var appliedSheetBottomInset: CGFloat = 0
+    // Where the read view was before the last scroll that made room for the lookup sheet. When the
+    // sheet reports its real height, that scroll is re-planned from here, so a first scroll made
+    // for a guessed (taller) sheet can come back down instead of leaving a gap above the sheet.
+    var sheetScrollStartOffsetY: CGFloat?
 }

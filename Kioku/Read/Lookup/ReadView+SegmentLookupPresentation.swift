@@ -30,6 +30,22 @@ extension ReadView {
                 presentNestedLemmaLookup(lemma: lemma, gloss: gloss)
             }
 
+            // When the sheet measures itself (and whenever its height changes after that), place the
+            // selected word above its real top instead of the guess the first scroll used.
+            SegmentLookupSheet.shared.onSheetHeightChanged = {
+                guard let textView = sourceView as? UITextView,
+                      let selectedSegmentLocation = segmentSelection.selectedSegmentLocation,
+                      let selectedSegmentRect = selectedSegmentRectInTextView(
+                          sourceView: textView,
+                          selectedLocation: selectedSegmentLocation
+                      ) else { return }
+                preScrollSegmentForSheetVisibility(
+                    sourceView: sourceView,
+                    tappedSegmentRect: selectedSegmentRect,
+                    replanningFromStart: true
+                )
+            }
+
             TapDiagnostics.mark("about to preScroll")
             preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: tappedSegmentRect)
             TapDiagnostics.mark("preScroll returned, about to presentSheet")

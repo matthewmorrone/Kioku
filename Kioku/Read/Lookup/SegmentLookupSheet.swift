@@ -69,6 +69,12 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     // Prices candidate cuts of the current segment with the segmenter's own path costs, in the
     // context of the segment's line (Segmenter.splitCosts) — the split editor's only source of scores.
     var splitCostsProvider: (([[String]]) -> [Int?])?
+    // The presented sheet's height from the screen bottom, once it has measured its content (the
+    // same height its content-fitted detent resolves to); nil before then and after dismissal. The
+    // read view scrolls the selected word above this rather than above a guessed sheet height.
+    var presentedSheetHeight: CGFloat?
+    // Called when presentedSheetHeight changes, so the read view can re-place the selected word.
+    var onSheetHeightChanged: (() -> Void)?
     // Provides the minimal dictionary entry needed to render visible senses for the current segment.
     var sheetDictionaryEntryProvider: (() -> DictionaryEntry?)?
     var currentSheetDictionaryEntry: DictionaryEntry? = nil
