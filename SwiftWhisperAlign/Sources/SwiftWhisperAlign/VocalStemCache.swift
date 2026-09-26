@@ -6,10 +6,13 @@
 // both the stereo decode and the isolation, dropping straight into the (cheap) trim/VAD/align
 // stages.
 //
-// Format: 16-bit Apple Lossless mono @ 44.1 kHz in an .m4a. A quarter the size of the raw Float32
-// buffer HTDemucs returns (a 3-minute stem: 30.8 MB → 7.6 MB), lossless below the 16-bit
-// quantization, and directly playable — the "listen to the isolated vocals" affordance plays the
-// cache file itself. Samples beyond ±1.0 clip. Stored under Application Support/VocalStems (NOT Caches, despite being
+// Format: 96 kbps AAC mono @ 44.1 kHz in an .m4a — about 3 MB for a 4-minute song, a tenth of the
+// raw Float32 buffer HTDemucs returns and a third of 16-bit Apple Lossless. Lossy, but measured on
+// 8 songs by aligning from a lossless and an AAC copy of the same stem: 236 → 238 lines within
+// ±500 ms, no song worse, largest line shift 1.3 s (an improvement); AVAudioFile trims the encoder
+// priming, so the read-back stem is sample-aligned with the mix. Directly playable — the "listen to
+// the isolated vocals" affordance plays the cache file itself. Samples beyond ±1.0 clip. Stems
+// cached before this are Apple Lossless and still read as they are. Stored under Application Support/VocalStems (NOT Caches, despite being
 // regenerable): a Caches-resident stem was observed getting wiped across ordinary dev-reinstall
 // cycles on a nearly-empty 512 GB device — nowhere near genuine storage pressure — so Caches'
 // "OS may purge any time" contract was costing a real ~3.5 min HTDemucs-FT re-isolation on
@@ -41,8 +44,8 @@ public enum VocalStemCache {
     // overlap-add) so an old stem is never silently fed to a new aligner.
     private static let formatVersion = 1
 
-    // Upper bound on what the stem cache may occupy on disk. A stem is ~2.5 MB per minute of song
-    // (~10 MB for four minutes), so 250 MB keeps ~25 recent songs' stems for instant Re-align. This
+    // Upper bound on what the stem cache may occupy on disk. A stem is ~0.75 MB per minute of song
+    // and its instrumental ~1.2 MB, so 250 MB keeps well over 50 recent songs for instant Re-align. This
     // lives in Application Support (not Caches), so the OS won't reclaim it on its own — this bound
     // is the only thing keeping it from growing without limit.
     public static let maxBytes = 250 * 1024 * 1024
@@ -180,12 +183,13 @@ public enum VocalStemCache {
         return samples
     }
 
-    // Encodes mono Float32 samples as 16-bit Apple Lossless at `url`. Written beside the target and
-    // moved into place, so a crash mid-encode never leaves a truncated stem under the real key.
+    // Encodes mono Float32 samples as 96 kbps AAC at `url` (see the header for why lossy is fine).
+    // Written beside the target and moved into place, so a crash mid-encode never leaves a truncated
+    // stem under the real key.
     private static func writeSamples(_ samples: [Float], to url: URL) -> Bool {
         let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatAppleLossless, AVSampleRateKey: sampleRate,
-            AVNumberOfChannelsKey: 1, AVEncoderBitDepthHintKey: 16,
+            AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 96_000,
         ]
         let partial = url.deletingLastPathComponent().appendingPathComponent("." + url.lastPathComponent + ".partial.m4a")
         try? FileManager.default.removeItem(at: partial)
@@ -213,8 +217,9 @@ public enum VocalStemCache {
         }
     }
 
-    // Evicts least-recently-USED entries until the VocalStems dir is at or under `maxBytes`. LRU is
-    // by file modificationDate, which `load()` refreshes on a hit, so a hot song outlives cold ones.
+    // Evicts entries until the VocalStems dir is at or under `maxBytes`: instrumentals first, then
+    // least-recently-USED stems. LRU is by file modificationDate, which `load()` refreshes on a hit,
+    // so a hot song outlives cold ones.
     // Counts every file in the dir. Best-effort and cheap (one directory scan); call on launch and
     // after every store.
     public static func enforceBudget(maxBytes: Int = VocalStemCache.maxBytes) {
@@ -241,7 +246,10 @@ public enum VocalStemCache {
         guard total > maxBytes else { return }
         var evicted = 0
         let startTotal = total
-        for f in files.sorted(by: { $0.mtime < $1.mtime }) {   // oldest first
+        // Instrumentals go first (rebuilt from the stem in seconds; a stem costs a minute of
+        // isolation), then oldest first within each kind.
+        let isInstrumental = { (url: URL) in url.lastPathComponent.hasSuffix(".instrumental.m4a") }
+        for f in files.sorted(by: { isInstrumental($0.url) != isInstrumental($1.url) ? isInstrumental($0.url) : $0.mtime < $1.mtime }) {
             if total <= maxBytes { break }
             if (try? FileManager.default.removeItem(at: f.url)) != nil {
                 total -= f.size
@@ -302,12 +310,13 @@ public enum VocalStemCache {
         enforceBudget()
     }
 
-    // Encodes two channels as 16-bit stereo Apple Lossless at `url`, via a partial file moved into
-    // place like `writeSamples`.
+    // Encodes two channels as 160 kbps stereo AAC at `url`, via a partial file moved into place like
+    // `writeSamples`. Lossy on purpose: the instrumental is only ever played, never aligned, and AAC
+    // is about a tenth the size of lossless for a song's worth of stereo.
     private static func writeStereoSamples(_ left: [Float], _ right: [Float], to url: URL) -> Bool {
         let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatAppleLossless, AVSampleRateKey: sampleRate,
-            AVNumberOfChannelsKey: 2, AVEncoderBitDepthHintKey: 16,
+            AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: 2, AVEncoderBitRateKey: 160_000,
         ]
         let partial = url.deletingLastPathComponent().appendingPathComponent("." + url.lastPathComponent + ".partial.m4a")
         try? FileManager.default.removeItem(at: partial)
