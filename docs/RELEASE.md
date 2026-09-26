@@ -17,8 +17,9 @@ Pre-submission checklist for shipping a Kioku build to the App Store. Pair with
       (debug section is gated out of release builds).
 
 ## 3. Version & build
-- [ ] Bump marketing version (CFBundleShortVersionString) if user-facing changes.
-- [ ] Bump build number (CFBundleVersion) — must exceed the last uploaded build.
+- [ ] Marketing version: pass `--version X.Y` to `scripts/distribute.sh` if user-facing changes.
+- [ ] Build number: `scripts/distribute.sh` bumps it, commits the bump, and tags `vX.Y-N`
+      after a successful upload.
 - [ ] Deployment target still iOS 18.0 (the lyric-translation feature sits at the floor).
 
 ## 4. Manual QA smoke — core user loop
@@ -39,8 +40,10 @@ tests land (todo: "UI smoke tests for core user loop"), this is done by hand.
 - [ ] Cold launch: no crash, no visible first-frame jank on the Read tab.
 
 ## 5. Build, archive, upload
-- [ ] Xcode → Product → Archive → Distribute App → App Store Connect
-      (Distribution cert minted automatically). See APPSTORE.md §"Steps only you can do".
+- [ ] `ASC_KEY_ID=… ASC_ISSUER_ID=… scripts/distribute.sh [--version X.Y]` from a clean `main`:
+      preflight (branch, clean tree, dictionary pin, invariants) → archive → export → upload → tag.
+      `--no-upload` stops after exporting the .ipa to check signing. Prerequisites are in the
+      script header. Fallback: Xcode → Product → Archive → Distribute App.
 - [ ] Screenshots current (6.9", 1320 × 2868) — no personal notes visible.
 
 ## 6. TestFlight
@@ -53,6 +56,6 @@ tests land (todo: "UI smoke tests for core user loop"), this is done by hand.
 - [ ] Submit for review.
 
 ## 8. Post-release
-- [ ] Tag the release commit (`git tag vX.Y.Z && git push --tags`).
+- [ ] Confirm `scripts/distribute.sh` pushed the `vX.Y-N` tag.
 - [ ] Note the shipped commit + build number in the handoff / `.remember`.
 - [ ] Watch for crash reports / review feedback in the first day.

@@ -419,12 +419,12 @@ own sections.)
       (nav/tab-bar-excluded) read viewport, so words tapped in the 50–64% band landed behind the
       sheet. Raised the cap to 0.72 so the 0.64 estimate governs while still guarding against
       degenerate over-reservation (`ReadView+SheetSelection.swift`).
-- [ ] **Merge the song segmentation-correction and breakdown LLM calls** — rewritten 2026-09-26.
+- [x] **Merge the song segmentation-correction and breakdown LLM calls** — rewritten 2026-09-26.
       Phase 1 of the old plan (shared HTTP/provider plumbing) is done: `Kioku/LLM/LLMStreamingClient.swift`
       is used by both `LLMCorrectionClient` and `SongBreakdownService`. Phase 2 (one call returning
       corrected segments *and* the breakdown, with word bullets referencing segment ids) was built as
-      `MergedCorrectionBreakdownService` and deleted in PR #101 ("lean AI correction"). Reopen only as
-      a deliberate decision, not as leftover work. The problem it solved still exists: breakdown word
+      `MergedCorrectionBreakdownService` and deleted in PR #101 ("lean AI correction"): decided
+      against, closed 2026-09-26. The problem it solved still exists: breakdown word
       surfaces and readings can disagree with the Read tab's segmentation because the two calls share
       no context. A cheaper alternative to re-merging: send the note's current segments + readings
       into the breakdown prompt as fixed input, so the breakdown annotates our segments instead of
@@ -884,8 +884,9 @@ own sections.)
       cross-store consistency AND survival across fresh store instances (the persistence guarantee
       backup/restore relies on; backup encode/validate also has `AppBackupValidatorTests`). This
       catches the integration regressions a per-store unit test can't. STILL OPEN: true **XCUITest
-      UI automation** (driving the actual UI) needs a separate UITest *target* added in Xcode —
-      out of reach from a headless `xcodebuild` edit here.
+      UI automation** (driving the actual UI). Correction 2026-09-26: the `KiokuUITests` target
+      already exists in the project; it has had no source files since `372c42a` removed the
+      template tests. Writing tests means adding a `KiokuUITests/` folder, not creating a target.
       - Also fixed a latent break this surfaced: `InflectionFormNames` is now `nonisolated` (it was
         implicitly `@MainActor` under the module's default isolation, so `InflectionFormNamesTests`
         — added with the inflection-label work — never compiled in the *test* target; the earlier
@@ -908,12 +909,13 @@ own sections.)
       swept blind: converting 96 sites risks breaking tuned layouts at large accessibility sizes with
       no way to visually verify headless. Needs an on-device pass (run at the largest Dynamic Type
       size, fix per view) — the reading *content* stays on the manual typography sliders by design.
-- [~] App Store packaging artifacts and release QA checklist — Checklist done 2026-07-01:
+- [x] App Store packaging artifacts and release QA checklist — Checklist done 2026-07-01:
       `docs/RELEASE.md` is the pre-submission gate (repo state, CI gates, version bump, a
       manual core-loop QA smoke, archive/upload, TestFlight on the iOS-18 floor, submit,
-      post-release), pairing with `docs/APPSTORE.md` (the metadata/submission kit). STILL OPEN:
-      release *automation* (a `release.yml` / fastlane lane) — only `ci_post_clone.sh` +
-      `tests.yml` + `invariants.yml` exist. The manual QA smoke is superseded once the "UI
+      post-release), pairing with `docs/APPSTORE.md` (the metadata/submission kit). Release
+      automation done 2026-09-26: `scripts/distribute.sh` (added in `c61ca06`, missed by this
+      entry) now does preflight → build-number bump → archive → export → upload → commit + tag,
+      with `--no-upload` for a signing check. The manual QA smoke is superseded once the "UI
       smoke tests for core user loop" item lands.
 - [x] Credits/About screen with dataset attributions — `Kioku/Settings/AboutView.swift` pushed from a new "About" row in `SettingsView`. Renders version + 8 dataset entries (JMdict, KANJIDIC2, Tatoeba, JPDB Frequency, wordfreq, UniDic pitch accent, RADKFILE2/KRADFILE2, Tegaki-Zinnia) and 9 library entries (SwiftWhisper, USearch, SwiftLCS, swift-subtitle-kit, SwiftSubtitles, CodableCSV, swift-audio-marker, TextFormation, zinnia-swift), each with license + source URL. Data lives in `Attributions.swift` (separate from view for testability); 5 tests in `AttributionsTests.swift` regression-guard against accidentally dropping an entry.
 
