@@ -325,8 +325,23 @@ extension ReadView {
         return map.filter { suppressed.contains($0.key) == false }
     }
 
+    // The theme's (or the user's custom) text colors for this body pass.
+    var readingColors: ReadingColors {
+        ReadingColors.resolve(
+            customEnabled: customTokenColorsEnabled,
+            colorAHex: tokenColorAHex,
+            colorBHex: tokenColorBHex,
+            highlightHex: highlightHex,
+            savedHex: savedHex,
+            savedLearnedHex: savedLearnedHex,
+            savedNotLearnedHex: savedNotLearnedHex
+        )
+    }
+
     // Keeps both read and edit renderers mounted so mode toggles are instant.
     var editorView: some View {
+        let colors = readingColors
+        return
         VStack(spacing: 8) {
             ZStack {
                 KiokuCoreTextRendererView(
@@ -342,26 +357,13 @@ extension ReadView {
                         kerning: kerning,
                         furiganaGap: CGFloat(furiganaGap),
                         furiganaSizeOverride: customFuriganaSizeEnabled ? CGFloat(furiganaSize) : nil,
-                        // Fall through to the active theme's defaults when the user hasn't
-                        // enabled Custom Token Colors — keeps the Read view's segment palette
-                        // coordinated with the theme picker instead of locked to red/cyan.
-                        evenSegmentColor: customTokenColorsEnabled
-                            ? (UIColor(hexString: tokenColorAHex) ?? .label)
-                            : (UIColor(hexString: Theme.activePalette.defaultTokenColorAHex) ?? .label),
-                        oddSegmentColor: customTokenColorsEnabled
-                            ? (UIColor(hexString: tokenColorBHex) ?? .secondaryLabel)
-                            : (UIColor(hexString: Theme.activePalette.defaultTokenColorBHex) ?? .secondaryLabel),
+                        evenSegmentColor: colors.evenSegment,
+                        oddSegmentColor: colors.oddSegment,
                         isLineWrappingEnabled: isLineWrappingEnabled,
                         isRubySpacingEnabled: isRubySpacingEnabled,
                         selectedHighlightRange: resolveSelectedHighlightRange(),
                         playbackHighlightRange: audioPlayback.playbackHighlightRangeOverride,
-                        // Same gating as the segment colors above — user hex when Custom Token
-                        // Colors is on, theme default when off — so the three picker controls
-                        // stay coherent and a theme switch flows through.
-                        selectionHighlightColor: (customTokenColorsEnabled
-                            ? (UIColor(hexString: highlightHex) ?? .systemYellow)
-                            : (UIColor(hexString: Theme.activePalette.defaultHighlightHex) ?? .systemYellow)
-                        ).withAlphaComponent(0.35),
+                        selectionHighlightColor: colors.selectionHighlight.withAlphaComponent(0.35),
                         playbackHighlightColor: UIColor.systemBlue.withAlphaComponent(0.20),
                         unknownSegmentLocations: document.unknownSegmentLocations,
                         isHighlightUnknownEnabled: isHighlightUnknownEnabled,
@@ -371,11 +373,11 @@ extension ReadView {
                         inFlightSegmentLocations: inFlightLineSegmentLocations,
                         isSavedHighlightEnabled: isSavedHighlightEnabled,
                         savedSegmentLocations: savedSegmentLocations,
-                        savedHighlightColor: UIColor(hexString: savedHex) ?? .systemYellow,
+                        savedHighlightColor: colors.saved,
                         savedLearnedSegmentLocations: savedLearnedSegmentLocations,
-                        savedLearnedHighlightColor: UIColor(hexString: savedLearnedHex) ?? .systemGreen,
+                        savedLearnedHighlightColor: colors.savedLearned,
                         savedNotLearnedSegmentLocations: savedNotLearnedSegmentLocations,
-                        savedNotLearnedHighlightColor: UIColor(hexString: savedNotLearnedHex) ?? .systemPurple,
+                        savedNotLearnedHighlightColor: colors.savedNotLearned,
                         debugFlags: KiokuDebugOverlayView.Flags(
                             headwordRects: debugHeadwordRects,
                             furiganaRects: debugFuriganaRects,

@@ -3,8 +3,8 @@ import UniformTypeIdentifiers
 import UserNotifications
 
 // Single-screen settings, organized top-to-bottom: typography preview (tap for the slider
-// sheet), theme and highlight colors, lookup, AI, learning, word of the day, data transfer,
-// dictionary, developer tools and storage. Footer prose is intentionally omitted — rows stand alone.
+// sheet), theme swatches (plus the Customize Colors sheet), lookup, AI, learning, word of the
+// day, data transfer, dictionary, developer tools and storage. Footer prose is intentionally omitted — rows stand alone.
 struct SettingsView: View {
     let dictionaryStore: DictionaryStore?
     // Hosts the on-demand local-network MCP listener whose UI lives in BridgeSettingsSection.
@@ -17,12 +17,13 @@ struct SettingsView: View {
     @EnvironmentObject var historyStore: HistoryStore
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
 
-    // Selected theme id — drives chrome (background/accent/typography) and the default token
-    // colors when "Custom Token Colors" is off. See ThemeID for available themes.
+    // Selected theme id — drives chrome and, unless customized, every text color. See ThemeID.
     @AppStorage(Theme.themeIDKey) var themeIDRaw: String = ThemeID.system.rawValue
 
     // Typography sliders live in TypographySettingsSheet, opened by tapping the preview.
     @State private var isShowingTypographySheet = false
+    // Color overrides live in ThemeCustomizeSheet, opened from the Theme section.
+    @State private var isShowingThemeCustomizeSheet = false
     @AppStorage(ClipboardSettings.autoDetectKey) private var clipboardAutoDetect: Bool = ClipboardSettings.defaultAutoDetect
     @AppStorage(DictionarySettings.includeArchaicReadingsKey)
     var includeArchaicReadings: Bool = DictionarySettings.defaultIncludeArchaicReadings
@@ -44,23 +45,6 @@ struct SettingsView: View {
     @State var claudeKey: String = LLMSettings.apiKey(for: .claude) ?? ""
     @AppStorage(LLMSettings.keysRevisionKey) var llmKeysRevision: Int = 0
     @AppStorage(LLMSettings.useLLMKey) var useLLM: Bool = true
-
-    @AppStorage(TokenColorSettings.enabledKey) var customTokenColorsEnabled: Bool = false
-    @AppStorage(TokenColorSettings.colorAKey) var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
-    @AppStorage(TokenColorSettings.colorBKey) var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
-    @AppStorage(TokenColorSettings.highlightColorKey) var highlightHex: String = TokenColorSettings.defaultHighlightHex
-    @AppStorage(TokenColorSettings.savedColorKey) var savedHex: String = TokenColorSettings.defaultSavedHex
-    @AppStorage(TokenColorSettings.savedLearnedColorKey) var savedLearnedHex: String = TokenColorSettings.defaultSavedLearnedHex
-    @AppStorage(TokenColorSettings.savedNotLearnedColorKey) var savedNotLearnedHex: String = TokenColorSettings.defaultSavedNotLearnedHex
-    // Custom Theme: when on, the four hexes below override the active theme's chrome colors
-    // (background / surface / ink / accent). Other palette slots keep the theme's values so a
-    // half-customized palette stays coherent. The Read view's toolbar still owns the on/off
-    // for segment coloring (`kioku.settings.colorAlternation`) — it's no longer surfaced here.
-    @AppStorage(Theme.customThemeEnabledKey) var customThemeEnabled: Bool = false
-    @AppStorage(Theme.customBackgroundHexKey) var customBackgroundHex: String = ""
-    @AppStorage(Theme.customSurfaceHexKey) var customSurfaceHex: String = ""
-    @AppStorage(Theme.customInkHexKey) var customInkHex: String = ""
-    @AppStorage(Theme.customAccentHexKey) var customAccentHex: String = ""
 
     @AppStorage(WordOfTheDayScheduler.enabledKey) private var wotdEnabled: Bool = false
     @AppStorage(WordOfTheDayScheduler.hourKey) private var wotdHour: Int = 9
@@ -145,15 +129,22 @@ struct SettingsView: View {
                     Text("Typography")
                 }
 
-                // MARK: Theme — the theme picker, its optional overrides, and the per-state
-                // Saved Highlight colors (switched on from the Read toolbar), all one section.
-                // Built from @ViewBuilder helpers in SettingsView+ThemeSection.swift to keep the
-                // Swift type-checker within its expression budget.
+                // MARK: Theme — the swatch picker, then the row opening the Customize Colors
+                // sheet (interface and text color overrides).
                 Section {
-                    themePickerMenu
-                    customThemeRows
-                    customTokenColorRows
-                    savedHighlightColorRows
+                    ThemeSwatchPicker(themeIDRaw: $themeIDRaw)
+                        .padding(.vertical, 4)
+                    Button {
+                        isShowingThemeCustomizeSheet = true
+                    } label: {
+                        HStack {
+                            Text("Customize Colors").foregroundStyle(.primary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .imageScale(.small)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
                 } header: {
                     Text("Theme")
                 }
@@ -270,6 +261,9 @@ struct SettingsView: View {
         .toolbar(.visible, for: .tabBar)
         .sheet(isPresented: $isShowingTypographySheet) {
             TypographySettingsSheet()
+        }
+        .sheet(isPresented: $isShowingThemeCustomizeSheet) {
+            ThemeCustomizeSheet()
         }
         .fileExporter(
             isPresented: $isShowingExporter,
@@ -399,49 +393,6 @@ struct SettingsView: View {
             let count = await WordOfTheDayScheduler.pendingWordOfTheDayRequestCount()
             await MainActor.run { wotdPendingCount = count }
         }
-    }
-
-    // Bridges the raw AppStorage string to a Picker-friendly ThemeID binding. Falls back to
-    // System if the stored string ever desyncs from the enum (shouldn't happen, but the
-    // picker can't render a nil tag).
-    private var themeIDBinding: Binding<ThemeID> {
-        Binding(
-            get: { ThemeID(rawValue: themeIDRaw) ?? .system },
-            set: { themeIDRaw = $0.rawValue }
-        )
-    }
-
-    // Custom-theme color bindings live in SettingsView+ThemeSection.swift to keep this file
-    // under the 1000-line build invariant.
-
-    // Converts the hex string AppStorage value to/from a SwiftUI Color for use with ColorPicker.
-    var tokenColorABinding: Binding<Color> {
-        Binding(
-            get: { Color(UIColor(hexString: tokenColorAHex) ?? UIColor(hexString: TokenColorSettings.defaultColorAHex)!) },
-            set: { color in
-                if let hex = UIColor(color).hexString { tokenColorAHex = hex }
-            }
-        )
-    }
-
-    // Converts the hex string AppStorage value to/from a SwiftUI Color for use with ColorPicker.
-    var tokenColorBBinding: Binding<Color> {
-        Binding(
-            get: { Color(UIColor(hexString: tokenColorBHex) ?? UIColor(hexString: TokenColorSettings.defaultColorBHex)!) },
-            set: { color in
-                if let hex = UIColor(color).hexString { tokenColorBHex = hex }
-            }
-        )
-    }
-
-    // Highlight color — shared by the saved glow and the selection box (hex AppStorage) <-> Color.
-    var tokenHighlightBinding: Binding<Color> {
-        Binding(
-            get: { Color(UIColor(hexString: highlightHex) ?? UIColor(hexString: TokenColorSettings.defaultHighlightHex)!) },
-            set: { color in
-                if let hex = UIColor(color).hexString { highlightHex = hex }
-            }
-        )
     }
 
     // Converts hour/minute integer AppStorage values to/from a Date for use with DatePicker.

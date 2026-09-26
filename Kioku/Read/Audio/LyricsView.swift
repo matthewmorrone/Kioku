@@ -94,32 +94,18 @@ struct LyricsView: View {
         return nil
     }
 
-    // Even/odd segment-alternation colors for the active-cue card. Honors the user's custom
-    // palette when enabled, and otherwise resolves to the active theme's default token colors
-    // (see ThemePalette). Kept in lockstep with ReadView+Editor's branching so the karaoke
-    // card and the page render identically.
-    private var resolvedEvenSegmentColor: UIColor {
-        customTokenColorsEnabled
-            ? (UIColor(hexString: tokenColorAHex) ?? .label)
-            : (UIColor(hexString: Theme.activePalette.defaultTokenColorAHex) ?? .label)
-    }
-
-    private var resolvedOddSegmentColor: UIColor {
-        customTokenColorsEnabled
-            ? (UIColor(hexString: tokenColorBHex) ?? .secondaryLabel)
-            : (UIColor(hexString: Theme.activePalette.defaultTokenColorBHex) ?? .secondaryLabel)
-    }
-
-    private var resolvedSavedHighlightColor: UIColor {
-        UIColor(hexString: savedHex) ?? .systemYellow
-    }
-
-    private var resolvedSavedLearnedHighlightColor: UIColor {
-        UIColor(hexString: savedLearnedHex) ?? .systemGreen
-    }
-
-    private var resolvedSavedNotLearnedHighlightColor: UIColor {
-        UIColor(hexString: savedNotLearnedHex) ?? .systemPurple
+    // The Read view's text colors (theme or custom), so the active-cue card and the page
+    // render identically.
+    private var readingColors: ReadingColors {
+        ReadingColors.resolve(
+            customEnabled: customTokenColorsEnabled,
+            colorAHex: tokenColorAHex,
+            colorBHex: tokenColorBHex,
+            highlightHex: highlightHex,
+            savedHex: savedHex,
+            savedLearnedHex: savedLearnedHex,
+            savedNotLearnedHex: savedNotLearnedHex
+        )
     }
 
     // Active-word highlight, fixed (not theme/appearance-dependent): a solid amber pill with a
@@ -359,8 +345,8 @@ struct LyricsView: View {
                             lineSpacing: 0,
                             kerning: 0,
                             furiganaGap: CGFloat(TypographySettings.defaultFuriganaGap),
-                            evenSegmentColor: resolvedEvenSegmentColor,
-                            oddSegmentColor: resolvedOddSegmentColor,
+                            evenSegmentColor: readingColors.evenSegment,
+                            oddSegmentColor: readingColors.oddSegment,
                             // Single-line render: scaling above keeps text within the card;
                             // disabling wrapping prevents any residual long cue from breaking
                             // onto a second visible line (it would clip instead).
@@ -390,11 +376,11 @@ struct LyricsView: View {
                             unknownSegmentColor: .tertiaryLabel,
                             isSavedHighlightEnabled: isSavedHighlightEnabled,
                             savedSegmentLocations: rebaseIntoCue(savedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
-                            savedHighlightColor: resolvedSavedHighlightColor,
+                            savedHighlightColor: readingColors.saved,
                             savedLearnedSegmentLocations: rebaseIntoCue(savedLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
-                            savedLearnedHighlightColor: resolvedSavedLearnedHighlightColor,
+                            savedLearnedHighlightColor: readingColors.savedLearned,
                             savedNotLearnedSegmentLocations: rebaseIntoCue(savedNotLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
-                            savedNotLearnedHighlightColor: resolvedSavedNotLearnedHighlightColor,
+                            savedNotLearnedHighlightColor: readingColors.savedNotLearned,
                             // Overrides the highlighted range's glyph color so it never has to
                             // compete with whatever semantic token color (red vocab, blue, etc.)
                             // it already had — see activeWordForegroundColor's doc comment above.

@@ -1,26 +1,23 @@
 import Foundation
 
-// Persistent settings for user-configured segment alternation colors in read mode, plus the two
-// coordinating "highlight" colors: the saved-word glow and the tap-selection box.
+// Persistent keys for the Custom Text Colors overrides (Settings → Customize Colors → Text):
+// the segment alternation pair, the tap-selection highlight, and the three Saved Highlight
+// colors. With `enabledKey` off none of these are read — the active theme supplies every one
+// (see ReadingColors).
 enum TokenColorSettings {
     static let enabledKey = "tokenColors.enabled"
     static let colorAKey = "tokenColors.colorA"
     static let colorBKey = "tokenColors.colorB"
-    // One highlight color, shared by the saved-word glow and the tap-selection box (the box
-    // renders it at ~0.35 alpha).
+    // The tap-selection box color (rendered at ~0.35 alpha).
     static let highlightColorKey = "tokenColors.highlight"
-    // Per-Learned-state colors for the Read tab's Saved Highlight display option — always
-    // literal (not gated behind Custom Token Colors, and NOT theme-derived like colorA/colorB/
-    // highlight above), since Saved Highlight has its own on/off toggle in the Read toolbar
-    // and needs to read the same regardless of theme or Custom Token Colors state.
+    // Per-state colors for the Read toolbar's Saved Highlight option: every saved word,
+    // Learned words, and saved-but-not-Learned words.
     static let savedColorKey = "tokenColors.saved"
     static let savedLearnedColorKey = "tokenColors.savedLearned"
     static let savedNotLearnedColorKey = "tokenColors.savedNotLearned"
 
-    // Seed values used as the @AppStorage default for the custom-color keys. They only matter
-    // until the user picks their own color — the active theme's defaults drive colorA/colorB/
-    // highlight otherwise (see Theme.activePalette); the saved* colors have no theme-derived
-    // default and always start from these.
+    // @AppStorage defaults for the keys above. Turning Custom Text Colors on overwrites all six
+    // with the active theme's colors, so these only show if a key is read before that.
     static let defaultColorAHex = "#FF9500"                // orange
     static let defaultColorBHex = "#32ADE6"                // cyan
     static let defaultHighlightHex = "#FFD60A"              // gold

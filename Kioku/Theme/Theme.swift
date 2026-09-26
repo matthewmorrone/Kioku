@@ -54,6 +54,11 @@ struct ThemePalette: Sendable {
     let defaultTokenColorAHex: String
     let defaultTokenColorBHex: String
     let defaultHighlightHex: String
+    // Saved Highlight colors (Read toolbar's star): every saved word, Learned words, and
+    // saved-but-not-Learned words. Chosen per theme so they sit with its token colors.
+    let defaultSavedHex: String
+    let defaultSavedLearnedHex: String
+    let defaultSavedNotLearnedHex: String
     // Whether to install Mincho UIKit title fonts / themed nav+tab chrome. The System
     // theme leaves these off so the app looks Apple-native.
     let installsCustomAppearance: Bool
@@ -132,6 +137,9 @@ enum Theme {
             defaultTokenColorAHex: base.defaultTokenColorAHex,
             defaultTokenColorBHex: base.defaultTokenColorBHex,
             defaultHighlightHex: base.defaultHighlightHex,
+            defaultSavedHex: base.defaultSavedHex,
+            defaultSavedLearnedHex: base.defaultSavedLearnedHex,
+            defaultSavedNotLearnedHex: base.defaultSavedNotLearnedHex,
             // Force-on so the nav/tab UIKit chrome adopts the user's overrides even when the
             // base theme is System (which normally skips the appearance proxies).
             installsCustomAppearance: true
@@ -155,9 +163,9 @@ enum Theme {
 
     // Pure-system-color palette: every "ui*" prop resolves to the matching UIColor.systemX so
     // a view that draws Theme.background looks identical to one drawing Color(.systemBackground).
-    // Token defaults are vivid iOS-system colors (blue/pink/green) — deliberately cool and
+    // Token, highlight and saved colors are vivid iOS system colors — deliberately
     // high-saturation so they don't read as a sibling of Washi's warm earth tones or Sumi's
-    // muted plum/sage/gold. Each pair has strong contrast against the other two themes.
+    // muted plum/sage/gold.
     static let systemPalette = ThemePalette(
         uiBackground: .systemBackground,
         uiSurface: .secondarySystemBackground,
@@ -167,9 +175,12 @@ enum Theme {
         uiAccent: .systemBlue,
         uiAccentDeep: UIColor { tc in tc.userInterfaceStyle == .dark ? .systemTeal : .systemIndigo },
         uiHairline: .separator,
-        defaultTokenColorAHex: "#007AFF",  // iOS systemBlue — bright digital primary
-        defaultTokenColorBHex: "#FF2D55",  // iOS systemPink — saturated, far from Sumi plum
-        defaultHighlightHex: "#30D158",    // iOS systemGreen — vivid, distinct from Washi amber + Sumi sage
+        defaultTokenColorAHex: "#007AFF",       // iOS systemBlue — bright digital primary
+        defaultTokenColorBHex: "#FF2D55",       // iOS systemPink — saturated, far from Sumi plum
+        defaultHighlightHex: "#FFD60A",         // iOS systemYellow
+        defaultSavedHex: "#FF9F0A",             // iOS systemOrange
+        defaultSavedLearnedHex: "#34C759",      // iOS systemGreen
+        defaultSavedNotLearnedHex: "#AF52DE",   // iOS systemPurple
         installsCustomAppearance: false
     )
 
@@ -196,6 +207,10 @@ enum Theme {
         defaultTokenColorAHex: "#A14B2F",
         defaultTokenColorBHex: "#3B5F8A",
         defaultHighlightHex: "#E6B23A",
+        // Saved colors from the traditional palette: persimmon (柿), matcha, wisteria (藤).
+        defaultSavedHex: "#D4763B",
+        defaultSavedLearnedHex: "#6A8F4E",
+        defaultSavedNotLearnedHex: "#7B5AA6",
         installsCustomAppearance: true
     )
 
@@ -222,6 +237,11 @@ enum Theme {
         defaultTokenColorAHex: "#8E4F6F",
         defaultTokenColorBHex: "#4F7A57",
         defaultHighlightHex: "#D4AE5C",
+        // Saved colors kept as muted as the tokens: copper, verdigris teal, slate indigo —
+        // clear of the plum/sage token pair so a highlighted word still reads as highlighted.
+        defaultSavedHex: "#C0773A",
+        defaultSavedLearnedHex: "#3F8F8A",
+        defaultSavedNotLearnedHex: "#6C6FA8",
         installsCustomAppearance: true
     )
 

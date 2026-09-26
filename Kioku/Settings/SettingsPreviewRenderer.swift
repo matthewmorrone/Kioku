@@ -206,17 +206,19 @@ struct SettingsPreviewRenderer: View {
     }
 
     var body: some View {
-        // Mirror ReadView+Editor's branching: when custom token colors are enabled, use the
-        // user's hex picks; otherwise fall back to the active theme's default token colors so
-        // the preview shows the same coordinated palette the Read view will render. Same
-        // .label / .secondaryLabel fallbacks on hex parse failure.
-        let themeDefaults = Theme.activePalette
-        let evenColor: UIColor = customTokenColorsEnabled
-            ? (UIColor(hexString: tokenColorAHex) ?? .label)
-            : (UIColor(hexString: themeDefaults.defaultTokenColorAHex) ?? .label)
-        let oddColor: UIColor = customTokenColorsEnabled
-            ? (UIColor(hexString: tokenColorBHex) ?? .secondaryLabel)
-            : (UIColor(hexString: themeDefaults.defaultTokenColorBHex) ?? .secondaryLabel)
+        // Same resolution as the Read view. The preview draws no highlights, so only the two
+        // segment hexes are passed; the rest resolve to the theme's and go unused.
+        let colors = ReadingColors.resolve(
+            customEnabled: customTokenColorsEnabled,
+            colorAHex: tokenColorAHex,
+            colorBHex: tokenColorBHex,
+            highlightHex: "",
+            savedHex: "",
+            savedLearnedHex: "",
+            savedNotLearnedHex: ""
+        )
+        let evenColor = colors.evenSegment
+        let oddColor = colors.oddSegment
         // Drop the per-segment furigana maps when the user has hidden furigana, the same way
         // ReadView+Editor does — the renderer leaves room for the ruby band based on the maps,
         // not just the `isFuriganaVisible` flag, so the preview headwords need a flush layout
