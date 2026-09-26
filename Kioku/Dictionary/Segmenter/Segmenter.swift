@@ -28,10 +28,11 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     var frequencyScoreBySurface: [String: Double]
     // Transition costs between adjacent word classes on a path; nil scores paths by word costs alone.
     var transitionTable: SegmenterTransitionTable?
-    // Whether a chosen segment made of several words is shown as its words: a particle cluster
-    // (には, ですか — see ParticleClusters) or a form with a helper word glued on (飛び込んで|ゆく,
-    // 来て|くれる — see Deinflector.helperWordOffsets). Always on in the app; the quality tests turn
-    // it off to score against gold tokens that keep clusters whole.
+    // Whether chosen segments are shown at word granularity: a particle cluster (には, ですか — see
+    // ParticleClusters) or a form with a helper word glued on (飛び込んで|ゆく, 来て|くれる — see
+    // Deinflector.helperWordOffsets) is shown as its words, and a と-taking adverb with its と
+    // (ピッと — see adverbialToPrefix) as one. Always on in the app; the quality tests turn it off to
+    // score against gold tokens that keep clusters whole.
     var splitsClusters = true
     // Set to true locally to print POS transition decisions during Viterbi runs.
     let shouldLogPOSTransitions = false
@@ -510,6 +511,27 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     result.append(piece)
                 }
                 start = end
+            }
+        }
+        return mergingAdverbialTo(result)
+    }
+
+    // Joins a と-taking adverb and the と after it into one segment (ピッ|と → ピッと, see
+    // adverbialToPrefix): together they are one adverb, and lookup resolves the pair to the adverb.
+    private func mergingAdverbialTo(_ path: [LatticeEdge]) -> [LatticeEdge] {
+        var result: [LatticeEdge] = []
+        result.reserveCapacity(path.count)
+        for edge in path {
+            if edge.surface == "と", let previous = result.last, previous.end == edge.start,
+               adverbialToPrefix(for: previous.surface + edge.surface) != nil {
+                var merged = LatticeEdge(start: previous.start, end: edge.end, surface: previous.surface + edge.surface)
+                merged.lemma = previous.surface
+                merged.partOfSpeech = previous.partOfSpeech
+                merged.isDictionaryMatch = true
+                merged.frequencyScore = previous.frequencyScore
+                result[result.count - 1] = merged
+            } else {
+                result.append(edge)
             }
         }
         return result

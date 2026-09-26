@@ -315,6 +315,21 @@ extension Segmenter {
         return PartOfSpeech.isNoun(prefixPOS) && PartOfSpeech.isVerb(prefixPOS)
     }
 
+    // The adverb a surface spells with its と — ピッと → ピッ — when the surface is not a dictionary
+    // word itself and the rest is a kana adverb JMdict marks as taking と (adv-to) or as mimetic
+    // (on-mim). Such an adverb and its と read as one word; the display merges them
+    // (splittingClusters) and lookup resolves the pair to the adverb (Lexicon.inflectionInfo).
+    // Kana only: a kanji one (堂々と) would need its reading carried through furigana.
+    func adverbialToPrefix(for surface: String) -> String? {
+        guard surface.count > 1, surface.hasSuffix("と"), trie.contains(surface) == false else { return nil }
+        let prefix = String(surface.dropLast())
+        guard ScriptClassifier.isPureKana(prefix), trie.contains(prefix) else { return nil }
+        let bits = trie.partOfSpeech(for: prefix)
+        let takesTo = bits & PartOfSpeechDetail.toAdverb != 0
+            || (bits & PartOfSpeechDetail.mimetic != 0 && PartOfSpeech.isAdverb(bits))
+        return takesTo ? prefix : nil
+    }
+
     // Validates the vs-noun+する compound-verb shape for `surface` (see buildLattice's mixed-script
     // guard) and returns the katakana noun prefix (e.g. "キス" for "キスして") when it holds, else nil.
     // Two conditions, both required: isValidatedSuruNounPrefix on the leading katakana run, and the

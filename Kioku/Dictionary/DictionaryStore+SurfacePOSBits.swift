@@ -13,11 +13,11 @@ extension DictionaryStore {
         try withSerializedDatabaseAccess {
             let sql = """
             SELECT surface, pos FROM (
-                SELECT k.text AS surface, s.pos AS pos
+                SELECT k.text AS surface, s.pos || CASE WHEN ',' || COALESCE(misc, '') || ',' LIKE '%,on-mim,%' THEN ',on-mim' ELSE '' END AS pos
                 FROM kanji k
                 JOIN senses s ON s.entry_id = k.entry_id
                 UNION ALL
-                SELECT n.text AS surface, s.pos AS pos
+                SELECT n.text AS surface, s.pos || CASE WHEN ',' || COALESCE(misc, '') || ',' LIKE '%,on-mim,%' THEN ',on-mim' ELSE '' END AS pos
                 FROM kana_forms n
                 JOIN senses s ON s.entry_id = n.entry_id
             )

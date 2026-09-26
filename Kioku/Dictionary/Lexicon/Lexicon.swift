@@ -201,6 +201,10 @@ nonisolated public final class Lexicon {
         if let compoundPrefix = segmenter.suruCompoundPrefix(for: surface) {
             return (lemma: compoundPrefix, chain: [])
         }
+        // A と-taking adverb written with its と (ピッと): the adverb is the word to look up.
+        if let adverb = segmenter.adverbialToPrefix(for: surface) {
+            return (lemma: adverb, chain: [])
+        }
 
         // Compute paths once; extract the chain from them rather than re-traversing via deinflector.inflectionChain.
         let (entries, pathsByLemma) = admittedLemmasAndPaths(for: surface)

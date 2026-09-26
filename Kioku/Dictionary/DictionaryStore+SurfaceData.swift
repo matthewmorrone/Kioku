@@ -25,7 +25,7 @@ extension DictionaryStore {
 
             var posStatement: OpaquePointer?
             try prepare(sql: """
-                SELECT entry_id, GROUP_CONCAT(pos, ',')
+                SELECT entry_id, GROUP_CONCAT(pos || CASE WHEN ',' || COALESCE(misc, '') || ',' LIKE '%,on-mim,%' THEN ',on-mim' ELSE '' END, ',')
                 FROM senses
                 GROUP BY entry_id
             """, statement: &posStatement)

@@ -25,6 +25,10 @@ nonisolated protocol TextSegmenting: Sendable {
     // katakana noun prefix (e.g. "キス") when it holds, else nil. See Segmenter.suruCompoundPrefix.
     func suruCompoundPrefix(for surface: String) -> String?
 
+    // The と-taking adverb a surface spells with its と (ピッと → "ピッ"), when the surface is not a
+    // dictionary word itself; else nil. See Segmenter.adverbialToPrefix.
+    func adverbialToPrefix(for surface: String) -> String?
+
     // What this backend's path search charges for the whole of `text` when the segment at `range`
     // is cut into each candidate's pieces (lower is cheaper), or nil per candidate when it has no
     // cost model. The split editor shows these instead of scoring pieces itself. See Segmenter.splitCosts.
