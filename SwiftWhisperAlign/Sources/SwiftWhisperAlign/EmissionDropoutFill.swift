@@ -37,6 +37,12 @@ enum EmissionDropoutFill {
     // shortest deaf run the mix may fill.
     static var deafThreshold: Float = 0.003
     static var deafMinRunSec = 4.0
+    // A deaf run is filled only if the mix hears some words in it: at least this many frames with
+    // a letter at `deafHeardLetter` or above. Swapping one silence for another only lets the lines
+    // drift (ニュームーンに恋して 176–196 s: 1 such frame, filling it cost a line; ムーンプライド
+    // 44–62 s: 6, filling it gained two).
+    static var deafMinMixHeardFrames = 3
+    static let deafHeardLetter: Float = 0.15
     // On; the replay harness can switch it off to compare.
     static var isDeafFillEnabled = true
 
@@ -61,13 +67,20 @@ enum EmissionDropoutFill {
             guard inSung[f], stemMass[f] < deafThreshold else { f += 1; continue }
             var g = f
             while g < n, inSung[g], stemMass[g] < deafThreshold { g += 1 }
-            if g - f >= minRun {
+            if g - f >= minRun, heardFrames(mix, f..<g) >= deafMinMixHeardFrames {
                 for k in f..<g { for c in 0..<C { stem.values[k * C + c] = mix.values[k * C + c] } }
                 replaced += g - f; runs += 1
             }
             f = g
         }
         return (replaced, runs)
+    }
+
+    // Frames in `range` where some letter reaches `deafHeardLetter` — the mix actually hearing words.
+    private static func heardFrames(_ m: MMSEmissions.Matrix, _ range: Range<Int>) -> Int {
+        let C = MMSEmissions.classes, blank = MMSEmissions.blank, star = MMSEmissions.labels.firstIndex(of: "*")
+        let floor = log(deafHeardLetter)
+        return range.filter { f in (0..<C).contains { c in c != blank && c != star && m.values[f * C + c] >= floor } }.count
     }
 
     // Per-frame probability mass on the letter classes. Summed directly rather than as 1 − blank,
