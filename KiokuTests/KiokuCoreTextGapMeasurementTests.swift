@@ -149,29 +149,10 @@ final class KiokuCoreTextGapMeasurementTests: XCTestCase {
             widthConstraint: 380,
             contentInset: UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
         )
-        let baseFont = UIFont.systemFont(ofSize: 18)
-        let furiFont = UIFont.systemFont(ofSize: 9)
         let segmentNSRanges: [NSRange] = inputs.segmentationRanges
             .map { NSRange($0, in: inputs.text) }
             .filter { $0.location != NSNotFound && $0.length > 0 }
-        var shifts = KiokuWideRubyLineInset.shifts(
-            for: .init(
-                lineStringStarts: engine.lines.map { $0.stringRange.location },
-                segmentNSRanges: segmentNSRanges,
-                readingByLocation: inputs.furiganaBySegmentLocation,
-                baseFont: baseFont,
-                furiganaFont: furiFont,
-                kanjiWidthOverrides: [:]
-            ),
-            sourceText: inputs.text
-        )
-        for (index, line) in engine.lines.enumerated() {
-            let bounds = CTLineGetImageBounds(line.line, nil)
-            if bounds.minX < 0 {
-                shifts[index] = max(shifts[index] ?? 0, ceil(-bounds.minX))
-            }
-        }
-        engine.setLineOriginShifts(shifts)
+        let shifts = engine.applyLeftBearingAutoShifts()
 
         for (index, line) in engine.lines.enumerated() {
             // First segment on this line = segment whose location is at the line's start.
@@ -208,29 +189,10 @@ final class KiokuCoreTextGapMeasurementTests: XCTestCase {
             widthConstraint: 380,
             contentInset: UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
         )
-        let baseFont = UIFont.systemFont(ofSize: 18)
-        let furiFont = UIFont.systemFont(ofSize: 9)
         let segmentNSRanges: [NSRange] = inputs.segmentationRanges
             .map { NSRange($0, in: inputs.text) }
             .filter { $0.location != NSNotFound && $0.length > 0 }
-        var shifts = KiokuWideRubyLineInset.shifts(
-            for: .init(
-                lineStringStarts: engine.lines.map { $0.stringRange.location },
-                segmentNSRanges: segmentNSRanges,
-                readingByLocation: inputs.furiganaBySegmentLocation,
-                baseFont: baseFont,
-                furiganaFont: furiFont,
-                kanjiWidthOverrides: [:]
-            ),
-            sourceText: inputs.text
-        )
-        for (index, line) in engine.lines.enumerated() {
-            let bounds = CTLineGetImageBounds(line.line, nil)
-            if bounds.minX < 0 {
-                shifts[index] = max(shifts[index] ?? 0, ceil(-bounds.minX))
-            }
-        }
-        engine.setLineOriginShifts(shifts)
+        engine.applyLeftBearingAutoShifts()
 
         // Build a (segment, rect) list in document order, then pair adjacent entries.
         let segmentRects: [(NSRange, CGRect)] = segmentNSRanges.compactMap { range in

@@ -508,13 +508,18 @@ struct ContentView: View {
             // dominate Add All latency.
             do { try StartupTimer.measure("populateCanonicalEntryIDMap") {
                 try store.populateCanonicalEntryIDMap()
-            }} catch { print("populateCanonicalEntryIDMap failed: \(error)") }
+            }} catch {
+                // An empty map makes every saved-word and extracted-vocab lookup miss at once
+                // while segmentation still looks healthy, so a Debug build stops here.
+                AppLog.error(.dictionary, "populateCanonicalEntryIDMap failed: \(error)")
+                assertionFailure("populateCanonicalEntryIDMap failed: \(error)")
+            }
 
             // ent_seq ⇄ row-id maps, so saved words keyed by the stable JMdict ent_seq can resolve
             // to the current (rebuild-unstable) row id.
             do { try StartupTimer.measure("populateEntSeqMaps") {
                 try store.populateEntSeqMaps()
-            }} catch { print("populateEntSeqMaps failed: \(error)") }
+            }} catch { AppLog.error(.dictionary, "populateEntSeqMaps failed: \(error)") }
 
             // Surface → POS bits map. Used by Lexicon's deinflection pruning to gate
             // candidates without per-call SQL — the old hot path hit `posBits(for:)`
@@ -522,14 +527,14 @@ struct ContentView: View {
             // deinflection candidate needed an entry lookup just to check POS.
             do { try StartupTimer.measure("populateSurfacePOSBitsMap") {
                 try store.populateSurfacePOSBitsMap()
-            }} catch { print("populateSurfacePOSBitsMap failed: \(error)") }
+            }} catch { AppLog.error(.dictionary, "populateSurfacePOSBitsMap failed: \(error)") }
 
             // entry_id → JLPT level map. Backs the Words JLPT filter and the Flashcards/Multiple
             // Choice level pickers with O(1) per-saved-word lookups instead of SQL. Empty (and
             // harmless) on a dictionary built before the entry_jlpt_level migration.
             do { try StartupTimer.measure("populateJLPTLevelMap") {
                 try store.populateJLPTLevelMap()
-            }} catch { print("populateJLPTLevelMap failed: \(error)") }
+            }} catch { AppLog.error(.dictionary, "populateJLPTLevelMap failed: \(error)") }
 
             // Reuse the map already built on the Stage 1 fast path when available, so the heavy
             // surface-reading scan isn't run twice.
@@ -538,7 +543,7 @@ struct ContentView: View {
             } else {
                 do { surfaceReadingData = try StartupTimer.measure("fetchSurfaceReadingData") {
                     try store.fetchSurfaceReadingData()
-                }} catch { print("fetchSurfaceReadingData failed: \(error)") }
+                }} catch { AppLog.error(.dictionary, "fetchSurfaceReadingData failed: \(error)") }
             }
 
             // Last-resort per-kanji furigana source. Loaded alongside the word-level map so any
@@ -546,7 +551,7 @@ struct ContentView: View {
             // KanjiReadingFallbackMap). Cheap relative to the 327k-entry surface map (~13k kanji).
             do { kanjiReadingFallback = try StartupTimer.measure("fetchKanjiReadingFallbackMap") {
                 try store.fetchKanjiReadingFallbackMap()
-            }} catch { print("fetchKanjiReadingFallbackMap failed: \(error)") }
+            }} catch { AppLog.error(.dictionary, "fetchKanjiReadingFallbackMap failed: \(error)") }
 
             do {
                 // SurfaceRecords carry the POS bits the path search classes each word by
@@ -560,10 +565,10 @@ struct ContentView: View {
                 StartupTimer.measure("trie population (\(surfaceData.surfaceRecords.count) records)") {
                     for record in surfaceData.surfaceRecords { trie.insert(record) }
                 }
-            } catch { print("fetchSurfaceData failed: \(error)") }
+            } catch { AppLog.error(.dictionary, "fetchSurfaceData failed: \(error)") }
 
         } catch {
-            print("DictionaryStore initialization failed: \(error)")
+            AppLog.error(.dictionary, "DictionaryStore initialization failed: \(error)")
         }
 
         do {
@@ -576,7 +581,7 @@ struct ContentView: View {
                 )
             }
         } catch {
-            print("Deinflector initialization failed: \(error)")
+            AppLog.error(.dictionary, "Deinflector initialization failed: \(error)")
         }
 
         // Per-ENTRY best JPDB rank, propagated to every spelling of the entry. Backs the lookup and
@@ -606,7 +611,7 @@ struct ContentView: View {
                 )
             }
         } else {
-            print("Lexicon data surface initialization failed: missing deinflector")
+            AppLog.error(.dictionary, "Lexicon data surface initialization failed: missing deinflector")
         }
 
         let overallElapsed = (CFAbsoluteTimeGetCurrent() - overallStart) * 1000

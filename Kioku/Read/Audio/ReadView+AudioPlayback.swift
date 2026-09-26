@@ -96,7 +96,7 @@ extension ReadView {
                     try audioPlayback.audioController.switchSource(to: resolved.1)
                     audioPlayback.audioSource = resolved.0
                 } catch {
-                    print("[ReadView] audio source switch to \(resolved.0.label) failed: \(error.localizedDescription)")
+                    AppLog.error(.audioPlayback, "[ReadView] audio source switch to \(resolved.0.label) failed: \(error.localizedDescription)")
                 }
             }
         }

@@ -5,6 +5,8 @@ Each entry is written so a new session can pick it up cold — no prior conversa
 required.
 
 Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` here).
+Stale-item review: 2026-09-26 (each open item re-checked against the code, the segmentation CLI,
+and the latest device alignment run; closed or rewritten where the premise no longer held).
 
 ---
 
@@ -31,18 +33,13 @@ own sections.)
       auto-mutation. Large multi-part build — pick up in a dedicated session. (A detailed
       4-phase TDD implementation plan existed at `docs/superpowers/plans/` and is recoverable
       from git history if wanted, but that workflow is retired — re-derive fresh instead.)
-- [ ] **Lyric-alignment: repeated-lyric disambiguation** — planned 2026-07-06. `tsukiiro-chainon`
-      shows a repeated line (悲しみの嘘を忘れない, at 0:59 and 3:29) landing at the wrong
-      occurrence because the anchor-and-fill aligner can't tell two acoustically-identical
-      repeats apart; two occurrences need **global monotonic full-sequence** alignment, not just
-      better phonemes. Measured by `KiokuTests/AlignmentQualityTests.testQuality_TsukiiroChainon()`
-      against `KiokuTests/Fixtures/alignment/tsukiiro-chainon.*` — record a baseline before
-      touching the aligner. Try the cheap fix first: make `extractAnchors`
-      (`SwiftWhisperAlign/.../CTCForcedAligner.swift`) occurrence-aware (keep N time-ordered
-      anchors for an N-times-repeated lyric instead of collapsing to one). Only reach for a
-      global forced-aligner (MMS ported to MLX) if that's insufficient, and only adopt it if it
-      beats the current aligner across ≥3 fixtures — a prior aligner edit regressed a different
-      song and had to be reverted (`revert(align): back out the ambiguity-gated anchor change`).
+- [x] **Lyric-alignment: repeated-lyric disambiguation** — closed 2026-09-26: the anchor-and-fill
+      aligner this was written against (and its `extractAnchors`) is gone. The shipped aligner runs one
+      monotonic CTC Viterbi pass over the whole romanized lyric, which is the "global monotonic
+      full-sequence alignment" this item asked for. Device run 2026-09-13 (`~/Projects/alignment/
+      device-run-storage.log`): tsukiiro-chainon's 悲しみの嘘を忘れない lands at 61.0 s (voters 61.0 /
+      61.5) and 209.3 s (voter 209.5), each at its own occurrence. That song's remaining misses
+      (23/26 within ±500 ms) are timing error, not wrong-occurrence placement.
 
 ## Regression watch
 
@@ -73,7 +70,8 @@ own sections.)
       compensation was intentionally removed (`f4be1b9`) in favor of standard Japanese typography
       (kanji sits flush at the inset, ruby overhangs into the margin); follow-up furigana fixes
       settled it (`1d4c397` center ruby on kanji run, `e832a83` align inset, `f94974f`). The
-      orphaned `KiokuWideRubyLineInset.swift` + test can be removed in a cleanup pass.
+      orphaned `KiokuWideRubyLineInset.swift` + its test were removed 2026-09-26;
+      `KiokuCoreTextGapMeasurementTests` now applies only the engine's own left-bearing shift.
 - [x] Distribute spacing better for multikanji ruby headwords — Addressed via the ruby-spacing
       kern pass (`da402ec` "add ruby-spacing kern pass to prevent overlap") plus global kerning +
       headword padding controls (`196d190`) and the shipped `furiganaGap`/`kerning` settings.
@@ -352,27 +350,13 @@ own sections.)
         隠せない now labels "negative · potential" (deinflection BFS already chained
         隠せない→隠せる→隠す through the non-empty-stem path; only the label was wrong).
 
-### Still-broken segmentation cases
+### Formerly broken segmentation cases (re-checked 2026-09-26 with `scripts/segmentation-eval` `segcli run`)
 
-- **ニュームーン → ニューム + ーン (katakana long-vowel run split wrong)** — the katakana
-  loanword ニュームーン ("new moon") mis-segments into ニューム + ーン, with the second
-  piece (ーン, a bare long-vowel mark + ン) unrecognized. The katakana long-vowel mark (ー)
-  inside a loanword run is being treated as a segment boundary instead of part of the
-  preceding mora. Should resolve to a single segment ニュームーン. Likely the same
-  katakana long-vowel handling that the トキメク / ショーブ expansion cases exercise — audit
-  how ー is normalized/expanded mid-run during longest-match. Add a pin in
-  `SegmentationKnownGoodTests` once fixed.
-
-- **の + またたく → のまたたく (fused)** — sentence `命は闇の中のまたたく光だ`
-  parses to 8 segments instead of 9. The Viterbi/MeCab path fuses the possessive
-  particle の with the following verb またたく into a single surface のまたたく
-  (sometimes also splits as のま + たたく, with のま resolving to the 連用形 of
-  飲ます "to make drink"). Hypothesis: bigram cost of の-prt + またたく-verb is
-  higher than のま-verb + たたく-verb, even though the former is correct here.
-  Same sentence also misreads 闇 (やみ) as くらい — the reading for 暗い, an
-  unrelated entry, suggesting the homograph lookup is picking the wrong sense.
-  Fix path: revisit Viterbi bigram calibration for prt→verb transitions and
-  audit whether 闇's canonical kana row is being passed over for 暗い's.
+- ✅ **ニュームーン** — no longer ニューム + ーン. Now ニュー|ムーン (two dictionary words; JMdict has
+  no ニュームーン entry). Add it to `extras.json` in the next batched dictionary rebuild if it should
+  be one segment.
+- ✅ **の + またたく** — 命は闇の中のまたたく光だ now segments 命|は|闇|の|中|の|またたく|光|だ (9).
+  The 闇 → くらい reading can no longer happen: `surface_readings` has only やみ for 闇.
 
 - [ ] **Context-chosen readings for homographs (様 さま/よう, 方, 何, 間, 上…)** — added 2026-09-24.
       Furigana picks a reading by surface alone: `FuriganaResolver.readingForSegment` takes the
@@ -435,64 +419,16 @@ own sections.)
       (nav/tab-bar-excluded) read viewport, so words tapped in the 50–64% band landed behind the
       sheet. Raised the cap to 0.72 so the 0.64 estimate governs while still guarding against
       degenerate over-reservation (`ReadView+SheetSelection.swift`).
-- [ ] **Unify the two LLM call paths into a single merged, context-sharing call** —
-      today `Kioku/Read/LLM/LLMCorrectionService.swift` (segmentation/reading correction)
-      and `Kioku/Learn/Songs/SongBreakdownService.swift` (per-line breakdown) are two
-      separate round-trips with duplicated HTTP plumbing and *no shared context*: the
-      segmentation pass doesn't see song-level poetic register/established imagery, and
-      the breakdown pass has no access to the segmentation's authoritative readings, so
-      surfaces and per-word annotations can drift out of sync. Two-phase refactor:
-      1. **Extract `LLMClient`** owning provider dispatch (OpenAI/Claude/stub), HTTP,
-         validation, errors. Both services currently duplicate `callOpenAI` /
-         `callClaude` / `validate` (~150 LOC each). Per-call-site policy stays a
-         parameter: timeouts (5min for songs vs 60s for segmentation), max_tokens (8192
-         vs 4096), system-message use, stub-key (`kioku.llm.song.stubResponse` vs
-         `LLMSettings.stubResponseKey` + bundled `llm_stub.txt` fallback).
-      2. **Merge the song call** so one LLM round-trip returns both corrected
-         segmentation *and* breakdown in a single structured-JSON response.
-         Segmentation has song context (better splits for poetic compounds); breakdown
-         references segments by id, so surfaces stay in sync and romaji is derived
-         from the assigned readings at render time rather than re-emitted by the
-         model. Use OpenAI `response_format: { type: "json_schema", strict: true }`
-         and Anthropic forced-tool-use for schema enforcement.
-      - **Wire format:** structured JSON (option C). Schema sketch:
-        ```json
-        {
-          "segments": [{"id": 0, "line": 1, "surface": "朽ち", "reading": "くち"}, ...],
-          "lines": [{
-            "index": 1,
-            "gist": "Twilight wings rest on decayed petals.",
-            "words": [{"segment_ids": [0,1], "definition": "..."}, ...],
-            "grammar_note": null,
-            "reference": null   // or {"kind":"same_as","line":N} / {"kind":"parallel","line":N,"substitution":"X → Y"}
-          }, ...]
-        }
-        ```
-        `segments[]` is the single source of truth — no `romaji` field anywhere
-        (derived from `reading` via existing kana→romaji at display). Per-word bullets
-        reference segments by id, not retyped surface — editing a segment in Read view
-        propagates to the bullet automatically. `words[]` is sparse — pure case
-        particles (が/を/に) don't get bullets, matching today's prompt rule 5.
-        `original` field omitted on purpose (reconstructable from segments filtered by
-        line; one less drift surface).
-      - **Render rule (option B):** drop romaji from prompt entirely; renderer derives
-        it from each segment's `reading`. Existing kana→romaji converter handles this.
-      - **Migration:** existing cached breakdowns are markdown — either invalidate on
-        first read or keep `SongBreakdownParser` around for one transitional version and
-        re-fetch lazily. Stub mode becomes JSON; ship a one-shot converter from an
-        existing markdown stub to seed the new format.
-      - **OPEN QUESTION (needs decision before implementation):** triggering rule when
-        the user taps "Improve segmentation" in Read view on a song note. Options:
-        (a) cheap path — segmentation-only call (~4k tokens), breakdown stays a
-        separate later call; (b) merged path — always fire the full ~8k-token call so
-        the breakdown is pre-cached. (b) is strictly cheaper if a breakdown will ever
-        be requested; (a) wastes nothing for segmentation-only users. Suggested
-        default: merged path if a breakdown exists or has ever been requested for the
-        same lyric hash; cheap path otherwise.
-      - Files touched: new `Kioku/LLM/LLMClient.swift` (or similar), `LLMCorrectionService.swift`,
-        `SongBreakdownService.swift`, `SongBreakdownPrompt.swift`, `SongBreakdownParser.swift`
-        (replaced by JSON decoder), `SongLine`/`SongWord` models (gain `segmentIDs` field),
-        breakdown UI (`SongLineCard.swift` — render romaji from referenced segments).
+- [ ] **Merge the song segmentation-correction and breakdown LLM calls** — rewritten 2026-09-26.
+      Phase 1 of the old plan (shared HTTP/provider plumbing) is done: `Kioku/LLM/LLMStreamingClient.swift`
+      is used by both `LLMCorrectionClient` and `SongBreakdownService`. Phase 2 (one call returning
+      corrected segments *and* the breakdown, with word bullets referencing segment ids) was built as
+      `MergedCorrectionBreakdownService` and deleted in PR #101 ("lean AI correction"). Reopen only as
+      a deliberate decision, not as leftover work. The problem it solved still exists: breakdown word
+      surfaces and readings can disagree with the Read tab's segmentation because the two calls share
+      no context. A cheaper alternative to re-merging: send the note's current segments + readings
+      into the breakdown prompt as fixed input, so the breakdown annotates our segments instead of
+      re-deriving its own.
 - [x] **Active-word (karaoke) highlight has poor text contrast** — Done 2026-09-03, using
       recommended option A. Confirmed the root cause exactly: `LyricsView`'s active-cue render
       passed `playbackHighlightColor: UIColor.label.withAlphaComponent(0.32)` (the translucent
@@ -506,30 +442,14 @@ own sections.)
       segment's own color" job, just not wired to the playback highlight here — passed the same
       `cueLocalPlaybackHighlightRange(...)` as `playbackHighlightRange`, so the override always
       exactly covers the highlighted span.
-- [ ] **Extract-words "Vocab" tab wrongly empty** — from app-usage triage 2026-07-03
-      (`docs/app-usage-issues.md` #1), confirmed defect (not a UX nit). The Vocab tab shows
-      "No dictionary-backed vocabulary in this text." / "Save 0 Words" for a song note
-      (月色チャイのん) that clearly contains many ordinary dictionary words. Path:
-      `recomputeExtractedVocab()` (`Kioku/Read/Segmentation/SegmentListView.swift:104`)
-      feeds the read view's `segmentEdges` into
-      `SubtitleVocabExtractor.extract(fromEdges:dictionaryStore:)`
-      (`Kioku/Read/Audio/SubtitleVocabExtractor.swift:40`); after the recent
-      force-`isDictionaryMatch` fix (commit 4d7790c) the sole remaining gate is
-      `dictionaryStore.lookupFirstEntryIDs(...)` (`SubtitleVocabExtractor.swift:78`) — any
-      lemma missing from the in-memory `canonicalEntryIDMap` is dropped. Two candidate root
-      causes, split by whether the **Lines** tab also showed words:
-      (1) *Lines also empty* → `segmentEdges == []` at sheet-open time (segmentation not yet
-      loaded: async restore in `ReadView+Persistence.swift:151-207` not run, or
-      `readResourcesReady == false` in `ReadView+Segmentation.swift:169`);
-      (2) *Lines populated, Vocab empty* (more likely) → dictionary resolution failing, prime
-      suspect `canonicalEntryIDMap` never populated — `populateCanonicalEntryIDMap()` swallows
-      failures in a `try/catch` that only `print`s (`ContentView.swift:431`), so an empty map
-      makes EVERY lemma fail silently and globally while Lines still works. Secondary
-      contributor: conjugated lyric surfaces whose `preferredLemma` yields a non-canonical
-      form get dropped (`SubtitleVocabExtractor.swift:80`) — partial, not total, emptiness.
-      **Next diagnostic:** confirm whether the Lines tab showed words for the failing note;
-      that discriminates (1) from (2). Fix should also stop the silent `?? [:]` /
-      empty-`edges` failures from looking like "no vocab."
+- [ ] **Extract-words "Vocab" tab wrongly empty** — from app-usage triage 2026-07-03, on 月色チャイのん.
+      Needs one device check before more work: open that note's Extract sheet and see whether Vocab
+      is still empty. `ebfd619` (2026-07-22, "vocab/coverage bugs") rewrote much of
+      `SegmentListView`, and the prime suspect is now loud: a failed `populateCanonicalEntryIDMap`
+      (which empties every lemma → entry lookup) logs under `AppLog` `.dictionary` and trips an
+      `assertionFailure` in Debug instead of a bare `print` (`ContentView.makeReadResources`, 2026-09-26).
+      If it is still empty with no assertion, the remaining suspect is conjugated surfaces whose
+      `preferredLemma` isn't canonical being dropped in `SubtitleVocabExtractor.extract`.
 
 ## Words & Dictionary
 
@@ -617,7 +537,8 @@ own sections.)
       lifetime accuracy with flashcards). Objective grading with green/red feedback + Next.
       Gated at ≥4 words in selection. Emits the `CardsPageDotsHidden`/`StudySessionActive`
       preferences so the pager locks swipe + hides dots mid-quiz.
-      - **Deferred:** dictionary-fallback distractors when the saved-word pool has fewer
+      - **Done (found 2026-09-26):** dictionary-fallback distractors now exist
+        (`DistractorSelector`, `DictionaryStore+DistractorPool`). Original deferral note: dictionary-fallback distractors when the saved-word pool has fewer
         than 4 distinct answer-side strings. Today distractors come only from the pool, so a
         thin/duplicate-meaning selection yields 2–3 options instead of 4 (still valid, just
         easier). Wire dictionary-sampled distractors (random common entries of the same POS)
@@ -745,18 +666,11 @@ own sections.)
       timing) that a flat note `content` blob would lose, which the karaoke/alignment views
       depend on; any unification must keep cue structure for audio even if vocab extraction
       goes through the common path. Decide before investing further in the subtitle vocab UI.
-- [ ] **Lyric line placed on the wrong side of an interlude** — from app-usage triage
-      2026-07-03 (`docs/app-usage-issues.md` #3). Observed a sung line (「悲しみの嘘を忘れない」)
-      rendered *above* the ♪ interlude markers when it belongs *below* them — it resumes the
-      section after the instrumental gap. ♪ interludes are real `SubtitleCue` rows with genuine
-      `startMs`/`endMs` (`Kioku/Read/Audio/SubtitleCue.swift`), not separate widgets, so a line
-      on the wrong side of the ♪ is a timing/order mismatch relative to the interlude cue —
-      likely the Re-align pass assigns a line to the wrong side of a long inter-vocal gap. The
-      never-highlighted diagnostic below now ships and would flag this exact case in the
-      Subtitle Editor (a misplaced line typically becomes `.shadowed`) — but it only surfaces
-      the symptom for a human to notice, it doesn't fix the Re-align pass itself. Still open;
-      not attempted here (touching the aligner blind has regressed a different song before, per
-      "Lyric-alignment: repeated-lyric disambiguation" above).
+- [x] **Lyric line placed on the wrong side of an interlude** — closed 2026-09-26. Reported on
+      tsukiiro-chainon's 悲しみの嘘を忘れない under the old windowed aligner. The whole-song Viterbi
+      pass places lines in lyric order by construction, and the 2026-09-13 device run puts that line at
+      209.3 s, after the 177–186 s section and its gap, where the voters put it. If it recurs, the
+      Subtitle Editor's unreachable-cue warning (`CueReachabilityDiagnostic`) flags it.
 - [x] **Alignment-quality diagnostic: detect never-highlighted / un-reachable cues** — Already
       done, found already shipped while triaging this list 2026-09-03 (this checkbox was just
       stale): `CueReachabilityDiagnostic.swift` (`8308f05`, "flag cues that can never highlight
@@ -828,16 +742,12 @@ own sections.)
       the song/note name instead of a bare "Kioku".
 - [ ] **"Find correct timestamp" repair tool for a mismatched lyric cue** — reported 2026-09-02:
       when a user flags a `SubtitleCue` whose audio doesn't match its text, offer a "search the
-      song for where this line actually is" fix. A full re-song alignment pass is the wrong tool —
-      see "Lyric-alignment: repeated-lyric disambiguation" under Major Feature Additions above;
-      running the full aligner over an entire song reliably OOMs and degrades badly (the old
-      full-song DTW path measured ~101s median error, `CTCForcedAligner.swift:2-6`). This is a
-      narrower problem though: a single *known* short text (the mismatched cue's own line)
-      searched against one already-encoded song — closer to keyword/phrase spotting than full
-      alignment:
-      1. Run the acoustic-model encoder over the full song once (chunked, same pattern as the
-         existing HTDemucs chunked separation — avoids the OOM path, which came from a full
-         *decode*, not just an encoder pass).
+      song for where this line actually is" fix. **Premise updated 2026-09-26:** the OOM / ~101 s
+      median-error full-song path this was written against is gone. The shipped aligner already
+      computes MMS emissions over the whole song, and Debug builds dump them
+      (`Documents/ctc-debug/<key>.emissions.f32`), so step 1 below is free. What's left is a small
+      phrase-spotting search over emissions that already exist:
+      1. Reuse the cached per-frame emissions for the song (no new encoder pass).
       2. Slide the mismatched cue's known text as a CTC-scored window across those frame outputs;
          take the top-N score peaks, where N = how many times that exact line occurs in the song's
          known lyrics (repeats are the normal case for song lyrics, not an edge case).
@@ -852,9 +762,8 @@ own sections.)
       audio's pitch/rhythm/timbre diverges too far from a synthesized (likely spoken-register)
       reference for raw spectral cross-correlation to be reliable. CTC's phoneme-probability
       scoring is acoustic-identity-invariant in a way raw spectrogram matching isn't, so it should
-      generalize better here. Should reuse `CTCForcedAligner`/`SwiftWhisperAlign` infra rather than
-      new signal-processing code. Ties into the repeated-lyric item above — the N-peak/
-      occurrence-pairing idea may also improve `extractAnchors`'s occurrence-aware anchoring there.
+      generalize better here. Should reuse `CTCAlignmentCore`/`SwiftWhisperAlign` infra rather than
+      new signal-processing code, and can be prototyped on the Mac with `scripts/alignment-replay`.
 - [x] **Toggle for continuing to the next song after playing a specific track** — Done
       2026-09-03. Scoped to `SongsHomeView` → `SongStepperView`'s Listen-along (narration) flow —
       the only place with an existing ordered list to advance through; the Read tab's raw karaoke
@@ -1047,16 +956,11 @@ Estimated effort: 30–60 min per store using the established pattern.
 
 Things that aren't broken but could become so. Not actionable today — just worth a periodic look.
 
-- [ ] **Move the deploy skill's derived-data path out of `/tmp`.** Added 2026-09-21. The `deploy`
-      skill builds into `/tmp/kioku-build`; macOS purges old files under `/tmp` every few days and
-      leaves the folders, which on 2026-09-21 hollowed out all 40 Swift package checkouts and their
-      cached clones ("package manifest … cannot be accessed", then "repository … does not exist").
-      Recovery was `rm -rf /tmp/kioku-build/SourcePackages/{checkouts,repositories}` +
-      `xcodebuild -resolvePackageDependencies`, turning a quick deploy into a re-fetch and a longer
-      build. Fix: point `-derivedDataPath` (and the install path) at somewhere persistent such as
-      `~/Library/Caches/kioku-build` in `~/.claude/skills/deploy`. Also add
-      `-skipPackagePluginValidation -skipMacroValidation` to the skill's build command — device
-      builds need them and the skill omits them.
+- [x] **Move the deploy skill's derived-data path out of `/tmp`.** Done 2026-09-26:
+      `.claude/commands/deploy.md` builds into `~/Library/Caches/kioku-build` (macOS purges old
+      files under `/tmp` and hollowed out the package checkouts on 2026-09-21) and passes
+      `-skipPackagePluginValidation -skipMacroValidation`. The first deploy after this is a cold
+      build into the new folder; `/tmp/kioku-build` can be deleted after that.
 - [ ] **`macos-26` is a GitHub Actions preview runner.** If GH deprecates the preview image before iOS 26.5 reaches `macos-15`, CI breaks until we react. Fallback path: `xcrun simctl runtime install` to add iOS 26.5 to `macos-15`, or accept skip-testing the affected suites. (Left as a watch — no clean proactive code fix short of pre-installing a runtime, which is slow and unwarranted while macos-26 works.)
 - [x] **Coverage step-summary parsing.** Hardened 2026-07-02: the `tests.yml` coverage python now
       guards the `xccov --report --json` shape — if `targets` is empty, or no target reports any
@@ -1072,7 +976,7 @@ Things that aren't broken but could become so. Not actionable today — just wor
 
 ## Watch list — degrading since last triage (2026-05-25)
 
-- ⚠️  **`print()` call count: 66.** Down from 101 (and from 77 mid-session) via the os.Logger migration pass + the preventive splits. Remaining are concentrated in legacy diagnostic paths; route through `os.Logger` (subsystem-tagged so they're filterable in Console.app) opportunistically when touching the surrounding code.
+- ✅ **`print()` migration done 2026-09-26.** 33 ad-hoc `print()` calls moved to `AppLog` under new `LogFeature` categories (`.dictionary`, `.audioPlayback`, `.furigana`, `.storage`), and `VocalStemCache` (in the SwiftWhisperAlign package, which can't see `AppLog`) moved its 6 to its own `os.Logger`. The remaining 9 are deliberate console output: `StartupTimer` and `TapInstrumentation` mirror their measurement lines to the Xcode console, and `CrashLogger` dumps prior crash records at launch.
 - ✅ **File-size guardrail cleared (2026-05-25).** Splits landed: `ForcedAlignmentProvider.swift` 819 → 580 (extracted `AlignmentTimestampMath`, `AlignmentNonSpeechCueBuilder`, `WhisperAudioFrameDecoder`); `ReadView+AudioTranscription.swift` 722 → 293 (extracted `AudioTranscriptionHelpers`); `SubtitleEditorSheet.swift` 758 → ~660 (extracted `SubtitleEditorTimingTools`); `ReadView+LLMCorrection.swift` 741 → 405 (extracted `LLMCorrectionDiagnostics`). `ReadView+Segmentation.swift` 735 still pending the preventive split.
 - ⚠️  **`ReadView` extension sprawl — the architectural one.** See the dedicated section below.
 - ✅ **`SWIFT_VERSION = 6.0`** (was 5.0) — strict-concurrency now active. Done 2026-05-25 across 13 src files + 14 test targets: nonisolated logger/statics/callbacks, `Sendable` conformances on dict types, MainActor isolation for tests. 373/373 passing.

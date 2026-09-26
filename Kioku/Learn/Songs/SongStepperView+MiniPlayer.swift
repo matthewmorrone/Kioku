@@ -313,7 +313,7 @@ extension SongStepperView {
                 try introOutroPlayback.load(audioURL: sourceURL, cues: [], title: note.resolvedTitle)
                 loadedIntroOutroURL = sourceURL
             } catch {
-                print("[SongStepperView] intro/outro source load failed: \(error.localizedDescription)")
+                AppLog.error(.audioPlayback, "[SongStepperView] intro/outro source load failed: \(error.localizedDescription)")
                 return
             }
         }

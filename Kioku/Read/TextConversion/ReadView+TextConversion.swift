@@ -83,7 +83,7 @@ extension ReadView {
                 do {
                     try NotesAudioStore.shared.saveCues(updatedCues, attachmentID: attachmentID)
                 } catch {
-                    print("[ReadView] saving converted cues failed: \(error.localizedDescription)")
+                    AppLog.error(.storage, "[ReadView] saving converted cues failed: \(error.localizedDescription)")
                 }
             }
         }

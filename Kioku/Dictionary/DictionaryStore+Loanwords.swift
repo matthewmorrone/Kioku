@@ -37,7 +37,7 @@ extension DictionaryStore {
                 }
             }
         } catch {
-            print("[DictionaryStore] loanword lookup failed for \(term): \(error)")
+            AppLog.error(.dictionary, "[DictionaryStore] loanword lookup failed for \(term): \(error)")
             return []
         }
     }
@@ -60,7 +60,7 @@ extension DictionaryStore {
                 return glosses.contains { boundary.firstMatch(in: $0, range: NSRange(location: 0, length: ($0 as NSString).length)) != nil }
             }
         } catch {
-            print("[DictionaryStore] English-gloss check failed for \(term): \(error)")
+            AppLog.error(.dictionary, "[DictionaryStore] English-gloss check failed for \(term): \(error)")
             return true
         }
     }
