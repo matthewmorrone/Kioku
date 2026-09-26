@@ -48,6 +48,11 @@ nonisolated final class NLTokenizerSegmenter: TextSegmenting, @unchecked Sendabl
         return edges.count == 1 && edges.first?.surface == surface
     }
 
+    // NLTokenizer has no JMdict tags to tell a と-taking adverb by.
+    func adverbialToPrefix(for surface: String) -> String? {
+        nil
+    }
+
     // NLTokenizer has no trie/deinflection pipeline to validate the compound-verb shape against.
     func suruCompoundPrefix(for surface: String) -> String? {
         nil

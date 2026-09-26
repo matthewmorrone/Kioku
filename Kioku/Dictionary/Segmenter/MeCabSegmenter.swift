@@ -74,6 +74,11 @@ nonisolated final class MeCabSegmenter: TextSegmenting, @unchecked Sendable {
         return nodes.allSatisfy { isKnownNode($0) }
     }
 
+    // MeCab has no JMdict tags to tell a と-taking adverb by.
+    func adverbialToPrefix(for surface: String) -> String? {
+        nil
+    }
+
     // MeCab has no JMdict vs-tag/trie data to validate the compound-verb shape against.
     func suruCompoundPrefix(for surface: String) -> String? {
         nil

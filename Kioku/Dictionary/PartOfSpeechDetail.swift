@@ -25,6 +25,9 @@ nonisolated enum PartOfSpeechDetail {
     static let suruNoun: UInt64 = 1 << 30          // vs — a noun that takes する
     static let nounSuffix: UInt64 = 1 << 31        // n-suf
     static let nounPrefix: UInt64 = 1 << 32        // n-pref
+    // on-mim — a JMdict *misc* tag, not a POS code: the startup queries pass it through alongside
+    // the POS codes (and no other misc tag). Transition classes do not read it.
+    static let mimetic: UInt64 = 1 << 33
 
     // The bits that belong to PartOfSpeech's own cases (everything below the detail bits).
     static let coarseMask: UInt64 = (1 << 16) - 1
@@ -46,6 +49,7 @@ nonisolated enum PartOfSpeechDetail {
         case "adv-to": return toAdverb
         case "n-suf": return nounSuffix
         case "n-pref": return nounPrefix
+        case "on-mim": return mimetic
         default: break
         }
         if code.hasPrefix("v1") { return ichidanVerb }
