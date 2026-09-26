@@ -160,6 +160,12 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                 keptMatches += 1
             }
 
+            if let latinEdge = latinRunEdge(in: text, startingAt: index) {
+                edges.append(latinEdge)
+                keptMatches += 1
+                if text.distance(from: latinEdge.start, to: latinEdge.end) > 1 { keptMultiCharacterMatch = true }
+            }
+
             var endIndex = index
 
             while endIndex < text.endIndex {
@@ -240,6 +246,19 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     // Frequency, step count and POS of whichever reading of the surface is cheaper.
                     let reading = pricedReading(of: surface, lemmas: lemmas, inflectionSteps: inflectionSteps)
                     edge.frequencyScore = reading.score
+                    // A lone kana that is neither a function word with a transition class of its own
+                    // (か, と, よ…) nor a counter (つ) is rarely a word in running text, however JPDB
+                    // ranks it: ま is one gold token in 15,959 occurrences. Without this, ま|って beat
+                    // 待って on a line of its own. See SegmenterScoring.loneKanaPenalty.
+                    if surface.count == 1, ScriptClassifier.isPureKana(surface),
+                       let lexical = transitionTable?.lexical, lexical.contains(surface) == false,
+                       PartOfSpeech.isCounter(edge.partOfSpeech) == false,
+                       edge.frequencyScore > 0 {
+                        edge.frequencyScore = max(
+                            SegmenterScoring.unrankedDictionaryScore,
+                            edge.frequencyScore - SegmenterScoring.loneKanaPenalty
+                        )
+                    }
                     edge.inflectionSteps = reading.inflectionSteps
                     edge.partOfSpeech |= reading.lemmaPartOfSpeech
                     // Flag entries that bundle a known grammatical kana as their final char
@@ -250,22 +269,6 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                         let prefix = String(surface.dropLast())
                         if trie.contains(prefix) {
                             edge.decomposesAtGrammaticalEnding = true
-                        }
-                    }
-                    // Direct surface lookup for IPADic context IDs (populated at dict-build time).
-                    // For deinflected forms whose surface isn't tagged, fall through to the lemma's
-                    // IDs — the resolved lemma is what tells us which IPADic slot the surface
-                    // belongs in (e.g. 会い → 会う → verb-stem-godan IDs).
-                    if let directIDs = trie.ipadicContextIDs(for: surface) {
-                        edge.ipadicLeftID = directIDs.left
-                        edge.ipadicRightID = directIDs.right
-                    } else {
-                        for lemma in lemmas {
-                            if let lemmaIDs = trie.ipadicContextIDs(for: lemma) {
-                                edge.ipadicLeftID = lemmaIDs.left
-                                edge.ipadicRightID = lemmaIDs.right
-                                break
-                            }
                         }
                     }
                     edges.append(edge)

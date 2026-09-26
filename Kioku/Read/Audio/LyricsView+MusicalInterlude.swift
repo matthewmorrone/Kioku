@@ -69,9 +69,13 @@ private struct InterludeNotePulse: ViewModifier {
         let p = phase - Double(index) * Self.stagger
         let wave = sin((p - p.rounded(.down)) * Double.pi)
         // Quiet (~-35 dB) → 0, loud (~-15 dB) → 1.
-        let energy = min(1, max(0, (loudness - 0.3) / 0.4))
+        let energy: Double = min(1, max(0, (loudness - 0.3) / 0.4))
+        let restingScale: Double = 0.7 + energy * 0.7
+        let pulseDepth: Double = 0.15 + energy * 0.25
+        let scale: Double = restingScale * (1.0 + wave * pulseDepth)
+        let opacity: Double = 0.45 + wave * 0.55
         content
-            .scaleEffect((0.7 + energy * 0.7) * (1.0 + wave * (0.15 + energy * 0.25)))
-            .opacity(0.45 + wave * 0.55)
+            .scaleEffect(scale)
+            .opacity(opacity)
     }
 }

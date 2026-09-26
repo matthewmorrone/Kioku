@@ -13,7 +13,7 @@ extension DictionaryStore {
     // OOM-killed the app on devices. Two passes:
     //   1. SELECT entry_id, GROUP_CONCAT(pos) FROM senses GROUP BY entry_id
     //      → one row per entry (~500k), POS strings comma-joined. Small.
-    //   2. SELECT text, entry_id, ipadic_left_id, ipadic_right_id FROM kana_forms UNION ALL kanji
+    //   2. SELECT text, entry_id FROM kana_forms UNION ALL kanji
     //      → one row per surface row (~500k). Joined against the in-memory POS map.
     // Total memory: a [Int: UInt64] POS map (~16 MB) + result records. No multiplicative blow-up
     // from the sense-row JOIN that the previous implementation triggered.
@@ -43,12 +43,12 @@ extension DictionaryStore {
                 throw DictionarySQLiteError.step(message: errorMessage())
             }
 
-            // Pass 2: surface rows with their IPADic context IDs, grouped by surface text.
+            // Pass 2: surface rows, grouped by surface text.
             var surfaceStatement: OpaquePointer?
             try prepare(sql: """
-                SELECT text, entry_id, ipadic_left_id, ipadic_right_id FROM kana_forms
+                SELECT text, entry_id FROM kana_forms
                 UNION ALL
-                SELECT text, entry_id, ipadic_left_id, ipadic_right_id FROM kanji
+                SELECT text, entry_id FROM kanji
                 ORDER BY text ASC, entry_id ASC
             """, statement: &surfaceStatement)
             defer { sqlite3_finalize(surfaceStatement) }
@@ -58,8 +58,6 @@ extension DictionaryStore {
             var currentSurface: String?
             var currentEntryIDs = Set<Int>()
             var currentPOS: UInt64 = 0
-            var currentLeftID: Int32?
-            var currentRightID: Int32?
 
             // Flush accumulator into the output record list.
             func flushCurrentSurface() {
@@ -67,9 +65,7 @@ extension DictionaryStore {
                 records.append(SurfaceRecord(
                     surface: surface,
                     entryIDs: Array(currentEntryIDs).sorted(),
-                    partOfSpeech: currentPOS,
-                    ipadicLeftID: currentLeftID,
-                    ipadicRightID: currentRightID
+                    partOfSpeech: currentPOS
                 ))
             }
 
@@ -81,27 +77,16 @@ extension DictionaryStore {
                 }
                 let surface = String(cString: textPointer)
                 let entryID = Int(sqlite3_column_int64(surfaceStatement, 1))
-                // SQLite returns 0 for NULL int columns via int64; check column type before reading.
-                let leftID: Int32? = sqlite3_column_type(surfaceStatement, 2) == SQLITE_NULL
-                    ? nil : Int32(sqlite3_column_int(surfaceStatement, 2))
-                let rightID: Int32? = sqlite3_column_type(surfaceStatement, 3) == SQLITE_NULL
-                    ? nil : Int32(sqlite3_column_int(surfaceStatement, 3))
 
                 if currentSurface != surface {
                     flushCurrentSurface()
                     currentSurface = surface
                     currentEntryIDs = []
                     currentPOS = 0
-                    currentLeftID = leftID
-                    currentRightID = rightID
                 }
 
                 currentEntryIDs.insert(entryID)
                 currentPOS |= posByEntryID[entryID] ?? 0
-                // Same surface across kana_forms and kanji can have different IDs in theory; in
-                // practice MeCab returns one ID pair per surface so they match. Last-non-nil wins.
-                if leftID != nil { currentLeftID = leftID }
-                if rightID != nil { currentRightID = rightID }
 
                 step = sqlite3_step(surfaceStatement)
             }
