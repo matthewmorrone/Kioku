@@ -37,6 +37,10 @@ enum CTCAlignmentCore {
         // blank makes the sung regions the only place text can land.
         let vadRegions = EnergyVAD.regions(vocalMono, sampleRate: 44_100)
         log?("energy-VAD \(vadRegions.count) regions: " + vadRegions.prefix(12).map { String(format: "%.0f-%.0f", $0.start, $0.end) }.joined(separator: " "))
+        if EmissionDropoutFill.isDeafFillEnabled {
+            let deaf = EmissionDropoutFill.fillDeaf(stem: &matrix, mix: mix, sung: vadRegions)
+            log?("deaf fill \(deaf.frames) frames in \(deaf.runs) run(s)")
+        }
         let regions = droppingWordlessIntro(vadRegions, stem: stem, mix: mix)
         if regions.count < vadRegions.count { log?("wordless intro: dropped \(vadRegions.count - regions.count) leading region(s)") }
         if regions.isEmpty == false {

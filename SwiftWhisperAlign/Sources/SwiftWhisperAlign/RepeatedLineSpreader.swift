@@ -14,6 +14,8 @@ import Foundation
 enum RepeatedLineSpreader {
     // The gap left before the next line when a line's end runs up to it.
     static let bridgeMargin = 0.05
+    // The least room (seconds) a later phrase must leave before the next line to take a copy.
+    static let minimumRoom = 1.0
     // How far past its phrase's end a spread line's highlight may run.
     static let endAllowance = 0.2
 
@@ -34,7 +36,12 @@ enum RepeatedLineSpreader {
             // Already one per phrase: nothing stacked.
             guard Set(owners).count < owners.count else { continue }
             let nextStart = j + 1 < lines.count ? lines[j + 1].start : durationSec
+            // A phrase counts only with room for a line before the next different one starts
+            // (タキシードミラージュ's second copy was moved onto a phrase that began 0.06 s before
+            // the next line, though both copies really share one phrase).
             let phrases = Array(regions[first...].prefix { $0.start < nextStart })
+                .enumerated().filter { $0.offset == 0 || min($0.element.end, nextStart) - $0.element.start >= minimumRoom }
+                .map(\.element)
             guard phrases.count >= j - i + 1 else { continue }
             // Each copy after the first starts where its phrase starts.
             var moved = Set<Int>()
