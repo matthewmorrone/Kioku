@@ -18,6 +18,18 @@ own sections.)
 
 - [ ] Quiz on next and previous words/lines
 - [ ] Add manual/custom word creation and editing
+- [ ] **Import a subtitle file straight to a note** — rewritten 2026-09-26 from an open design
+      question. Today the Words tab's subtitle import (`SubtitleImportView`, also reached from
+      Jimaku search via `SubtitleSearchView`) is a vocab-list flow: it segments the file, shows the
+      extracted vocab, and saves the chosen words to a list. "Keep as note" is a side option: the
+      note is only created when at least one word is saved (`performImport` returns early on an
+      empty selection), and cue timing is dropped (the note gets the text and precomputed
+      segments only). The feature: an "Import as note" choice that creates the note (title from
+      the file name, precomputed segmentation, as today) with no vocab step, so you read it and
+      save words with the normal tap / Extract sheet (which already uses the same
+      `SubtitleVocabExtractor`). Keep the vocab-list flow as the other choice. Out of scope:
+      pairing with audio. Notes → bulk import already pairs an audio file with its sibling
+      `.srt` (`BulkImportPlanner`).
 - [ ] **Real-time kanji-choice game mode** — pick the correct kanji as fast as possible; score
       on speed + accuracy in near-real-time (from app-usage backlog 2026-07-01). Needs a design
       pass (grilling) before building: question source (saved words? by JLPT/frequency?), distractor
@@ -646,20 +658,6 @@ own sections.)
       `NotesAudioStore.shared.saveCues()` with live `AudioPlaybackController.updateCues(_:)`
       (no playback stop). The persistent top row in `LyricsView` (`LyricsView.swift:27-30`)
       emits the intents. The "Unified ResolvedCue" dependency above is also satisfied.
-- [ ] **Reconsider: import subtitles as a note, then extract words the usual way?**
-      Open design question, not yet decided. Today subtitle import is its own pipeline —
-      parse (`ASSParser`/SRT) + optional `JimakuProvider` fetch, precompute segmentation at
-      import time, and produce a note carrying an `audioAttachmentID` with cues/SRT in
-      `NotesAudioStore`, plus a subtitle-specific vocab path. That's a parallel track to the
-      normal flow where a note's `content` is segmented in ReadView and words are saved via
-      the standard tap/extract → `WordsStore` path. Question is whether subtitle import should
-      just drop the cue text into a regular note's `content` (keeping the audio attachment +
-      timing for karaoke) and let the ordinary note→segmentation→save flow handle vocab —
-      collapsing two code paths into one and removing the bespoke subtitle vocab picker.
-      Trade-off to weigh: the dedicated path preserves per-cue structure (line boundaries,
-      timing) that a flat note `content` blob would lose, which the karaoke/alignment views
-      depend on; any unification must keep cue structure for audio even if vocab extraction
-      goes through the common path. Decide before investing further in the subtitle vocab UI.
 - [x] **Lyric line placed on the wrong side of an interlude** — closed 2026-09-26. Reported on
       tsukiiro-chainon's 悲しみの嘘を忘れない under the old windowed aligner. The whole-song Viterbi
       pass places lines in lyric order by construction, and the 2026-09-13 device run puts that line at
