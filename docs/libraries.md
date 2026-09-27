@@ -10,7 +10,7 @@ What we actually link.
 
 ### SwiftWhisperAlign (local) ✅
 - **Location:** `SwiftWhisperAlign/` (sibling SPM package)
-- **Why installed:** Lyric alignment (vocal isolation + MMS forced alignment) and Qwen3-ASR transcription of the isolated stem; produces the timed cues the read screen consumes.
+- **Why installed:** Lyric alignment (HTDemucs vocal isolation + MMS forced alignment, both CoreML); produces the timed cues the read screen consumes. No package dependencies of its own.
 
 ### MeCab (matthewmorrone fork) ✅
 - **Repo:** https://github.com/matthewmorrone/mecab.git
@@ -22,6 +22,11 @@ What we actually link.
 - **Vendored at:** `Packages/zinnia-swift/`
 - **Why installed:** Swift bindings for the Zinnia handwriting recognition engine. Powers kanji handwriting input.
 
+### dagre-swift (lukilabs) ✅
+- **Repo:** https://github.com/lukilabs/dagre-swift
+- **SPM:** remote, `SwiftDagre` product
+- **Why installed:** Lays out the segmentation sublattice diagram on the word detail screen.
+
 ---
 
 ## Candidates (not installed)
@@ -32,11 +37,6 @@ Short list — anything not below was evaluated and rejected.
 - **Repo:** https://github.com/dehesa/CodableCSV
 - **Why interesting:** Codable-compatible CSV encode/decode. Enables Anki / generic-CSV vocab import/export for users migrating in or out.
 - **Revisit when:** Anki interop or bulk vocabulary import/export becomes a feature.
-
-### mlx-audio (Blaizzy)
-- **Repo:** https://github.com/Blaizzy/mlx-audio
-- **Why interesting:** MLX-based audio inference; on-device vocal stem separation for songs with overpowering instrumentation.
-- **Blocker:** High integration cost, requires MLX runtime. Revisit when stem separation moves on-device.
 
 ### Shuffle (Kicksort)
 - **Repo:** https://github.com/Kicksort/Shuffle
@@ -56,6 +56,7 @@ Short list — anything not below was evaluated and rejected.
 ## Rejected (do not revisit without new evidence)
 
 - **USearch** — semantic similarity over embeddings; no embedding pipeline planned.
+- **mlx-swift / soniqo speech-swift** — removed 2026-09-27: only the iOS 18–25 Qwen3-ASR fallback used them, and they (plus ~20 transitive packages: swift-transformers, swift-huggingface, swift-crypto, swift-collections, Jinja, swift-argument-parser for MLX's CudaBuild plugin) were most of every package build. Transcription is SpeechTranscriber, iOS 26+ only.
 - **SwiftLCS** — LLM correction reconciliation already works with custom diff.
 - **swift-subtitle-kit / SwiftSubtitles** — we're SRT-only, server-generated; custom parsing suffices.
 - **swift-audio-marker** — SwiftWhisperAlign already covers per-word timing markers.

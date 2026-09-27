@@ -1,8 +1,8 @@
 // DownloadedModelsStore.swift
 //
 // Measures and deletes the on-device speech models — plus the isolated vocal stems they
-// produce — that live OUTSIDE Library/Caches (see CachesCleaner's header for why): the Qwen3
-// ASR + forced-aligner weights and the HTDemucs vocal isolator under Application
+// produce — that live OUTSIDE Library/Caches (see CachesCleaner's header for why): the aligner
+// weights, retired Qwen3 builds and the HTDemucs vocal isolator under Application
 // Support/SpeechModels ([[ModelStorage]]), and cached stems under Application
 // Support/VocalStems ([[VocalStemCache]]) — none of which iOS will purge under storage
 // pressure. "Clear Caches" deliberately doesn't touch these — this is the counterpart for a
@@ -13,13 +13,10 @@ import Foundation
 import SwiftWhisperAlign
 
 nonisolated enum DownloadedModelsStore {
-    // On-disk size of the downloaded Qwen3-ASR weights, or 0 if not yet downloaded. Sums both
-    // builds: the CoreML export StemTranscriber actually runs, and the MLX weights — orphaned
-    // now that nothing loads them, but still worth reclaiming for anyone who downloaded them
-    // under an older app version.
+    // On-disk size of Qwen3-ASR weights an older app version downloaded, or 0. Nothing loads
+    // them (transcription is Apple's SpeechTranscriber), but they're still worth reclaiming.
     static func qwenASRSizeBytes() -> Int {
-        sizeBytes(at: try? ModelStorage.directory(for: ModelStorage.asrCoreMLModelId))
-            + sizeBytes(at: try? ModelStorage.directory(for: ModelStorage.asrModelId))
+        ModelStorage.retiredASRModelIds.reduce(0) { $0 + sizeBytes(at: try? ModelStorage.directory(for: $1)) }
     }
 
     // On-disk size of the forced-aligner weights, or 0 if not yet downloaded. Sums the MMS
@@ -55,8 +52,9 @@ nonisolated enum DownloadedModelsStore {
     // Deletes every on-disk copy of the Qwen3-ASR weights (see qwenASRSizeBytes). No-op if
     // nothing is downloaded.
     static func deleteQwenASR() {
-        removeContents(of: try? ModelStorage.directory(for: ModelStorage.asrCoreMLModelId))
-        removeContents(of: try? ModelStorage.directory(for: ModelStorage.asrModelId))
+        for id in ModelStorage.retiredASRModelIds {
+            removeContents(of: try? ModelStorage.directory(for: id))
+        }
     }
 
     // Deletes every on-disk copy of the forced-aligner weights (see

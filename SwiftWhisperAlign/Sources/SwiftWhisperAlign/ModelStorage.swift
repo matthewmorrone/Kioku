@@ -1,20 +1,22 @@
 // ModelStorage.swift
 //
-// Resolves the on-disk cache directory for downloaded speech models (ASR weights, the
-// CTC forced-aligner). The Qwen3 SDK defaults to ~/Library/Caches/qwen3-speech, but iOS
-// purges Caches under storage pressure and the HuggingFace downloader cannot resume a
-// half-transferred file — so a mid-download purge strands the next launch on "downloading
-// alignment model 83%". Application Support is not purgeable; the directory is also
+// Resolves the on-disk directory for downloaded speech models (the MMS aligner, the HTDemucs
+// isolator). iOS purges Caches under storage pressure and a half-transferred model cannot
+// resume — so a mid-download purge strands the next launch on "downloading alignment model
+// 83%". Application Support is not purgeable; the directory is also
 // flagged out of iCloud backup so a ~600 MB re-downloadable blob doesn't burn the user's
 // iCloud quota.
 
 import Foundation
-import SourceSeparation
 
 public enum ModelStorage {
-    // Model IDs are pinned here (rather than relying on the SDK's `fromPretrained` defaults)
-    // so the cache directory and the requested weights cannot drift apart silently.
-    public static let asrModelId = "aufklarer/Qwen3-ASR-0.6B-MLX-4bit"
+    // Qwen3-ASR builds earlier app versions downloaded (MLX weights, then the CoreML export).
+    // Nothing loads them; the storage-management screen still measures and reclaims them
+    // ([[DownloadedModelsStore]]).
+    public static let retiredASRModelIds = [
+        "aufklarer/Qwen3-ASR-CoreML",
+        "aufklarer/Qwen3-ASR-0.6B-MLX-4bit",
+    ]
     // Qwen3 forced-aligner builds earlier app versions downloaded. Nothing loads them (the
     // aligner is now MMS via [[MMSModelStore]]), but the storage-management screen still
     // measures and reclaims them ([[DownloadedModelsStore]]).
@@ -23,23 +25,16 @@ public enum ModelStorage {
         "aufklarer/Qwen3-ForcedAligner-0.6B-8bit",
         "aufklarer/Qwen3-ForcedAligner-0.6B-bf16",
     ]
-    // CoreML build of the same Qwen3-ASR model (encoder.mlmodelc + decoder.mlmodelc), used by
-    // StemTranscriber instead of the MLX build — see its header comment for why.
-    public static let asrCoreMLModelId = "aufklarer/Qwen3-ASR-CoreML"
-    // Re-exposes HTDemucsSeparator.defaultModelId so Kioku (which depends on SwiftWhisperAlign,
-    // not directly on SourceSeparation) can locate the on-disk directory for storage management
-    // (Settings → Downloaded Models) without a second package dependency.
-    public static let htDemucsFTModelId = HTDemucsSeparator.defaultModelId
+    // MLX HTDemucs-FT weights earlier app versions downloaded. Nothing reads them (the isolator
+    // is the CoreML build in [[HTDemucsModelStore]]); kept so storage management can reclaim them.
+    public static let htDemucsFTModelId = "aufklarer/HTDemucs-FT-MLX"
 
     // Returns a per-model subdirectory under Application Support, creating it on demand.
     // Slashes in the model id ("aufklarer/Qwen3-…") become nested path components, mirroring
     // the HF Hub on-disk layout — two different model ids cannot clobber each other.
     //
-    // The `models/` segment is REQUIRED by speech-swift's HuggingFaceDownloader: makeHubApi()
-    // strips the literal `/models/<org>/<model>` suffix from the cacheDir to derive its
-    // `downloadBase`. Without `models/` here the suffix check fails, the downloader silently
-    // falls back to `<App Caches>/<parent-dir-name>/…` (purgeable!), and the post-download
-    // safetensors check looks at our cacheDir and finds nothing — "No safetensors files found".
+    // The `models/` segment is part of the path every existing download already lives under;
+    // changing it would orphan those files.
     public static func directory(for modelId: String) throws -> URL {
         let fm = FileManager.default
         guard let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {

@@ -4,8 +4,8 @@ import UniformTypeIdentifiers
 // Renders the bulk-import sheet shown from NotesView. The screen has three vertically
 // stacked sections: a file picker that accumulates txt/srt/audio URLs, a plan list that
 // shows how the picker contents will become notes, and an optional transcription-options
-// section (vocal isolation) shown only when at least one item needs transcription — always
-// via Qwen3-ASR, the only selectable engine. Tapping Import runs the plan sequentially via
+// section (vocal isolation) shown only when at least one item needs transcription (iOS 26+;
+// below that audio-only items are skipped). Tapping Import runs the plan sequentially via
 // BulkImportRunner; row status updates in place as items complete.
 struct BulkImportSheet: View {
     @EnvironmentObject private var store: NotesStore
@@ -57,15 +57,23 @@ struct BulkImportSheet: View {
         plan.filter { BulkImportPlanner.requiresTranscription($0) }
     }
 
-    // A sung item is skipped unless the user opted to transcribe it anyway.
+    // Transcription is Apple's SpeechTranscriber, which only exists on iOS 26+.
+    private var canTranscribe: Bool {
+        if #available(iOS 26.0, *) { return true }
+        return false
+    }
+
+    // An audio-only item is skipped when it can't be transcribed here; a sung one is skipped
+    // unless the user opted to transcribe it anyway.
     private func isSkipped(_ item: BulkImportPlanItem) -> Bool {
-        audioKindByItemID[item.id] == .singing && transcribeAnywayItemIDs.contains(item.id) == false
+        if canTranscribe == false, BulkImportPlanner.requiresTranscription(item) { return true }
+        return audioKindByItemID[item.id] == .singing && transcribeAnywayItemIDs.contains(item.id) == false
     }
 
     // Import waits for every audio-only item's check, and needs at least one item left to run.
     private var canImport: Bool {
         guard runner.isRunning == false, runner.hasFinished == false else { return false }
-        guard transcriptionItems.allSatisfy({ audioKindByItemID[$0.id] != nil }) else { return false }
+        guard canTranscribe == false || transcriptionItems.allSatisfy({ audioKindByItemID[$0.id] != nil }) else { return false }
         return plan.contains { isSkipped($0) == false }
     }
 
@@ -267,6 +275,18 @@ struct BulkImportSheet: View {
     // add lyrics with a Transcribe Anyway toggle.
     @ViewBuilder
     private func audioCheckLine(for item: BulkImportPlanItem) -> some View {
+        if canTranscribe == false {
+            Text("Skipped — transcription needs iOS 26")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            audioKindLine(for: item)
+        }
+    }
+
+    // The speech-vs-singing half of audioCheckLine, once transcription is available.
+    @ViewBuilder
+    private func audioKindLine(for item: BulkImportPlanItem) -> some View {
         switch audioKindByItemID[item.id] {
         case nil:
             Text("Checking audio…")
@@ -292,6 +312,7 @@ struct BulkImportSheet: View {
 
     // Classifies every audio-only item that hasn't been checked yet, one at a time.
     private func classifyTranscriptionItems() async {
+        guard canTranscribe else { return }
         for item in transcriptionItems where audioKindByItemID[item.id] == nil {
             guard let url = item.audioURL else { continue }
             let didStart = url.startAccessingSecurityScopedResource()

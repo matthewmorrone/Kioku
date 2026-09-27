@@ -1,7 +1,6 @@
 import Foundation
 import AVFoundation
 import Combine
-import SwiftWhisperAlign   // StemTranscriber — Qwen3-ASR transcription
 
 // Executes a BulkImportPlan sequentially: parses txt/srt files, copies audio attachments,
 // and transcribes audio-only items (AudioTranscriptionService). Items run one at a time so only
@@ -124,14 +123,13 @@ final class BulkImportRunner: ObservableObject {
             }
         }
 
-        if bodyContent == nil, cues == nil, let audioURL = item.audioURL {
-            // One shared engine for every import path.
-            let engine = TranscriptionEngine.current
+        // BulkImportSheet leaves audio-only items out of the run below iOS 26 (no transcription).
+        if bodyContent == nil, cues == nil, let audioURL = item.audioURL, #available(iOS 26.0, *) {
             let itemID = item.id
             let didStart = audioURL.startAccessingSecurityScopedResource()
             defer { if didStart { audioURL.stopAccessingSecurityScopedResource() } }
             let transcribed = try await AudioTranscriptionService.transcribe(
-                url: audioURL, engine: engine, isolateVocals: isolateVocals,
+                url: audioURL, isolateVocals: isolateVocals,
                 onProgress: { [weak self] frac in
                     Task { @MainActor in self?.progressByItem[itemID]?.transcriptionProgress = frac }
                 },

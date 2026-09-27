@@ -118,6 +118,7 @@ extension ReadView {
     // Transcribes an already-copied audio file (consumed and deleted here) and creates a new note
     // with the transcript and its karaoke timing data.
     func transcribeAudioFile(copiedURL: URL, isolateVocals isolate: Bool) async {
+        guard #available(iOS 26.0, *) else { return }
         guard subtitleImport.isPerformingAudioTranscription == false else { return }
         subtitleImport.isPerformingAudioTranscription = true
         defer { subtitleImport.isPerformingAudioTranscription = false }
@@ -125,14 +126,13 @@ extension ReadView {
         // One shared engine for every import path (see AudioTranscriptionService). The note shows a
         // status line rather than streaming partial text — the tradeoff for a single transcription
         // core.
-        let engine = TranscriptionEngine.current
         let noteID = beginStreamingTranscriptionNote(totalChunks: 1)
         do {
             defer { try? FileManager.default.removeItem(at: copiedURL) }
 
             setTranscriptionStatusNote(id: noteID, statusLine: isolate ? "Isolating vocals…" : "Transcribing audio…", body: "")
             let cues = try await AudioTranscriptionService.transcribe(
-                url: copiedURL, engine: engine, isolateVocals: isolate
+                url: copiedURL, isolateVocals: isolate
             )
             guard cues.isEmpty == false else {
                 subtitleImport.audioTranscriptionErrorMessage = "No speech was recognized in the selected audio file."
