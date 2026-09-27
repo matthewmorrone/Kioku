@@ -5,7 +5,6 @@ Diagnostics/LogFeatureSettings.swift
 Dictionary/Deinflection/DeinflectionRule.swift
 Dictionary/Deinflection/DeinflectionState.swift
 Dictionary/Deinflection/Deinflector.swift
-Dictionary/Deinflection/Deinflector+HelperWords.swift
 Dictionary/Deinflection/InflectionFormNames.swift
 Dictionary/DictionaryEntry.swift
 Dictionary/DictionaryEntrySense.swift
@@ -51,4 +50,3 @@ Dictionary/DictionaryStore+FrequencyRanking.swift
 Dictionary/PartOfSpeechDetail.swift
 Dictionary/Segmenter/TransitionClass.swift
 Dictionary/Segmenter/SegmenterTransitionTable.swift
-Dictionary/Segmenter/ParticleClusters.swift

@@ -54,11 +54,7 @@ final class SegmentationQualityTests: XCTestCase {
     // 1.62%) and the greedy strategy with its demotion list (82.4% / 3.41%).
     func testHeldOutQualityFloor() throws {
         UserDefaults.standard.removeObject(forKey: SegmenterSettings.strategyKey)
-        // Measured with particle clusters left whole: the gold tokens keep には and ですか as units, and
-        // this floor is about which path wins, not how finely a chosen cluster is displayed.
         let segmenter = try TestReadResources.shared().segmenter
-        segmenter.splitsClusters = false
-        defer { segmenter.splitsClusters = true }
         var goldCount = 0
         var exactCount = 0
         var cutThroughCount = 0
@@ -104,7 +100,7 @@ final class SegmentationQualityTests: XCTestCase {
 
     // …and は + いつも here. A per-surface denylist can only get one of the pair right.
     func testSplitsHaBeforeItsumo() throws {
-        XCTAssertEqual(try segments(of: "はいつも笑っている"), ["は", "いつも", "笑って", "いる"])
+        XCTAssertEqual(try segments(of: "はいつも笑っている"), ["は", "いつも", "笑っている"])
     }
 
     // があ is a dictionary entry (onomatopoeia); taking it strands ります.
@@ -149,24 +145,16 @@ final class SegmentationQualityTests: XCTestCase {
     func testTariFormStaysWithItsVerb() throws {
         XCTAssertEqual(try segments(of: "減ったりする"), ["減ったり", "する"])
     }
-    // Particle clusters are shown as their parts by default…
-    func testSplitsParticleClustersByDefault() throws {
-        XCTAssertEqual(try segments(of: "そこには誰もいない"), ["そこ", "に", "は", "誰も", "いない"])
-        XCTAssertEqual(try segments(of: "そうですか"), ["そう", "です", "か"])
+    // A particle-cluster entry is one segment when the path search picks it: segmentation alone
+    // decides granularity, and nothing splits a chosen segment afterwards.
+    func testParticleClustersAreWhatThePathPicks() throws {
+        XCTAssertEqual(try segments(of: "そこには誰もいない"), ["そこ", "には", "誰も", "いない"])
     }
 
-    // …but an entry that merely looks like particles keeps its own meaning: なのに is "even though".
+    // An entry that merely looks like particles keeps its own meaning: なのに is "even though".
     func testKeepsLexicalizedParticleWordsWhole() throws {
         XCTAssertEqual(try segments(of: "雨なのに"), ["雨", "なのに"])
         XCTAssertEqual(try segments(of: "でも行く"), ["でも", "行く"])
-    }
-
-    // With the option off the path search's own units come through.
-    func testParticleClustersStayWholeWhenOptionIsOff() throws {
-        let segmenter = try TestReadResources.shared().segmenter
-        segmenter.splitsClusters = false
-        defer { segmenter.splitsClusters = true }
-        XCTAssertEqual(segmenter.longestMatchEdges(for: "そこには誰もいない").map(\.surface), ["そこ", "には", "誰も", "いない"])
     }
 
     // Conjugations that stack one class-changing ending on another — polite over progressive, past
@@ -176,7 +164,7 @@ final class SegmentationQualityTests: XCTestCase {
     func testStackedConjugationsAreOneSegment() throws {
         XCTAssertEqual(try segments(of: "知っています"), ["知っています"])
         XCTAssertEqual(try segments(of: "彼に言われた"), ["彼", "に", "言われた"])
-        XCTAssertEqual(try segments(of: "まだ持っていない"), ["まだ", "持って", "いない"])
+        XCTAssertEqual(try segments(of: "まだ持っていない"), ["まだ", "持っていない"])
     }
 
     // Godan polite negative and volitional, and なさい on a godan stem.
@@ -195,7 +183,7 @@ final class SegmentationQualityTests: XCTestCase {
     // and an adjective stem carries すぎる / そう as one form.
     func testIchidanStemAndAdjectiveStemAuxiliaries() throws {
         XCTAssertEqual(try segments(of: "ラーメンを食べに行きます"), ["ラーメン", "を", "食べ", "に", "行きます"])
-        XCTAssertEqual(try segments(of: "仕事が忙しすぎる"), ["仕事", "が", "忙し", "すぎる"])
+        XCTAssertEqual(try segments(of: "仕事が忙しすぎる"), ["仕事", "が", "忙しすぎる"])
         XCTAssertEqual(try segments(of: "歩きながら話す"), ["歩きながら", "話す"])
     }
 
@@ -204,7 +192,7 @@ final class SegmentationQualityTests: XCTestCase {
     func testDictionaryWordsDoNotBorrowTheirVerbsFrequency() throws {
         XCTAssertEqual(try segments(of: "考え事ができない"), ["考え事", "が", "できない"])
         XCTAssertEqual(try segments(of: "時間が過ぎて"), ["時間", "が", "過ぎて"])
-        XCTAssertEqual(try segments(of: "していて"), ["して", "いて"])
+        XCTAssertEqual(try segments(of: "していて"), ["していて"])
     }
     // A word written across katakana and hiragana is one segment — the dictionary entry ウソつき, and
     // katakana-stem verbs through their lemma (サボった → サボる)…
@@ -227,7 +215,7 @@ final class SegmentationQualityTests: XCTestCase {
     func testConjugatedFormsThatAreAlsoWordsPayTheirStep() throws {
         XCTAssertEqual(try segments(of: "ベルをならして"), ["ベル", "を", "ならして"])
         XCTAssertEqual(try segments(of: "恋せよ乙女"), ["恋せよ", "乙女"])
-        XCTAssertEqual(try segments(of: "勉強していた"), ["勉強", "して", "いた"])
+        XCTAssertEqual(try segments(of: "勉強していた"), ["勉強", "していた"])
     }
 
     // なる after an adjective's く-form is its own word ("become"), not part of the adjective — and
@@ -244,7 +232,7 @@ final class SegmentationQualityTests: XCTestCase {
         XCTAssertEqual(try segments(of: "２時間かかった"), ["２", "時間", "かかった"])
         XCTAssertEqual(try segments(of: "５ヶ月前"), ["５", "ヶ月", "前"])
         XCTAssertEqual(try segments(of: "３年間住んだ"), ["３", "年間", "住んだ"])
-        XCTAssertEqual(try segments(of: "１日中寝ていた"), ["１日中", "寝て", "いた"])
+        XCTAssertEqual(try segments(of: "１日中寝ていた"), ["１日中", "寝ていた"])
         XCTAssertEqual(try segments(of: "２人で行く"), ["２人", "で", "行く"])
     }
 

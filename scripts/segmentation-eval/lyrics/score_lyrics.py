@@ -5,7 +5,7 @@ granularity (particle clusters split). Prints only the differing fragments — n
 import json, os, subprocess
 here = os.path.dirname(os.path.abspath(__file__))
 gold = json.load(open(os.path.join(here, "gold-reviewed.json"), encoding="utf-8"))
-env = dict(os.environ, SPLIT_CLUSTERS="1")
+env = dict(os.environ)
 out = subprocess.run([os.path.join(here, "..", "work", "segcli"), "run"], input="\n".join(g["text"] for g in gold) + "\n",
                      capture_output=True, text=True, env=env).stdout.split("\n")
 correct, wrong = 0, []
