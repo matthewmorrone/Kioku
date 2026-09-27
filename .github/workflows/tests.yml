@@ -1,13 +1,9 @@
 name: Tests
 
-# Opt-in: a pull request runs the suite only while it carries the `run-tests` label — added to
-# changes that can move segmentation or lookup somewhere nobody looked (segmenter, deinflection,
-# dictionary / lexicon, rule data). UI changes are checked on the device instead and merge without
-# a run. Labelling a PR starts a run; later pushes to a labelled PR re-run it. workflow_dispatch
-# is the manual run (against main or any branch).
+# Manual only (workflow_dispatch) — for changes to stores, backup / restore, alignment and the
+# other areas the suite covers. Segmentation is checked locally instead, in seconds:
+# scripts/segmentation-eval (held2k / lyrics numbers and named_cases.py).
 on:
-  pull_request:
-    types: [opened, reopened, synchronize, labeled]
   workflow_dispatch:
 
 # A newer push to the same PR makes the older run pointless, so cancel the superseded one.
@@ -17,7 +13,6 @@ concurrency:
 
 jobs:
   ios:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'run-tests')
     # macos-26 (preview) ships iOS 26.5 simulator runtimes; macos-15 caps at
     # iOS 26.2, where ~18 of our tests SIGABRT during process bootstrap.
     # Locally on iOS 26.5 (where developers run) those same tests pass cleanly,

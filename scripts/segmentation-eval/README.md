@@ -4,8 +4,7 @@ Measures the Kioku segmenter against gold tokens at JMdict granularity, from a M
 no app or device build. `cli/build.sh` compiles the app's **real** segmenter sources, so a number
 here is a number about the shipped code.
 
-CI only guards a quality floor (`SegmentationQualityTests.testHeldOutQualityFloor`). Green CI does
-not mean good segmentation; this is where quality is actually measured.
+This is where segmentation quality is measured; the app's test suite runs only by hand.
 
 ## Quick start
 
@@ -16,7 +15,11 @@ python3 unpack-data.py              # data/*.jsonl.gz → work/data/<set>.jsonl 
 ./work/segcli run < work/data/held2k.txt > work/held2k.out      # ~1 min per 2k sentences; run long sets in the background
 python3 score.py work/data/held2k.jsonl work/held2k.out --examples 10
 python3 lyrics/score_lyrics.py      # the user-reviewed lyric lines
+python3 named_cases.py              # named cases (data/named-cases.tsv): each pins one decision; seconds
 ```
+
+Run all of these before a segmentation change goes up — they are the check; CI's Tests workflow is
+manual-only and doesn't cover segmentation any better.
 
 `work/` is gitignored. If the app's source layout changes, `cli/kioku-sources.txt` is the list of
 files the CLI compiles — add whatever the compiler reports missing.
