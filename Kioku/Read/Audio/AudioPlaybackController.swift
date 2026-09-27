@@ -11,16 +11,13 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     @Published var duration: TimeInterval = 0
     // Index into the cues array for the currently active subtitle; nil when between cues or stopped.
     @Published var activeCueIndex: Int? = nil
-    // Smoothed audio level in [0, 1], driven by AVAudioPlayer's average-power meter. Updated on
-    // every timer tick while playing. Consumers (e.g., the lyrics ♪ pulse) treat this as a coarse
-    // rhythm signal — louder samples pulse bigger. Set to 0 when paused/stopped so visuals can
-    // react to the playback state without an additional gate.
-    @Published var audioLevel: Double = 0
-    // Loudness and pulse phase for the lyrics view's interlude notes (see InterludeRhythm).
-    @Published var rhythmLoudness: Double = 0
-    @Published var rhythmPhase: Double = 0
-    private let rhythm = InterludeRhythm()
-    private var lastRhythmTick: Date?
+    // Beat grid and loudness curve of the loaded file, for the lyrics view's interlude notes.
+    // Nil until the background analysis finishes (or if it fails).
+    @Published private(set) var pulseMap: SongPulseMap?
+    // Guards against a slow analysis of a previous file landing after a newer load.
+    private var pulseAnalysisID = UUID()
+    // Latest AVAudioSession output latency, refreshed each timer tick for `audibleSeconds()`.
+    private var outputLatencySec: TimeInterval = 0
     // Fired when AVAudioPlayer stops on its own having reached the end of the file — distinct
     // from an explicit `pause()`/`stop()` call (including `playRange`'s scheduled auto-pause at
     // a line's end, which always calls `pause()` before the player would reach true EOF). Used
@@ -134,10 +131,10 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     func load(audioURL: URL, cues: [SubtitleCue], title: String? = nil) throws {
         stop()
         let newPlayer = try AVAudioPlayer(contentsOf: audioURL)
-        newPlayer.isMeteringEnabled = true
         newPlayer.prepareToPlay()
         player = newPlayer
         self.cues = cues
+        analyzePulse(of: audioURL)
         nowPlayingTitle = title
         duration = AudioFileDuration.seconds(of: audioURL) ?? newPlayer.duration
         currentTimeMs = 0
@@ -155,7 +152,6 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         let positionSec = player?.currentTime ?? 0
         let keptCues = cues
         let newPlayer = try AVAudioPlayer(contentsOf: audioURL)
-        newPlayer.isMeteringEnabled = true
         newPlayer.prepareToPlay()
         player?.pause()
         stopTimer()
@@ -191,6 +187,8 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         stop()
         player = nil
         cues = []
+        pulseMap = nil
+        pulseAnalysisID = UUID()
         duration = 0
         currentTimeMs = 0
         activeCueIndex = nil
@@ -247,7 +245,6 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         isPlaying = false
         stopTimer()
         cancelStopWorkItem()
-        audioLevel = 0
         didLogOutputLatency = false
         syncTimeAndCue()
         updateNowPlayingInfo()
@@ -261,7 +258,6 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         cancelStopWorkItem()
         currentTimeMs = 0
         activeCueIndex = nil
-        audioLevel = 0
         stopAtMs = nil
         didLogOutputLatency = false
         updateNowPlayingInfo()
@@ -379,13 +375,11 @@ final class AudioPlaybackController: NSObject, ObservableObject {
             isPlaying = false
             stopTimer()
             activeCueIndex = nil
-            audioLevel = 0
-            onDidFinishPlayingNaturally?()
+                onDidFinishPlayingNaturally?()
             return
         }
 
         syncTimeAndCue()
-        updateAudioLevel(player)
 
         // Auto-pause at the line-range upper bound when `playRange` armed one.
         if let stopAt = stopAtMs, currentTimeMs >= stopAt {
@@ -394,32 +388,27 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         }
     }
 
-    // Reads AVAudioPlayer's per-channel average-power meter, averages stereo channels into a
-    // single value, normalizes the -160…0 dB range into [0, 1], and exponentially smooths so
-    // the published `audioLevel` doesn't strobe on every 50ms tick. The smoothing time
-    // constant is tuned to feel beat-like without being twitchy — visible peaks on kick drums
-    // and snare hits, no jitter on sustained vowels.
-    private func updateAudioLevel(_ player: AVAudioPlayer) {
-        player.updateMeters()
-        let channelCount = max(1, player.numberOfChannels)
-        var sumDb: Float = 0
-        for ch in 0..<channelCount {
-            sumDb += player.averagePower(forChannel: ch)
+    // Analyzes the file's beats and loudness off the main thread for the interlude notes. The
+    // result is dropped if another file was loaded (or this one unloaded) in the meantime.
+    private func analyzePulse(of audioURL: URL) {
+        pulseMap = nil
+        let id = UUID()
+        pulseAnalysisID = id
+        Task { [weak self] in
+            let map = await Task.detached(priority: .utility) {
+                SongPulseAnalyzer.analyze(url: audioURL)
+            }.value
+            guard let self, self.pulseAnalysisID == id else { return }
+            self.pulseMap = map
         }
-        let avgDb = sumDb / Float(channelCount)
-        // -50 dB → ~silence, 0 dB → peak. Clamp and normalize.
-        let normalized = max(0.0, min(1.0, Double((avgDb + 50) / 50)))
-        // Exponential smoothing — 0.35 of new sample, 0.65 retained.
-        audioLevel = audioLevel * 0.65 + normalized * 0.35
-        // The interlude rhythm reads the raw level; ticks more than a second apart (a pause) restart
-        // its onset history rather than counting the gap as time.
-        let now = Date()
-        let dt = lastRhythmTick.map { now.timeIntervalSince($0) } ?? 0.05
-        if dt > 1 { rhythm.reset() }
-        rhythm.feed(level: normalized, dt: min(dt, 0.1), at: now.timeIntervalSinceReferenceDate)
-        lastRhythmTick = now
-        rhythmLoudness = rhythm.loudness
-        rhythmPhase = rhythm.phase
+    }
+
+    // What the listener is hearing right now, in seconds — read straight from the player so
+    // per-frame animation (the interlude notes) moves smoothly between the 50 ms timer ticks.
+    // Same latency correction as `syncTimeAndCue`.
+    func audibleSeconds() -> Double {
+        guard let player, isPlaying else { return Double(currentTimeMs) / 1000 }
+        return max(0, player.currentTime - outputLatencySec)
     }
 
     // Reads the current player position and resolves which cue is active at that time.
@@ -437,7 +426,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // currentTimeMs, so the correction lives at the single source.
     private func syncTimeAndCue() {
         guard let player else { return }
-        let outputLatencySec = AVAudioSession.sharedInstance().outputLatency
+        outputLatencySec = AVAudioSession.sharedInstance().outputLatency
         if didLogOutputLatency == false {
             didLogOutputLatency = true
             KaraokeDebugLog.log("controller: outputLatency=\(Int(outputLatencySec * 1000))ms (subtracted from player.currentTime for karaoke alignment)")

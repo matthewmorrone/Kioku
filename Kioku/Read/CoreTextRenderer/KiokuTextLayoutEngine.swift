@@ -482,13 +482,17 @@ final class KiokuTextLayoutEngine {
         guard let line = nearestLine(toY: point.y, in: packedLines, lineY: { $0.originY }, lineHeight: { $0.height }) else {
             return nil
         }
+        // Placements are stored unshifted; centering moves the drawn line by its origin shift,
+        // so hit-test in the same shifted space the glyphs are drawn in.
+        let lineShift = lineOriginShifts[line.lineIndex] ?? 0
         let placementsOnLine = segmentPlacements.filter { $0.lineIndex == line.lineIndex }
         guard let placement = placementsOnLine.first(where: {
-            point.x >= $0.originX - hitTestHorizontalSlop && point.x < $0.originX + $0.footprintWidth + hitTestHorizontalSlop
+            let left = $0.originX + lineShift
+            return point.x >= left - hitTestHorizontalSlop && point.x < left + $0.footprintWidth + hitTestHorizontalSlop
         }) else { return nil }
         // Translate point.x into the segment's headword-local X. Headword sits offset
         // INTO the footprint by leftOverhang so ruby on the leftmost kanji fits.
-        let headwordOriginX = placement.originX + placement.leftOverhang
+        let headwordOriginX = placement.originX + lineShift + placement.leftOverhang
         let segNSRange = NSRange(location: placement.location, length: placement.length)
         let segAttr = attributedString.attributedSubstring(from: segNSRange)
         let segLine = CTLineCreateWithAttributedString(segAttr as CFAttributedString)

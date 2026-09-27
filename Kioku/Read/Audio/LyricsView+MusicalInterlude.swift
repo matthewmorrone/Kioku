@@ -5,9 +5,10 @@ import SwiftUI
 // additionally pulses the notes in sequence while that cue is the one actually playing, as a "still
 // going" signal. Persisted cue text itself is untouched (still a plain "♪" —
 // SubtitleParser.isNonSpeechCue keeps working on it); this is a display-time expansion in both the
-// active card and the scrolling rows. The active card's notes follow the music: their size tracks
-// its loudness and their pulse its busyness (InterludeRhythm), so a quiet intro gets small, gently
-// pulsing notes and a loud section big, quick ones.
+// active card and the scrolling rows. The active card's notes follow the music from the song's
+// precomputed pulse map (SongPulseMap): they hit on the beats, their size tracks how loud this
+// part is relative to the rest of the song, and quiet stretches pulse every other beat while loud
+// ones pulse every beat — so a soft intro gets small, slow notes and the full band big, quick ones.
 extension LyricsView {
     // Whether the cue at `index` is a non-speech (♪) marker rather than a sung line.
     func isNonSpeechCue(at index: Int) -> Bool {
@@ -25,56 +26,66 @@ extension LyricsView {
         Array(repeating: "♪", count: interludeNoteCount(durationMs: durationMs)).joined(separator: " ")
     }
 
-    // The active card's version: each note pulses independently, staggered left-to-right.
-    // `isActive` gates the animation entirely — a cue merely scrolled into view (dragging)
-    // shows the notes at rest, and the pulse only renders while that cue is actually playing.
-    // The pulse phase and size come from the controller's rhythm tracker, which only advances
-    // while audio plays: pausing freezes the notes in place and resuming continues from there.
+    // The active card's version: every note hits on the song's beats, trailing slightly
+    // left-to-right so the hit ripples across the row. `isActive` gates the animation entirely — a
+    // cue merely scrolled into view (dragging) shows the notes at rest, and the pulse only renders
+    // while that cue is actually playing. Timing reads the player's clock each frame, so pausing
+    // freezes the notes and resuming or seeking lands them on the beat at the new position.
     @ViewBuilder
     func interludeNotesRow(durationMs: Int, isActive: Bool, fontSize: CGFloat) -> some View {
         let count = Self.interludeNoteCount(durationMs: durationMs)
-        if isActive {
+        if isActive, let map = controller.pulseMap {
             TimelineView(.animation) { _ in
+                let t = controller.audibleSeconds() + Self.interludeVisualLead
                 HStack(spacing: fontSize * 0.3) {
                     ForEach(0..<count, id: \.self) { i in
+                        let noteTime = t - Double(i) * Self.interludeNoteLag
                         Text("♪")
                             .font(.system(size: fontSize))
-                            .modifier(InterludeNotePulse(phase: controller.rhythmPhase, loudness: controller.rhythmLoudness, index: i))
+                            .modifier(InterludeNotePulse(
+                                pulse: map.pulse(at: noteTime),
+                                loudness: map.loudness(at: noteTime),
+                                fontSize: fontSize
+                            ))
                     }
                 }
             }
         } else {
             HStack(spacing: fontSize * 0.3) {
-                ForEach(0..<count, id: \.self) { i in
+                ForEach(0..<count, id: \.self) { _ in
                     Text("♪").font(.system(size: fontSize))
                 }
             }
         }
     }
+
+    // Seconds each note trails the one to its left.
+    static let interludeNoteLag = 0.05
+
+    // Seconds the first note runs ahead of the audio: a frame reaches the screen a display refresh or
+    // two after it's computed, and a kick reads as in time only if the eye gets it no later than the ear.
+    static let interludeVisualLead = 0.04
 }
 
-// Scale/opacity pulse from the rhythm tracker: `phase` (in cycles) offset per note index so the row
-// reads as a left-to-right wave, and `loudness` setting the notes' resting size and pulse depth.
+// Scale/opacity/hop for one note: `loudness` (0…1, relative to the song) sets its resting size and
+// how hard it kicks, `pulse` (1 on a beat, decaying) the kick itself. The kick and hop grow with
+// loudness squared, so quiet passages stay small and calm and only the loudest parts go big.
 private struct InterludeNotePulse: ViewModifier {
-    let phase: Double
+    let pulse: Double
     let loudness: Double
-    let index: Int
+    let fontSize: CGFloat
 
-    // Fraction of a cycle each note trails the one before it.
-    private static let stagger = 0.14
-
-    // Applies this note's size and opacity for the current phase and loudness.
+    // Applies this note's size, opacity and hop for the current beat pulse and loudness.
     func body(content: Content) -> some View {
-        let p = phase - Double(index) * Self.stagger
-        let wave = sin((p - p.rounded(.down)) * Double.pi)
-        // Quiet (~-35 dB) → 0, loud (~-15 dB) → 1.
-        let energy: Double = min(1, max(0, (loudness - 0.3) / 0.4))
-        let restingScale: Double = 0.7 + energy * 0.7
-        let pulseDepth: Double = 0.15 + energy * 0.25
-        let scale: Double = restingScale * (1.0 + wave * pulseDepth)
-        let opacity: Double = 0.45 + wave * 0.55
+        let drama: Double = loudness * loudness
+        let restingScale: Double = 0.5 + loudness * 1.1
+        let kick: Double = 0.08 + drama * 1.1
+        let scale: Double = restingScale * (1.0 + pulse * kick)
+        let opacity: Double = 0.5 + pulse * 0.5
+        let hop: Double = -pulse * drama * Double(fontSize) * 0.7
         content
             .scaleEffect(scale)
+            .offset(y: hop)
             .opacity(opacity)
     }
 }
