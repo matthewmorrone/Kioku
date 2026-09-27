@@ -14,6 +14,8 @@ extension SettingsView {
             Text("Dictionary")
         }
 
+        // MARK: Diagnostics, developer diagnostics and debug overlays — hidden in release builds.
+        #if DEBUG
         Section {
             NavigationLink {
                 CrashLogsView()
@@ -24,7 +26,6 @@ extension SettingsView {
             Text("Diagnostics")
         }
 
-        #if DEBUG
         Section {
             NavigationLink {
                 LogSettingsView()
@@ -60,7 +61,7 @@ extension SettingsView {
             Text("Developer Diagnostics")
         }
 
-        // MARK: Debug overlays — hidden in release builds.
+        // MARK: Debug overlays.
         Section {
             Toggle("Pixel Ruler", isOn: $debugPixelRuler)
             Toggle("Furigana Rects", isOn: $debugFuriganaRects)
