@@ -5,7 +5,7 @@ import SwiftUI
 // text and accent pickers) and a Text section (Custom Colors toggle + the two segment colors,
 // the selection highlight, and the Saved / Learned / Not Learned highlights), each ending in a
 // Reset to Theme button. With a toggle off that group follows the selected theme; turning it
-// on, or pressing Reset, sets every picker to the theme's color.
+// back on restores the earlier picks, and Reset sets every picker to the theme's color.
 struct ThemeCustomizeSheet: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -37,14 +37,14 @@ struct ThemeCustomizeSheet: View {
                     Toggle("Custom Colors", isOn: $customThemeEnabled)
                         .onChange(of: customThemeEnabled) { oldValue, newValue in
                             guard !oldValue, newValue else { return }
-                            seedInterfaceColors()
+                            seedInterfaceColors(onlyUnset: true)
                         }
                     if customThemeEnabled {
                         ColorPicker("Background", selection: interfaceBinding($customBackgroundHex), supportsOpacity: false)
                         ColorPicker("Surface", selection: interfaceBinding($customSurfaceHex), supportsOpacity: false)
                         ColorPicker("Text", selection: interfaceBinding($customInkHex), supportsOpacity: false)
                         ColorPicker("Accent", selection: interfaceBinding($customAccentHex), supportsOpacity: false)
-                        Button("Reset to Theme") { seedInterfaceColors() }
+                        Button("Reset to Theme") { seedInterfaceColors(onlyUnset: false) }
                     }
                 } header: {
                     Text("Interface")
@@ -53,7 +53,7 @@ struct ThemeCustomizeSheet: View {
                     Toggle("Custom Colors", isOn: $customTextColorsEnabled)
                         .onChange(of: customTextColorsEnabled) { oldValue, newValue in
                             guard !oldValue, newValue else { return }
-                            seedTextColors()
+                            seedTextColors(onlyUnset: true)
                         }
                     if customTextColorsEnabled {
                         ColorPicker("Primary", selection: textBinding($tokenColorAHex), supportsOpacity: false)
@@ -62,7 +62,7 @@ struct ThemeCustomizeSheet: View {
                         ColorPicker("Saved", selection: textBinding($savedHex), supportsOpacity: false)
                         ColorPicker("Learned", selection: textBinding($savedLearnedHex), supportsOpacity: false)
                         ColorPicker("Not Learned", selection: textBinding($savedNotLearnedHex), supportsOpacity: false)
-                        Button("Reset to Theme") { seedTextColors() }
+                        Button("Reset to Theme") { seedTextColors(onlyUnset: false) }
                     }
                 } header: {
                     Text("Text")
@@ -84,26 +84,36 @@ struct ThemeCustomizeSheet: View {
         ThemePalette.palette(for: ThemeID(rawValue: themeIDRaw) ?? .system)
     }
 
-    // Copies the theme's four interface colors into the custom slots — so turning Custom Colors
-    // on changes nothing until a picker moves, and Reset returns to the theme's look.
-    private func seedInterfaceColors() {
+    // Copies the theme's four interface colors into the custom slots. Turning Custom Colors on
+    // fills only slots never set, so earlier picks come back and a first use starts from the
+    // theme's look; Reset overwrites all four.
+    private func seedInterfaceColors(onlyUnset: Bool) {
         let base = basePalette
-        customBackgroundHex = base.uiBackground.hexString ?? ""
-        customSurfaceHex = base.uiSurface.hexString ?? ""
-        customInkHex = base.uiInk.hexString ?? ""
-        customAccentHex = base.uiAccent.hexString ?? ""
+        fill(Theme.customBackgroundHexKey, $customBackgroundHex, with: base.uiBackground.hexString, onlyUnset: onlyUnset)
+        fill(Theme.customSurfaceHexKey, $customSurfaceHex, with: base.uiSurface.hexString, onlyUnset: onlyUnset)
+        fill(Theme.customInkHexKey, $customInkHex, with: base.uiInk.hexString, onlyUnset: onlyUnset)
+        fill(Theme.customAccentHexKey, $customAccentHex, with: base.uiAccent.hexString, onlyUnset: onlyUnset)
         Theme.refreshGlobalAppearance()
     }
 
-    // Copies the theme's six text colors into the custom slots, for the same reason.
-    private func seedTextColors() {
+    // Same as seedInterfaceColors, for the six text colors.
+    private func seedTextColors(onlyUnset: Bool) {
         let base = basePalette
-        tokenColorAHex = base.defaultTokenColorAHex
-        tokenColorBHex = base.defaultTokenColorBHex
-        highlightHex = base.defaultHighlightHex
-        savedHex = base.defaultSavedHex
-        savedLearnedHex = base.defaultSavedLearnedHex
-        savedNotLearnedHex = base.defaultSavedNotLearnedHex
+        fill(TokenColorSettings.colorAKey, $tokenColorAHex, with: base.defaultTokenColorAHex, onlyUnset: onlyUnset)
+        fill(TokenColorSettings.colorBKey, $tokenColorBHex, with: base.defaultTokenColorBHex, onlyUnset: onlyUnset)
+        fill(TokenColorSettings.highlightColorKey, $highlightHex, with: base.defaultHighlightHex, onlyUnset: onlyUnset)
+        fill(TokenColorSettings.savedColorKey, $savedHex, with: base.defaultSavedHex, onlyUnset: onlyUnset)
+        fill(TokenColorSettings.savedLearnedColorKey, $savedLearnedHex, with: base.defaultSavedLearnedHex, onlyUnset: onlyUnset)
+        fill(TokenColorSettings.savedNotLearnedColorKey, $savedNotLearnedHex, with: base.defaultSavedNotLearnedHex, onlyUnset: onlyUnset)
+    }
+
+    // Writes `hex` into one custom slot. With `onlyUnset`, a slot that already holds a stored,
+    // non-empty value is left alone — checked against UserDefaults, since @AppStorage reports
+    // its placeholder default for a key that was never written.
+    private func fill(_ key: String, _ slot: Binding<String>, with hex: String?, onlyUnset: Bool) {
+        guard let hex else { return }
+        if onlyUnset, let stored = UserDefaults.standard.string(forKey: key), !stored.isEmpty { return }
+        slot.wrappedValue = hex
     }
 
     // Hex AppStorage <-> Color for an interface picker. Setting one re-runs the UIKit
