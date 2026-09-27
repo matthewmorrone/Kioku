@@ -43,6 +43,14 @@ written so a new session can pick it up cold.
       added 2026-09-26 and are inert until the next from-source rebuild. Batch it with the next dictionary change: `Resources/generate_db.py`,
       bump `releaseTag`/`expectedSHA256` in `DictionaryDownloadManager.swift`, then
       `scripts/publish_dictionary_release.sh`, and re-measure with `scripts/segmentation-eval`.
+- [ ] **ポケベルならしてよんで segments as ポケベル|なら|して|よ|んで** — the one miss in the
+      segmentation-eval lyric set (37/38; want ならして|よんで, 鳴らして 呼んで). `segcli explain`
+      2026-09-27: wanted path loses by 300 centi-nats (7444 vs 7144), all of it in ならして — the
+      noun → v5:て transition (ポケベル → ならして, 274) prices the dropped を (ポケベル[を]鳴らして)
+      as unlikely, so なら|して ("if it's…, do") wins; よんで vs よ|んで is a tie (1543 vs 1544).
+      The only lever found is a global one (transition weight/table fitted on held2k), expected to
+      cost more than one lyric line — unmeasured. If picked up: `segcli fit` sweep of `WEIGHT CLAMP`
+      on held2k + kana2k + lyrics before any change; a note-level merge fixes the song meanwhile.
 - [ ] **`DictionaryTrie.Node.children` is `[Character: Node]` — consider a scalar-keyed
       dictionary instead.** Investigated 2026-07-13 while chasing cold-start latency
       (`StartupTimer` measured `trie population (456249 records)` at ~1005ms). `Character` is a
