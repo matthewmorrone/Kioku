@@ -28,12 +28,6 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     var frequencyScoreBySurface: [String: Double]
     // Transition costs between adjacent word classes on a path; nil scores paths by word costs alone.
     var transitionTable: SegmenterTransitionTable?
-    // Whether chosen segments are shown at word granularity: a particle cluster (には, ですか — see
-    // ParticleClusters) or a form with a helper word glued on (飛び込んで|ゆく, 来て|くれる — see
-    // Deinflector.helperWordOffsets) is shown as its words, and a と-taking adverb with its と
-    // (ピッと — see adverbialToPrefix) as one. Always on in the app; the quality tests turn it off to
-    // score against gold tokens that keep clusters whole.
-    var splitsClusters = true
     // Set to true locally to print POS transition decisions during Viterbi runs.
     let shouldLogPOSTransitions = false
     // Shared set of characters that are always their own segment — single source of truth for
@@ -398,7 +392,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             // If Viterbi fails to terminate (no path reaches text.endIndex), fall through to greedy
             // so we never return a partial / empty segmentation. This keeps the flag safe to flip.
             if !path.isEmpty {
-                return (latticeEdges: annotatedEdges, selectedEdges: splittingClusters(in: absorbingBoundCharacters(in: path, of: text), lattice: annotatedEdges, of: text))
+                return (latticeEdges: annotatedEdges, selectedEdges: absorbingBoundCharacters(in: path, of: text))
             }
         }
 
@@ -478,85 +472,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             }
         }
 
-        return (latticeEdges: latticeEdges, selectedEdges: splittingClusters(in: selectedEdges, lattice: latticeEdges, of: text))
-    }
-
-    // Replaces each chosen segment made of several words with those words when splitsClusters is on:
-    // a particle cluster (には → に|は) or a form with a helper word glued on (飛び込んでゆく →
-    // 飛び込んで|ゆく, split where the chain to the segment's lemma says the helper starts). It runs
-    // after path selection, so the option changes how finely a segment is shown and never which path
-    // wins. A part takes the lattice's own edge for its span when there is one, so it carries the
-    // same lemma and POS it would have had if the path had chosen it directly.
-    private func splittingClusters(in path: [LatticeEdge], lattice: [LatticeEdge], of text: String) -> [LatticeEdge] {
-        guard splitsClusters else { return path }
-
-        var result: [LatticeEdge] = []
-        result.reserveCapacity(path.count + 4)
-        for edge in path {
-            let parts = ParticleClusters.components[edge.surface] ?? helperWordParts(of: edge)
-            guard let parts, parts.count > 1 else {
-                result.append(edge)
-                continue
-            }
-            var start = edge.start
-            for part in parts {
-                let end = text.index(start, offsetBy: part.count)
-                if let existing = lattice.first(where: { $0.start == start && $0.end == end && $0.isDictionaryMatch }) {
-                    result.append(existing)
-                } else {
-                    var piece = LatticeEdge(start: start, end: end, surface: part)
-                    piece.partOfSpeech = trie.partOfSpeech(for: part)
-                    piece.isDictionaryMatch = trie.contains(part)
-                    piece.frequencyScore = frequencyScore(of: part)
-                    result.append(piece)
-                }
-                start = end
-            }
-        }
-        return mergingAdverbialTo(result)
-    }
-
-    // Joins a と-taking adverb and the と after it into one segment (ピッ|と → ピッと, see
-    // adverbialToPrefix): together they are one adverb, and lookup resolves the pair to the adverb.
-    // Only a segment read as the word itself: あいたい chosen as 会いたい shares its spelling with
-    // an adverb that takes と, but it is a verb form here and its と is a particle.
-    private func mergingAdverbialTo(_ path: [LatticeEdge]) -> [LatticeEdge] {
-        var result: [LatticeEdge] = []
-        result.reserveCapacity(path.count)
-        for edge in path {
-            if edge.surface == "と", let previous = result.last, previous.end == edge.start,
-               previous.isDictionaryMatch, previous.inflectionSteps == 0,
-               adverbialToPrefix(for: previous.surface + edge.surface) != nil {
-                var merged = LatticeEdge(start: previous.start, end: edge.end, surface: previous.surface + edge.surface)
-                merged.lemma = previous.surface
-                merged.partOfSpeech = previous.partOfSpeech
-                merged.isDictionaryMatch = true
-                merged.frequencyScore = previous.frequencyScore
-                result[result.count - 1] = merged
-            } else {
-                result.append(edge)
-            }
-        }
-        return result
-    }
-
-    // The words of a conjugated segment with a helper word glued on (飛び込んでいった → 飛び込んで,
-    // いった), following the chain to the lemma lookup shows for it; nil when it has none. A katakana
-    // noun + する compound (クリアしてゆく) is read as its する part (してゆく → する) after the noun.
-    private func helperWordParts(of edge: LatticeEdge) -> [String]? {
-        guard edge.isDictionaryMatch, let deinflector else { return nil }
-        let offsets: [Int]
-        if let noun = suruCompoundPrefix(for: edge.surface) {
-            let suruPart = String(edge.surface.dropFirst(noun.count))
-            offsets = deinflector.helperWordOffsets(in: suruPart, lemma: "する").map { $0 + noun.count }
-        } else {
-            guard edge.inflectionSteps > 0, let lemma = preferredLemma(for: edge.surface) else { return nil }
-            offsets = deinflector.helperWordOffsets(in: edge.surface, lemma: lemma)
-        }
-        guard offsets.isEmpty == false else { return nil }
-        let characters = Array(edge.surface)
-        let bounds = [0] + offsets + [characters.count]
-        return zip(bounds, bounds.dropFirst()).map { String(characters[$0..<$1]) }
+        return (latticeEdges: latticeEdges, selectedEdges: selectedEdges)
     }
 
     // Folds bound characters at the head of a selected edge into the segment before it, so no

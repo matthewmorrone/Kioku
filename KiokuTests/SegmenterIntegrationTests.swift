@@ -587,16 +587,12 @@ final class SegmenterIntegrationTests: XCTestCase {
         }
     }
 
-    // A helper word the deinflection rules glue on (DeinflectionRule.helper) is shown as its own word,
-    // like a particle cluster: 飛び込んで|ゆく, not 飛び込んでゆく looked up as 飛び込む alone.
-    func testHelperWordsAreShownAsTheirOwnWords() throws {
+    // いく / ゆく after a て-form is its own word: no deinflection rule folds it into the verb before it,
+    // so the path search picks 飛び込んで | ゆく itself — including after a katakana noun + する.
+    func testIkuAfterTeFormIsItsOwnWord() throws {
         let segmenter = try sharedResources().segmenter
         let cases: [(String, [String])] = [
-            ("彼は飛び込んでいった", ["彼", "は", "飛び込んで", "いった"]),
-            ("友達が来てくれる", ["友達", "が", "来て", "くれる"]),
-            ("本を読んでいる", ["本", "を", "読んで", "いる"]),
-            ("忘れちゃう", ["忘れ", "ちゃう"]),
-            // A katakana noun + する compound reads its helper from the する part.
+            ("顔を上げて飛び込んでゆくの", ["顔を上げて", "飛び込んで", "ゆく", "の"]),
             ("自信持ってクリアしてゆくの", ["自信", "持って", "クリアして", "ゆく", "の"]),
         ]
         for (text, expected) in cases {
@@ -604,16 +600,12 @@ final class SegmenterIntegrationTests: XCTestCase {
         }
     }
 
-    // A kana adverb that takes と (JMdict adv-to, or a mimetic adverb) is shown with its と as one
-    // word, and looks up as the adverb; a と after anything else stays a particle.
-    func testAdverbWithItsToIsOneWord() throws {
+    // A kana adverb that takes と (JMdict adv-to, or a mimetic adverb) written with its と looks up as
+    // the adverb; a と after a verb form spelled like such an adverb stays a particle.
+    func testAdverbWithItsToLooksUpAsTheAdverb() throws {
         let segmenter = try sharedResources().segmenter
-        XCTAssertEqual(segmenter.longestMatchEdges(for: "ピッと押す").map(\.surface), ["ピッと", "押す"])
-        XCTAssertEqual(segmenter.longestMatchEdges(for: "あっさりと断った").map(\.surface), ["あっさりと", "断った"])
-        XCTAssertEqual(segmenter.longestMatchEdges(for: "彼と話す").map(\.surface), ["彼", "と", "話す"])
-        // あいたい here is 会いたい, not the adverb spelled the same way.
-        XCTAssertEqual(segmenter.longestMatchEdges(for: "あいたいとささやく").map(\.surface), ["あいたい", "と", "ささやく"])
         XCTAssertEqual(segmenter.adverbialToPrefix(for: "ピッと"), "ピッ")
+        XCTAssertEqual(segmenter.longestMatchEdges(for: "あいたいとささやく").map(\.surface), ["あいたい", "と", "ささやく"])
     }
 
     // The absorb must NOT over-merge: a small-tsu that heads a multi-char run (って quotative, った …)
