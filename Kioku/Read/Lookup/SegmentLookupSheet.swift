@@ -81,6 +81,14 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     var lastPresentedSheetHeight: CGFloat?
     // Called when presentedSheetHeight changes, so the read view can re-place the selected word.
     var onSheetHeightChanged: (() -> Void)?
+    // Guesses an English gloss for a surface with no dictionary entry (GlossGuesser, supplied by the
+    // read view with the word's line and the note's breakdown); shown in place of the empty middle.
+    var glossGuessProvider: (@MainActor (String) async -> String?)?
+    // The surface the current guess belongs to, its result (nil while pending or when there is
+    // none), and the request in flight.
+    var guessedGlossSurface: String?
+    var guessedGloss: String?
+    var glossGuessTask: Task<Void, Never>?
     // Provides the minimal dictionary entry needed to render visible senses for the current segment.
     var sheetDictionaryEntryProvider: (() -> DictionaryEntry?)?
     var currentSheetDictionaryEntry: DictionaryEntry? = nil

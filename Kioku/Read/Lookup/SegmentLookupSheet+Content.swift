@@ -54,6 +54,68 @@ extension SegmentLookupSheet {
         return label
     }
 
+    // Multi-line UILabels need preferredMaxLayoutWidth set before the first systemLayoutSizeFitting
+    // pass so the detent resolver gets the wrapped height instead of single-line height. Without it,
+    // the sheet detent renders at single-line height and the wrapped definition is clipped. The
+    // lookup sheet is full-width; subtract container/stack padding to land on the label's actual
+    // rendered width.
+    func sheetContentWidth() -> CGFloat {
+        max(200, activeScreenBounds().width) - (16 * 2) - (6 * 2)
+    }
+
+    // Fills the empty middle for a surface with no dictionary entry: the guessed gloss once known,
+    // a spinner while it's being fetched, nothing when no guess could be made. Starts the fetch the
+    // first time a surface shows up here and re-renders the sheet when it lands.
+    private func showGuessedGloss(
+        for surface: String,
+        in middleContentStack: UIStackView,
+        parent: UIViewController?,
+        provider: @escaping @MainActor (String) async -> String?
+    ) {
+        if guessedGlossSurface != surface {
+            guessedGlossSurface = surface
+            guessedGloss = nil
+            glossGuessTask?.cancel()
+            glossGuessTask = Task { @MainActor [weak self, weak parent] in
+                let gloss = await provider(surface)
+                guard let self, Task.isCancelled == false, self.guessedGlossSurface == surface else { return }
+                self.guessedGloss = gloss
+                self.glossGuessTask = nil
+                (parent as? SurfaceSheetViewController)?.updateMiddleContent()
+            }
+        }
+        if let guessedGloss {
+            middleContentStack.addArrangedSubview(makeGuessedGlossLabel(guessedGloss))
+        } else if glossGuessTask != nil {
+            let spinner = UIActivityIndicatorView(style: .medium)
+            spinner.startAnimating()
+            middleContentStack.addArrangedSubview(spinner)
+        } else {
+            middleContentStack.superview?.isHidden = true
+            return
+        }
+        middleContentStack.superview?.isHidden = false
+    }
+
+    // A guessed gloss, styled like a primary sense with a "guess" tag where a sense shows its part
+    // of speech.
+    private func makeGuessedGlossLabel(_ gloss: String) -> UILabel {
+        let line = NSMutableAttributedString(
+            string: gloss,
+            attributes: [.font: UIFont.systemFont(ofSize: 15), .foregroundColor: UIColor.label]
+        )
+        line.append(NSAttributedString(
+            string: "  ·  guess",
+            attributes: [.font: UIFont.systemFont(ofSize: 12), .foregroundColor: UIColor.tertiaryLabel]
+        ))
+        let label = UILabel()
+        label.attributedText = line
+        label.numberOfLines = 0
+        label.textAlignment = .natural
+        label.preferredMaxLayoutWidth = sheetContentWidth()
+        return label
+    }
+
     // Builds a small section header label.
     func makeSheetSectionHeader(_ text: String) -> UILabel {
         let label = UILabel()
@@ -83,7 +145,8 @@ extension SegmentLookupSheet {
         in middleContentStack: UIStackView,
         parent: UIViewController? = nil,
         selectedReading: String? = nil,
-        selectedKanji: String? = nil
+        selectedKanji: String? = nil,
+        surface: String? = nil
     ) {
         for subview in middleContentStack.arrangedSubviews {
             middleContentStack.removeArrangedSubview(subview)
@@ -103,25 +166,16 @@ extension SegmentLookupSheet {
                 middleContentStack.superview?.isHidden = false
                 return
             }
+            // No entry: show a guessed gloss instead, with a spinner while it's fetched.
+            if let surface, let glossGuessProvider {
+                showGuessedGloss(for: surface, in: middleContentStack, parent: parent, provider: glossGuessProvider)
+                return
+            }
             middleContentStack.superview?.isHidden = true
             return
         }
 
-        // Multi-line UILabels need preferredMaxLayoutWidth set before the first systemLayoutSizeFitting
-        // pass so the detent resolver gets the wrapped height instead of single-line height. Without
-        // it, the sheet detent renders at single-line height and the wrapped definition is clipped.
-        // The lookup sheet is full-width; subtract container/stack padding to land on the label's
-        // actual rendered width.
-        let measuredContentWidth = max(200, activeScreenBounds().width) - (16 * 2) - (6 * 2)
-
-        // let glossLabel = UILabel()
-        // glossLabel.text = firstGloss
-        // glossLabel.font = .systemFont(ofSize: 15)
-        // glossLabel.textColor = .label
-        // glossLabel.numberOfLines = 0
-        // glossLabel.textAlignment = .natural
-        // glossLabel.preferredMaxLayoutWidth = measuredContentWidth
-        // middleContentStack.addArrangedSubview(glossLabel)
+        let measuredContentWidth = sheetContentWidth()
 
         // Compact most-common-meanings list: JMdict orders senses by commonness, so the top
         // senses in array order are the word's dominant meanings. The primary sense renders

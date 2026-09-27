@@ -47,6 +47,19 @@ extension ReadView {
                     replanningFromStart: true
                 )
             }
+            // A word with no dictionary entry gets a guessed gloss, from its line and this note's
+            // song breakdown when there is one. Reads the selection at call time, so a word reached
+            // with the sheet's previous/next arrows gets its own line.
+            SegmentLookupSheet.shared.glossGuessProvider = { surface in
+                let location = segmentSelection.selectedSegmentLocation ?? tappedSegmentLocation
+                let text = document.text as NSString
+                let lineRange = text.lineRange(for: NSRange(location: min(location, text.length), length: 0))
+                let line = text.substring(with: lineRange).trimmingCharacters(in: .whitespacesAndNewlines)
+                let breakdownWords = document.activeNoteID
+                    .flatMap { songBreakdownStore.breakdown(forNoteID: $0) }?
+                    .lines.flatMap(\.words) ?? []
+                return await GlossGuesser.guess(surface: surface, lineContext: line, breakdownWords: breakdownWords)
+            }
             SegmentLookupSheet.shared.onSheetHeightChanged = {
                 preScrollSegmentForSheetVisibility(
                     sourceView: sourceView,

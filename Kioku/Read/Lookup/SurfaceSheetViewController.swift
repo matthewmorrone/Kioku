@@ -591,7 +591,8 @@ final class SurfaceSheetViewController: UIViewController {
             in: middleContentStack,
             parent: self,
             selectedReading: displayedReading(),
-            selectedKanji: currentSurface
+            selectedKanji: currentSurface,
+            surface: currentSurface
         )
         invalidateContentDetentIfPresented()
     }
