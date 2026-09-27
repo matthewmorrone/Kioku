@@ -23,8 +23,8 @@ nonisolated final class AlignmentCancellationToken: @unchecked Sendable {
     }
 }
 
-// Hosts the note-level lyric-alignment flow: transcribes audio on-device using SwiftWhisper,
-// aligns transcription segments to note text lines, and saves the resulting SRT.
+// Hosts the note-level lyric-alignment flow: force-aligns the note's lines to its audio on-device
+// (WholeSongAlignment) and saves the resulting cues.
 extension ReadView {
     // Romanizes lyric lines with the reader's own segmenter and readings, for the aligner.
     private var lyricRomanizer: LyricRomanizer {

@@ -31,8 +31,8 @@ final class SurfaceSheetViewController: UIViewController {
 
     // MARK: - Split state
 
-    var leftSplitValue = "" { didSet { updateSplitCostLabel(); refreshSplitCandidateSelection() } }
-    var rightSplitValue = "" { didSet { updateSplitCostLabel(); refreshSplitCandidateSelection() } }
+    var leftSplitValue = "" { didSet { updateSplitCostLabel() } }
+    var rightSplitValue = "" { didSet { updateSplitCostLabel() } }
     var splitEntryLeftValue = ""
     var splitEntryRightValue = ""
     var isSplitEditorVisible = false
@@ -77,14 +77,9 @@ final class SurfaceSheetViewController: UIViewController {
     // Scroll container for the split readout; lets it scroll instead of clipping when there are more
     // cut rows than the fixed medium detent can show.
     var splitCostScroll: UIScrollView?
-    // Horizontally-scrolling row of selectable two-way split candidates (one chip per cut, left to
-    // right) — a cut is one tap away instead of nudging the boundary character-by-character.
-    // Hidden when there are fewer than two candidates.
-    var splitCandidatesScroll: UIScrollView?
-    var splitCandidatesRow: UIStackView?
     // Every way to cut the segment in two, left to right, each with the segmenter's cost for the line
-    // cut that way (Segmenter.splitCosts; nil while it isn't ready). The one list the readout, the
-    // chips and the default pick all read. Chip tag is its index here.
+    // cut that way (Segmenter.splitCosts; nil while it isn't ready). The one list the readout and the
+    // default pick both read.
     var splitCandidates: [(path: [String], cost: Int?)] = []
     var mergeLeftButton: UIButton!
     var mergeRightButton: UIButton!
@@ -463,7 +458,7 @@ final class SurfaceSheetViewController: UIViewController {
     }
 
     // Recomputes splitCandidates for `surface` — every cut, left to right, costed once by the
-    // segmenter through the sheet's splitCostsProvider — and rebuilds the chips and readout from it.
+    // segmenter through the sheet's splitCostsProvider — and refreshes the readout from it.
     // Called when the segment changes and again when the segmenter becomes ready.
     func rebuildSplitCandidates(for surface: String) {
         let characters = Array(surface)
@@ -474,58 +469,14 @@ final class SurfaceSheetViewController: UIViewController {
         splitCandidates = paths.enumerated().map { index, path in
             (path: path, cost: costs.indices.contains(index) ? costs[index] : nil)
         }
-
-        guard let row = splitCandidatesRow else { return }
-        row.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        splitCandidatesScroll?.isHidden = splitCandidates.count < 2
         updateSplitCostLabel()
-        guard splitCandidates.count >= 2 else { return }
-
-        for (index, candidate) in splitCandidates.enumerated() {
-            let path = candidate.path
-            let chip = UIButton(type: .system)
-            var config = UIButton.Configuration.gray()
-            config.title = path.joined(separator: "・")
-            config.cornerStyle = .capsule
-            config.buttonSize = .small
-            chip.configuration = config
-            chip.tag = index
-            chip.addAction(UIAction { [weak self] _ in
-                guard let self else { return }
-                self.leftSplitValue = path[0]
-                self.rightSplitValue = path[1]
-                self.leftInput.text = path[0]
-                self.rightInput.text = path[1]
-                self.applySplitButton.isEnabled = true
-                self.applySplitButton.alpha = 1
-                self.leftInputTapButton.isEnabled = true
-                self.leftInputTapButton.alpha = 1
-                self.rightInputTapButton.isEnabled = true
-                self.rightInputTapButton.alpha = 1
-            }, for: .touchUpInside)
-            row.addArrangedSubview(chip)
-        }
-        refreshSplitCandidateSelection()
-    }
-
-    // Highlights whichever candidate chip matches the current left/right split values so chip taps
-    // and manual boundary nudges (the ↔ controls) stay visually in sync. No-op before the chip row
-    // is built or when the active split isn't one of the enumerated candidates.
-    func refreshSplitCandidateSelection() {
-        guard let row = splitCandidatesRow else { return }
-        for case let chip as UIButton in row.arrangedSubviews {
-            let path = splitCandidates.indices.contains(chip.tag) ? splitCandidates[chip.tag].path : []
-            let isActive = path == [leftSplitValue, rightSplitValue]
-            chip.configuration?.baseBackgroundColor = isActive ? UIColor.systemBlue.withAlphaComponent(0.25) : nil
-            chip.configuration?.baseForegroundColor = isActive ? .systemBlue : .label
-        }
     }
 
     // Lists every cut of the segment, left to right, each with what the segmenter charges for the
     // line cut that way (in nats; lower is what segmentation would pick). The numbers come from
     // splitCandidates — the segmenter's own path costs — so the readout cannot disagree with the
     // segmentation. The current split is bolded and marked with ▸ so the readout stays tied to the
-    // chips / [] ↔ [] inputs. Driven by the leftSplitValue/rightSplitValue didSet observers and
+    // [] ↔ [] inputs. Driven by the leftSplitValue/rightSplitValue didSet observers and
     // re-invoked by rebuildSplitCandidates whenever the segment or the segmenter changes.
     func updateSplitCostLabel() {
         guard let label = splitCostLabel else { return }

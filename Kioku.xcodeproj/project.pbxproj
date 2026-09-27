@@ -14,7 +14,6 @@
 		E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE82F57BC070020F5C2 /* deinflection.json */; };
 		E3D1C7002F4DFDB8005FDA11 /* dictionary.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */; };
 		E3FBBF9B303F516D009664F4 /* SwiftDagre in Frameworks */ = {isa = PBXBuildFile; productRef = DA6ADE0022FC000040000002 /* SwiftDagre */; };
-		E4E800012F90000100FFF001 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = E4E800022F90000100FFF001 /* SwiftWhisper */; };
 		E4WKA00012FA0000200000001 /* SwiftWhisperAlign in Frameworks */ = {isa = PBXBuildFile; productRef = E4WKA00022FA0000200000002 /* SwiftWhisperAlign */; };
 		F5MECAB012FA0000100000001 /* mecab in Frameworks */ = {isa = PBXBuildFile; productRef = F5MECAB022FA0000100000001 /* mecab */; };
 		F5MECAB032FA0000100000002 /* MeCab in Resources */ = {isa = PBXBuildFile; fileRef = F5MECAB042FA0000100000002 /* MeCab */; };
@@ -130,7 +129,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				E3FBBF9B303F516D009664F4 /* SwiftDagre in Frameworks */,
-				E4E800012F90000100FFF001 /* SwiftWhisper in Frameworks */,
 				E4WKA00012FA0000200000001 /* SwiftWhisperAlign in Frameworks */,
 				Z1NN1A0012FB0000200000001 /* Zinnia-Swift in Frameworks */,
 				F5MECAB012FA0000100000001 /* mecab in Frameworks */,
@@ -268,7 +266,6 @@
 			);
 			name = Kioku;
 			packageProductDependencies = (
-				E4E800022F90000100FFF001 /* SwiftWhisper */,
 				E4WKA00022FA0000200000002 /* SwiftWhisperAlign */,
 				Z1NN1A0022FB0000200000002 /* Zinnia-Swift */,
 				F5MECAB022FA0000100000001 /* mecab */,
@@ -357,7 +354,6 @@
 			mainGroup = E3070ADF2F4DFDB6005FD323;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				E4E800032F90000100FFF001 /* XCLocalSwiftPackageReference "Packages/SwiftWhisper" */,
 				E4WKA00052FA0000200000005 /* XCLocalSwiftPackageReference "SwiftWhisperAlign" */,
 				Z1NN1A0052FB0000200000005 /* XCLocalSwiftPackageReference "Packages/zinnia-swift" */,
 				F5MECAB052FA0000100000003 /* XCRemoteSwiftPackageReference "mecab" */,
@@ -929,10 +925,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		E4E800032F90000100FFF001 /* XCLocalSwiftPackageReference "Packages/SwiftWhisper" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/SwiftWhisper;
-		};
 		E4WKA00052FA0000200000005 /* XCLocalSwiftPackageReference "SwiftWhisperAlign" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = SwiftWhisperAlign;
@@ -967,11 +959,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = DA6ADE0052FC000040000001 /* XCRemoteSwiftPackageReference "dagre-swift" */;
 			productName = SwiftDagre;
-		};
-		E4E800022F90000100FFF001 /* SwiftWhisper */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E4E800032F90000100FFF001 /* XCLocalSwiftPackageReference "Packages/SwiftWhisper" */;
-			productName = SwiftWhisper;
 		};
 		E4WKA00022FA0000200000002 /* SwiftWhisperAlign */ = {
 			isa = XCSwiftPackageProductDependency;

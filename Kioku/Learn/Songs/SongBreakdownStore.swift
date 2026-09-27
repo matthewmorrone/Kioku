@@ -68,12 +68,6 @@ final class SongBreakdownStore: ObservableObject {
     // the non-published memo, then disk (faulting into memo on hit). Never mutates the
     // @Published cache so it can be called from SwiftUI view bodies without producing the
     // "publishing changes from within view updates" warning.
-    //
-    // Self-heal: any value pulled from disk goes through `SongBreakdownRecovery` before it
-    // lands in the memo. Breakdowns produced by the pre-fix parser had the whole song
-    // collapsed into line 1; recovery splits the leaked headers back out and re-buckets the
-    // vocabulary against each line's text. Healed values are persisted back so the next
-    // read skips recovery entirely.
     func breakdown(forNoteID id: UUID) -> SongBreakdown? {
         if let published = breakdownsByNoteID[id] {
             return published
@@ -86,12 +80,8 @@ final class SongBreakdownStore: ObservableObject {
             knownNoteIDsOnDisk.remove(id)
             return nil
         }
-        let healed = SongBreakdownRecovery.recoverIfNeeded(loaded)
-        diskMemoCache[id] = healed
-        if healed != loaded {
-            writeToDisk(healed)
-        }
-        return healed
+        diskMemoCache[id] = loaded
+        return loaded
     }
 
     // Whether a breakdown exists for the note, without reading it off disk — cheap enough for a

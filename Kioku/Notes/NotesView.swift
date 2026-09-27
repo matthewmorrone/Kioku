@@ -156,8 +156,8 @@ struct NotesView: View {
                 // from left to right across the toolbar.
                 ToolbarItemGroup(placement: .topBarLeading) {
                     // Opens the bulk import sheet so the user can pick txt/srt/audio files. Single
-                    // and multi-file flows both run through here; audio-only items get Whisper
-                    // transcription via BulkImportRunner.
+                    // and multi-file flows both run through here; audio-only items are transcribed
+                    // by BulkImportRunner.
                     Button {
                         isShowingBulkImportSheet = true
                     } label: {

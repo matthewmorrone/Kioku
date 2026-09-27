@@ -33,7 +33,7 @@ jobs:
 
       # The restored DerivedData can only be reused if unchanged sources look unchanged to the
       # build system. A checkout gives every file a new mtime and inode, which on its own made the
-      # PR run recompile all of Kioku plus the local packages (SwiftWhisper, zinnia-swift,
+      # PR run recompile all of Kioku plus the local packages (zinnia-swift,
       # SwiftWhisperAlign). The script stamps each tracked file with an mtime derived from its
       # content hash, and the default makes XCBuild ignore inode/device changes. warm-cache.yml
       # and tests.yml must both do this, so the stamps match.

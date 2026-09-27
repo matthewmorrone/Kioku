@@ -112,7 +112,6 @@ struct SongLineCard: View {
                     expandableDetailContent
                 }
             }
-            recoveryStubNoticeIfNeeded
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(20)
@@ -251,34 +250,6 @@ struct SongLineCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint("Jumps to line \(reference.targetLineIndex)")
-    }
-
-    // Surfaces a note when the line has no gist, no grammar note, no words, and no reference
-    // — the shape produced by `SongBreakdownRecovery` for lines that survived as
-    // headers-only in a pre-fix cached breakdown. Without this, the user sees a line
-    // collapse to just the Japanese and reasonably wonders why it has no explanation.
-    @ViewBuilder
-    private var recoveryStubNoticeIfNeeded: some View {
-        if isRecoveryStub {
-            HStack(spacing: 6) {
-                Image(systemName: "info.circle")
-                    .font(.footnote)
-                Text("Recovered from older data — regenerate for full explanation.")
-                    .font(.footnote)
-            }
-            .foregroundStyle(.tertiary)
-        }
-    }
-
-    private var isRecoveryStub: Bool {
-        guard phase == .ready else { return false }
-        let hasGist = (line.gist?.isEmpty == false)
-        let hasGrammar = (line.grammarNote?.isEmpty == false)
-        return hasGist == false
-            && hasGrammar == false
-            && line.words.isEmpty
-            && line.reference == nil
-            && line.index > 1
     }
 
     // Big Japanese row. Furigana shows whenever the cache has readings for this line — independent

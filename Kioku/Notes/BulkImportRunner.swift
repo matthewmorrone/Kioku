@@ -4,14 +4,14 @@ import Combine
 import SwiftWhisperAlign   // StemTranscriber — Qwen3-ASR transcription
 
 // Executes a BulkImportPlan sequentially: parses txt/srt files, copies audio attachments,
-// and runs Whisper transcription in the background for audio-only items. Items run one at
-// a time so a single Whisper model is not loaded concurrently and so per-item progress is
-// easy to surface in the sheet UI.
+// and transcribes audio-only items (AudioTranscriptionService). Items run one at a time so only
+// one transcription model is loaded at once and per-item progress is easy to surface in the
+// sheet UI.
 @MainActor
 final class BulkImportRunner: ObservableObject {
     // Per-item progress keyed by plan item id. Drives the sheet's progress rows.
     @Published private(set) var progressByItem: [String: BulkImportItemProgress] = [:]
-    // True while `run(plan:whisperModelURL:)` is iterating items.
+    // True while `run(plan:)` is iterating items.
     @Published private(set) var isRunning = false
     // True after a run completes (success or failure). Used by the sheet to swap Import → Done.
     @Published private(set) var hasFinished = false
@@ -31,7 +31,7 @@ final class BulkImportRunner: ObservableObject {
 
     // Walks the supplied plan in order, recording per-item status as each item processes.
     // Errors are captured into the item's status and do not abort subsequent items.
-    func run(plan: [BulkImportPlanItem], whisperModelURL: URL?, isolateVocalsByItemID: [String: Bool] = [:]) async {
+    func run(plan: [BulkImportPlanItem], isolateVocalsByItemID: [String: Bool] = [:]) async {
         guard isRunning == false, hasFinished == false else { return }
         isRunning = true
         createdNoteIDs.removeAll()
@@ -50,7 +50,7 @@ final class BulkImportRunner: ObservableObject {
             )
 
             do {
-                try await process(item: item, whisperModelURL: whisperModelURL, isolateVocals: isolateVocalsByItemID[item.id] ?? false)
+                try await process(item: item, isolateVocals: isolateVocalsByItemID[item.id] ?? false)
                 progressByItem[item.id]?.status = .completed
                 AppLog.debug(.notesImport, "bulk import: completed \"\(item.baseName)\"")
             } catch {
@@ -64,7 +64,7 @@ final class BulkImportRunner: ObservableObject {
     // Dispatches one plan item to the create-note or attach-audio path based on the URLs
     // present and any matched existing note. Transcription only runs when no text or
     // subtitle source is available for an audio-only item without a matching note.
-    private func process(item: BulkImportPlanItem, whisperModelURL: URL?, isolateVocals: Bool) async throws {
+    private func process(item: BulkImportPlanItem, isolateVocals: Bool) async throws {
         let textContent = try item.textURL.map { try Self.readText(from: $0) }
         let subtitleData = try item.subtitleURL.map { try Self.readSubtitle(at: $0) }
 
@@ -114,11 +114,9 @@ final class BulkImportRunner: ObservableObject {
         var cues: [SubtitleCue]? = subtitleData?.cues
         var srtText: String? = subtitleData?.rawText
 
-        // Try TextGrid-derived cues BEFORE requiring a Whisper model. A `.TextGrid` shipped
-        // alongside an audio file already encodes line boundaries; transcription is only
-        // necessary when nothing else supplies cues. Doing this first means MP3 + .TextGrid
-        // (no .srt/.txt) succeeds without forcing the user to select a Whisper model — the
-        // BulkImportPlanner's requiresTranscription check is updated to match.
+        // Try TextGrid-derived cues before transcribing. A `.TextGrid` shipped alongside an audio
+        // file already encodes line boundaries; transcription is only necessary when nothing else
+        // supplies cues (BulkImportPlanner's requiresTranscription check matches).
         if cues == nil, let textGridURL = item.textGridURL {
             if let derived = try? Self.readDerivedCuesFromTextGrid(at: textGridURL) {
                 cues = derived
@@ -127,17 +125,13 @@ final class BulkImportRunner: ObservableObject {
         }
 
         if bodyContent == nil, cues == nil, let audioURL = item.audioURL {
-            // One shared engine for every import path. Only Whisper needs a downloaded model.
+            // One shared engine for every import path.
             let engine = TranscriptionEngine.current
-            if engine == .whisper, whisperModelURL == nil {
-                throw BulkImportError.noTranscriptionModel
-            }
             let itemID = item.id
             let didStart = audioURL.startAccessingSecurityScopedResource()
             defer { if didStart { audioURL.stopAccessingSecurityScopedResource() } }
             let transcribed = try await AudioTranscriptionService.transcribe(
                 url: audioURL, engine: engine, isolateVocals: isolateVocals,
-                whisperModelURL: whisperModelURL,
                 onProgress: { [weak self] frac in
                     Task { @MainActor in self?.progressByItem[itemID]?.transcriptionProgress = frac }
                 },
@@ -357,24 +351,18 @@ final class BulkImportRunner: ObservableObject {
 
 // Errors surfaced as per-item failures in the bulk import sheet.
 private enum BulkImportError: LocalizedError {
-    case noTranscriptionModel
     case unreadableTextFile
     case emptySubtitleFile
-    case transcriptionEmpty
     case noAttachmentForTextGrid
     case noCuesForTextGrid
     case textGridYieldedNoCheckpoints
 
     var errorDescription: String? {
         switch self {
-        case .noTranscriptionModel:
-            return "Select a Whisper model to transcribe audio without text or subtitles."
         case .unreadableTextFile:
             return "Could not read the text file."
         case .emptySubtitleFile:
             return "The subtitle file contained no cues."
-        case .transcriptionEmpty:
-            return "Whisper returned no segments — the audio may be silent or the model incompatible."
         case .noAttachmentForTextGrid:
             return "Matching note has no audio attachment to bind karaoke timings to."
         case .noCuesForTextGrid:

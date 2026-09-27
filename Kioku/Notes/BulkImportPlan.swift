@@ -29,7 +29,7 @@ enum BulkImportItemStatus: Equatable {
 }
 
 // Per-item snapshot used by the sheet to render the running plan as it executes.
-// `transcriptionProgress` only applies to items running Whisper inference.
+// `transcriptionProgress` only applies to items being transcribed.
 struct BulkImportItemProgress: Identifiable, Equatable {
     var id: String
     var baseName: String

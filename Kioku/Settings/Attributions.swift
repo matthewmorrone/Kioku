@@ -90,11 +90,6 @@ nonisolated enum Attributions {
     // SPM pin or vendored source under Packages/. Do not list aspirational deps.
     static let libraries: [Library] = [
         Library(
-            name: "SwiftWhisper",
-            purpose: "On-device Whisper transcription for audio alignment.",
-            sourceURL: "https://github.com/exPHAT/SwiftWhisper"
-        ),
-        Library(
             name: "MeCab",
             purpose: "Morphological analyzer used for segmentation comparisons.",
             sourceURL: "https://github.com/matthewmorrone/mecab"

@@ -4,10 +4,12 @@ import FoundationModels
 #endif
 
 // Guesses an English gloss for a word the dictionary has no entry for (a French loanword in a lyric,
-// a coined spelling), so the lookup sheet shows something instead of an empty middle. Sources, in
-// order: a gloss already stored for the surface; the note's song breakdown, which glosses every
-// lyric word; then an AI request with the word's line as context — the configured remote provider,
-// else on-device Apple Intelligence. Every failure returns nil and the sheet stays as it was.
+// a coined spelling), so the lookup sheet shows something instead of an empty middle. A gloss
+// already stored for the surface is used as is; otherwise an AI request (the configured remote
+// provider, else on-device Apple Intelligence) gets the word's line as context, plus the note's
+// song breakdown explanation of the word when there is one. The breakdown text itself is not shown:
+// it's written to be read aloud and runs well past a gloss ("…, often symbolizes clarity or
+// revelation"). Every failure returns nil and the sheet stays as it was.
 enum GlossGuesser {
     private static let maxGlossLength = 120
 
@@ -20,21 +22,19 @@ enum GlossGuesser {
         store: GuessedGlossStore = .shared
     ) async -> String? {
         if let stored = store.gloss(for: surface) { return stored }
-        if let fromBreakdown = breakdownWords.first(where: { $0.surface == surface })?.definition,
-           fromBreakdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-            return fromBreakdown
-        }
+        let breakdownNote = breakdownWords.first(where: { $0.surface == surface })?.definition
         guard LLMSettings.isEnabled(),
-              let raw = await askModel(prompt: prompt(surface: surface, lineContext: lineContext)),
+              let raw = await askModel(prompt: prompt(surface: surface, lineContext: lineContext, breakdownNote: breakdownNote)),
               let gloss = cleaned(raw) else { return nil }
         store.setGloss(gloss, for: surface)
         return gloss
     }
 
     // The request: one short gloss, with the source word named when it's a loanword.
-    static func prompt(surface: String, lineContext: String) -> String {
-        """
-        This Japanese text has no dictionary entry for the word 「\(surface)」: \(lineContext)
+    static func prompt(surface: String, lineContext: String, breakdownNote: String? = nil) -> String {
+        let note = breakdownNote.map { "\nA longer explanation of it from a song breakdown: \($0)" } ?? ""
+        return """
+        This Japanese text has no dictionary entry for the word 「\(surface)」: \(lineContext)\(note)
         Give a short English gloss for 「\(surface)」 as used here (at most 8 words). If it is a \
         loanword, add the source language and word in parentheses, like: light (French 'lumière'). \
         Reply with the gloss only.

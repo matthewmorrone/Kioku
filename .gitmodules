@@ -1,7 +1,3 @@
-[submodule "Packages/SwiftWhisper"]
-	path = Packages/SwiftWhisper
-	url = https://github.com/matthewmorrone/SwiftWhisper.git
-	branch = kioku-patches
 [submodule "Packages/zinnia-swift"]
 	path = Packages/zinnia-swift
 	url = https://github.com/matthewmorrone/zinnia-swift.git

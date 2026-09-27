@@ -43,12 +43,15 @@ final class GuessedGlossStoreTests: XCTestCase {
         XCTAssertEqual(guess, "stored")
     }
 
-    // With nothing stored, the song breakdown's gloss for the same surface is used.
-    func testGuessUsesBreakdownGloss() async {
-        let store = GuessedGlossStore(defaults: defaults)
-        let breakdown = [SongWord(surface: "シェノン", sungRomaji: "shenon", definition: "link (French chaînon)")]
-        let guess = await GlossGuesser.guess(surface: "シェノン", lineContext: "涙色のシェノン", breakdownWords: breakdown, store: store)
-        XCTAssertEqual(guess, "link (French chaînon)")
+    // The breakdown's explanation goes into the request as context, not straight onto the sheet.
+    func testPromptCarriesBreakdownExplanation() {
+        let prompt = GlossGuesser.prompt(
+            surface: "リュミエール",
+            lineContext: "その物語リュミエール",
+            breakdownNote: "light (French lumière), often symbolizes clarity or revelation"
+        )
+        XCTAssertTrue(prompt.contains("often symbolizes clarity or revelation"))
+        XCTAssertTrue(prompt.contains("at most 8 words"))
     }
 
     // Replies are cut to their first line, unquoted, and rejected when too long to be a gloss.

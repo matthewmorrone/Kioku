@@ -228,34 +228,6 @@ extension SurfaceSheetViewController {
         ])
         splitCostScroll = frequencyScroll
 
-        // Selectable candidate chips sit above the inputs so the full set of valid two-way splits
-        // is visible at a glance (and one-tap selectable), not just the single auto-proposed best.
-        let candidatesScroll = UIScrollView()
-        candidatesScroll.translatesAutoresizingMaskIntoConstraints = false
-        candidatesScroll.showsHorizontalScrollIndicator = false
-        candidatesScroll.clipsToBounds = true
-
-        let candidatesRow = UIStackView()
-        candidatesRow.axis = .horizontal
-        candidatesRow.spacing = 8
-        candidatesRow.alignment = .center
-        candidatesRow.translatesAutoresizingMaskIntoConstraints = false
-        candidatesScroll.addSubview(candidatesRow)
-
-        NSLayoutConstraint.activate([
-            candidatesRow.topAnchor.constraint(equalTo: candidatesScroll.contentLayoutGuide.topAnchor),
-            candidatesRow.bottomAnchor.constraint(equalTo: candidatesScroll.contentLayoutGuide.bottomAnchor),
-            candidatesRow.leadingAnchor.constraint(equalTo: candidatesScroll.contentLayoutGuide.leadingAnchor),
-            candidatesRow.trailingAnchor.constraint(equalTo: candidatesScroll.contentLayoutGuide.trailingAnchor),
-            candidatesRow.heightAnchor.constraint(equalTo: candidatesScroll.frameLayoutGuide.heightAnchor),
-            candidatesScroll.heightAnchor.constraint(equalToConstant: 36),
-        ])
-
-        splitCandidatesScroll = candidatesScroll
-        splitCandidatesRow = candidatesRow
-
-        // The candidate chip row is not added: the score readout below already lists every
-        // available sublattice path with its calculation.
         splitPanelContainer.addArrangedSubview(splitInputsRow)
         splitPanelContainer.addArrangedSubview(frequencyScroll)
         splitPanelContainer.addArrangedSubview(splitActionsRow)

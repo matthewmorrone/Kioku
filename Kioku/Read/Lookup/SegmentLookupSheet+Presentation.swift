@@ -102,6 +102,7 @@ extension SegmentLookupSheet {
                     sheetVC.updateMiddleContent()
                     sheetVC.updateSaveButtonAppearance()
                     sheetVC.updateOpenDetailButtonAppearance()
+                    sheetVC.reportAfterSwitchedContent()
                 }
 
                 self.onSheetSelectPrevious = { [weak sheetVC] in
@@ -114,6 +115,7 @@ extension SegmentLookupSheet {
                     sheetVC.updateMiddleContent()
                     sheetVC.updateSaveButtonAppearance()
                     sheetVC.updateOpenDetailButtonAppearance()
+                    sheetVC.reportAfterSwitchedContent()
                 }
 
                 self.updatePresentedSheetSelection = { [weak sheetVC] (

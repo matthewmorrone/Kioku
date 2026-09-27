@@ -64,18 +64,6 @@ public enum HTDemucsModelStore {
     }
 
     private static func ensureModelUnguarded(onStage: (@Sendable (String) -> Void)? = nil) async throws -> URL {
-        // DIAGNOSTIC FALLBACK: a sideloaded copy under <App Documents>/HTDemucsSpec.mlmodelc
-        // is preferred when present. CoreML's on-load device-specialization passes that worked
-        // from the Documents path on 2026-06-19 / -24 started SIGKILLing once the model moved
-        // to Application Support (same bytes, different location). Until that's diagnosed, the
-        // sideload escape hatch keeps SRT generation working on devices where Documents is OK.
-        // Drop this branch once CoreML succeeds from the Application Support path.
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let legacyURL = docs.appendingPathComponent("HTDemucsSpec.mlmodelc", isDirectory: true)
-        if FileManager.default.fileExists(atPath: legacyURL.appendingPathComponent("model.mil").path) {
-            return legacyURL
-        }
-
         let target = try modelURL()
         // Health probe: model.mil is the largest must-have file inside the .mlmodelc bundle.
         // Probing inside the directory (not just the directory's existence) means a

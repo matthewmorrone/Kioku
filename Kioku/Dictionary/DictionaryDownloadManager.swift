@@ -9,7 +9,6 @@
 // Progress comes from a delegate on a session this file owns. Do NOT reach for the shorter
 // URLSession.shared.download(from:delegate:) — that delegate is task-scoped and never receives
 // didWriteData, which silently reduces the banner to "0%" until the download finishes.
-// WhisperModelManager (Kioku/Notes/WhisperModelManager.swift) still has that shape.
 
 import Foundation
 import Observation
@@ -34,9 +33,8 @@ enum DictionaryDownloadError: LocalizedError {
 // the first-launch gating UI (see DictionaryDownloadGateView).
 @Observable
 final class DictionaryDownloadManager {
-    // Pinned to a specific release tag, not a moving tag — mirrors WhisperDownloadableModel's
-    // pinnedRevision reasoning in WhisperModelManager.swift: a moving tag means a future edit to
-    // the release silently changes the bytes every install receives. Bump both of these
+    // Pinned to a specific release tag, not a moving tag: a moving tag means a future edit to the
+    // release silently changes the bytes every install receives. Bump both of these
     // deliberately (new tag + freshly computed hash) whenever dictionary.sqlite is rebuilt by
     // Resources/generate_db.py, THEN run scripts/publish_dictionary_release.sh by hand to
     // publish the matching GitHub Release — there is no CI automation for this step (no
@@ -50,7 +48,7 @@ final class DictionaryDownloadManager {
     nonisolated static let expectedSHA256 = "b2b99f95d1abf2392721631dac7acbf6185e3bd3049fd4588a08ad9901893e4a"
 
     // Public GitHub Release asset URL — matthewmorrone/Kioku is a public repo, so this needs no
-    // authentication to fetch, same as the pinned huggingface.co URL WhisperModelManager uses.
+    // authentication to fetch.
     // nonisolated: DictionaryStore's init (Kioku/Dictionary/DictionaryStore.swift) reads this
     // from a nonisolated context reached via Task.detached in ContentView, which can't see a
     // MainActor-isolated member under this project's default MainActor isolation.

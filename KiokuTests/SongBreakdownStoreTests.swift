@@ -2,8 +2,8 @@ import XCTest
 @testable import Kioku
 
 // Characterizes SongBreakdownStore's two-tier cache (published + memo + disk), the disk
-// persistence and self-heal-on-read integration with SongBreakdownRecovery, the staleness
-// detection via sourceTextHash, and the generation-state machine for cancel/error-clear.
+// persistence, the staleness detection via sourceTextHash, and the generation-state machine for
+// cancel/error-clear.
 // Generation itself (the LLM dispatch) isn't tested here — it's covered indirectly by the
 // service-level integration tests and would need a protocol extraction on
 // SongBreakdownService to mock cleanly.
@@ -154,55 +154,6 @@ final class SongBreakdownStoreTests: XCTestCase {
         let store = makeStore()
         XCTAssertFalse(store.isStale(forNoteID: UUID(), currentTextHash: "any"))
         XCTAssertFalse(store.hasFreshBreakdown(forNoteID: UUID(), currentTextHash: "any"))
-    }
-
-    // MARK: - Disk self-heal on read
-
-    // Disk reads pass through SongBreakdownRecovery; the legacy "all lines collapsed into
-    // line 1" shape gets re-split on faulting in. The healed value is also written back
-    // to disk so the next read skips the recovery pass entirely.
-    func testReadFromDiskAppliesRecoveryAndWritesHealedValueBack() throws {
-        // Write a "legacy" breakdown directly to disk: trailing lines collapsed into a single
-        // grammar-note string on line 1. SongBreakdownRecovery looks for the actual leaked-
-        // header markdown shape (`**Line N: <jp>**` optionally followed by `*<romaji>*`).
-        let id = UUID()
-        let leakedGrammar = """
-        **Line 2: 犬がいる** *inu ga iru*
-        **Line 3: 鳥がいる** *tori ga iru*
-        """
-        let legacy = SongBreakdown(
-            noteID: id,
-            sourceTextHash: "hash-legacy",
-            generatedAt: Date(timeIntervalSince1970: 1_700_000_000),
-            provider: .stub,
-            lines: [
-                SongLine(
-                    index: 1,
-                    original: "猫がいる",
-                    romaji: nil,
-                    words: [],
-                    gist: nil,
-                    grammarNote: leakedGrammar,
-                    reference: nil
-                ),
-            ]
-        )
-
-        // Force the legacy shape onto disk by routing through SongBreakdownStore's writer,
-        // bypassing the recovery pass (recovery only runs on read).
-        let seedStore = makeStore()
-        seedStore.setBreakdown(legacy)
-
-        // A new store reads from disk through breakdown(forNoteID:), which runs recovery.
-        let reader = makeStore()
-        let healed = try XCTUnwrap(reader.breakdown(forNoteID: id))
-        XCTAssertGreaterThan(healed.lines.count, 1, "recovery should split the leaked grammar note back into separate lines")
-
-        // After the heal, the on-disk JSON is the healed shape — the next reader sees the
-        // multi-line breakdown immediately without needing to run recovery again.
-        let secondReader = makeStore()
-        let secondRead = try XCTUnwrap(secondReader.breakdown(forNoteID: id))
-        XCTAssertEqual(secondRead, healed)
     }
 
     // MARK: - Generation state machine (without invoking the network)

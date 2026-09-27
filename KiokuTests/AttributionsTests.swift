@@ -28,7 +28,6 @@ final class AttributionsTests: XCTestCase {
     func testAllRequiredLibrariesArePresent() {
         let names = Set(Attributions.libraries.map(\.name))
         let required: Set<String> = [
-            "SwiftWhisper",
             "MeCab",
             "zinnia-swift",
         ]

@@ -33,14 +33,11 @@ nonisolated enum DownloadedModelsStore {
         [MMSModelStore.modelId] + ModelStorage.retiredForcedAlignerModelIds
     }
 
-    // Sums every on-disk copy of the vocal isolator a user could have, depending on which app
-    // version first downloaded it: the CoreML .mlmodelc (HTDemucsModelStore, its own legacy
-    // Documents sideload) — the only isolator this app now runs — and the MLX HTDemucs-FT
-    // weights, orphaned now that CTCForcedAligner's isolation call site dropped that path but
-    // still worth reclaiming for anyone who downloaded them under an older app version.
+    // Sums every on-disk copy of the vocal isolator a user could have: the CoreML .mlmodelc
+    // (HTDemucsModelStore), the only isolator this app runs, and any MLX HTDemucs-FT weights,
+    // which nothing reads but a user may still have on disk and want to reclaim.
     static func htDemucsSizeBytes() -> Int {
         sizeBytes(at: try? ModelStorage.directory(for: HTDemucsModelStore.modelId))
-            + sizeBytes(at: legacyHTDemucsURL())
             + sizeBytes(at: try? ModelStorage.directory(for: ModelStorage.htDemucsFTModelId))
     }
 
@@ -73,17 +70,7 @@ nonisolated enum DownloadedModelsStore {
     // Deletes every on-disk copy of the HTDemucs vocal isolator (see htDemucsSizeBytes).
     static func deleteHTDemucs() {
         removeContents(of: try? ModelStorage.directory(for: HTDemucsModelStore.modelId))
-        if let legacyURL = legacyHTDemucsURL() {
-            try? FileManager.default.removeItem(at: legacyURL)
-        }
         removeContents(of: try? ModelStorage.directory(for: ModelStorage.htDemucsFTModelId))
-    }
-
-    // The legacy Documents/HTDemucsSpec.mlmodelc sideload path (see HTDemucsModelStore's
-    // diagnostic-fallback comment) — a second possible on-disk copy outside ModelStorage.
-    private static func legacyHTDemucsURL() -> URL? {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("HTDemucsSpec.mlmodelc", isDirectory: true)
     }
 
     // Recursive byte sum of regular files under `root`, or 0 if unreadable/nil — mirrors

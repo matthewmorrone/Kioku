@@ -1,7 +1,6 @@
 // OnDeviceLyricAligner.swift
 // App-side entry point for on-device lyric alignment: wraps SwiftWhisperAlign's CTCForcedAligner
-// with the note's line filtering and a background-task assertion. Also resolves the best
-// downloaded ggml Whisper model, which the transcription feature shares.
+// with the note's line filtering and a background-task assertion.
 
 import Foundation
 import SwiftWhisperAlign
@@ -10,31 +9,6 @@ import UIKit
 #endif
 
 enum OnDeviceLyricAligner {
-
-    // Returns the best available downloaded GGML model URL, preferring
-    // higher-quality models. Returns nil if no model has been downloaded yet.
-    static func bestAvailableModelURL() -> URL? {
-        let dir = WhisperModelManager.modelsDirectory
-        guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else {
-            AppLog.error(.audioAlignment, "models directory not found at \(dir.path)")
-            return nil
-        }
-
-        let preferenceOrder = ["ggml-medium.bin", "ggml-small.bin", "ggml-base.bin", "ggml-tiny.bin"]
-        let binFiles = files.filter { $0.hasSuffix(".bin") }
-        AppLog.info(.audioAlignment, "found \(binFiles.count) model(s): \(binFiles.sorted().joined(separator: ", "))")
-        guard binFiles.isEmpty == false else { return nil }
-
-        for preferred in preferenceOrder {
-            if binFiles.contains(preferred) {
-                AppLog.info(.audioAlignment, "selected model: \(preferred)")
-                return dir.appendingPathComponent(preferred)
-            }
-        }
-        let fallback = binFiles.sorted().first!
-        AppLog.info(.audioAlignment, "selected model (fallback): \(fallback)")
-        return dir.appendingPathComponent(fallback)
-    }
 
     // Force-aligns the lyric lines to the audio and returns the structured result: per-line
     // timings and per-span sub-line checkpoints (for the per-mora karaoke sweep). `romanize`

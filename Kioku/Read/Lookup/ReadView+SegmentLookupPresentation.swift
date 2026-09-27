@@ -61,9 +61,12 @@ extension ReadView {
                 return await GlossGuesser.guess(surface: surface, lineContext: line, breakdownWords: breakdownWords)
             }
             SegmentLookupSheet.shared.onSheetHeightChanged = {
+                // The word now selected, which the sheet's arrows may have moved off the tapped one.
+                let selectedRect = segmentSelection.selectedSegmentLocation
+                    .flatMap { selectedSegmentRect(in: sourceView, selectedLocation: $0) }
                 preScrollSegmentForSheetVisibility(
                     sourceView: sourceView,
-                    tappedSegmentRect: tappedSegmentRect,
+                    tappedSegmentRect: selectedRect ?? tappedSegmentRect,
                     replanningFromStart: true
                 )
             }
@@ -77,51 +80,27 @@ extension ReadView {
                 leftNeighborSurface: adjacentSurfaces.left,
                 rightNeighborSurface: adjacentSurfaces.right,
                 onSelectPrevious: {
+                    // Planned like a tap: from here, once the sheet reports its height for the
+                    // new word (it does even when the height is unchanged), so the view moves once.
                     editModeScroll.isSheetSwipeTransitionActive = true
+                    editModeScroll.sheetScrollStartOffsetY = sourceView?.contentOffset.y
                     let outcome = moveSelectedSegmentSelection(isMovingForward: false)
-                    if let textView = sourceView as? UITextView,
-                       let selectedSegmentLocation = segmentSelection.selectedSegmentLocation,
-                       let selectedSegmentRect = selectedSegmentRectInTextView(
-                           sourceView: textView,
-                           selectedLocation: selectedSegmentLocation
-                       ) {
-                        preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: selectedSegmentRect) {
-                            Task { @MainActor in
-                                await Task.yield()
-                                editModeScroll.isSheetSwipeTransitionActive = false
-                            }
-                        }
-                    } else {
-                        Task { @MainActor in
-                            await Task.yield()
-                            editModeScroll.isSheetSwipeTransitionActive = false
-                        }
+                    Task { @MainActor in
+                        await Task.yield()
+                        editModeScroll.isSheetSwipeTransitionActive = false
                     }
-
                     return outcome
                 },
                 onSelectNext: {
+                    // Planned like a tap: from here, once the sheet reports its height for the
+                    // new word (it does even when the height is unchanged), so the view moves once.
                     editModeScroll.isSheetSwipeTransitionActive = true
+                    editModeScroll.sheetScrollStartOffsetY = sourceView?.contentOffset.y
                     let outcome = moveSelectedSegmentSelection(isMovingForward: true)
-                    if let textView = sourceView as? UITextView,
-                       let selectedSegmentLocation = segmentSelection.selectedSegmentLocation,
-                       let selectedSegmentRect = selectedSegmentRectInTextView(
-                           sourceView: textView,
-                           selectedLocation: selectedSegmentLocation
-                       ) {
-                        preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: selectedSegmentRect) {
-                            Task { @MainActor in
-                                await Task.yield()
-                                editModeScroll.isSheetSwipeTransitionActive = false
-                            }
-                        }
-                    } else {
-                        Task { @MainActor in
-                            await Task.yield()
-                            editModeScroll.isSheetSwipeTransitionActive = false
-                        }
+                    Task { @MainActor in
+                        await Task.yield()
+                        editModeScroll.isSheetSwipeTransitionActive = false
                     }
-
                     return outcome
                 },
                 onMergeLeft: {

@@ -277,6 +277,12 @@ final class KiokuScrollingTextView: UIScrollView, UIScrollViewDelegate {
         convert(rect, from: contentView)
     }
 
+    // The first line rect of a character range in this scroll view's content coordinates, the same
+    // space a tapped segment's rect is reported in; nil when the range isn't laid out.
+    func contentRect(forCharacterRange range: NSRange) -> CGRect? {
+        contentView.layoutEngine.firstRect(forCharacterRange: range).map(convertContentRectToHost)
+    }
+
     // Tracks the last range we scrolled to so we don't fight the user when they scroll away
     // and the playback range hasn't changed.
     private var lastScrolledRange: NSRange?

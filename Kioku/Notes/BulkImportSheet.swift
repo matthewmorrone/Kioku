@@ -260,7 +260,7 @@ struct BulkImportSheet: View {
         for item in items where BulkImportPlanner.requiresTranscription(item) {
             isolate[item.id] = audioKindByItemID[item.id] == .singing
         }
-        await runner.run(plan: items, whisperModelURL: nil, isolateVocalsByItemID: isolate)
+        await runner.run(plan: items, isolateVocalsByItemID: isolate)
     }
 
     // The row's speech-check line: checking, will be transcribed, or (sung) the recommendation to

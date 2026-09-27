@@ -8,14 +8,9 @@ Libraries evaluated but not yet installed. Revisit when the relevant feature are
 
 What we actually link.
 
-### SwiftWhisper (exPHAT) ✅
-- **Repo:** https://github.com/exPHAT/SwiftWhisper
-- **Vendored at:** `Packages/SwiftWhisper/`
-- **Why installed:** On-device Whisper transcription. Bundles whisper.cpp with no transitive dependencies, avoiding the swift-transformers ↔ swift-tokenizers conflict that WhisperKit caused with AzooKeyKanaKanjiConverter.
-
 ### SwiftWhisperAlign (local) ✅
 - **Location:** `SwiftWhisperAlign/` (sibling SPM package)
-- **Why installed:** Per-word audio alignment, subtitle reconciliation, lyric alignment. Wraps SwiftWhisper output into timed markers consumed by the read screen.
+- **Why installed:** Lyric alignment (vocal isolation + MMS forced alignment) and Qwen3-ASR transcription of the isolated stem; produces the timed cues the read screen consumes.
 
 ### MeCab (matthewmorrone fork) ✅
 - **Repo:** https://github.com/matthewmorrone/mecab.git

@@ -379,7 +379,6 @@ extension ReadView {
                 segmentSelection.selectedBounds = candidateIndex...candidateIndex
                 segmentSelection.selectedSegmentLocation = candidateRange.location
                 segmentSelection.selectedHighlightRangeOverride = candidateRange
-                // debugPrintLatticeSectionForCurrentSelection(at: candidateRange.location)
 
                 let leftNeighborSurface = candidateIndex > 0 ? document.segmentEdges[candidateIndex - 1].surface : nil
                 let rightNeighborIndex = candidateIndex + 1
@@ -397,6 +396,21 @@ extension ReadView {
         }
 
         return nil
+    }
+
+    // The content-coordinate rect of the segment at `selectedLocation` in whichever view is showing
+    // the note — the editing UITextView or the reading-mode KiokuScrollingTextView — so the
+    // sheet-visibility scroll can place a word reached by the sheet's arrows, not just a tapped one.
+    func selectedSegmentRect(in sourceView: UIScrollView?, selectedLocation: Int) -> CGRect? {
+        if let textView = sourceView as? UITextView {
+            return selectedSegmentRectInTextView(sourceView: textView, selectedLocation: selectedLocation)
+        }
+        guard let readingView = sourceView as? KiokuScrollingTextView,
+              let segmentRange = document.segmentRanges.first(where: { segmentRange in
+                  let nsRange = NSRange(segmentRange, in: document.text)
+                  return nsRange.location == selectedLocation && nsRange.length > 0
+              }) else { return nil }
+        return readingView.contentRect(forCharacterRange: NSRange(segmentRange, in: document.text))
     }
 
     // Resolves the selected segment rect in text-view coordinates so sheet-visibility scroll checks can re-run after swipe navigation.

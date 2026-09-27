@@ -122,40 +122,21 @@ extension ReadView {
         subtitleImport.isPerformingAudioTranscription = true
         defer { subtitleImport.isPerformingAudioTranscription = false }
 
-        // One shared engine for every import path (see AudioTranscriptionService). Qwen3 isolates the
-        // vocal stem first; Apple Speech chunks; Whisper needs a model. The note shows a status line
-        // rather than streaming partial text — the tradeoff for a single transcription core.
+        // One shared engine for every import path (see AudioTranscriptionService). The note shows a
+        // status line rather than streaming partial text — the tradeoff for a single transcription
+        // core.
         let engine = TranscriptionEngine.current
         let noteID = beginStreamingTranscriptionNote(totalChunks: 1)
         do {
             defer { try? FileManager.default.removeItem(at: copiedURL) }
 
-            let contextual = AudioTranscriptionHelpers.makeSpeechContextualStrings(from: document.text, title: resolvedTitle)
-
-            // Whisper alone needs a downloaded model — fetch it (with download progress) first.
-            var modelURL: URL?
-            if engine == .whisper {
-                setWhisperTranscriptionNote(id: noteID, statusLine: "Preparing Whisper model…", body: "")
-                modelURL = try await TranscriptionModelProvider.ensureModel { [self] fraction in
-                    let pct = Int((fraction * 100).rounded())
-                    Task { @MainActor in
-                        setWhisperTranscriptionNote(
-                            id: noteID,
-                            statusLine: "Downloading Whisper model (\(TranscriptionModelProvider.downloadSizeText)) \(pct)%…",
-                            body: ""
-                        )
-                    }
-                }
-            }
-
-            setWhisperTranscriptionNote(id: noteID, statusLine: isolate ? "Isolating vocals…" : "Transcribing audio…", body: "")
+            setTranscriptionStatusNote(id: noteID, statusLine: isolate ? "Isolating vocals…" : "Transcribing audio…", body: "")
             let cues = try await AudioTranscriptionService.transcribe(
-                url: copiedURL, engine: engine, isolateVocals: isolate,
-                whisperModelURL: modelURL, contextualStrings: contextual
+                url: copiedURL, engine: engine, isolateVocals: isolate
             )
             guard cues.isEmpty == false else {
                 subtitleImport.audioTranscriptionErrorMessage = "No speech was recognized in the selected audio file."
-                setWhisperTranscriptionNote(id: noteID, statusLine: "No speech recognized", body: "")
+                setTranscriptionStatusNote(id: noteID, statusLine: "No speech recognized", body: "")
                 return
             }
 
@@ -168,7 +149,7 @@ extension ReadView {
             }
         } catch {
             subtitleImport.audioTranscriptionErrorMessage = error.localizedDescription
-            setWhisperTranscriptionNote(id: noteID, statusLine: "Transcription failed", body: error.localizedDescription)
+            setTranscriptionStatusNote(id: noteID, statusLine: "Transcription failed", body: error.localizedDescription)
         }
     }
 
@@ -244,4 +225,21 @@ extension ReadView {
         }
     }
 
+    // Writes a free-form status line (and optional body) into the streaming note,
+    // mirroring updateStreamingTranscriptionNote's note/text update so the in-flight
+    // note shows live progress.
+    func setTranscriptionStatusNote(id: UUID, statusLine: String, body: String) {
+        let bodyText = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let noteContent = bodyText.isEmpty ? "[\(statusLine)]" : "[\(statusLine)]\n\n\(bodyText)"
+        let titleToSave = firstLineTitle(from: noteContent)
+        _ = notesStore.upsertNote(id: id, title: titleToSave, content: noteContent, segments: nil)
+        if document.activeNoteID == id {
+            document.isLoadingSelectedNote = true
+            titleEdit.customTitle = titleToSave
+            titleEdit.fallbackTitle = titleToSave
+            document.text = noteContent
+            document.segments = nil
+            document.isLoadingSelectedNote = false
+        }
+    }
 }
