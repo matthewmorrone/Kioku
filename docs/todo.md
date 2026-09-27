@@ -69,9 +69,3 @@ written so a new session can pick it up cold.
       The `KiokuUITests` target already exists in the project with no source files (the template
       tests were removed in `372c42a`), so this means adding a `KiokuUITests/` folder with XCUITests.
       They run on the phone or in CI; this Mac has no simulator runtime.
-
-
-## CI watch list
-
-- [ ] **`macos-26` is a GitHub Actions preview runner.** If GH deprecates the preview image before iOS 26.5 reaches `macos-15`, CI breaks until we react. Fallback path: `xcrun simctl runtime install` to add iOS 26.5 to `macos-15`, or accept skip-testing the affected suites. (Left as a watch — no clean proactive code fix short of pre-installing a runtime, which is slow and unwarranted while macos-26 works.)
-
