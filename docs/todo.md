@@ -62,55 +62,6 @@ written so a new session can pick it up cold.
       near-zero real-world risk that Japanese dictionary/user text is already NFC-precomposed.
       Not started; on hold until the user says go (2026-09-26). Measure cold start with
       `StartupTimer` before and after.
-- [ ] **Context-chosen readings for homographs (様 さま/よう, 方, 何, 間, 上…)** — added 2026-09-24.
-      Furigana picks a reading by surface alone: `FuriganaResolver.readingForSegment` takes the
-      top-ranked hiragana reading, so a lone 様 is さま even in の様止まらず (よう). Measured
-      2026-09-24 against the Tatoeba gold's marked readings (held2k + fresh5k, 4,551 multi-reading
-      kanji segments): the frequency pick is right 96.5%. Tried and rejected:
-        • Reading from a dictionary phrase around the segment (様に → ように), used whether or not
-          the phrase won the path search: 18 changes on held2k, mostly wrong (今日は → こんにち ×8,
-          後に → のち, 外に → ほか). Phrase POS doesn't separate good from bad (外に exp, 度に adv).
-        • MeCab/IPAdic's in-context reading where it is one of ours: 95.5% — fixes 87 (counters and
-          suffixes: 人 にん, 中 ちゅう, 分 ふん, 様 よう) but breaks 131 (後 のち, 金 きん, 間 ま,
-          昨夜 さくや, 今 こん). A "trust MeCab only for counters/suffixes" filter would be fitted to
-          this gold — declined.
-        • Per-reading lattice edges from JMdict POS: JMdict tags さま (51237) `suf`/`n` and よう
-          (56931) `n-suf,n`, and its よう-様 is the "way of doing" sense — the "like" sense lives
-          only in 様に / 様な / 様だ / 様です. IPAdic context IDs are per surface (all 様 share 1314).
-      The eval can't settle 様: Tatoeba prose writes ように in kana (286 sentences) and has 3 bare
-      kanji 様. What shipped instead: merging segments takes the merged word's dictionary reading
-      (の様に → よう; `markFuriganaReplaceable`), and dictionary-v12 adds の様 (のよう) as an extra.
-      Reopen only with lyric text whose readings are marked — the 12 alignment-fixture songs are
-      the candidate source.
-
-
-## Audio & Alignment
-
-- [ ] **"Find correct timestamp" repair tool for a mismatched lyric cue** — reported 2026-09-02:
-      when a user flags a `SubtitleCue` whose audio doesn't match its text, offer a "search the
-      song for where this line actually is" fix. **Premise updated 2026-09-26:** the OOM / ~101 s
-      median-error full-song path this was written against is gone. The shipped aligner already
-      computes MMS emissions over the whole song, and Debug builds dump them
-      (`Documents/ctc-debug/<key>.emissions.f32`), so step 1 below is free. What's left is a small
-      phrase-spotting search over emissions that already exist:
-      1. Reuse the cached per-frame emissions for the song (no new encoder pass).
-      2. Slide the mismatched cue's known text as a CTC-scored window across those frame outputs;
-         take the top-N score peaks, where N = how many times that exact line occurs in the song's
-         known lyrics (repeats are the normal case for song lyrics, not an edge case).
-      3. **Repeated-line disambiguation**: pair the N peaks to the N known occurrences of the line
-         by time order — peaks sorted by position, occurrences sorted by their position in the
-         lyric sequence, paired off — deterministic, no fuzzy tie-break needed for the common case.
-         Fall back to bounding candidates by the neighboring (already-correct) cues' timestamps if
-         the peak count doesn't match the expected occurrence count (e.g. a backing-vocal echo
-         producing an extra false peak).
-      Considered and rejected: predicting a spectrogram from the target text (TTS-style
-      text→mel-spectrogram) and cross-correlating it against the real song's spectrogram — sung
-      audio's pitch/rhythm/timbre diverges too far from a synthesized (likely spoken-register)
-      reference for raw spectral cross-correlation to be reliable. CTC's phoneme-probability
-      scoring is acoustic-identity-invariant in a way raw spectrogram matching isn't, so it should
-      generalize better here. Should reuse `CTCAlignmentCore`/`SwiftWhisperAlign` infra rather than
-      new signal-processing code, and can be prototyped on the Mac with `scripts/alignment-replay`.
-
 ## Testing
 
 - [ ] **UI automation tests for the core loop** (notes, lookup/save, study, backup). Store-level
