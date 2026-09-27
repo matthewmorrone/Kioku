@@ -189,13 +189,9 @@ nonisolated final class SongBreakdownParser: Sendable {
         }
         guard matched else { return nil }
 
-        guard content.hasPrefix("**") else { return nil }
-        let afterOpen = content.dropFirst(2)
-        guard let closeRange = afterOpen.range(of: "**") else { return nil }
-        let surface = String(afterOpen[..<closeRange.lowerBound])
-            .trimmingCharacters(in: .whitespaces)
-        let afterSurface = String(afterOpen[closeRange.upperBound...])
-            .trimmingCharacters(in: .whitespaces)
+        guard let split = splitBulletSurface(content) else { return nil }
+        let surface = split.surface
+        let afterSurface = split.rest
 
         var sungRomaji = ""
         var remainder = afterSurface
@@ -234,6 +230,33 @@ nonisolated final class SongBreakdownParser: Sendable {
         }
 
         return SongWord(surface: surface, sungRomaji: sungRomaji, definition: remainder, grammarTag: grammarTag)
+    }
+
+    // Splits a bullet body into its headword and the rest. The prompt asks for `**surface**`,
+    // but models sometimes emit `*surface*` or a bare `surface (romaji) — definition`; without
+    // accepting those, every word falls through to the grammar-note tail and the whole
+    // vocabulary list renders as one run-on "Pattern to Bank" paragraph. A bare surface must
+    // contain non-ASCII text (the Japanese word) so English prose bullets in a pattern note
+    // are not mistaken for vocabulary.
+    private func splitBulletSurface(_ content: String) -> (surface: String, rest: String)? {
+        for marker in ["**", "*"] where content.hasPrefix(marker) {
+            let afterOpen = content.dropFirst(marker.count)
+            guard let closeRange = afterOpen.range(of: marker) else { return nil }
+            let surface = String(afterOpen[..<closeRange.lowerBound])
+                .trimmingCharacters(in: .whitespaces)
+            let rest = String(afterOpen[closeRange.upperBound...])
+                .trimmingCharacters(in: .whitespaces)
+            return surface.isEmpty ? nil : (surface, rest)
+        }
+        // Bare surface ends at the first space, romaji paren, grammar tag, or separator dash.
+        let stops: Set<Character> = [" ", "(", "（", "[", "—", "–", ":"]
+        let end = content.firstIndex(where: { stops.contains($0) }) ?? content.endIndex
+        let surface = String(content[..<end])
+        guard surface.isEmpty == false, surface.unicodeScalars.contains(where: { $0.isASCII == false }) else {
+            return nil
+        }
+        let rest = String(content[end...]).trimmingCharacters(in: .whitespaces)
+        return (surface, rest)
     }
 
     // Recognizes `**Gist:** text`, `**Gist**: text`, or the plain `Gist: text` form.

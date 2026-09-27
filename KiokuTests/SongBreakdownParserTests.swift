@@ -344,4 +344,28 @@ final class SongBreakdownParserTests: XCTestCase {
         let lines = try parser().parse(markdown: markdown)
         XCTAssertEqual(lines.map(\.index), [1, 3])
     }
+
+    // Verifies bullets whose surface lost its bold markers still parse as words instead of
+    // collapsing into the grammar note.
+    func testParsesBulletsWithoutBoldSurface() throws {
+        let markdown = """
+        **Line 1: 手を繋ごう海にゆこうよ**
+        *te wo tsunagou umi ni yukou yo*
+
+        - 手 (te) — hand
+        - 繋ごう (tsunagou) [volitional] — let's join or hold
+        - *海* (umi) — sea
+        - よ — emphasis particle
+
+        **Gist:** Let's hold hands and go to the sea.
+        """
+
+        let line = try XCTUnwrap(parser().parse(markdown: markdown).first)
+        XCTAssertEqual(line.words.map(\.surface), ["手", "繋ごう", "海", "よ"])
+        XCTAssertEqual(line.words[1].sungRomaji, "tsunagou")
+        XCTAssertEqual(line.words[1].grammarTag, "volitional")
+        XCTAssertEqual(line.words[1].definition, "let's join or hold")
+        XCTAssertEqual(line.words[3].definition, "emphasis particle")
+        XCTAssertNil(line.grammarNote)
+    }
 }
