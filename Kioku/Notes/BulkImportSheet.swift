@@ -23,6 +23,10 @@ struct BulkImportSheet: View {
     @State private var audioKindByItemID: [String: AudioContentKind] = [:]
     // Sung items the user chose to transcribe anyway; every other sung item is left out of the run.
     @State private var transcribeAnywayItemIDs: Set<String> = []
+    // The user's pick of which note a companion-only item attaches to (nil = new note), overriding
+    // the planner's filename match — a song's note is usually titled by its first lyric line, so
+    // its mp3's filename matches nothing.
+    @State private var noteChoiceByItemID: [String: UUID?] = [:]
 
     @StateObject private var runner: BulkImportRunner
 
@@ -49,7 +53,12 @@ struct BulkImportSheet: View {
             urls: pickedURLs,
             existingNotes: store.notes,
             existingAudioBaseNamesByNoteID: audioBaseNames
-        )
+        ).map { item in
+            guard let choice = noteChoiceByItemID[item.id] else { return item }
+            var chosen = item
+            chosen.matchedExistingNoteID = choice
+            return chosen
+        }
     }
 
     // Audio-only items (they'd be transcribed), which are the ones the speech check runs on.
@@ -173,6 +182,10 @@ struct BulkImportSheet: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
+            if item.textURL == nil, progress == nil, runner.isRunning == false, runner.hasFinished == false {
+                notePicker(for: item)
+            }
+
             if BulkImportPlanner.requiresTranscription(item), progress == nil {
                 audioCheckLine(for: item)
             }
@@ -269,6 +282,22 @@ struct BulkImportSheet: View {
             isolate[item.id] = audioKindByItemID[item.id] == .singing
         }
         await runner.run(plan: items, isolateVocalsByItemID: isolate)
+    }
+
+    // Which note a companion-only item (no .txt body) attaches to: the planner's filename match by
+    // default, any existing note, or a new note.
+    private func notePicker(for item: BulkImportPlanItem) -> some View {
+        Picker("Note", selection: Binding(
+            get: { item.matchedExistingNoteID },
+            set: { noteChoiceByItemID[item.id] = .some($0) }
+        )) {
+            Text("New Note").tag(UUID?.none)
+            ForEach(store.notes.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }) { note in
+                Text(note.title.isEmpty ? "Untitled" : note.title).tag(UUID?.some(note.id))
+            }
+        }
+        .pickerStyle(.menu)
+        .font(.caption)
     }
 
     // The row's speech-check line: checking, will be transcribed, or (sung) the recommendation to

@@ -3,7 +3,7 @@ import SwiftWhisperAlign
 
 // Top action bar for the karaoke view: Re-align (one forced-alignment pass over the whole song;
 // press and hold for Re-align from Scratch, which isolates the vocals again first), the
-// Mix / Vocals / Instrumental source toggle, and the settings-popup gear (LyricsView+SettingsPopup.swift). Not private: called from panel(geo:) in
+// Mix / Vocals / Instrumental source toggle, Replace Audio, and the settings-popup gear (LyricsView+SettingsPopup.swift). Not private: called from panel(geo:) in
 // LyricsView.swift.
 extension LyricsView {
     // The attached song's audio file, which keys its cached vocal stem.
@@ -100,6 +100,24 @@ extension LyricsView {
                 .buttonStyle(.plain)
                 .disabled(isSwitchingAudioSource)
                 .accessibilityLabel("Playing \(audioSource.label). Tap to switch to \(audioSource.next.label).")
+            }
+
+            // Replace Audio: pick a different song file (optionally with srt / TextGrid) for this
+            // note. Hidden mid-run so a replacement can't race the alignment in flight.
+            if isReAligning == false {
+                Button {
+                    onReplaceAudio()
+                } label: {
+                    Image(systemName: "waveform.badge.plus")
+                        .scaledFont(size: 12, weight: .semibold)
+                        .foregroundStyle(Color.secondary)
+                        .padding(.horizontal, 12)
+                        .frame(height: 28)
+                        .background(Color.secondary.opacity(0.16))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Replace Audio")
             }
 
             Button {

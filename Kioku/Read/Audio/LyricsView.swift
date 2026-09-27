@@ -46,6 +46,9 @@ struct LyricsView: View {
     let onDismiss: () -> Void
     // The top bar's Re-align action; ReadView owns the run. Defaulted so previews stay valid.
     var onReAlign: () -> Void = {}
+    // The top bar's Replace Audio action: opens ReadView's audio/srt/TextGrid picker, whose import
+    // replaces this note's attachment.
+    var onReplaceAudio: () -> Void = {}
     // True while a whole-song re-align is running, with `reAlignMessage` carrying the live
     // progress text. Drives the top bar's spinner + label.
     var isReAligning: Bool = false

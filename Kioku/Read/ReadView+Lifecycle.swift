@@ -315,6 +315,7 @@ extension ReadView {
                         audioPlayback.isShowingLyricsView = false
                     },
                     onReAlign: { Task { await realignWholeNote() } },
+                    onReplaceAudio: { subtitleImport.isShowingLyricMediaPicker = true },
                     isReAligning: lyricAlignment.isAligning,
                     reAlignMessage: lyricAlignment.progressMessage,
                     onCancelReAlign: { cancelAlignment() },
