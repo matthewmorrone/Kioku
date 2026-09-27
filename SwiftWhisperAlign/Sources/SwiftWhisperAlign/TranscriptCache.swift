@@ -1,15 +1,14 @@
 import Foundation
 
-// Resumable checkpoint for the anchor-transcription stage. Each ~24 s ASR piece is the single most
-// expensive, jetsam-prone step (a ~60 s model load + an MLX forward pass per piece) — and historically
-// where the OS OOM-killed us mid-run. This persists every completed piece the instant it finishes, so
-// a kill (jetsam, suspension, force-quit) loses at most the in-flight piece: the next align reloads the
-// finished pieces off disk and resumes from where it died, and a fully-cached transcript skips even the
-// model load. Keyed by the same content identity as the stem (VocalStemCache.identityKey) plus a
-// signature of the region layout + piece size, so it only ever hits when the inputs are byte-identical.
-//
-// Mirrors VocalStemCache: lives under Caches/ (OS-reclaimable; a miss just re-transcribes), writes are
-// best-effort + atomic. A piece carries its own [start,end] so resume matches by time, not array index.
+// Resumable checkpoint for StemTranscriber. Each ~24 s ASR piece is the single most expensive,
+// jetsam-prone step (a model load plus one inference per piece), so this persists every completed
+// piece the instant it finishes: a kill (jetsam, suspension, force-quit) loses at most the
+// in-flight piece, the next run reloads the finished pieces off disk and resumes from where it
+// died, and a fully-cached transcript skips even the model load. Keyed by the same content identity
+// as the stem (VocalStemCache.identityKey) plus a signature of the region layout + piece size, so
+// it only ever hits when the inputs are byte-identical. Mirrors VocalStemCache: lives under Caches/
+// (OS-reclaimable; a miss just re-transcribes), writes are best-effort + atomic. A piece carries
+// its own [start,end] so resume matches by time, not array index.
 public enum TranscriptCache {
 
     public struct Piece: Codable, Equatable {

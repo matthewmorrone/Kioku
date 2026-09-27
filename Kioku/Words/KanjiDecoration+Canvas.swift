@@ -372,11 +372,8 @@ struct LightningDecoration: View {
 struct WindDecoration: View {
     private let lineCount = 36
 
-    // Pure horizontal speed lines scrolling left → right at varied lengths and
-    // speeds — the design previously used for 走 (run). The user said the run
-    // animation reads more like wind, so we adopted it here. Simpler than the
-    // previous curved-bezier-streaks + dust composition; reads more directly
-    // as "wind moving across."
+    // Pure horizontal speed lines scrolling left → right at varied lengths and speeds. Reads more
+    // directly as "wind moving across" than curved streaks with dust.
     var body: some View {
         TimelineView(.animation) { context in
             let t = context.date.timeIntervalSinceReferenceDate

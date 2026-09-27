@@ -1,11 +1,11 @@
 // StemTranscriber.swift
 //
-// Transcribes the ISOLATED VOCAL STEM in fixed pieces over the supplied vocal regions, using the
-// CoreML ASR model DIRECTLY (no Silero VAD in the path). This matters: the VAD-gated StreamingASR
-// is front-loaded — Silero drops sustained sung vowels (the same reason alignment uses energy-VAD),
-// so the back half never reaches the ASR. Forcing fixed pieces over the energy-VAD regions guarantees
-// whole-song coverage, so anchor extraction can find matches in the back where the catastrophes live.
-// Each piece's heard text is tagged with that piece's [start,end] time (for anchor interpolation).
+// Transcribes the ISOLATED VOCAL STEM (or any audio) in fixed pieces over the supplied vocal
+// regions, using the CoreML ASR model DIRECTLY (no Silero VAD in the path). This matters: a
+// VAD-gated StreamingASR is front-loaded — Silero drops sustained sung vowels — so the back half of
+// a song never reaches the ASR. Forcing fixed pieces over the energy-VAD regions guarantees
+// whole-song coverage. Each piece's heard text is tagged with that piece's [start,end] time, which
+// becomes the cue timing.
 
 import Foundation
 import Qwen3ASR
@@ -13,15 +13,12 @@ import CoreML
 import MLX
 
 public enum StemTranscriber {
-    // Transcribes `stem` in `pieceSec` chunks across each vocal region (defaults to the whole stem),
-    // with a slight overlap so a line split across one boundary still appears whole in a neighbour.
-    // Piece count used to be kept modest on purpose: each piece was an MLX forward pass holding the
-    // ASR model resident, and too many in a row got the app jetsam-killed (50% overlap / ~31 pieces
-    // did). Now that ASR runs on CoreML (see ensureModel below) instead of MLX, that specific memory
-    // profile no longer applies — a 24s-piece run stayed well clear of jetsam (lowest observed
-    // ~440 MB free over 10 pieces). The underlying tradeoff (more, smaller pieces = more total
-    // ASR inference time, in exchange for denser, better-localized anchor candidates) is still
-    // real; revisit pieceSec if jetsam resurfaces at this smaller size.
+    // Transcribes `stem` in `pieceSec` chunks across each vocal region (defaults to the whole
+    // stem), with a slight overlap so a line split across one boundary still appears whole in a
+    // neighbour. More, smaller pieces cost more total ASR inference time in exchange for
+    // finer-grained timing; each piece also holds the ASR model resident, so revisit pieceSec if
+    // memory pressure (jetsam) shows up. A 24 s-piece run on CoreML stayed well clear (lowest
+    // observed ~440 MB free over 10 pieces).
     public static func segments(
         stem: [Float],
         sampleRate: Int = 44_100,
@@ -143,16 +140,17 @@ public enum StemTranscriber {
                 if e > s {
                     let piece = Array(stem[s..<e])
                     let model = try await ensureModel()
-                    // Using transcribe() (batched decoderPrefill), NOT transcribeBackgroundSafe()/
-                    // transcribeWithoutMLX() — that path hit its own on-device SIGSEGV (EXC_BAD_ACCESS
-                    // in CoreMLTextDecoder.audioEmbeddingFromMultiArray, an out-of-bounds read, distinct
-                    // from the MLX bfloat16 crash Qwen3ASRModel had). transcribe() uses a completely
-                    // different, well-exercised batched-prefill code path that doesn't call that
-                    // function at all. It does touch a little MLX (audioEmbeds.asArray(Float.self)) for
-                    // data transfer, not autoregressive generation — `withError` covers a
-                    // handler-reported failure there; it can't cover a raw memory fault (nothing can).
-                    // Protocol method: catches internally, returns "[CoreML error: ...]" on failure —
-                    // the anchor-and-fill design tolerates an empty/unmatched piece either way.
+                    // Using transcribe() (batched decoderPrefill), NOT
+                    // transcribeBackgroundSafe()/transcribeWithoutMLX() — that path hits its own
+                    // on-device SIGSEGV (EXC_BAD_ACCESS in
+                    // CoreMLTextDecoder.audioEmbeddingFromMultiArray, an out-of-bounds read).
+                    // transcribe() uses a different, well-exercised batched-prefill code path that
+                    // doesn't call that function at all. It does touch a little MLX
+                    // (audioEmbeds.asArray(Float.self)) for data transfer, not autoregressive
+                    // generation — `withError` covers a handler-reported failure there; it can't
+                    // cover a raw memory fault (nothing can). Protocol method: catches internally,
+                    // returns "[CoreML error: ...]" on failure; an empty or failed piece just
+                    // contributes no text.
                     var text = ((try? withError { model.transcribe(audio: piece, sampleRate: sampleRate, language: language) }) ?? "[CoreML error: withError caught an MLX failure]")
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                     if text.hasPrefix("[CoreML error:") {

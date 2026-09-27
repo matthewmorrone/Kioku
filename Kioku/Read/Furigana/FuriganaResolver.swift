@@ -133,11 +133,10 @@ nonisolated struct FuriganaResolver {
             : ""
         var trimmedReading = reading
 
-        // If the surface has kana affixes around the kanji run, the reading must
-        // phonetically match them — otherwise the reading belongs to a different
-        // lemma (e.g. "わたくし" for "私たち" — no "たち"-like suffix in the reading,
-        // so it must not be attached to 私). The earlier shortcut treating a
-        // single-run surface as a free pass was the bug.
+        // If the surface has kana affixes around the kanji run, the reading must phonetically match
+        // them — otherwise the reading belongs to a different lemma (e.g. "わたくし" for "私たち" — no
+        // "たち"-like suffix in the reading, so it must not be attached to 私). A single-run surface
+        // gets no free pass.
         if !prefixSurface.isEmpty {
             if FuriganaResolver.hasPhoneticPrefix(trimmedReading, matching: prefixSurface) {
                 trimmedReading.removeFirst(prefixSurface.count)

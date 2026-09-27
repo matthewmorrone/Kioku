@@ -68,7 +68,7 @@ final class KiokuTextLayoutEngine {
     // UTF-16 segment NSRanges, sorted by location. Used to forbid line breaks inside the
     // interior of any segment so multi-character compounds (e.g. 抜け殻) wrap to the next line
     // as an atomic unit instead of being bisected mid-character. Empty = no constraint
-    // (legacy behavior; CT picks any character boundary). The TK2 path enforces the same
+    // (CT picks any character boundary). The TK2 path enforces the same
     // invariant via NSTextLayoutManager's `shouldBreakLineBefore:hyphenating:` delegate;
     // CT has no analogous hook, so the engine post-processes CT's break suggestions instead.
     private var segmentNSRanges: [NSRange] = []
@@ -86,19 +86,18 @@ final class KiokuTextLayoutEngine {
     // True iff the engine is currently using the segment-packed layout. False = classic
     // CT-typesetter layout. Toggled by `setSegmentPackingEnabled`.
     private(set) var isSegmentPackingEnabled: Bool = false
-    // Mirrors the renderer's wrapping toggle into the segment-packed code path. Classic CT
-    // layout already honors `paragraph.lineBreakMode = .byClipping`; the packer doesn't read
-    // paragraph attributes, so we plumb the flag through explicitly. Default true preserves
-    // legacy behavior for hosts that don't override it.
+    // Mirrors the renderer's wrapping toggle into the segment-packed code path. Classic CT layout
+    // already honors `paragraph.lineBreakMode = .byClipping`; the packer doesn't read paragraph
+    // attributes, so we plumb the flag through explicitly. Default true: wrap unless a host opts
+    // out.
     //
     // Rebuilds on change like every other layout-affecting input (setWidthConstraint,
-    // setLineSpacing, setSegmentPacking). Without this self-triggered reflow, a wrapping-only
-    // change reached the engine via the renderer AFTER setAttributedString had already rebuilt
-    // and was ignored by setSegmentPacking's change check — so the packed layout lagged one
-    // update behind the flag, showing the stale value at init and needing two toggles to
-    // converge. The didSet guards on change to avoid relayout thrash on the renderer's
-    // every-pass re-assignment. Initializer-default assignment does not fire didSet, so init()'s
-    // own rebuildLayout() remains the single startup reflow.
+    // setLineSpacing, setSegmentPacking). The renderer sets this AFTER setAttributedString has
+    // already rebuilt, and setSegmentPacking's change check ignores it, so without this
+    // self-triggered reflow the packed layout would lag one update behind the flag (stale at init,
+    // two toggles to converge). The didSet guards on change to avoid relayout thrash on the
+    // renderer's every-pass re-assignment. Initializer-default assignment does not fire didSet, so
+    // init()'s own rebuildLayout() remains the single startup reflow.
     var isLineWrappingEnabled: Bool = true {
         didSet {
             guard oldValue != isLineWrappingEnabled else { return }
@@ -127,13 +126,11 @@ final class KiokuTextLayoutEngine {
         rebuildLayout()
     }
 
-    // Updates the source string and rebuilds layout unconditionally. We deliberately do NOT
-    // short-circuit on `attributedString.isEqual(to: newValue)` here — that optimization
-    // caused a regression where post-split renders kept stale attribute state (segment
-    // colors didn't refresh until the renderer was force-remounted via a view/edit toggle).
-    // NSAttributedString.isEqual on dynamic UIColor instances or freshly-constructed
-    // paragraph styles is fragile, and a missed rebuild = silent staleness. CTTypesetter is
-    // fast enough that always rebuilding is the safer default; the perf hit is in the noise.
+    // Updates the source string and rebuilds layout unconditionally. Do NOT short-circuit on
+    // `attributedString.isEqual(to: newValue)`: NSAttributedString.isEqual on dynamic UIColor
+    // instances or freshly-constructed paragraph styles is fragile, and a missed rebuild is silent
+    // staleness (e.g. segment colors not refreshing after a split until the renderer is remounted).
+    // CTTypesetter is fast enough that always rebuilding is the safer default.
     func setAttributedString(_ newValue: NSAttributedString) {
         attributedString = newValue
         rebuildLayout()
@@ -657,12 +654,12 @@ final class KiokuTextLayoutEngine {
 
     // Walks a CT line-break suggestion back to the nearest segment boundary if the suggestion
     // would land inside a segment's interior. Returns the original suggestion when:
-    //   - no segment ranges are configured (legacy mode)
+    //   - no segment ranges are configured
     //   - the suggested break offset is at a segment boundary (or end-of-text)
     //   - the segment containing the break starts AT or BEFORE this line's startIndex (the
     //     segment is wider than the available line; we have to break inside it)
     //
-    // The post-process pattern mirrors how TK2's `shouldBreakLineBefore:` worked: CT proposes
+    // The post-process pattern mirrors TK2's `shouldBreakLineBefore:`: CT proposes
     // a break, and the engine vetoes by shortening to the previous segment start. We don't
     // need to defend against pathological inputs (zero-length segments, NSNotFound, overlap)
     // because `setSegmentNSRanges` filters and sorts at write time.

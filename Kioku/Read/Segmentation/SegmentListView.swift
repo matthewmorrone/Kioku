@@ -82,18 +82,16 @@ struct SegmentListView: View {
     }
     let commonParticles = KanaData.particleSet
 
-    // Row identity is unconditionally the dictionary lemma when one resolves,
-    // otherwise the raw edge surface. Used for display, save/star lookup,
-    // tap-to-detail, dedup, and Add All. Previously this was switchable via a
-    // `lemmas` toggle in the bottom bar; the toggle was deleted because the
-    // single-tap save path was already lemma-only (so the toggle's "surface
-    // mode" caused divergent semantics between Add All and tap-to-save). The
-    // raw conjugation the user clicked is preserved in `encounteredSurfaces`.
+    // Row identity is unconditionally the dictionary lemma when one resolves, otherwise the raw
+    // edge surface. Used for display, save/star lookup, tap-to-detail, dedup, and Add All — one
+    // identity so Add All and tap-to-save always agree. The raw conjugation the user clicked is
+    // preserved in `encounteredSurfaces`.
+    //
     // Extract-words view mode: the in-order, per-occurrence segment list ("Lines"), or the same
     // rows presented as a multi-select chip cloud ("Vocab"). Both modes read `displayRows` —
-    // there's no separate extraction path for Vocab — so the duplicates/particles toggles and
-    // the lemma-vs-surface identity resolution behave identically in both; Vocab is just a
-    // different way of looking at the same filtered list, with multi-select instead of per-row tap.
+    // there's no separate extraction path for Vocab — so the duplicates/particles toggles and the
+    // lemma-vs-surface identity resolution behave identically in both; Vocab is just a different
+    // way of looking at the same filtered list, with multi-select instead of per-row tap.
     enum ExtractMode: String, CaseIterable, Identifiable {
         case lines = "Lines", vocab = "Vocab", coverage = "Coverage"
         var id: String { rawValue }
@@ -102,12 +100,11 @@ struct SegmentListView: View {
     // Identities the user has explicitly flipped away from their DEFAULT checked state (see
     // vocabRowCountsAsSaved) — starts empty every time the row set changes (resetVocabSelection),
     // so opening/editing Vocab mode never shows a pending change until you actually touch
-    // something. A row's checked state is `vocabRowCountsAsSaved(identity) != flipped` (XOR).
-    // Keyed by normalized identity rather than sourceIndex so that with duplicates shown, flipping
-    // any one occurrence of a word flips every chip sharing that identity — previously this was
-    // keyed by sourceIndex, so two chips for the same word (e.g. 食べる appearing twice) tracked
-    // independent flip state even though saveSelectedVocab always resolved and committed by identity.
-    // Not private: read by `body` below and by the Vocab-mode logic in SegmentListView+Vocab.swift.
+    // something. A row's checked state is `vocabRowCountsAsSaved(identity) != flipped` (XOR). Keyed
+    // by normalized identity, not sourceIndex, so that with duplicates shown, flipping any one
+    // occurrence of a word flips every chip sharing that identity — matching saveSelectedVocab,
+    // which resolves and commits by identity. Not private: read by `body` below (to gate the
+    // Save/Remove button) and by the Vocab-mode logic in SegmentListView+Vocab.swift.
     @State var selectedVocabIdentities: Set<String> = []
     // The selection state a paint-drag applies to every chip it crosses, fixed to the opposite
     // of whatever the first-touched chip's state was — nil between drags. This is what lets one
@@ -145,14 +142,14 @@ struct SegmentListView: View {
         }
     }
 
-    // Extracted out of the row's label closure — inlining this branching there previously blew
-    // up the type-checker (SegmentListView's row already juggles a dozen lets per row) into a
-    // multi-minute build timeout. A separate function with explicit per-statement types keeps
-    // each call site a single expression for the checker to solve.
-    // The checkmark/questionmark glyph is a Learned/Not-Learned mark on a SAVED word — gated on
-    // isSaved so unsaving a learned/not-learned word visibly reverts to a hollow star instead
-    // of leaving the same glyph on screen (ReviewStore's mark is keyed by canonicalEntryID and
-    // outlives the SavedWord card, so learnedState alone can't tell "still saved" from "not").
+    // Extracted out of the row's label closure: inlined there, this branching pushes the
+    // type-checker (SegmentListView's row already juggles a dozen lets per row) into a multi-minute
+    // build timeout. A separate function with explicit per-statement types keeps each call site a
+    // single expression for the checker to solve. The checkmark/questionmark glyph is a
+    // Learned/Not-Learned mark on a SAVED word — gated on isSaved so unsaving a learned/not-learned
+    // word visibly reverts to a hollow star instead of leaving the same glyph on screen
+    // (ReviewStore's mark is keyed by canonicalEntryID and outlives the SavedWord card, so
+    // learnedState alone can't tell "still saved" from "not").
     private func starIcon(isSaved: Bool, learnedState: LearnedState) -> some View {
         let icon: String
         if isSaved {

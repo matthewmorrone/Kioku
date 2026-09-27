@@ -87,11 +87,10 @@ struct NotesView: View {
                 .onMove(perform: store.moveNotes)
                 .onDelete { offsets in
                     // Route swipe-to-delete through the same confirmation so the associated-word
-                    // offer applies here too (it previously deleted immediately). Deferred
-                    // assignment matches the context-menu path so swipe dismissal doesn't
-                    // collide with the dialog presentation either.
-                    // Offsets index the *displayed* list, which may be sorted — resolve through it
-                    // rather than through store.notes so a swipe never deletes the wrong note.
+                    // offer applies here too. Deferred assignment matches the context-menu path so
+                    // swipe dismissal doesn't collide with the dialog presentation either. Offsets
+                    // index the *displayed* list, which may be sorted — resolve through it rather
+                    // than through store.notes so a swipe never deletes the wrong note.
                     let displayed = displayedNotes
                     let notes = offsets.compactMap { displayed.indices.contains($0) ? displayed[$0] : nil }
                     queuePendingDeletion(PendingNoteDeletion(
@@ -115,14 +114,12 @@ struct NotesView: View {
                     commitRename()
                 }
             }
-            // Single source-of-truth confirmation for both single-note and multi-note deletes.
-            // Uses .alert (not .confirmationDialog) because on iOS 27 the per-row
-            // confirmationDialog pattern dismissed itself one frame after presenting, and a
-            // List-level confirmationDialog took a stale popover anchor (the original bug
-            // commit 5ee33b4 was trying to dodge). Alerts are centered modal cards with no
-            // anchor at all, so neither failure mode applies — at the cost of the
-            // action-sheet look. `presenting:` keeps the title, buttons, and action bound to
-            // the pending deletion so the content can't go stale either.
+            // Single source-of-truth confirmation for both single-note and multi-note deletes. An
+            // .alert, not a .confirmationDialog: a dialog needs a popover anchor, and a per-row or
+            // List-level anchor can go stale as rows change; an alert is a centered modal card with
+            // no anchor at all, at the cost of the action-sheet look. `presenting:` keeps the
+            // title, buttons, and action bound to the pending deletion so the content can't go
+            // stale either.
             .alert(
                 deleteDialogTitle,
                 isPresented: deletePresented,

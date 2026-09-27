@@ -70,12 +70,11 @@ extension SegmentLookupSheet {
             self.sheetLexiconDebugProvider = sheetLexiconDebugProvider
             self.sheetFrequencyProvider = sheetFrequencyProvider
 
-            // The sheet's height is fitted to its content (SurfaceSheetViewController.contentDetent()),
-            // so it's built and presented AFTER the dictionary lookup resolves, against final content —
-            // not presented empty/fitted-small and resized once data streams in, which is exactly the
-            // "buttons jump under your finger" failure mode a content-fitted detent needs to avoid. That
-            // trades the previous instant-open feel for a beat of latency here, typically well under the
-            // 3–7s the old fully-synchronous lookup path used to take.
+            // The sheet's height is fitted to its content
+            // (SurfaceSheetViewController.contentDetent()), so it's built and presented AFTER the
+            // dictionary lookup resolves, against final content — not presented empty/fitted-small
+            // and resized once data streams in, which would jump the buttons under the user's
+            // finger. The cost is a beat of latency before the sheet opens.
             self.refreshSheetSupplementalDataAsync { [weak self] in
                 guard let self, let presenter = self.topPresentingController() else { return }
 
@@ -149,6 +148,7 @@ extension SegmentLookupSheet {
                     }
 
                     TapDiagnostics.mark("in-place update closure entered")
+                    sheetVC.isAwaitingSwitchedContent = true
                     // Header text swaps synchronously so the user sees instant visual feedback
                     // (the tapped surface in the sheet header) while the dictionary lookups run.
                     sheetVC.updateCurrentSurface((
@@ -168,6 +168,7 @@ extension SegmentLookupSheet {
                         sheetVC.updateMiddleContent()
                         sheetVC.updateSaveButtonAppearance()
                         sheetVC.updateOpenDetailButtonAppearance()
+                        sheetVC.reportAfterSwitchedContent()
                         TapDiagnostics.mark("sheet UI updates applied")
                         TapDiagnostics.endTap("in-place update fully settled")
                     }

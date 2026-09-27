@@ -3,41 +3,23 @@ import XCTest
 
 // Pins docs/INVARIANTS.md Alignment #9 — alignment quality against ground truth.
 //
-// Slow tests: each fixture runs the full on-device aligner on a real audio file, then
-// compares the output cues to a stable-ts large-v3 oracle.
+// Slow tests: each fixture runs the full on-device aligner on a real audio file, then compares the
+// output cues to the fixture's reference SRT. References are the Whisper + Japanese wav2vec2 + MMS
+// consensus; lines the voters dispute carry a 0–0 span and aren't graded.
 //
-// Gating strategy: each test self-skips when its fixture directory isn't in the
-// test bundle. Adding a fixture (running scripts/generate-alignment-oracle.py
-// into KiokuTests/Fixtures/alignment/<name>/) makes the corresponding test
-// active. To skip quality tests during a fast iteration cycle, pass
-// `-skip-testing:KiokuTests/AlignmentQualityTests` to xcodebuild. We previously
-// tried both KIOKU_RUN_QUALITY_TESTS and TEST_RUNNER_KIOKU_RUN_QUALITY_TESTS
-// env vars; neither propagates reliably from xcodebuild into the test process
-// running on the iOS simulator, so fixture-presence is the trigger instead.
+// Run on the device: CI excludes this class with `-skip-testing:KiokuTests/AlignmentQualityTests`
+// (see .github/workflows/tests.yml). Each test self-skips when its fixture isn't in the test
+// bundle.
 //
-// To run (default — skips if no fixtures, runs if any are present):
-//     xcodebuild test \\
-//         -project Kioku.xcodeproj -scheme Kioku \\
-//         -destination 'platform=iOS Simulator,id=...' \\
-//         -only-testing:KiokuTests/AlignmentQualityTests \\
-//         -parallel-testing-enabled NO
-//
-// To add a fixture:
-//     1. Run /Users/matthewmorrone/Projects/alignment/align.py against a directory
-//        containing your song's mp3 + matching .txt (see that repo's README) with
-//        STABLE_TS_MODEL=large-v3 and STABLE_TS_VAD=0 — produces .srt + .TextGrid
-//        + .json next to the audio.
-//     2. Drop the audio + note.txt + the produced ground-truth.srt + tolerance.json
-//        into KiokuTests/Fixtures/alignment/<fixture-name>/ (rename .srt to
-//        ground-truth.srt; tolerance.json is hand-authored).
-//     3. Add a `testQuality_<FixtureName>()` function below that calls
-//        runQualityCheck(fixtureName: "<fixture-name>")
-//
-// The fixture dir must contain:
-//     - audio.mp3 (or .m4a/.wav)        the source audio
-//     - note.txt                         the lyric script (one line per expected cue)
-//     - ground-truth.srt                 the oracle (from align.py, large-v3 + VAD off)
-//     - tolerance.json                   thresholds (hand-authored per fixture)
+// Fixtures live flat in KiokuTests/Fixtures/alignment/ (a synchronized group, so new files are
+// bundled on the next build), named `<fixture>.<part>.<ext>`:
+//   - <fixture>.audio.mp3 (or .m4a/.wav)   the source audio
+//   - <fixture>.note.txt                   the lyric script (one line per expected cue)
+//   - <fixture>.ground-truth.srt           the reference timings
+//   - <fixture>.tolerance.json             thresholds
+//   - <fixture>.words.json                 optional word-level reference, one array per line
+// ~/Projects/alignment/install_consensus_fixtures.py installs the consensus SRTs (and creates
+// fixtures for new songs). testQuality_AllFixtures picks up every `*.note.txt` automatically.
 @MainActor
 final class AlignmentQualityTests: XCTestCase {
 
@@ -55,11 +37,11 @@ final class AlignmentQualityTests: XCTestCase {
         try await runQualityCheck(fixtureName: "tsukiiro-chainon")
     }
 
-    // Every fixture in the bundle, one after another, then a summary table. This is the
-    // benchmark to grade alignment changes on: one song is a single data point, and the
-    // stable-ts oracles are themselves only good to a few hundred ms, so what matters is the
-    // aggregate and whether a change moves many songs the same way. Slow: a song whose vocal
-    // stem isn't cached yet pays the isolation (~1 min) once.
+    // Every fixture in the bundle, one after another, then a summary table. This is the benchmark
+    // to grade alignment changes on: one song is a single data point, and the references are
+    // themselves only good to a few hundred ms, so what matters is the aggregate and whether a
+    // change moves many songs the same way. Slow: a song whose vocal stem isn't cached yet pays the
+    // isolation (~1 min) once.
     func testQuality_AllFixtures() async throws {
         let bundle = Bundle(for: type(of: self))
         let names = (bundle.urls(forResourcesWithExtension: "txt", subdirectory: nil) ?? [])
@@ -140,10 +122,9 @@ final class AlignmentQualityTests: XCTestCase {
         guard let noteURL = bundle.url(forResource: "\(fixtureName).note", withExtension: "txt") else {
             throw XCTSkip("""
                 Fixture \(fixtureName) not in test bundle. To enable:
-                  1. Run scripts/generate-alignment-oracle.py with this fixture name
-                  2. The script writes \(fixtureName).{audio,note,ground-truth,tolerance}.* files
-                     into KiokuTests/Fixtures/alignment/ — the synchronized group
-                     auto-includes them in the next build
+                  Add \(fixtureName).{audio,note,ground-truth,tolerance}.* files to
+                  KiokuTests/Fixtures/alignment/ (see ~/Projects/alignment/install_consensus_fixtures.py);
+                  the synchronized group includes them in the next build.
                 """)
         }
         let oracleURL = try requireResource(bundle: bundle, basename: "\(fixtureName).ground-truth", extensions: ["srt"])

@@ -1,17 +1,19 @@
 import Foundation
 
-// Transition costs for the path search: how much more or less likely word class B is directly
-// after word class A than the two meeting by chance. Node costs (SegmenterScoring.edgeCost) charge
-// −ln P(word) for each word alone; this adds what context says, which is what separates two
-// parses that are both made of plausible words (電|気をつけて vs 電気|を|つけて).
+// Transition costs for the path search: how much more or less likely word class B is directly after
+// word class A than the two meeting by chance. Node costs (SegmenterScoring.edgeCost) charge −ln
+// P(word) for each word alone; this adds what context says, which is what separates two parses that
+// are both made of plausible words (電|気をつけて vs 電気|を|つけて).
 //
 // The numbers live in segmenter-transitions.tsv beside this file: one "A <tab> B <tab> PMI" row per
 // class pair the training data has an opinion about, PMI = ln[ P(A,B) / (P(A)·P(B)) ] in nats,
 // counted from Tatoeba sentences tokenized at JMdict granularity and classed by TransitionClass.
 // Regenerate it with scripts/calibration/fit_transition_costs.py; never edit it by hand.
 //
-// Do NOT substitute IPADic's connection matrix. That was tried: it is trained for IPADic's lexicon
-// and short-unit granularity, and it over-splits JMdict units.
+// This table replaced IPADic's connection matrix (commit 8555cb1), which is calibrated for IPADic's
+// lexicon and short-unit granularity, not JMdict's; the swap raised held-out exact match on all
+// three eval sets (held2k 87.22 → 88.53, fresh5k 89.36 → 90.85, kana2k 81.61 → 85.52). Don't go
+// back to it.
 nonisolated final class SegmenterTransitionTable: Sendable {
     // A class as the table indexes it: the full class and the coarser one to back off to.
     // -1 means the table has never seen that name.

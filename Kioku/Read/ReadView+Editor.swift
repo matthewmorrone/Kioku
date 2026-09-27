@@ -134,11 +134,10 @@ extension ReadView {
         // Global by design (see computeSavedSegmentLocations): a word's status is the same
         // everywhere it appears, so the signature doesn't key on activeNoteID or any note
         // attribution — only on segmentation, the saved-word set, and the visibility toggles.
-        // dictionaryStore/lexicon readiness isn't part of the signature — the guard above
-        // already means we never reach here until both are ready, so recomputing on some
-        // OTHER change (e.g. wordsStore) can't regress back to a conjugation-blind result the
-        // way the older FavoritedGlowMemo bug did (see docs/todo.md, "glow conjugated favorites
-        // by not caching nil lemmas").
+        // dictionaryStore/lexicon readiness isn't part of the signature — the guard above already
+        // means we never reach here until both are ready, so recomputing on some OTHER change (e.g.
+        // wordsStore) can't produce a conjugation-blind result from lemmas resolved before the
+        // deinflection resources loaded.
         var hasher = Hasher()
         hasher.combine(document.segmentRanges.count)
         if let first = document.segmentRanges.first { hasher.combine(NSRange(first, in: document.text).location) }

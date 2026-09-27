@@ -1,16 +1,16 @@
 import Foundation
 
-// Turns subtitle text into the set of vocabulary an episode requires: segment every line, lemmatize,
-// drop function words, dedupe by dictionary form, and resolve each form to a canonical dictionary
-// entry so it can be saved as a SavedWord. This is the heart of the "subtitle → vocab list" feature
-// (Feature A) and is deliberately pure — it takes a segmenter and dictionary store as inputs and
+// Turns subtitle text into the set of vocabulary an episode requires: segment every line,
+// lemmatize, drop function words, dedupe by dictionary form, and resolve each form to a canonical
+// dictionary entry so it can be saved as a SavedWord. This is the heart of the "subtitle → vocab
+// list" import and is deliberately pure — it takes a segmenter and dictionary store as inputs and
 // returns plain values, so it can run on a detached task off the main actor and be unit-tested
 // without any UI or store wiring.
 //
-// Behavior (per the agreed design): EVERY unique dictionary-resolvable content lemma is kept — no
-// frequency filter, no known/unknown subtraction. The only exclusions are (1) tokens that don't
-// resolve through the dictionary (punctuation, character names, novel proper nouns — they have no
-// entry to attach to) and (2) grammatical particles, removed via KanaData.particleSet.
+// EVERY unique dictionary-resolvable content lemma is kept — no frequency filter, no known/unknown
+// subtraction. The only exclusions are (1) tokens that don't resolve through the dictionary
+// (punctuation, character names, novel proper nouns — they have no entry to attach to) and (2)
+// grammatical particles, removed via KanaData.particleSet.
 nonisolated enum SubtitleVocabExtractor {
     // One unique vocabulary item: its dictionary (lemma) form, the resolved canonical entry id, and
     // every surface form actually seen in the episode (食べた, 食べる, …) so the saved card stars on

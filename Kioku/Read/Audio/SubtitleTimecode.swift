@@ -1,11 +1,9 @@
 import Foundation
 
-// Shared millisecond ↔ timecode conversion for subtitle parsing/formatting. Both SRT
-// ("HH:MM:SS,mmm") and ASS ("H:MM:SS.cc") timestamps decompose the same way — only the
-// fractional separator (comma vs period) and width (milli- vs centi-second) differ, and
-// padding the fraction to three digits handles both. Before this existed the same
-// h*3_600_000 + m*60_000 + s*1_000 + frac arithmetic was typed out in SubtitleParser
-// (format + parse) and ASSParser (parse).
+// Shared millisecond ↔ timecode conversion for subtitle parsing/formatting, used by SubtitleParser
+// and ASSParser. Both SRT ("HH:MM:SS,mmm") and ASS ("H:MM:SS.cc") timestamps decompose the same way
+// — only the fractional separator (comma vs period) and width (milli- vs centi-second) differ, and
+// padding the fraction to three digits handles both.
 nonisolated enum SubtitleTimecode {
     // Parses "H:MM:SS.fff" or "HH:MM:SS,fff" to milliseconds. Accepts comma or period as the
     // fractional separator and a centisecond (2-digit) or millisecond (3-digit) fraction.

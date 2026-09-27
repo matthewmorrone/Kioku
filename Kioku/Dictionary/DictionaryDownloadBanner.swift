@@ -1,14 +1,12 @@
 // DictionaryDownloadBanner.swift
 //
 // Floating bottom status banner shown while dictionary.sqlite is downloading (see
-// DictionaryDownloadManager). Non-blocking by design: AGENTS.md's Architecture Non-Goals
-// forbids a "mandatory network dependency", and its Failure Boundaries require dictionary
-// lookup failure to not block editing and missing optional datasets to degrade gracefully.
-// A full-screen gate (this file's earlier design) violated both — the app was completely
-// unusable offline on a fresh install. dictionaryStore staying nil already degrades every
-// dictionary-dependent view gracefully (empty states, nil-tolerant lookups), exactly as it
-// did before this file existed; this banner only adds visibility into why, without blocking
-// anything underneath it.
+// DictionaryDownloadManager). Non-blocking by design: AGENTS.md's Architecture Non-Goals forbids a
+// "mandatory network dependency", and its Failure Boundaries require dictionary lookup failure to
+// not block editing and missing optional datasets to degrade gracefully, so a full-screen gate
+// would break both and leave the app unusable offline on a fresh install. dictionaryStore staying
+// nil already degrades every dictionary-dependent view gracefully (empty states, nil-tolerant
+// lookups); this banner only adds visibility into why, without blocking anything underneath it.
 
 import SwiftUI
 

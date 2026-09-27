@@ -263,14 +263,13 @@ extension ReadView {
         .accessibilityHint(isBreakdownConfigured ? "" : "Set up an AI provider in Settings to use this")
     }
 
-    // Shared visual treatment for the three title-row action buttons. Sized to match the
-    // bottom toolbar's furigana / reset / edit buttons (36×36 with a 16pt icon) so the
-    // two rows read as visual peers — same hit area, same inter-button gap when each row
-    // is laid out with default `HStack` spacing. Previously the visible pill was 30×30
-    // wrapped in a 44×44 hit frame, which made HStack measure ~14pt of invisible padding
-    // per button and pushed the top row's perceived spacing well past the bottom row's.
-    // Not private: reused by ReadView+MiniPlayer.swift's inline play/pause button so it matches
-    // the other title-row icons exactly.
+    // Shared visual treatment for the three title-row action buttons. Sized to match the bottom
+    // toolbar's furigana / reset / edit buttons (36×36 with a 16pt icon) so the two rows read as
+    // visual peers — same hit area, same inter-button gap when each row is laid out with default
+    // `HStack` spacing. A smaller visible pill inside a larger hit frame would make HStack measure
+    // invisible padding per button and space this row wider than the bottom one. Not private:
+    // reused by ReadView+MiniPlayer.swift's inline play/pause button so it matches the other
+    // title-row icons exactly.
     func titleActionLabel(systemImage: String, foreground: Color) -> some View {
         Image(systemName: systemImage)
             .scaledFont(size: 16, weight: .semibold)

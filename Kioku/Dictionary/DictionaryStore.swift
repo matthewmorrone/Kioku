@@ -53,11 +53,10 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
     var jlptLevelMap: [Int64: Int] = [:]
 
     // Resolves and opens the downloaded dictionary database from Application Support (see
-    // DictionaryDownloadManager) — dictionary.sqlite is no longer bundled inside Kioku.app.
-    // Throws .databaseNotFound if the user hasn't downloaded it yet; every call site already
-    // treats DictionaryStore as optional (see WordsView.swift's `if dictionaryStore == nil`
-    // empty state and the `try?`/`dictionaryStore?.` call sites throughout the app), so this
-    // throw surfaces exactly the way a missing bundle resource used to.
+    // DictionaryDownloadManager). Throws .databaseNotFound if the user hasn't downloaded it yet;
+    // every call site already treats DictionaryStore as optional (see WordsView.swift's `if
+    // dictionaryStore == nil` empty state and the `try?`/`dictionaryStore?.` call sites throughout
+    // the app).
     public convenience init() throws {
         guard DictionaryDownloadManager.isInstalled else {
             throw DictionarySQLiteError.databaseNotFound(name: "dictionary.sqlite")

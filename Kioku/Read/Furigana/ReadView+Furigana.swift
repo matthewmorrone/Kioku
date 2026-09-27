@@ -2,13 +2,13 @@ import SwiftUI
 import UIKit
 
 // Furigana orchestration on ReadView — schedules computation, applies recompute results to
-// in-memory state, and persists segments. The resolution algorithm itself (edge → reading)
-// now lives in `FuriganaResolver`; this extension keeps:
+// in-memory state, and persists segments. The resolution algorithm itself (edge → reading) lives in
+// `FuriganaResolver`; this extension keeps:
 //   • the throttle / confirm / cancel pipeline around generation,
 //   • the in-memory map merge passes (apply-overlap backfill and compound synthesis),
-//   • thin instance-method wrappers so `ReadView+LLMCorrection` and `ReadViewFuriganaTests`
-//     can keep calling `kanjiRuns(in:)` / `firstKanjiRunReading` / `buildFuriganaBySegmentLocation`
-//     directly on a ReadView.
+//   • thin instance-method wrappers so `ReadView+LLMCorrection` and `ReadViewFuriganaTests` can call
+//     `kanjiRuns(in:)` / `firstKanjiRunReading` / `buildFuriganaBySegmentLocation` directly on a
+//     ReadView.
 extension ReadView {
     // Public entry point: queues a furigana-generation request for user confirmation. The
     // actual work happens in performScheduleFuriganaGeneration once the user taps Confirm.

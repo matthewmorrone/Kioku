@@ -172,16 +172,22 @@ extension ReadView {
             sourceView.contentSize.height - sourceView.bounds.height + naturalBottomInset
         )
 
-        // Once the sheet has measured itself, keep the word above its real top: the part of its
+        // Once the sheet is on screen, keep the word above its real top: the part of its
         // height that overlaps this view (the view may end above the screen bottom). Before that,
         // guess — the sheet is content-sized, so the guess is often taller than the sheet.
-        let coveredHeight: CGFloat? = SegmentLookupSheet.shared.presentedSheetHeight.flatMap { sheetHeight in
+        let knownSheetHeight = SegmentLookupSheet.shared.presentedSheetHeight
+            ?? SegmentLookupSheet.shared.lastPresentedSheetHeight
+        let coveredHeight: CGFloat? = knownSheetHeight.flatMap { sheetHeight in
             guard let window = sourceView.window, let container = sourceView.superview else { return nil }
             let viewBottomInWindow = container.convert(sourceView.frame, to: window).maxY
             return max(0, sheetHeight - (window.bounds.maxY - viewBottomInWindow))
         }
+        // A re-plan starts from no further down than the note's natural end: an offset past it only
+        // exists because a previous sheet added room, and planning from there would keep that room
+        // for a word that doesn't need it (a word higher up, tapped while the sheet is open).
+        let planningStartOffsetY = replanningFromStart ? min(startOffsetY, maxContentOffsetY) : startOffsetY
         let context = ReadViewSheetVisibilityScrollContext(
-            currentOffsetY: startOffsetY,
+            currentOffsetY: planningStartOffsetY,
             minOffsetY: minOffsetY,
             maxOffsetY: maxContentOffsetY,
             viewportHeight: sourceView.bounds.height,
@@ -201,15 +207,30 @@ extension ReadView {
             bottomPadding: 16
         )
 
-        // Re-planning with the real height: go to wherever the plan from the start offset lands —
-        // back to the start itself when the word needs no room there — dropping any overscroll the
-        // guessed first scroll injected beyond what that target needs.
+        // Planning with the sheet's real height: go to wherever the plan from the start offset lands —
+        // back to the start itself when the word needs no room there. The extra bottom inset is at
+        // least the sheet's overlap with this view, so every line of the note can still be scrolled
+        // up above the sheet while it's open (not just as far as the selected word).
         // A shrinking inset is trimmed only after the scroll lands: trimming first would put the
         // current offset past the new maximum and snap the view.
         if replanningFromStart {
-            let adjustment = ReadViewSheetVisibilityScrollPlanner.adjustment(for: context)
-            let targetOffsetY = adjustment?.targetOffsetY ?? startOffsetY
-            let targetInset = adjustment?.temporaryBottomInset ?? 0
+            var adjustment = ReadViewSheetVisibilityScrollPlanner.adjustment(for: context)
+            // When the scroll has to move anyway and the rest of the note below the word fits above
+            // the sheet without pushing the word past the top, go far enough to show it all instead
+            // of stopping with the last lines under the sheet.
+            if let planned = adjustment, let coveredHeight {
+                let showEndOffsetY = maxContentOffsetY + coveredHeight
+                let wordAtTopOffsetY = tappedSegmentRect.minY
+                    - max(context.topPadding, context.adjustedTopInset + context.topPadding)
+                if showEndOffsetY > planned.targetOffsetY, showEndOffsetY <= wordAtTopOffsetY {
+                    adjustment = ReadViewSheetVisibilityScrollAdjustment(
+                        targetOffsetY: showEndOffsetY,
+                        temporaryBottomInset: max(0, showEndOffsetY - maxContentOffsetY)
+                    )
+                }
+            }
+            let targetOffsetY = adjustment?.targetOffsetY ?? planningStartOffsetY
+            let targetInset = max(adjustment?.temporaryBottomInset ?? 0, coveredHeight ?? 0)
             let insetGrows = targetInset > editModeScroll.appliedSheetBottomInset
             if insetGrows {
                 applyAdditionalBottomInset(targetInset, on: sourceView, animated: animated)

@@ -2,11 +2,11 @@ import XCTest
 @testable import Kioku
 
 // Characterizes NotesAudioStore's file-backed persistence for audio attachments and their cue
-// sidecar (cues.json — the single source of truth; checkpoints ride inline on each cue). The .srt
-// sidecar was removed: SRT is an export-only projection now, never persisted/read back. Production
-// reaches the store via the .shared singleton rooted at Documents/audio; these tests construct
-// instances against a per-case temp directory so they never touch real user data. Pattern mirrors
-// NotesStoreTests (per-case temp root in setUp / tearDown, no UserDefaults state involved).
+// sidecar (cues.json — the single source of truth; checkpoints ride inline on each cue). SRT is an
+// export-only projection, never persisted or read back. Production reaches the store via the
+// .shared singleton rooted at Documents/audio; these tests construct instances against a per-case
+// temp directory so they never touch real user data. Pattern mirrors NotesStoreTests (per-case temp
+// root in setUp / tearDown, no UserDefaults state involved).
 @MainActor
 final class NotesAudioStoreTests: XCTestCase {
 

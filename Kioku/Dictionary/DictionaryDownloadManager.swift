@@ -1,10 +1,9 @@
 // DictionaryDownloadManager.swift
 //
-// dictionary.sqlite (~350MB) is no longer bundled inside Kioku.app (see the Xcode target's
-// Copy Bundle Resources phase) — it's downloaded once from a pinned GitHub Release asset into
-// Application Support on first launch. Application Support, not Caches: a mid-download purge
-// under storage pressure would strand the app with a half-written file and no dictionary — the
-// same failure mode ModelStorage's header documents for the speech models
+// dictionary.sqlite (~350MB) is not bundled inside Kioku.app — it's downloaded once from a pinned
+// GitHub Release asset into Application Support on first launch. Application Support, not Caches: a
+// mid-download purge under storage pressure would strand the app with a half-written file and no
+// dictionary — the same failure mode ModelStorage's header documents for the speech models
 // (SwiftWhisperAlign/Sources/SwiftWhisperAlign/ModelStorage.swift).
 //
 // Progress comes from a delegate on a session this file owns. Do NOT reach for the shorter

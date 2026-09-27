@@ -53,14 +53,13 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     let playbackHighlightRange: NSRange?
     let selectionHighlightColor: UIColor
     let playbackHighlightColor: UIColor
-    // Apple Music-style progress indicator: the played portion of an active lyric line
-    // (UTF-16 locations < this index) gets a highlight band in `unplayedDimmingColor`, so
-    // it reads as "already sung" while the rest of the line stays at its normal color.
-    // nil disables the effect (default). A background band, not a foreground-color fade —
-    // fading each glyph's existing color used to require every OTHER foreground-color pass
-    // (Saved Highlight's purple/green, in particular) to know about and re-apply the fade,
-    // and a color applied after the dim pass would silently snap back to full brightness.
-    // A band sidesteps that whole class of bug: nothing here ever touches .foregroundColor.
+    // Apple Music-style progress indicator: the played portion of an active lyric line (UTF-16
+    // locations < this index) gets a highlight band in `unplayedDimmingColor`, so it reads as
+    // "already sung" while the rest of the line stays at its normal color. nil disables the effect
+    // (default). A background band, not a foreground-color fade: a fade would have to be re-applied
+    // by every OTHER foreground-color pass (Saved Highlight's purple/green, in particular), and a
+    // color applied after the dim pass would snap back to full brightness. Nothing here touches
+    // .foregroundColor.
     var unplayedDimmingLocation: Int? = nil
     var unplayedDimmingColor: UIColor = .clear
     // Unknown-segment highlight: locations whose surface isn't in the dictionary. Each gets
@@ -125,24 +124,23 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     // them drift the card off the active line.
     var isScrollEnabled: Bool = true
 
-    // When false, the renderer is mounted but hidden (ReadView keeps it in the tree behind
-    // the editable RichTextEditor so edit↔view toggles are instant). SwiftUI still calls
-    // updateUIView on every keystroke while editing, and the typography fingerprint includes
-    // the full `text`, so without this gate each character triggers a full CoreText re-typeset
-    // of a view nobody can see — the "typing is super laggy" bug. When inactive we skip the
-    // rebuild entirely; the view retains its last view-mode content and rebuilds once when edit
-    // mode exits (isActive flips true → body re-evaluates → updateUIView runs the build). Default
-    // true so the lyrics/song call sites (always visible) need not pass it.
+    // When false, the renderer is mounted but hidden (ReadView keeps it in the tree behind the
+    // editable RichTextEditor so edit↔view toggles are instant). SwiftUI still calls updateUIView
+    // on every keystroke while editing, and the typography fingerprint includes the full `text`, so
+    // without this gate each character triggers a full CoreText re-typeset of a view nobody can
+    // see, and typing lags. When inactive we skip the rebuild entirely; the view retains its last
+    // view-mode content and rebuilds once when edit mode exits (isActive flips true → body
+    // re-evaluates → updateUIView runs the build). Default true so the lyrics/song call sites
+    // (always visible) need not pass it.
     var isActive: Bool = true
 
     // Edit↔view scroll sync. `onScrollOffsetYChanged` reports every offset change (including
     // programmatic scrolls) — ReadView routes it into a reference-type memo, NOT @State, so
-    // view-mode scrolling doesn't pay a SwiftUI body re-eval per frame (the typography
-    // fingerprint hashes the whole note per eval; per-frame evals made long-note scrolling
-    // expensive on the legacy renderer). `externalContentOffsetY` is applied exactly ONCE per
-    // inactive→active transition — the moment edit mode exits — never on routine updates,
-    // so it cannot fight the user's own scrolling. nil defaults keep the lyrics/song call
-    // sites out of the sync entirely.
+    // view-mode scrolling doesn't pay a SwiftUI body re-eval per frame (the typography fingerprint
+    // hashes the whole note per eval, so per-frame evals make long-note scrolling expensive).
+    // `externalContentOffsetY` is applied exactly ONCE per inactive→active transition — the moment
+    // edit mode exits — never on routine updates, so it cannot fight the user's own scrolling. nil
+    // defaults keep the lyrics/song call sites out of the sync entirely.
     var externalContentOffsetY: CGFloat? = nil
     var onScrollOffsetYChanged: ((CGFloat) -> Void)? = nil
 
@@ -376,12 +374,11 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         uiView.contentView.baseTextSize = CGFloat(textSize)
         uiView.contentView.furiganaFontSizeOverride = furiganaSizeOverride
         uiView.contentView.furiganaGap = isFuriganaVisible ? furiganaGap : 0
-        // Geometry is resolved by the SHARED RenderGeometry helper so this path produces
-        // the same line origins as RichTextEditor — toggling edit↔view never moves a
-        // character. The reserve for ruby is baked into the top inset (line 0) and the
-        // inter-line gap (line 1+); we no longer apply a per-line ruby reserve in the
-        // engine because it would be additive on top of the geometry-supplied gap and
-        // recreate the divergence we just removed.
+        // Geometry is resolved by the SHARED RenderGeometry helper so this path produces the same
+        // line origins as RichTextEditor — toggling edit↔view never moves a character. The reserve
+        // for ruby is baked into the top inset (line 0) and the inter-line gap (line 1+); don't
+        // also apply a per-line ruby reserve in the engine, which would add on top of the
+        // geometry-supplied gap and make the two paths diverge.
         let geometry = RenderGeometry.resolve(
             textSize: textSize,
             userLineSpacing: lineSpacing,
@@ -421,19 +418,10 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
             furiganaFont: furiganaFont
         )
 
-        // Apply per-line origin shifts for wide-ruby line-starts. Replacement for TextKit
-        // 2's textContainer.exclusionPaths. CTLineGetImageBounds doesn't include ruby
-        // annotation extents (CT keeps ruby within the base run's advance with
-        // overhang=.auto), so we compute the shift from the measured ruby vs. kanji
-        // widths directly — same approach as TK2's exclusion-path width calculation.
-        // Both shift sources are gated on isRubySpacingEnabled — when the user has Ruby
-        // Spacing off, line origins stay flush at the inset, and ruby annotations are
-        // allowed to overhang past the inset guide (matching TK2's behavior with the
-        // same toggle off).
-        // Mirror the requested alignment onto the UIView so `layoutSubviews` can re-run
-        // the centering math after bounds are known. Without this, the first updateUIView
-        // pass runs with bounds.width=0 and the lyrics card sits flush-left until some
-        // unrelated state change re-triggers updateUIView at a moment with valid bounds.
+        // Mirror the requested alignment onto the UIView so `layoutSubviews` can re-run the
+        // centering math after bounds are known. Without this, the first updateUIView pass runs
+        // with bounds.width=0 and the lyrics card sits flush-left until some unrelated state change
+        // re-triggers updateUIView at a moment with valid bounds.
         uiView.textAlignment = textAlignment
         var shifts: [Int: CGFloat] = [:]
         // Centering takes precedence over wide-ruby line-start insets — when text is centered
@@ -446,14 +434,12 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
             // updateUIView entirely and calls `applyCenteringShiftsIfNeeded` directly.
             shifts = uiView.computeCenteringShifts()
         }
-        // Wide-ruby / envelope-vs-inset shifts were intentionally removed here. The previous
-        // logic pushed any line whose leading kanji had wider-than-kanji ruby to the right by
-        // the ruby's left overhang. Visually that created a gap between the kanji and the
-        // inset guide for every furigana-bearing line, while pure-kana lines (no overhang)
-        // continued to sit flush — an inconsistent and incorrect look. Standard Japanese
-        // typography sits the kanji at the inset and lets the ruby overhang into the margin
-        // (the debug inset-guide line is a visual aid; it does not bound the ruby annotation).
-        // Centering shifts above are unaffected.
+        // No wide-ruby line-start shifts: standard Japanese typography sits the kanji at the inset
+        // and lets the ruby overhang into the margin (the debug inset-guide line is a visual aid;
+        // it does not bound the ruby annotation). Pushing a line right by its leading ruby's
+        // overhang leaves a gap between the kanji and the inset on every furigana-bearing line
+        // while pure-kana lines sit flush — an inconsistent look. Centering shifts above are
+        // unaffected.
         uiView.contentView.setLineOriginShifts(shifts)
 
         // Emit gap measurements to the unified log so the live app proves alignment
@@ -584,20 +570,15 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         uiView.setNeedsLayout()
     }
 
-    // Tells SwiftUI what size this representable wants. ONLY the non-scrolling case is
-    // sized to content here — that's the SettingsPreviewRenderer pattern, where the host
-    // (a Form Section row) doesn't constrain height and a bare UIScrollView would
-    // collapse to ~0 height ("just a little red dot").
-    //
-    // For the scrollable case (ReadView), we return nil so SwiftUI uses the parent's
-    // proposed size — i.e., the safe-area-bounded read tab area. Reporting the full
-    // content height there would cause the parent container to expand to that height,
-    // pushing the nav bar and tab bar offscreen (which is the bug this method created
-    // when it returned content height unconditionally).
-    //
-    // LyricsView's call site sets isScrollEnabled: false but also pins an explicit
-    // .frame(height:) above this view — that explicit frame wins regardless of what we
-    // return here, so the centering card behaves the same in either branch.
+    // Tells SwiftUI what size this representable wants. ONLY the non-scrolling case is sized to
+    // content here — that's the SettingsPreviewRenderer pattern, where the host (a Form Section
+    // row) doesn't constrain height and a bare UIScrollView would collapse to ~0 height. For the
+    // scrollable case (ReadView), return nil so SwiftUI uses the parent's proposed size — i.e., the
+    // safe-area-bounded read tab area. Reporting the full content height there makes the parent
+    // container expand to that height, pushing the nav bar and tab bar offscreen. LyricsView's call
+    // site sets isScrollEnabled: false but also pins an explicit .frame(height:) above this view —
+    // that explicit frame wins regardless of what we return here, so the centering card behaves the
+    // same in either branch.
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: KiokuScrollingTextView, context: Context) -> CGSize? {
         guard isScrollEnabled == false else { return nil }
         let width = proposal.width ?? uiView.bounds.width

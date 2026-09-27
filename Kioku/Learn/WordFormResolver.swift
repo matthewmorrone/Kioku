@@ -2,15 +2,16 @@ import Foundation
 
 // The dictionary kanji headword and kana reading for a saved word, resolved the same way across
 // every quiz/study view (FlashcardCard, MultipleChoiceView, FlashcardTypedAnswerControl,
-// FillInBlankView) — previously duplicated once per view. Centralizes only the
-// kanjiForms/preferredKana computation, NOT gloss/meaning resolution, which genuinely differs by
-// caller (FlashcardCard stacks every selected meaning for its back face; Multiple Choice/Fill in
-// the Blank pick a single gloss via fallback precedence) and stays defined at each call site.
-// `nonisolated` and synchronous — deliberately does no threading of its own. Every caller runs
-// this off the main actor itself (via `Task.detached`, or a `nonisolated` task-group child task —
-// see MultipleChoiceView/FillInBlankView's `resolveWordFields`) rather than sharing a cache, so
-// display state can't drift from a sibling's cached fetch; this type is the shared logic, not the
-// shared execution context.
+// FillInBlankView). Centralizes only the kanjiForms/preferredKana computation, NOT gloss/meaning
+// resolution, which genuinely differs by caller (FlashcardCard stacks every selected meaning for
+// its back face; Multiple Choice/Fill in the Blank pick a single gloss via fallback precedence) and
+// stays defined at each call site.
+//
+// `nonisolated` and synchronous — deliberately does no threading of its own. Every caller runs this
+// off the main actor itself (via `Task.detached`, or a `nonisolated` task-group child task — see
+// MultipleChoiceView/FillInBlankView's `resolveWordFields`) rather than sharing a cache, so display
+// state can't drift from a sibling's cached fetch; this type is the shared logic, not the shared
+// execution context.
 nonisolated enum WordFormResolver {
     // Computes kanji/kana from an already-fetched `DictionaryEntry` — for callers that also need
     // other data from that same fetch (e.g. `entry.senses`, for gloss resolution) and would

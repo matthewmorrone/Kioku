@@ -188,11 +188,10 @@ extension WordsView {
         toggleSaveWord(entryID: entry.entryId, surface: entry.primarySearchSurface, materialized: entry)
     }
 
-    // The one save/unsave used by every word row. Unsave is a full remove (save ==
-    // saved == present in WordsStore). On save we seed smart-default senses from the
-    // materialized entry when we have it, else resolve once from the dictionary store — so
-    // a row whose DictionaryEntry hasn't been fetched yet (pending history/saved row) still
-    // saves with sensible senses. Replaces the old toggleSave/toggleSaveHistory split.
+    // The one save/unsave used by every word row. Unsave is a full remove (save == saved == present
+    // in WordsStore). On save we seed smart-default senses from the materialized entry when we have
+    // it, else resolve once from the dictionary store — so a row whose DictionaryEntry hasn't been
+    // fetched yet (pending history/saved row) still saves with sensible senses.
     func toggleSaveWord(entryID: Int64, surface: String, materialized: DictionaryEntry?) {
         if isSavedByID(entryID) {
             wordsStore.remove(id: entryID)

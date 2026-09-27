@@ -7,17 +7,6 @@ import SwiftUI
 // per-concern split this follows. Members `body` (in the main file) or `coveragePage` calls
 // directly are internal; everything used only within this file stays `private`.
 extension SegmentListView {
-    // Identities the user has explicitly flipped away from their DEFAULT checked state (see
-    // vocabRowCountsAsSaved) — starts empty every time the row set changes (resetVocabSelection),
-    // so opening/editing Vocab mode never shows a pending change until you actually touch
-    // something. A row's checked state is `vocabRowCountsAsSaved(identity) != flipped` (XOR).
-    // Keyed by normalized identity rather than sourceIndex so that with duplicates shown, flipping
-    // any one occurrence of a word flips every chip sharing that identity — previously this was
-    // keyed by sourceIndex, so two chips for the same word (e.g. 食べる appearing twice) tracked
-    // independent flip state even though saveSelectedVocab always resolved and committed by identity.
-    // Internal (not private): `body`, in the main file, reads `selectedVocabIdentities.isEmpty`
-    // directly to gate the Save/Remove button.
-
     // The ONE rule for "does this word count as saved" — shared by the chip's checked state, the
     // Save/Remove baseline below, AND CoverageDetailView's total (fed via noteWordIdentities), so
     // all three screens' numbers agree. A word is saved or it isn't; which note it was saved from
@@ -199,8 +188,8 @@ extension SegmentListView {
                 }
                 .disabled(selectedVocabIdentities.isEmpty)
                 // One pill that flips between "All" and "None" (and the action it performs)
-                // depending on whether everything is currently checked — instead of two separate
-                // plain-text buttons, one of which was always a no-op. "All" only ever flips
+                // depending on whether everything is currently checked, so there is never a
+                // button that would do nothing. "All" only ever flips
                 // currently-unchecked rows to checked (purely additive); "None" flips
                 // currently-checked rows to unchecked, which can include real, previously-saved
                 // words — the Save/Remove button's destructive styling is what surfaces that

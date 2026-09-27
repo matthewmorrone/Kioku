@@ -60,18 +60,15 @@ final class WordsStore: ObservableObject {
 
     // MARK: - Review
     //
-    // Formerly a separate ReviewStore class with its own persisted dictionaries, keyed by
-    // canonicalEntryID and prone to drifting out of sync with WordsStore (a word's card and its
-    // study history could independently exist or not exist). Merged so a SavedWord's Learned mark,
-    // mastery, and SRS stats are just more fields on the one row that word already has here —
-    // deleting a word deletes its whole row, review history included, with no separate store or
-    // setting to keep them artificially in sync.
+    // A SavedWord's Learned mark, mastery, and SRS stats are fields on the one row that word
+    // already has here — deleting a word deletes its whole row, review history included, with no
+    // separate store or setting to keep in sync.
     //
     // The four collections below are DERIVED from `words` (recomputed in refreshReviewCaches(),
     // called from init and persist()) rather than stored independently — `words` stays the single
-    // source of truth for what gets encoded to disk. They exist purely so call sites that need
-    // O(1) membership checks (list filtering, row rendering) don't have to linear-scan `words`
-    // themselves; every call site works identically to when these lived on ReviewStore.
+    // source of truth for what gets encoded to disk. They exist purely so call sites that need O(1)
+    // membership checks (list filtering, row rendering) don't have to linear-scan `words`
+    // themselves.
     @Published private(set) var learned: Set<Int64> = []
     @Published private(set) var notLearned: Set<Int64> = []
     @Published private(set) var mastered: Set<Int64> = []

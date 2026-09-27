@@ -35,7 +35,6 @@ final class ReadDocumentState {
     // background whenever the text, segments, readings or segmenter change. Also enables reset.
     var differsFromDefault = false
     var segmentationRefreshTask: Task<Void, Never>?
-    var pendingAutoSegQueue: [PendingAutoSegRequest] = []
 
     var furiganaBySegmentLocation: [Int: String] = [:]
     var furiganaLengthBySegmentLocation: [Int: Int] = [:]

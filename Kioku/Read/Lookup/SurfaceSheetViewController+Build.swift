@@ -254,11 +254,8 @@ extension SurfaceSheetViewController {
         splitCandidatesScroll = candidatesScroll
         splitCandidatesRow = candidatesRow
 
-        // Candidate chips removed at user request — the score readout below already lists every
-        // available sublattice path with its calculation, so the chip row is redundant. The chip
-        // machinery (candidatesScroll/Row, rebuildSplitCandidates, refreshSplitCandidateSelection)
-        // is left intact and dormant; re-add this line to restore the row.
-        // splitPanelContainer.addArrangedSubview(candidatesScroll)
+        // The candidate chip row is not added: the score readout below already lists every
+        // available sublattice path with its calculation.
         splitPanelContainer.addArrangedSubview(splitInputsRow)
         splitPanelContainer.addArrangedSubview(frequencyScroll)
         splitPanelContainer.addArrangedSubview(splitActionsRow)

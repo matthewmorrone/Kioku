@@ -344,14 +344,13 @@ final class WordsStoreTests: XCTestCase {
         XCTAssertEqual(Set(normalized[0].wordListIDs), Set([l1, l2]))
     }
 
-    // Regression: when normalizedEntries merges two duplicates, the union of encountered surfaces
-    // from both must survive. The previous implementation called the SavedWord initializer
-    // without passing encounteredSurfaces, so the init's nil-default reseeded the set to
-    // Set([preferredSurface]) and silently lost every other encountered form from both inputs.
-    // No production path currently exercises this (replaceAll/toggle callers produce unique
-    // canonicalEntryIDs), but the helper's contract is "coalesce duplicates without data loss"
-    // and any new caller — CSV import, backup restore from older buggy backups, future bulk add
-    // — would hit it.
+    // When normalizedEntries merges two duplicates, the union of encountered surfaces from both
+    // must survive. Calling the SavedWord initializer without passing encounteredSurfaces would let
+    // the init's nil-default reseed the set to Set([preferredSurface]) and silently lose every
+    // other encountered form. No production path currently exercises this (replaceAll/toggle
+    // callers produce unique canonicalEntryIDs), but the helper's contract is "coalesce duplicates
+    // without data loss" and any new caller — CSV import, backup restore, future bulk add — would
+    // hit it.
     func testNormalizedEntriesMergesEncounteredSurfacesFromDuplicates() {
         let entries = [
             SavedWord(canonicalEntryID: 42, surface: "食べる", encounteredSurfaces: ["食べる", "食べた"]),

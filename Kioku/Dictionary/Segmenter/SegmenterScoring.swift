@@ -26,8 +26,8 @@ nonisolated struct SegmenterScoring {
     //
     // A word's cost is its negative log probability, −ln P(word), in centi-nats, taken from the
     // frequency of the surface AS WRITTEN (see DictionaryStore.fetchFrequencyScoreBySurface). That
-    // single quantity does every job the structural bonuses used to be hand-tuned for: every word
-    // pays at least a few nats, so fewer/longer words win without a length reward; a rare word
+    // single quantity does every job structural bonuses would otherwise need hand-tuning for: every
+    // word pays at least a few nats, so fewer/longer words win without a length reward; a rare word
     // costs more than a common one without a rarity penalty; and a kana string nobody writes as a
     // word (がそ for 画素) is unranked and therefore expensive, so が + そこ beats がそ + こ without a
     // denylist. Do not add per-surface or per-script special cases here — fix the frequency data.
@@ -65,14 +65,12 @@ nonisolated struct SegmenterScoring {
     static let transitionWeight = 1.5
 
     // A single transition never moves a path by more than this many nats times the weight, so one
-    // thinly attested pair cannot outvote the word costs. Lowered from 5.0: a bare-noun-after-よ
-    // bigram (lyric line-breaks carry no punctuation, so a w:よ→n transition can be as sparse in
-    // training as it is common in lyrics) was pricing that edge above the old clamp, letting a
-    // competing lexical split (つたえ｜てよ) undercut the correct て-form＋よ analysis by a slim
-    // margin — see つたえてよスターライト in SegmentationQualityTests. Re-measured at 3.0 against
-    // held2k/kana2k/fresh5k: cut-through never regresses (kana2k improves, 276→269 straddles);
-    // exact dips by <0.05pp on held2k/fresh5k, within noise. A 2026-09 "clamp is inert" finding
-    // was under a 16-class transition table, superseded by the current ~1,100-class system.
+    // thinly attested pair cannot outvote the word costs. 3.0, not 5.0: a bare-noun-after-よ bigram
+    // (lyric line breaks carry no punctuation, so a w:よ→n transition can be as sparse in training
+    // as it is common in lyrics) priced above a 5.0 clamp, letting a competing lexical split
+    // (つたえ｜てよ) undercut the correct て-form＋よ analysis by a slim margin — see つたえてよスターライト in
+    // SegmentationQualityTests. Measured at 3.0 against held2k/kana2k/fresh5k (commit 1cf3991):
+    // cut-through never regresses (kana2k 1.36% → 1.32%); exact is flat within noise.
     static let transitionClampNats = 3.0
 
     // Cost of a digit run (LatticeEdge from Segmenter.numberRunEdge), in nats — about what a common

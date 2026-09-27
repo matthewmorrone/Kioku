@@ -20,13 +20,12 @@ struct StrokeOrderAnimationView: View {
             let side = min(proxy.size.width, proxy.size.height)
             let scale = side / svgCanvasSize
 
-            // ONE coordinate pipeline: every path inside this ZStack (grid + each stroke)
-            // is authored in the native 109-unit KanjiVG space, and a single .scaleEffect
-            // below maps the entire composition to pt. The previous per-leaf scaling pattern
-            // worked only as long as every leaf remembered to scale — the gridOverlay didn't,
-            // so its 109-unit content sat at the top-left of a side×side frame while the
-            // strokes filled it, and the kanji visibly drifted off the grid's center cross.
-            // A uniform single-transform pipeline makes that bug class structurally impossible.
+            // ONE coordinate pipeline: every path inside this ZStack (grid + each stroke) is
+            // authored in the native 109-unit KanjiVG space, and a single .scaleEffect below maps
+            // the entire composition to pt. Per-leaf scaling works only as long as every leaf
+            // remembers to scale; one that doesn't (say the grid) sits at the top-left of the frame
+            // while the strokes fill it, and the kanji drifts off the grid's center cross. A
+            // uniform single transform makes that bug class structurally impossible.
             ZStack(alignment: .topLeading) {
                 // Background grid for visual reference — center cross + outer box, faint.
                 gridOverlay

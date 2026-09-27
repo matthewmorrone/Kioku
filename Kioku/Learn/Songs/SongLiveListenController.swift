@@ -3,24 +3,21 @@ import Combine
 import Foundation
 import SwiftWhisperAlign
 
-// Plays a SongBreakdown's listen-along script live, one step at a time, instead of
-// pre-rendering it into a file: each step (a sung clip from the note's own audio, or a
-// speech segment) starts only once the previous one has actually finished, and the
-// controller always knows — and publishes — exactly which step is in flight. There is no
-// second array (cues recorded once at render time, replayed against a segment list rebuilt
-// later) that can drift out of sync with what's actually playing; `currentSegment` IS the
-// thing being spoken right now.
+// Plays a SongBreakdown's listen-along script live, one step at a time: each step (a sung clip from
+// the note's own audio, or a speech segment) starts only once the previous one has actually
+// finished, and the controller always knows — and publishes — exactly which step is in flight.
+// `currentSegment` IS the thing being spoken right now; there is no separately recorded cue list
+// that could drift out of sync with it.
 //
 // Runs on-device via AVSpeechSynthesizer's live `speak(_:)`, not the buffer-capture
-// `write(_:toBufferCallback:)` API the old file-rendering approach used — which means the
-// synthesizer's own `willSpeak(characterRange:)` delegate callback gives real per-word
-// timing for the currently-speaking sentence, not an estimate interpolated from a recorded
-// clip duration.
+// `write(_:toBufferCallback:)` API — so the synthesizer's own `willSpeak(characterRange:)` delegate
+// callback gives real per-word timing for the currently-speaking sentence, not an estimate
+// interpolated from a clip duration.
 //
-// Background playback: relies on the app's existing "audio" UIBackgroundModes entitlement
-// plus an active `.playback`/`.spokenAudio` AVAudioSession (configured in `beginSession()`),
-// exactly like any background-audio app — the OS keeps the process running as long as the
-// session stays active and audio keeps being produced, tiny gaps between steps included.
+// Background playback: relies on the app's existing "audio" UIBackgroundModes entitlement plus an
+// active `.playback`/`.spokenAudio` AVAudioSession (configured in `beginSession()`), exactly like
+// any background-audio app — the OS keeps the process running as long as the session stays active
+// and audio keeps being produced, tiny gaps between steps included.
 @MainActor
 final class SongLiveListenController: NSObject, ObservableObject {
     @Published private(set) var isPlaying = false
@@ -81,16 +78,15 @@ final class SongLiveListenController: NSObject, ObservableObject {
         synthesizer.delegate = self
     }
 
-    // Loads a new script. A no-op when it's the same script and source already loaded, so a
-    // SwiftUI body re-evaluation (this is called on every relevant body pass, not cached by
-    // the caller) never interrupts playback in progress. Anything actually different stops
-    // playback and starts over from the top — same as a regenerated breakdown invalidating
-    // the old file-based render.
+    // Loads a new script. A no-op when it's the same script and source already loaded, so a SwiftUI
+    // body re-evaluation (this is called on every relevant body pass, not cached by the caller)
+    // never interrupts playback in progress. Anything actually different stops playback and starts
+    // over from the top, since the lines the old script referred to may no longer exist.
     //
-    // Called eagerly (SongStepperView calls this as soon as the breakdown/clip ranges are
-    // ready, not just when the user taps play) so the expensive one-time work below —
-    // opening the note's source audio file and resolving TTS voices — happens well before the
-    // first tap instead of on its critical path.
+    // Called eagerly (SongStepperView calls this as soon as the breakdown/clip ranges are ready,
+    // not just when the user taps play) so the expensive one-time work below — opening the note's
+    // source audio file and resolving TTS voices — happens well before the first tap instead of on
+    // its critical path.
     func configure(steps: [SongListenStep], sourceAudioURL: URL?, originalByLineIndex: [Int: String]) {
         guard steps != self.steps || sourceAudioURL != self.sourceAudioURL else { return }
         let sourceChanged = sourceAudioURL != self.sourceAudioURL
@@ -429,26 +425,25 @@ final class SongLiveListenController: NSObject, ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + Double(durationMs) / 1000, execute: item)
     }
 
-    // Tightens a clip's boundaries to the audible singing within it, reading from the
-    // isolated vocal stem's own file (`stemTrimURL`) — never the raw mix, whose continuous
-    // backing music makes "silence" undetectable. SongLineCueMatcher's own checkpoint-based
-    // tightening (upstream, applied before this step was even built) already uses real
-    // per-character alignment timestamps; this adds a second, waveform-based pass for
-    // whatever slack remains.
+    // Tightens a clip's boundaries to the audible singing within it, reading from the isolated
+    // vocal stem's own file (`stemTrimURL`) — never the raw mix, whose continuous backing music
+    // makes "silence" undetectable. SongLineCueMatcher's checkpoint-based tightening (applied
+    // upstream) already uses real per-character alignment timestamps; this adds a waveform-based
+    // pass for whatever slack remains.
     //
-    // Works on short RMS windows rather than individual sample peaks, and thresholds each
-    // window against a floor *relative to this clip's own peak* rather than one fixed
-    // absolute level: the stem's separation artifacts (a low-level hiss/breath/reverb tail
-    // left behind by the ML source-separation model) routinely sit above a fixed floor like
-    // 0.02 well past where the actual singing stops, which is exactly the "extra trailing
-    // audio per clip" this was leaving in. A peak-relative floor still clears that residue
-    // even when the clip itself is quietly sung. The trailing edge additionally requires a
-    // short run of consecutive loud windows (not just one) before it counts as "the singing
-    // is still going" — a single artifact blip in the reverb tail no longer drags the cut
-    // back out to it. Crops to that span with a small fixed pad kept on each side so a
-    // genuinely quiet onset (e.g. unvoiced す/し) isn't shaved into the following attack.
-    // Falls back to the untrimmed range on any read failure, or when there's nothing to trim
-    // toward (the whole span is at/under the floor).
+    // Works on short RMS windows rather than individual sample peaks, and thresholds each window
+    // against a floor *relative to this clip's own peak* rather than one fixed absolute level: the
+    // stem's separation artifacts (a low-level hiss/breath/reverb tail left behind by the ML
+    // source-separation model) routinely sit above a fixed floor like 0.02 well past where the
+    // actual singing stops. A peak-relative floor clears that residue even when the clip itself is
+    // quietly sung. The trailing edge additionally requires a short run of consecutive loud windows
+    // (not just one) before it counts as "the singing is still going", so a single artifact blip in
+    // the reverb tail doesn't drag the cut out to it.
+    //
+    // Crops to that span with a small fixed pad kept on each side so a genuinely quiet onset (e.g.
+    // unvoiced す/し) isn't shaved into the following attack. Falls back to the untrimmed range on
+    // any read failure, or when there's nothing to trim toward (the whole span is at/under the
+    // floor).
     private func tightenedClipRange(stemURL: URL, startMs: Int, endMs: Int) -> (startMs: Int, endMs: Int) {
         guard let file = try? AVAudioFile(forReading: stemURL) else { return (startMs, endMs) }
         let sampleRate = file.processingFormat.sampleRate

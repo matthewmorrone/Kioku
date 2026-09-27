@@ -109,13 +109,12 @@ struct LyricsView: View {
     }
 
     // Active-word highlight, fixed (not theme/appearance-dependent): a solid amber pill with a
-    // near-black foreground override, ~13:1 contrast. Previously the highlight recolored only
-    // the *background* (a translucent gray, `UIColor.label.withAlphaComponent(0.32)`) while the
-    // glyph kept whatever semantic token color it already had — red-on-light-gray landed at
-    // ~2:1, worst on the red vocab words most worth reading. Ties into the scrubber's existing
-    // `.systemOrange` tint (LyricsView+Controls) to read as "now playing" without being the
-    // exact same (dynamic, appearance-dependent) color — this pill needs to guarantee its own
-    // contrast against a fixed foreground regardless of light/dark mode.
+    // near-black foreground override, ~13:1 contrast. Recoloring only the background would leave
+    // each glyph in its semantic token color, and red-on-light-gray lands at ~2:1, worst on the red
+    // vocab words most worth reading. Ties into the scrubber's `.systemOrange` tint
+    // (LyricsView+Controls) to read as "now playing" without being the exact same (dynamic,
+    // appearance-dependent) color — this pill needs to guarantee its own contrast against a fixed
+    // foreground regardless of light/dark mode.
     private static let activeWordHighlightColor = UIColor(hexString: "#FFCC66")!
     private static let activeWordForegroundColor = UIColor(hexString: "#1A1A1A")!
 
@@ -249,14 +248,11 @@ struct LyricsView: View {
         // Otherwise it tracks the live drag, then the playing line.
         let displayIndex = dragDisplayIndex ?? activeIndex
 
-        // Clamp range upper bounds against lower bounds — `ForEach(a..<b)` traps when `b < a`,
-        // and that can happen here when an audio note has zero cues (transcription returned
-        // nothing, the .srt was empty) but `audioAttachmentID` is still set so this view
-        // mounts. Without the clamps, opening such a note crashes during body evaluation.
-        // Music-note pulsing during instrumental gaps was removed; the active card always
-        // shows the cue at `displayIndex` (which during a gap is the upcoming vocal line —
-        // the user just sees the next line waiting). belowLower is therefore always
-        // displayIndex+1 (the active card occupies displayIndex itself).
+        // Clamp range upper bounds against lower bounds — `ForEach(a..<b)` traps when `b < a`, and
+        // that can happen here when an audio note has zero cues (transcription returned nothing,
+        // the .srt was empty) but `audioAttachmentID` is still set so this view mounts. Without the
+        // clamps, opening such a note crashes during body evaluation. The active card shows the cue
+        // at `displayIndex`, so belowLower is always displayIndex+1.
         let aboveUpper = max(0, displayIndex)
         let belowLower = displayIndex + 1
         let belowUpper = max(belowLower, cues.count)
@@ -266,14 +262,12 @@ struct LyricsView: View {
                 ScrollView {
                     VStack(alignment: .center, spacing: 0) {
                         // Render every cue as a row regardless of whether the SRT marked it
-                        // non-speech (♪/♫/empty). Instrumental gaps appear as `♪` rows that
-                        // scroll past with the same distance-based fall-off as vocal cues —
-                        // a visible "this section is instrumental" marker the user can see
-                        // approaching (above the active card) and receding (below it), just
-                        // like any other line. The dedicated `musicNoteSeparator` UI was
-                        // removed earlier; this path uses the cue's own text ("♪") in the
-                        // standard `inactiveCueRow` so non-speech cues participate in the
-                        // scroller as first-class peers, not as special widgets.
+                        // non-speech (♪/♫/empty). Instrumental gaps appear as `♪` rows that scroll
+                        // past with the same distance-based fall-off as vocal cues — a visible
+                        // "this section is instrumental" marker the user can see approaching (above
+                        // the active card) and receding (below it), just like any other line. They
+                        // go through the standard `inactiveCueRow`, so non-speech cues are
+                        // first-class peers in the scroller, not special widgets.
                         ForEach(0 ..< aboveUpper, id: \.self) { index in
                             let distance = displayIndex - index
                             inactiveCueRow(index: index, distance: distance)

@@ -2,12 +2,12 @@ import XCTest
 import UIKit
 @testable import Kioku
 
-// Pins the shared RenderGeometry formula. The point of these tests isn't to verify
-// arbitrary numbers — it's to make any change to the geometry formula a deliberate, visible
-// edit. Both RichTextEditor (edit mode, TextKit 2) and KiokuCoreTextRendererView (view
-// mode, CoreText) consume RenderGeometry so character positions match across mode toggles.
-// Drift between the two paths used to be ~6pt per line at default settings; if anyone
-// reintroduces it, these tests fail loudly with the actual delta.
+// Pins the shared RenderGeometry formula. The point of these tests isn't to verify arbitrary
+// numbers — it's to make any change to the geometry formula a deliberate, visible edit. Both
+// RichTextEditor (edit mode, TextKit 2) and KiokuCoreTextRendererView (view mode, CoreText) consume
+// RenderGeometry so character positions match across mode toggles. If the two paths diverge (~6pt
+// per line at default settings when they don't share it), these tests fail loudly with the actual
+// delta.
 @MainActor
 final class RenderGeometryTests: XCTestCase {
 

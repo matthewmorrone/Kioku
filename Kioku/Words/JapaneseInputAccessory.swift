@@ -180,9 +180,7 @@ final class JapaneseInputAccessory: NSObject {
     // host so it's rebuilt with the real store next time it's shown. Called from
     // JapaneseInputTextField.updateUIView on every SwiftUI update pass. Needed because this
     // accessory can be constructed (in makeUIView) during the window between app launch and
-    // dictionary.sqlite finishing its download (see DictionaryDownloadManager) — a window that
-    // didn't meaningfully exist before dictionary.sqlite was bundled, so this recovery path was
-    // previously untested territory, not truly dead code.
+    // dictionary.sqlite finishing its download (see DictionaryDownloadManager).
     func refreshDictionaryStoreIfNeeded() {
         guard dictionaryStore == nil, let refreshed = try? DictionaryStore() else { return }
         dictionaryStore = refreshed

@@ -356,11 +356,10 @@ struct SongStepperView: View {
         }
     }
 
-    // State machine, same shape as before streaming existed except that "loading" is no
-    // longer a screen of its own: a failed generation shows the error verbatim; streamed
-    // cards show as soon as the first line lands; until then a first generation keeps the
-    // generate prompt (with its button spinning) and a regenerate keeps the old cards (with
-    // the toolbar icon spinning); otherwise the cached breakdown or the first-visit prompt.
+    // State machine: a failed generation shows the error verbatim; streamed cards show as soon as
+    // the first line lands; until then a first generation keeps the generate prompt (with its
+    // button spinning) and a regenerate keeps the old cards (with the toolbar icon spinning);
+    // otherwise the cached breakdown or the first-visit prompt.
     @ViewBuilder
     private var bodyContent: some View {
         VStack(spacing: 0) {

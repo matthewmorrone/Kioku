@@ -49,9 +49,10 @@ final class SegmentationQualityTests: XCTestCase {
     // The quality floor. Each gold token is either reproduced exactly, cut through by one of our
     // segments (a segment that overlaps it partially — the real error, e.g. はだ|きしめたい), or
     // merged/split at a coarser or finer granularity. The floors sit well below what the shipped
-    // model scores on this fixture (exact 91.6%, cut-through 0.43%) and well above what the two
-    // regressions seen in practice score: the segmenter fed per-entry propagated ranks (85.0% /
-    // 1.62%) and the greedy strategy with its demotion list (82.4% / 3.41%).
+    // model scores on this fixture (exact 92.1%, cut-through 0.21%, measured 2026-09-26 with
+    // scripts/segmentation-eval) and well above what the two regressions seen in practice score:
+    // the segmenter fed per-entry propagated ranks (85.0% / 1.62%, commit c0bdda1) and the greedy
+    // strategy with its demotion list (82.6% / 3.03%).
     func testHeldOutQualityFloor() throws {
         UserDefaults.standard.removeObject(forKey: SegmenterSettings.strategyKey)
         let segmenter = try TestReadResources.shared().segmenter
@@ -236,12 +237,11 @@ final class SegmentationQualityTests: XCTestCase {
         XCTAssertEqual(try segments(of: "２人で行く"), ["２人", "で", "行く"])
     }
 
-    // て-form + よ must split even when よ is immediately followed by a bare noun with no
-    // punctuation between them, as lyric line breaks routinely are. つたえ is also a common noun
-    // (message/legend) and てよ is its own dictionary particle-expression, so つたえ｜てよ is a real
-    // competing parse — it used to undercut つたえて｜よ because a w:よ→noun transition, rare in the
-    // prose-trained table, priced above the old clamp. Real line: あいたいとささやく（つたえてよ
-    // スターライト）. See transitionClampNats in SegmenterScoring.swift.
+    // て-form + よ must split even when よ is immediately followed by a bare noun with no punctuation
+    // between them, as lyric line breaks routinely are. つたえ is also a common noun (message/legend)
+    // and てよ is its own dictionary particle-expression, so つたえ｜てよ is a real competing parse; it
+    // wins whenever a w:よ→noun transition, rare in the prose-trained table, is priced above the
+    // clamp. Real line: あいたいとささやく（つたえてよ スターライト）. See transitionClampNats in SegmenterScoring.swift.
     func testTeFormPlusYoSplitsBeforeABareNoun() throws {
         XCTAssertEqual(
             try segments(of: "あいたいとささやく（つたえてよスターライト）"),

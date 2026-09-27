@@ -430,25 +430,6 @@ struct WordDetailView: View {
 
                     Spacer(minLength: 8)
 
-                    // "View Conjugations" removed by request: it opened an empty sheet for
-                    // suru-verb nouns like 記憶 (the noun itself doesn't conjugate). The Forms
-                    // section below still offers conjugations for true verbs/i-adjectives.
-                    // Uncomment to restore the header shortcut.
-                    // if canConjugate {
-                    //     Button {
-                    //         showingConjugations = true
-                    //     } label: {
-                    //         HStack(spacing: 2) {
-                    //             Text("View Conjugations")
-                    //                 .font(.subheadline)
-                    //             Image(systemName: "chevron.right")
-                    //                 .font(.caption2)
-                    //         }
-                    //     }
-                    //     .buttonStyle(.plain)
-                    //     .foregroundStyle(Color.accentColor)
-                    //     .fixedSize()
-                    // }
                 }
                 .padding(.horizontal, 16)
             }

@@ -5,13 +5,14 @@ import Foundation
 // training run and the running segmenter cannot disagree about what class a word is.
 //
 // A class name is one of:
-//   "w:は"      — the word itself, for the common function words the table lists
-//   "v5:て"     — a grammar tag plus the surface's last character, for anything that conjugates:
-//                 what may follow 書いて differs from what may follow 書く or 書いた
-//   "adj-na"    — a grammar tag alone, for everything else
-//   "BOUNDARY"  — text the dictionary does not cover, and the start and end of the text
-// Sixteen coarse classes were tried first and measured no gain at any weight: a class has to be
-// this fine before "B after A" says anything the word costs don't already.
+//   "w:は"     — the word itself, for the common function words the table lists
+//   "v5:て"    — a grammar tag plus the surface's last character, for anything that conjugates:
+//                what may follow 書いて differs from what may follow 書く or 書いた
+//   "adj-na"   — a grammar tag alone, for everything else
+//   "BOUNDARY" — text the dictionary does not cover, and the start and end of the text
+//
+// Sixteen coarse classes were measured first and gained nothing at any weight (commit 8555cb1): a
+// class has to be this fine before "B after A" says anything the word costs don't already.
 nonisolated enum TransitionClass {
     static let boundary = "BOUNDARY"
 

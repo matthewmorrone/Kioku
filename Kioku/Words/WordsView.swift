@@ -478,9 +478,9 @@ struct WordsView: View {
             }
             // Consume cross-tab routes from ContentView (e.g. the lookup sheet's magnifying-glass
             // "open in Words" action). onAppear catches a route set before this tab appeared;
-            // onChange catches one set while it's already on screen. This wiring was dropped in
-            // the Words-tab rebuild, which left consumePendingRoute orphaned — so the magnifying
-            // glass switched tabs but never opened the detail view.
+            // onChange catches one set while it's already on screen. Without both,
+            // consumePendingRoute never runs and the magnifying glass switches tabs without opening
+            // the detail view.
             .onAppear {
                 consumePendingRoute(pendingRoute.wrappedValue)
             }

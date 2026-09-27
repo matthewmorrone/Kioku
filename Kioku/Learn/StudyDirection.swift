@@ -96,14 +96,11 @@ nonisolated enum QuestionDirection: String, Codable, CaseIterable, Hashable, Ide
     }
 }
 
-// The subset of directions a session draws from — the shared replacement for the per-activity
-// "Direction" menus, each of which had its own enum with its own magic "Mixed" case. A subset
-// expresses all of those (one ticked = the old fixed direction, all ticked = the old Mixed) and
-// also the combinations they couldn't, like "exactly the three that gate Learned".
-//
-// `RawRepresentable` over a comma-joined list of `QuestionDirection.rawValue` so it can be stored
-// directly in `@AppStorage`; unknown tokens are dropped on read, so a selection saved by a build
-// with different cases still loads.
+// The subset of directions a session draws from, shared by every activity. One ticked direction is
+// a fixed direction, all ticked is Mixed, and any combination in between works too, like "exactly
+// the three that gate Learned". `RawRepresentable` over a comma-joined list of
+// `QuestionDirection.rawValue` so it can be stored directly in `@AppStorage`; unknown tokens are
+// dropped on read, so a selection saved by a build with different cases still loads.
 struct DirectionSelection: RawRepresentable, Equatable {
     var directions: Set<QuestionDirection>
 

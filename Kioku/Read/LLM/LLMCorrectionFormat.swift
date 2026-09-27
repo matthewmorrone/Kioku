@@ -77,29 +77,29 @@ enum LLMCorrectionFormat {
 
         """
 
-    // Parses the compact format string returned by the LLM into [LLMSegmentEntry].
-    // Each content line `N|seg1|seg2|` encodes segments followed by an implicit `\n`.
-    // A bare `N|` line encodes an extra blank line (an additional `\n` beyond the implicit one).
+    // Parses the compact format string returned by the LLM into [LLMSegmentEntry]. Each content
+    // line `N|seg1|seg2|` encodes segments followed by an implicit `\n`. A bare `N|` line encodes
+    // an extra blank line (an additional `\n` beyond the implicit one).
     //
-    // Lenient by line, not all-or-nothing: models occasionally prepend a conversational
-    // sentence ("The song is confirmed as...") despite the system prompt's "output ONLY the
-    // corrected format" instruction, or mangle a single line's trailing `|`. The old parser
-    // threw on the FIRST such line, discarding every line after it too — one bad sentence
-    // anywhere killed the whole correction. This version treats the response as a list of
-    // independent numbered records instead of one monolithic blob:
+    // Lenient by line, not all-or-nothing: models occasionally prepend a conversational sentence
+    // ("The song is confirmed as...") despite the system prompt's "output ONLY the corrected
+    // format" instruction, or mangle a single line's trailing `|`, and one bad line must not
+    // discard every line after it. So the response is read as a list of independent numbered
+    // records:
     //   - a line with a leading `N|` is a data record for note-line N, well-formed or not
-    //   - a line that's merely `|...|` with no number is a legacy positional record (old
-    //     stub-file format, kept for backward compat)
-    //   - anything else (prose, headers, blank commentary) has no recognizable record shape
-    //     and is discarded as noise rather than aborting the parse
-    // A numbered line that IS malformed (no trailing `|`) still reserves its slot as empty
-    // content rather than being dropped — dropping it would shift every later line's position
-    // out of alignment. mergeResponsePerLine (ReadView+LLMCorrection.swift) already falls back
-    // to the pre-correction baseline for any line whose parsed surfaces don't reconstruct the
-    // source text, so an empty/missing slot degrades to "no change for this line" for free —
-    // this parser just has to stop letting one bad record poison every record after it.
+    //   - a line that's merely `|...|` with no number is a positional record (the unnumbered format,
+    //     still accepted for stub responses saved in it)
+    //   - anything else (prose, headers, blank commentary) has no recognizable record shape and is
+    //     discarded as noise rather than aborting the parse
+    // A numbered line that IS malformed (no trailing `|`) still reserves its slot as empty content
+    // rather than being dropped — dropping it would shift every later line's position out of
+    // alignment. mergeResponsePerLine (ReadView+LLMCorrection.swift) already falls back to the
+    // pre-correction baseline for any line whose parsed surfaces don't reconstruct the source text,
+    // so an empty/missing slot degrades to "no change for this line".
+    //
     // Only throws when NOTHING recognizable was found at all (e.g. the whole response is
     // conversational prose).
+    //
     // Example: `1|A|\n2|B|\n3|\n4|C|` → [A, \n, B, \n, \n, C, \n]
     static func parseCompactResponse(_ compact: String) throws -> LLMCorrectionResponse {
         let rawLines = compact.components(separatedBy: .newlines)

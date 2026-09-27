@@ -1,10 +1,10 @@
 import SwiftUI
 
-// The List content inside WordDetailView's body, split out of the main file to keep it under
-// the line-count guardrail. `body` still owns the List/ScrollViewReader wrapper and its sheet
-// modifiers; these two computed properties are just its section content, in the same order they
-// used to appear inline. Split into two halves (definition-adjacent vs. everything else) rather
-// than one per section so this doesn't turn into a dozen tiny files for one screen.
+// The List content inside WordDetailView's body, split out of the main file to keep it under the
+// line-count guardrail. `body` still owns the List/ScrollViewReader wrapper and its sheet
+// modifiers; these two computed properties are just its section content, in display order. Split
+// into two halves (definition-adjacent vs. everything else) rather than one per section so this
+// doesn't turn into a dozen tiny files for one screen.
 extension WordDetailView {
     // Definition, sublattice Paths, and Forms — the sections most directly about "what does this
     // word mean and how does it inflect," ahead of the more peripheral metadata in

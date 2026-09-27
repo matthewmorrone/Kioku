@@ -7,13 +7,12 @@ import SQLite3
 extension DictionaryStore {
 
     // Reads the surface → canonical entry id map from surface_canonical_entry, precomputed at
-    // DB-build time by generate_db.py's materialize_canonical_entry_ids (same selection
-    // priority as fetchMatchedEntries: functional/deictic POS → kana-only → jpdb/wordfreq rank
-    // → sense order → entry id — kept in exact lockstep, see that Python function's comment).
-    // This used to run the whole ranking query (a window function over a multi-way join across
-    // all ~450k surfaces) at every app startup — ~2.5-4s of a ~7s cold start on-device, measured
-    // via StartupTimer — for a result that's a pure function of static dictionary data and never
-    // changes at runtime. Now it's a plain indexed table scan.
+    // DB-build time by generate_db.py's materialize_canonical_entry_ids (same selection priority as
+    // fetchMatchedEntries: functional/deictic POS → kana-only → jpdb/wordfreq rank → sense order →
+    // entry id — kept in exact lockstep, see that Python function's comment). The ranking is a pure
+    // function of static dictionary data, so it is computed once at build time; running it here at
+    // startup (a window function over a multi-way join across all ~450k surfaces) costs ~2.5-4s of
+    // cold start on-device, measured via StartupTimer. Here it's a plain indexed table scan.
     nonisolated func fetchCanonicalEntryIDMap() throws -> [String: Int64] {
         try withSerializedDatabaseAccess {
             let sql = "SELECT surface, entry_id FROM surface_canonical_entry"

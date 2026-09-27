@@ -76,21 +76,16 @@ extension WordsView {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Play pronunciation")
             }
-            // Central content is the only open-detail tap target. The leading speaker and
-            // trailing star buttons sit OUTSIDE this region, so tapping either fires just its
-            // own action.
+            // Central content is the only open-detail tap target. The leading speaker and trailing
+            // star buttons sit OUTSIDE this region, so tapping either fires just its own action.
             //
             // Two different shapes depending on edit mode, not one view with a gesture modifier:
-            // .contextMenu reliably coexists with a Button's own tap recognizer (proven by the
-            // star button, which has always worked this way) but silently fails to fire when the
-            // only tap handling nearby is .onTapGesture or .simultaneousGesture(TapGesture())
-            // instead — which is what this used to be, and why the row's long-press menu stopped
-            // appearing. But a Button here would also compete with List(selection:)'s own
-            // native row-tap-to-select gesture while editing, which the previous
-            // simultaneousGesture was specifically chosen to stay out of the way of — so edit
-            // mode keeps the old plain-view shape (no Button, no gesture, no context menu) and
-            // lets List(selection:) handle the tap entirely on its own; only the normal,
-            // non-editing shape needs to satisfy .contextMenu.
+            // .contextMenu reliably coexists with a Button's own tap recognizer (the star button
+            // works this way) but silently fails to fire when the only tap handling nearby is
+            // .onTapGesture or .simultaneousGesture(TapGesture()), so outside edit mode this is a
+            // Button. In edit mode a Button would compete with List(selection:)'s native
+            // row-tap-to-select gesture, so that shape is a plain view (no Button, no gesture, no
+            // context menu) and List(selection:) handles the tap entirely on its own.
             if editMode == .active {
                 wordRowCentralContent(headword: headword, reading: reading, surface: surface, gloss: gloss)
                     .contentShape(Rectangle())

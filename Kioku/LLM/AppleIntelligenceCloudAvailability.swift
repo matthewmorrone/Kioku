@@ -11,26 +11,22 @@ import FoundationModels
 // Organization rule: any type with logic (here, the isAvailable computed property) gets its own
 // file named after the type.
 enum AppleIntelligenceCloudAvailability {
-    // True when Foundation Models is present, the OS supports the server-side model (iOS 27+),
-    // and PrivateCloudComputeLanguageModel itself reports ready — which also folds in the
-    // com.apple.developer.private-cloud-compute entitlement, network reachability, and per-user
-    // quota/service state. NOTE: the exact availability surface (a plain `isAvailable` Bool vs.
-    // a richer `availability` enum) is unverified against a real iOS 27 SDK — this skill's
-    // research found `isAvailable` cited but could not compile-check it. If this doesn't build,
-    // check PrivateCloudComputeLanguageModel's actual API first.
+    // True when Foundation Models is present, the OS supports the server-side model (iOS 27+), and
+    // PrivateCloudComputeLanguageModel itself reports ready — which also folds in network
+    // reachability and per-user quota/service state.
     //
-    // Confirmed via CI (pinned to Xcode 26.5, Swift 6.3.2) that PrivateCloudComputeLanguageModel/
-    // ContextOptions genuinely don't exist in that SDK — this isn't a wrong-name guess, the types
-    // aren't declared at all yet on that toolchain. Gating on `canImport(FoundationModels)` alone
-    // isn't enough since that module DOES exist on 26.5 (the on-device SystemLanguageModel path
-    // compiles fine) — only the newer PCC-specific symbols are missing. Xcode 27 ships Swift 6.4,
-    // which does declare them, so `compiler(>=6.4)` gates this off on CI and on automatically once
-    // the toolchain in use is new enough — no manual per-machine build setting required.
-    // Private Cloud Compute needs the managed entitlement com.apple.developer.private-cloud-compute,
-    // which Apple grants per request (https://developer.apple.com/contact/request/private-cloud-compute/).
-    // The framework's own isAvailable does NOT fold that in: on 2026-09-13 it returned true on a
-    // device and the first request then died with a fatal (uncatchable) "Missing entitlement".
-    // Flip this to true only once the entitlement is granted and added to Kioku.entitlements.
+    // `compiler(>=6.4)` gates the PCC symbols: PrivateCloudComputeLanguageModel / ContextOptions
+    // are not declared in the Xcode 26.5 SDK CI builds with (Swift 6.3), while FoundationModels
+    // itself is, so `canImport(FoundationModels)` alone isn't enough. Xcode 27's Swift 6.4 declares
+    // them, so this turns on automatically with a new enough toolchain.
+    //
+    // Private Cloud Compute also needs the managed entitlement
+    // com.apple.developer.private-cloud-compute, which Apple grants per request
+    // (https://developer.apple.com/contact/request/private-cloud-compute/). The framework's own
+    // availability check does NOT fold that in: without the entitlement it reports available and
+    // the first request dies with an uncatchable "Missing entitlement" fatal error
+    // (console-confirmed 2026-09-13, commit 8c56630). Flip this to true only once the entitlement
+    // is granted and added to Kioku.entitlements.
     static let hasEntitlement = false
 
     static var isAvailable: Bool {

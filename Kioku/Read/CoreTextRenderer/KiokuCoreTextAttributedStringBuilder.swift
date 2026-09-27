@@ -1,21 +1,16 @@
 import UIKit
 import CoreText
 
-// Builds the NSAttributedString consumed by KiokuCoreTextView along with the list of ruby
-// entries to draw above it. The renderer used to bake CTRubyAnnotation into the attributed
-// string, which let CoreText position ruby for us but gave away vertical-gap control — Apple
-// gives no public knob to set the kanji-to-ruby gap on a CTRubyAnnotation. The TK2-style
-// `furiganaGap` slider went silently dead as a result.
+// Builds the NSAttributedString consumed by KiokuCoreTextView along with the list of ruby entries
+// to draw above it. Ruby is emitted as DATA (RubyEntry list), not baked in as CTRubyAnnotation:
+// CoreText positions an annotation itself and has no public knob for the kanji-to-ruby gap, which
+// would leave the `furiganaGap` slider dead. The view draws each reading itself in its draw pass,
+// using the layout engine's `firstRect(forCharacterRange:)` for kanji-run rects, which gives
+// per-pixel control of the kanji↔ruby gap. The vertical room reserved for ruby above each line is
+// set on the engine via `topRubyReserve`.
 //
-// We now emit ruby as DATA (RubyEntry list) and the view draws each reading itself in its
-// draw pass, using the layout engine's `firstRect(forCharacterRange:)` for kanji-run rects.
-// This matches the architecture sketched in docs/custom-renderer-plan.md ("existing overlay
-// code draws ruby ... at coordinates from CTLine offsets") and restores per-pixel control of
-// the kanji↔ruby gap. The vertical room reserved for ruby above each line is set on the
-// engine via `topRubyReserve`.
-//
-// Inputs cover everything that affects either the base glyphs or the ruby entries.
-// Selection envelopes, debug overlays, and playback highlights stay on the overlay layer.
+// Inputs cover everything that affects either the base glyphs or the ruby entries. Selection
+// envelopes, debug overlays, and playback highlights stay on the overlay layer.
 enum KiokuCoreTextAttributedStringBuilder {
 
     // Foreground color for segments changed by a pending LLM correction. Mint/green is

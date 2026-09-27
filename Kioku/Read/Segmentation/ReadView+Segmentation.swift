@@ -552,11 +552,10 @@ extension ReadView {
     }
 
     // Whether the current segment is saved — resolved by the SAME dictionary entry
-    // (currentSegmentDictionaryEntry) the learned-state button reads, so the star's fill state
-    // and the Learned/Not-Learned marker can never disagree about which word they're each
-    // describing. Previously resolved separately via surface/lemma string-matching against
-    // wordsStore's own encountered-surface sets — a different mechanism that could (and did)
-    // land on a different SavedWord than the dictionary-entry lookup for the same on-screen text.
+    // (currentSegmentDictionaryEntry) the learned-state button reads, so the star's fill state and
+    // the Learned/Not-Learned marker can never disagree about which word they're each describing.
+    // Surface/lemma string-matching against wordsStore's encountered-surface sets is a different
+    // mechanism and can land on a different SavedWord for the same on-screen text.
     func isSegmentSaved() -> Bool {
         guard let entry = currentSegmentDictionaryEntry() else { return false }
         return wordsStore.words.contains { $0.canonicalEntryID == entry.entryId }
@@ -652,14 +651,12 @@ extension ReadView {
         return candidates
     }
 
-    // Extracts the most likely dictionary gloss from already-prioritized entry ordering.
-    // JMdict orders both entries and senses most-common-usage-first, so the first non-empty
-    // gloss in that order IS the most likely definition — no need to re-rank by anything else.
-    // A prior version sorted by gloss character count instead, which backfired for words whose
-    // primary sense happens to have a longer gloss than a rarer one: を's primary sense "indicates
-    // direct object of action" (sense 0) lost to the area-traversal sense "indicates an area
-    // traversed" (sense 2) purely because the latter string is shorter, surfacing the wrong
-    // meaning for the most common particle in the language.
+    // Extracts the most likely dictionary gloss from already-prioritized entry ordering. JMdict
+    // orders both entries and senses most-common-usage-first, so the first non-empty gloss in that
+    // order IS the most likely definition — don't re-rank. Sorting by gloss length, for example,
+    // surfaces the wrong meaning for the most common particle: を's primary sense "indicates direct
+    // object of action" (sense 0) would lose to the area-traversal sense "indicates an area
+    // traversed" (sense 2) purely because the latter string is shorter.
     func mostLikelyDefinition(from entries: [DictionaryEntry]) -> String? {
         for entry in entries {
             for sense in entry.senses {

@@ -12,11 +12,9 @@ struct SoundDecoration: View {
     private let ringCount = 4
     private let cycleSeconds: Double = 1.8
 
-    // Drum-burst waves — each ring expands outward from the center, fading as it
-    // grows, then disappears off the edge. The previous "reflect off the screen
-    // edges" version felt unintentional rather than physical; reverted to the
-    // original outgoing-only pattern (with slightly more staggered timing) by
-    // user request.
+    // Drum-burst waves — each ring expands outward from the center, fading as it grows, then
+    // disappears off the edge. Outgoing only: rings that reflect off the screen edges look
+    // unintentional rather than physical.
     var body: some View {
         TimelineView(.animation) { context in
             let t = context.date.timeIntervalSinceReferenceDate

@@ -1,10 +1,9 @@
 import SwiftUI
 
-// Wrapping flow layout: each subview takes its natural width and wraps to the next row when it would
-// overflow the available width — no fixed columns. Used by tag-chip editors (Settings) and the
-// subtitle-import vocab picker so chips size to their content. (iOS 16+ Layout protocol; deployment
-// target is well above that.) Hoisted from SettingsView's private copy when SubtitleImportView
-// needed the same layout.
+// Wrapping flow layout: each subview takes its natural width and wraps to the next row when it
+// would overflow the available width — no fixed columns. Used by tag-chip editors (Settings) and
+// the subtitle-import vocab picker so chips size to their content. (iOS 16+ Layout protocol;
+// deployment target is well above that.)
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8
 

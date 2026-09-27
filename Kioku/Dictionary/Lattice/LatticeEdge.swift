@@ -87,26 +87,25 @@ struct LatticeEdge {
         return allPaths
     }
 
-    // Finds a two-part [base-surface, auxiliary-surface] split across `edges` that fully covers
-    // the span, where the trailing edge's surface is a known compound-verb auxiliary (続ける,
-    // つづける, 始める, …).
+    // Finds a two-part [base-surface, auxiliary-surface] split across `edges` that fully covers the
+    // span, where the trailing edge's surface is a known compound-verb auxiliary (続ける, つづける, 始める,
+    // …). Used to recover compound-verb structure for display when the top-level segmentation
+    // instead collapsed the whole word into one lattice edge via Deinflector's
+    // compoundVerbRecoveryForms (e.g. さがしつづける → さがす in one step). That collapse is correct for
+    // lookup/validity — the edge still resolves to the real dictionary entry — but it discards the
+    // auxiliary. buildLattice keeps every dictionary-matching substring as its own edge regardless
+    // of which one wins the longest-match selection, so the natural shorter split (さがし, つづける) is
+    // still present among `edges`; this just needs to find it.
     //
-    // Used to recover compound-verb structure for display when the top-level segmentation instead
-    // collapsed the whole word into one lattice edge via Deinflector's compoundVerbRecoveryForms
-    // (e.g. さがしつづける → さがす in one step). That collapse is correct for lookup/validity — the
-    // edge still resolves to the real dictionary entry — but it discards the auxiliary. buildLattice
-    // keeps every dictionary-matching substring as its own edge regardless of which one wins the
-    // longest-match selection, so the natural shorter split (さがし, つづける) is still present among
-    // `edges`; this just needs to find it. Returns raw SURFACES, not lemmas — `edge.lemma` is only
-    // ever populated by SegmentListView's own display hydration, never by buildLattice itself, so
-    // it's empty here; callers should resolve each piece through Segmenter.preferredLemma(for:) to
-    // get a real dictionary form (さがし → さがす) before feeding these into DerivationAnalyzer.
+    // Returns raw SURFACES, not lemmas — `edge.lemma` is only ever populated by SegmentListView's
+    // own display hydration, never by buildLattice itself, so it's empty here; callers should
+    // resolve each piece through Segmenter.preferredLemma(for:) to get a real dictionary form (さがし
+    // → さがす) before feeding these into DerivationAnalyzer.
     //
     // `lemmaResolver`, when given, also matches an INFLECTED tail edge against `auxiliaries` by its
-    // resolved lemma — e.g. 歩いてゆこう's tail edge is the volitional ゆこう, which never literally
-    // equals the dictionary-form "ゆく" entry in `auxiliaries` no matter what's in the set, but
-    // resolves to it. Optional and defaults to nil (surface-only matching, the original behavior)
-    // so existing callers that don't need this compile unchanged.
+    // resolved lemma — e.g. 歩いてゆこう's tail edge is the volitional ゆこう, which never literally equals
+    // the dictionary-form "ゆく" entry in `auxiliaries` no matter what's in the set, but resolves to
+    // it. nil means surface-only matching.
     static func auxiliaryVerbSplit(
         from edges: [LatticeEdge],
         auxiliaries: Set<String>,

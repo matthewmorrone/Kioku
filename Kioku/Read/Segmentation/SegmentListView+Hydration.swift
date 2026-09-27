@@ -155,10 +155,10 @@ extension SegmentListView {
 
     // Off-main lemma hydration for every edge surface in the current segment list.
     // Populates `lemmaCacheByEdgeSurface` so `resolvedRowSurface` and per-row
-    // `rowLemma` lookups become O(1) hashmap hits — the lemma toggle and scroll
-    // paths previously paid one `segmenter.preferredLemma(for:)` call (trie +
-    // deinflector) per row PER body re-evaluation, which dominated those paths
-    // for long notes. Segmenter is `@unchecked Sendable` (see Segmenter.swift)
+    // `rowLemma` lookups become O(1) hashmap hits instead of one
+    // `segmenter.preferredLemma(for:)` call (trie + deinflector) per row PER body
+    // re-evaluation, which would dominate the lemma toggle and scroll paths for
+    // long notes. Segmenter is `@unchecked Sendable` (see Segmenter.swift)
     // so it's safe to call from a background queue; we just hop assignment of
     // the @State dict back to main.
     //

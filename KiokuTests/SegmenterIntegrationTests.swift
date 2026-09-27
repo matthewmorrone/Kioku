@@ -91,11 +91,10 @@ final class SegmenterIntegrationTests: XCTestCase {
         })
     }
 
-    // Reproduces ReadView.definitionPayloadForSelectedSegment's exact resolution path for the
-    // reported "popover sometimes doesn't appear" bug (さがしつづける), run repeatedly to catch
-    // intermittent/order-dependent failures a single call wouldn't surface. Live device console
-    // capture kept losing the reproduction window to app-relaunch navigation resets, so this
-    // exercises the identical dictionary-backed pipeline entirely on the host, no device needed.
+    // Runs ReadView.definitionPayloadForSelectedSegment's exact resolution path for さがしつづける, whose
+    // lookup popover intermittently failed to appear, repeatedly to catch
+    // intermittent/order-dependent failures a single call wouldn't surface. Exercises the identical
+    // dictionary-backed pipeline entirely on the host, no device needed.
     func testCompoundVerbDefinitionLookupIsReliableAcrossRepeatedCalls() throws {
         let resources = try sharedResources()
         let surface = "さがしつづける"
@@ -117,13 +116,12 @@ final class SegmenterIntegrationTests: XCTestCase {
         }
     }
 
-    // しちゃう (contraction of して + しまう, i.e. する + auxiliary しまう) must lemmatize to
-    // する. A user report showed it resolving to しる ("to know") instead — a real dictionary
-    // word, just linguistically impossible here: 知る is godan despite ending in る, so its
-    // real contraction is 知っちゃう/しっちゃう (small っ), never しちゃう. The generic v1
-    // "ちゃう→る" rule doesn't verify the candidate is actually ichidan, so it admitted しる as
-    // a false positive that out-ranked the correct explicit "しちゃう→する" rule. Fixed via
-    // Deinflector.knownNonIchidanRuVerbs rejecting known godan-る-verb false positives.
+    // しちゃう (contraction of して + しまう, i.e. する + auxiliary しまう) must lemmatize to する, not しる ("to
+    // know") — a real dictionary word, but linguistically impossible here: 知る is godan despite
+    // ending in る, so its real contraction is 知っちゃう/しっちゃう (small っ), never しちゃう. The generic v1
+    // "ちゃう→る" rule doesn't verify the candidate is actually ichidan, so Deinflector.
+    // knownNonIchidanRuVerbs rejects known godan-る-verb false positives that would otherwise
+    // out-rank the explicit "しちゃう→する" rule.
     func testShichauLemmatizesToSuru() throws {
         let resources = try sharedResources()
         XCTAssertEqual(resources.segmenter.preferredLemma(for: "しちゃう"), "する")
@@ -165,13 +163,13 @@ final class SegmenterIntegrationTests: XCTestCase {
         )
     }
 
-    // 歩いてゆこう (歩く + てゆこう, the volitional of auxiliary ゆく) must recover as a compound verb
-    // end to end: auxiliaryVerbSplit finds the correct headEdge/tailEdge boundary, preferredLemma
-    // resolves both parts to real dictionary lemmas, and DerivationAnalyzer names the compound.
-    // Two coincidental false positives had to be fixed for this to work: (1) preferredLemma("ゆこう")
-    // preferring its own unrelated dictionary entry over the deinflected "ゆく", and (2)
-    // auxiliaryVerbSplit matching a shorter tail ("いてゆこう" → the real but wrong auxiliary いる)
-    // before ever considering the linguistically correct て-linked split.
+    // 歩いてゆこう (歩く + てゆこう, the volitional of auxiliary ゆく) must recover as a compound verb end to
+    // end: auxiliaryVerbSplit finds the correct headEdge/tailEdge boundary, preferredLemma resolves
+    // both parts to real dictionary lemmas, and DerivationAnalyzer names the compound. Two
+    // coincidental false positives stand in the way: (1) preferredLemma("ゆこう") preferring its own
+    // unrelated dictionary entry over the deinflected "ゆく", and (2) auxiliaryVerbSplit matching a
+    // shorter tail ("いてゆこう" → the real but wrong auxiliary いる) before the linguistically correct
+    // て-linked split.
     func testAuxiliaryVerbSplitRecoversWalkingCompoundAcrossVolitionalTail() throws {
         let resources = try sharedResources()
         let surface = "歩いてゆこう"
@@ -374,12 +372,10 @@ final class SegmenterIntegrationTests: XCTestCase {
         XCTAssertTrue(candidates.contains("愛しい"))
     }
 
-    // した is the standalone past tense of the irregular する, but する conjugates
-    // as a whole word (kanaIn した == the entire surface, so the stem is empty).
-    // The deinflector's empty-stem guard used to reject every whole-surface
-    // match, so した never recovered する — only the spurious ichidan reading しる
-    // (た→る) survived. Whole irregular forms whose result is a real dictionary
-    // word must be admitted.
+    // した is the standalone past tense of the irregular する, but する conjugates as a whole word
+    // (kanaIn した == the entire surface, so the stem is empty). An empty-stem guard that rejects
+    // every whole-surface match would leave only the spurious ichidan reading しる (た→る). Whole
+    // irregular forms whose result is a real dictionary word must be admitted.
     func testDeinflectorRecoversSuruFromStandaloneShita() throws {
         let candidates = try deinflectionCandidates(for: "した")
 
@@ -650,11 +646,11 @@ final class SegmenterIntegrationTests: XCTestCase {
         }
     }
 
-    // InflectionFormNames used to be keyed by the raw deinflection.json group names ("teForms",
-    // "progressiveForms"), but Deinflector.normalizedRuleLabel already strips "Forms" and splits
-    // camelCase before a chain ever leaves the deinflector — so every describe(_:) lookup missed
-    // silently and no word ever showed a grammatical-form caption. 見てる (見る's
-    // casual progressive contraction) is a real example: its chain is ["progressive"], not
+    // InflectionFormNames must be keyed by NORMALIZED chain labels: Deinflector.normalizedRuleLabel
+    // strips "Forms" and splits camelCase before a chain ever leaves the deinflector, so a table
+    // keyed by the raw deinflection.json group names ("teForms", "progressiveForms") misses every
+    // describe(_:) lookup silently and no word shows a grammatical-form caption. 見てる (見る's casual
+    // progressive contraction) is a real example: its chain is ["progressive"], not
     // ["progressiveForms"].
     func testInflectionFormNamesMatchesRealDeinflectorChain() throws {
         let resources = try sharedResources()

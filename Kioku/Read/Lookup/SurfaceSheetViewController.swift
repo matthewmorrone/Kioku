@@ -55,6 +55,16 @@ final class SurfaceSheetViewController: UIViewController {
     // Height of everything the sheet holds, measured in viewDidLayoutSubviews and read back by
     // the detent resolver. Zero until the first layout pass.
     var measuredContentHeight: CGFloat = 0
+    // The fitted height the content detent last resolved to; nil while it has only resolved the
+    // provisional height. Written by the detent resolver (a plain store, no layout).
+    private var resolvedFittedHeight: CGFloat?
+    // True while an in-place word switch is waiting for its dictionary content: reports are held so
+    // the read view moves once, for the new word's final height, not once for the header swap and
+    // again for the content.
+    var isAwaitingSwitchedContent = false
+    // Set when switched content has landed: the next report goes out even if the height is
+    // unchanged, since the read view is waiting on it to place the new word.
+    private var forcesNextReport = false
     var leftInput: UITextField!
     var rightInput: UITextField!
     var leftInputTapButton: UIButton!
@@ -147,13 +157,45 @@ final class SurfaceSheetViewController: UIViewController {
             withHorizontalFittingPriority: .required,
             verticalFittingPriority: .fittingSizeLevel
         ).height
-        guard abs(fitted - measuredContentHeight) > 0.5 else { return }
-        measuredContentHeight = fitted
-        sheet?.presentedSheetHeight = fittedSheetHeight()
-        // Off this layout pass: invalidateDetents resizes the sheet, which lays out again.
-        // The guard above is what stops the second pass from scheduling a third.
+        if abs(fitted - measuredContentHeight) > 0.5 {
+            measuredContentHeight = fitted
+            // Off this layout pass: invalidateDetents resizes the sheet, which lays out again.
+            // The check above is what stops the second pass from scheduling a third.
+            DispatchQueue.main.async { [weak self] in
+                self?.invalidateContentDetentIfPresented()
+            }
+        }
+        reportOnScreenHeight()
+    }
+
+    // Called once a switched word's content is in place: releases the held reports and reports
+    // now (or, when the new content changes the sheet's height, as soon as the resize lands).
+    func reportAfterSwitchedContent() {
+        isAwaitingSwitchedContent = false
+        forcesNextReport = true
+        view.layoutIfNeeded()
+        reportOnScreenHeight()
+    }
+
+    // Tells the read view how much of the screen the sheet covers, measured from the sheet's
+    // actual top on screen to the screen bottom — not from the detent value, which leaves out the
+    // gap a floating sheet keeps above the screen bottom. Waits until the detent has been resolved
+    // from the measured content (the first layout passes use the provisional detent); the
+    // presentation sets the sheet's final frame up front and animates toward it, so this reports
+    // while the sheet is still sliding in, not after.
+    private func reportOnScreenHeight() {
+        guard isAwaitingSwitchedContent == false,
+              let resolved = resolvedFittedHeight, abs(resolved - fittedSheetHeight()) <= 0.5,
+              let window = view.window else { return }
+        let sheetTopY = view.convert(view.bounds, to: window).minY
+        let coveredHeight = window.bounds.maxY - sheetTopY
+        guard coveredHeight > 0 else { return }
+        if forcesNextReport == false, let reported = sheet?.presentedSheetHeight, abs(reported - coveredHeight) <= 0.5 {
+            return
+        }
+        forcesNextReport = false
+        sheet?.presentedSheetHeight = coveredHeight
         DispatchQueue.main.async { [weak self] in
-            self?.invalidateContentDetentIfPresented()
             self?.sheet?.onSheetHeightChanged?()
         }
     }
@@ -344,12 +386,13 @@ final class SurfaceSheetViewController: UIViewController {
             // pass has run there is nothing measured, and the sheet opens at a middling height
             // that the pass then corrects.
             guard self.measuredContentHeight > 0 else { return min(340, context.maximumDetentValue) }
+            self.resolvedFittedHeight = self.fittedSheetHeight()
             return min(self.fittedSheetHeight(), context.maximumDetentValue)
         }
     }
 
     // The sheet's height for its measured content, before the detent's maximum: what the detent
-    // resolves to, and what the read view keeps the selected word above (presentedSheetHeight).
+    // resolves to.
     func fittedSheetHeight() -> CGFloat {
         max(measuredContentHeight + pendingBottomSafeAreaInset(), 240)
     }

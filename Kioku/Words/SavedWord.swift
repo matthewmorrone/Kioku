@@ -72,12 +72,10 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
     // all read this. Cross-entry heteronym flips (抱く いだく ↔ だく) re-point the card to the other
     // entry AND record the reading here, so both halves of the switcher survive.
     var selectedReading: String?
-    // Everything below was formerly owned by a separate ReviewStore, keyed by canonicalEntryID in
-    // its own persisted dictionaries. Merged directly onto the card so there's one store, one
-    // persisted array, and no risk of the two drifting out of sync or silently disagreeing about
-    // which words exist. See WordsStore's "MARK: - Review" section for the derived Set/Dictionary
-    // caches (learned/notLearned/mastered/stats) that give O(1) lookups back despite the data now
-    // living per-card instead of in dedicated collections.
+    // Review state lives directly on the card, so there's one store, one persisted array, and no
+    // way for a word's card and its study history to disagree about which words exist. See
+    // WordsStore's "MARK: - Review" section for the derived Set/Dictionary caches
+    // (learned/notLearned/mastered/stats) that give O(1) lookups over the per-card data.
     var learnedMark: LearnedState
     var mastered: Bool
     // Transient "currently in the wrong pile" flag — true after an "again" answer, cleared by the

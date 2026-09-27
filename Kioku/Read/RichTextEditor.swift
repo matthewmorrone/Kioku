@@ -173,11 +173,10 @@ struct RichTextEditor: UIViewRepresentable {
         RichTextEditorCoordinator(text: $text, textSize: $textSize, onScrollOffsetYChanged: onScrollOffsetYChanged)
     }
 
-    // Applies font, kerning, and paragraph spacing to both content and typing attributes.
-    // Geometry comes from `RenderGeometry.resolve` so this path always agrees with the CT
-    // view-mode renderer on top inset and inter-line gap. Without that shared resolver,
-    // characters drift vertically when toggling between edit and view (~6pt per line at
-    // default settings) — a regression the user explicitly called out.
+    // Applies font, kerning, and paragraph spacing to both content and typing attributes. Geometry
+    // comes from `RenderGeometry.resolve` so this path always agrees with the CT view-mode renderer
+    // on top inset and inter-line gap; without that shared resolver, characters drift vertically
+    // when toggling between edit and view (~6pt per line at default settings).
     private func applyTypography(to textView: UITextView, text: String) {
         let font = UIFont.systemFont(ofSize: textSize)
         let geometry = RenderGeometry.resolve(

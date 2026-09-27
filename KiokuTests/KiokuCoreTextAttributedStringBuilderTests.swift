@@ -3,14 +3,11 @@ import UIKit
 import CoreText
 @testable import Kioku
 
-// Guards the contract between segmentation data and the CoreText builder output:
-// ruby entries land on kanji runs, color alternation respects toggles, and gate flags
-// suppress effects cleanly. These prevent silent feature loss as the renderer evolves.
-//
-// History note: the builder used to bake CTRubyAnnotation into the attributed string and
-// the tests asserted on `kCTRubyAnnotationAttributeName` runs. After the manual-ruby
-// migration the builder emits ruby as data (`Output.rubyEntries`) and the view draws it
-// in its own pass — assertions now target the entry list directly.
+// Guards the contract between segmentation data and the CoreText builder output: ruby entries land
+// on kanji runs, color alternation respects toggles, and gate flags suppress effects cleanly. These
+// prevent silent feature loss as the renderer evolves. The builder emits ruby as data
+// (`Output.rubyEntries`) and the view draws it in its own pass, so assertions target the entry list
+// directly.
 @MainActor
 final class KiokuCoreTextAttributedStringBuilderTests: XCTestCase {
 

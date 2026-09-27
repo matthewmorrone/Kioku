@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 
 // One line of a song breakdown rendered as a card inside the per-note vertical scroll.
+//
 // Layout (top → bottom):
 //   - header (line number)
 //   - reference chip (only for repeated/parallel chorus lines)
@@ -9,15 +10,15 @@ import UIKit
 //   - gist + grammar note  ← falls through to referenced line for chorus repeats
 //   - "Show / Hide word explanations" toggle, followed by the word list when expanded
 //
-// Fall-through for `.sameAsLine` / `.parallelTo` lines: the prompt instructs the model to
-// skip the full breakdown on repeats and just emit "= line N". That leaves the SongLine's
-// own gist/words/grammar empty. We don't want a chorus line to render as a bare Japanese
-// string — the user still wants the explanation — so the card prefers the line's own
-// fields when present and falls back to the referenced line's fields when they're empty.
+// Fall-through for `.sameAsLine` / `.parallelTo` lines: the prompt instructs the model to skip the
+// full breakdown on repeats and just emit "= line N". That leaves the SongLine's own
+// gist/words/grammar empty. We don't want a chorus line to render as a bare Japanese string — the
+// user still wants the explanation — so the card prefers the line's own fields when present and
+// falls back to the referenced line's fields when they're empty.
 //
-// The word list is collapsed by default so a long song stays glanceable; the user opts
-// in per line. The card no longer owns a scroll view — the parent SongStepperView
-// scrolls the whole song, and nested same-axis ScrollViews fight each other.
+// The word list is collapsed by default so a long song stays glanceable; the user opts in per line.
+// The card has no scroll view of its own — the parent SongStepperView scrolls the whole song, and
+// nested same-axis ScrollViews fight each other.
 struct SongLineCard: View {
     let line: SongLine
     let referencedLine: SongLine?
@@ -280,21 +281,18 @@ struct SongLineCard: View {
             && line.index > 1
     }
 
-    // Big Japanese row. Furigana shows whenever the cache has readings for this line —
-    // independent of `isExpanded`, which now controls only the word/grammar explanations
-    // below. (Previously furigana was tied to the same flag, so collapsing the explanations
-    // — or simply never expanding a line — hid furigana too; readers want the reading aid
-    // available regardless of whether they've opened the explanations for that line.)
-    // Tapping the row still toggles the explanations. The two branches share size/leading-
-    // alignment so that toggle does not shift the surrounding layout. The plain branch
-    // carries its own SwiftUI tap gesture; the renderer branch routes taps through
-    // `onSegmentTapped` because a UIViewRepresentable wrapping UITextView intercepts
-    // touches before SwiftUI sees them.
+    // Big Japanese row. Furigana shows whenever the cache has readings for this line — independent
+    // of `isExpanded`, which controls only the word/grammar explanations below, so the reading aid
+    // is there whether or not a line's explanations have been opened. Tapping the row toggles the
+    // explanations. The two branches share size/leading-alignment so that toggle does not shift the
+    // surrounding layout. The plain branch carries its own SwiftUI tap gesture; the renderer branch
+    // routes taps through `onSegmentTapped` because a UIViewRepresentable wrapping UITextView
+    // intercepts touches before SwiftUI sees them.
     //
-    // The cache is only used when it was built from exactly this text: its segmentation
-    // ranges are String.Index values into `sourceText`, and applying them to a different
-    // string traps inside the CoreText renderer. A stale cache (the parent rebuilds it on the
-    // next update) falls through to the plain branch for one frame instead.
+    // The cache is only used when it was built from exactly this text: its segmentation ranges are
+    // String.Index values into `sourceText`, and applying them to a different string traps inside
+    // the CoreText renderer. A stale cache (the parent rebuilds it on the next update) falls
+    // through to the plain branch for one frame instead.
     @ViewBuilder
     private var originalLine: some View {
         if let cache = furiganaCache,

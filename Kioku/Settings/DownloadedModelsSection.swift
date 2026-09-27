@@ -31,12 +31,11 @@ private enum DownloadedModelKind: String, Identifiable, Equatable, CaseIterable 
     }
 }
 
-// Settings → Downloaded and Caches sections. Downloaded lists the on-device speech models —
-// "Clear Caches" never touches these, so this is the only place a user can reclaim the space:
-// Qwen3-ASR, Qwen3-ForcedAligner, HTDemucs (all fixed-identity, one row each), plus any
-// downloaded Whisper model (a variable-length list, previously only manageable
-// from inside the Bulk Import flow). Hidden entirely when nothing is downloaded yet, mirroring
-// Clear Caches disabling itself at 0 bytes.
+// Settings → Downloaded and Caches sections. Downloaded lists the on-device speech models — "Clear
+// Caches" never touches these, so this is the only place a user can reclaim the space: Qwen3-ASR,
+// Qwen3-ForcedAligner, HTDemucs (all fixed-identity, one row each), plus any downloaded Whisper
+// model (a variable-length list). Hidden entirely when nothing is downloaded yet, mirroring Clear
+// Caches disabling itself at 0 bytes.
 struct DownloadedModelsSection: View {
     // Re-measures every row whenever the owner bumps this (e.g. after Clear Caches).
     var refreshToken: Int = 0

@@ -30,25 +30,31 @@ extension ReadView {
                 presentNestedLemmaLookup(lemma: lemma, gloss: gloss)
             }
 
-            // When the sheet measures itself (and whenever its height changes after that), place the
-            // selected word above its real top instead of the guess the first scroll used.
-            SegmentLookupSheet.shared.onSheetHeightChanged = {
-                guard let textView = sourceView as? UITextView,
-                      let selectedSegmentLocation = segmentSelection.selectedSegmentLocation,
-                      let selectedSegmentRect = selectedSegmentRectInTextView(
-                          sourceView: textView,
-                          selectedLocation: selectedSegmentLocation
-                      ) else { return }
+            // Record where the view is and plan every scroll for this tap from there. The sheet's own
+            // size isn't known until it has measured its new content. Opening a sheet: scroll right
+            // away against the last height a sheet had on screen (skipped when none has been shown
+            // yet) while it slides in, then re-plan when it reports its real height. Switching words
+            // in an open sheet: don't move yet — the sheet reports once the new word's content is in,
+            // so the view moves once. The tapped rect is in content coordinates, so it holds across
+            // scrolls. (The view-mode reader is a plain UIScrollView, not a UITextView, so the rect
+            // can't be re-derived from a text view.)
+            editModeScroll.sheetScrollStartOffsetY = sourceView?.contentOffset.y
+            if SegmentLookupSheet.shared.hasActivePresentedSheetController == false,
+               SegmentLookupSheet.shared.lastPresentedSheetHeight != nil {
                 preScrollSegmentForSheetVisibility(
                     sourceView: sourceView,
-                    tappedSegmentRect: selectedSegmentRect,
+                    tappedSegmentRect: tappedSegmentRect,
+                    replanningFromStart: true
+                )
+            }
+            SegmentLookupSheet.shared.onSheetHeightChanged = {
+                preScrollSegmentForSheetVisibility(
+                    sourceView: sourceView,
+                    tappedSegmentRect: tappedSegmentRect,
                     replanningFromStart: true
                 )
             }
 
-            TapDiagnostics.mark("about to preScroll")
-            preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: tappedSegmentRect)
-            TapDiagnostics.mark("preScroll returned, about to presentSheet")
             // Tell the sheet whether the segmenter is loaded yet so its split readout shows a loading
             // state instead of missing costs when opened mid-startup; the segmenterRevision change in
             // ReadView+Lifecycle flips it true and re-costs the open readout once it lands.
@@ -163,23 +169,17 @@ extension ReadView {
                 sheetLemmaInfoProvider: {
                     lemmaInfoForCurrentSelectedSegment()
                 },
-                // Per-reading lemma map: lets the arrow controls cycle the lemma + gloss along
-                // with the reading. Two populations, both needed:
-                //
-                // 1) Inflected surfaces (e.g. 触れられない) — we admit both 触れる (depth 2) and
-                //    触る (depth 3); each contributes a surface-projected reading
-                //    (ふれられない / さわれられない) and its dictionary entry, so arrowing flips
-                //    the lemma label and gloss panel.
-                //
-                // 2) Dictionary surfaces with multiple JMdict entries (e.g. 様, 方, 中, 何) —
-                //    these used to be skipped under the assumption that one entry covers all
-                //    readings, but kanji like 様 are actually split across separate JMdict
-                //    entries (さま honorific vs よう manner-suffix). For each direct reading,
-                //    look up the entry whose kana form matches that reading specifically.
-                //    Without this, the gloss panel and the displayed reading drift apart on
-                //    first paint — the resolver picks the higher-frequency さま entry while
-                //    the controller's reading-cycle starts on よう.
-                //
+                // Per-reading lemma map: lets the arrow controls cycle the lemma + gloss along with
+                // the reading. Two populations, both needed:
+                //   1) Inflected surfaces (e.g. 触れられない) — we admit both 触れる (depth 2) and 触る (depth 3);
+                //      each contributes a surface-projected reading (ふれられない / さわれられない) and its dictionary
+                //      entry, so arrowing flips the lemma label and gloss panel.
+                //   2) Dictionary surfaces with multiple JMdict entries (e.g. 様, 方, 中, 何) — one entry does not
+                //      cover all readings: 様 is split across separate JMdict entries (さま honorific vs よう
+                //      manner-suffix). For each direct reading, look up the entry whose kana form matches that reading
+                //      specifically. Without this, the gloss panel and the displayed reading drift apart on first
+                //      paint — the resolver picks the higher-frequency さま entry while the controller's reading-cycle
+                //      starts on よう.
                 // Surface projection for #1 is critical because bare lemma readings are shorter
                 // than the inflected surface's okurigana tail (sheetReadingsProvider returns
                 // projected readings, so this map must key on the same strings).

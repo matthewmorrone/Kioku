@@ -73,21 +73,20 @@ extension DictionaryStore {
             """
         }
 
-        // Boolean EXISTS test: true when the entry has any sense tagged as a functional /
-        // deictic part of speech — particle (prt), copula (cop), auxiliary (aux / aux-*), or
-        // pre-noun adjectival (adj-pn). These are the words a bare-kana lookup almost always
-        // intends (は → topic particle, not 派 "faction"; その → demonstrative, not 園 "garden"),
-        // which NO frequency signal can express: the functional word and its rare-kanji
-        // homograph share the same kana surface, so they score identically. This is the one
-        // definition shared by the live lookup (fetchMatchedEntries) and the startup canonical-id
-        // map (fetchCanonicalEntryIDMap) so the two rankings cannot drift out of lockstep — the
-        // whole reason this enum exists. It replaced two copy-pasted inline copies; to add a POS
-        // to the boost, edit generate_db.py's _FUNCTIONAL_POS_TAGS (this reads a table
-        // precomputed at DB-build time, not senses.pos directly — see entry_functional_pos's
-        // comment in generate_db.py for why: the original correlated EXISTS + LIKE '%,tag,%'
-        // subquery, fine for one entry at a time, cost ~4s of a ~7s cold start when
-        // fetchCanonicalEntryIDMap evaluated it across all ~450k dictionary surfaces).
-        // `entryIDExpr` names the candidate entry's id in the calling query.
+        // Boolean EXISTS test: true when the entry has any sense tagged as a functional / deictic
+        // part of speech — particle (prt), copula (cop), auxiliary (aux / aux-*), or pre-noun
+        // adjectival (adj-pn). These are the words a bare-kana lookup almost always intends (は →
+        // topic particle, not 派 "faction"; その → demonstrative, not 園 "garden"), which NO frequency
+        // signal can express: the functional word and its rare-kanji homograph share the same kana
+        // surface, so they score identically.
+        //
+        // This is the one definition shared by the live lookup (fetchMatchedEntries) and the
+        // startup canonical-id map (fetchCanonicalEntryIDMap) so the two rankings cannot drift out
+        // of lockstep — the whole reason this enum exists. To add a POS to the boost, edit
+        // generate_db.py's _FUNCTIONAL_POS_TAGS: this reads a table precomputed at DB-build time,
+        // not senses.pos directly, because a correlated EXISTS + LIKE '%,tag,%' subquery evaluated
+        // across all ~450k surfaces costs ~4s of cold start (see entry_functional_pos's comment in
+        // generate_db.py). `entryIDExpr` names the candidate entry's id in the calling query.
         static func functionalPosMatch(entryIDExpr: String) -> String {
             "EXISTS (SELECT 1 FROM entry_functional_pos efp WHERE efp.entry_id = \(entryIDExpr))"
         }

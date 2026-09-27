@@ -67,33 +67,6 @@ extension ReadView {
             } message: {
                 Text(llmCorrection.llmChangePopoverText)
             }
-            // Auto-segmentation confirm dialog disabled — see requestAutoSegConfirm in
-            // ReadView+Persistence.swift for re-enable instructions.
-            // .alert(
-            //     "Run automatic segmentation?",
-            //     isPresented: Binding(
-            //         get: { pendingAutoSegQueue.isEmpty == false },
-            //         set: { isPresented in
-            //             if isPresented == false, let head = pendingAutoSegQueue.first {
-            //                 cancelPendingAutoSeg(head)
-            //             }
-            //         }
-            //     ),
-            //     presenting: pendingAutoSegQueue.first
-            // ) { request in
-            //     Button("Confirm") { commitPendingAutoSeg(request) }
-            //     Button("Cancel", role: .cancel) { cancelPendingAutoSeg(request) }
-            // } message: { request in
-            //     let pendingNote = pendingAutoSegQueue.count > 1
-            //         ? "\n(\(pendingAutoSegQueue.count - 1) more queued)"
-            //         : ""
-            //     let diskNote = activeNoteID.flatMap { notesStore.note(withID: $0) }
-            //     let diskSegs = diskNote?.segments?.count ?? 0
-            //     let diskFuri = diskNote?.segments?.reduce(0) { $0 + ($1.furigana?.count ?? 0) } ?? 0
-            //     let memSegs = segments?.count ?? 0
-            //     let memFuri = furiganaBySegmentLocation.count
-            //     Text("\(request.reason)\ndisk: \(diskSegs)seg/\(diskFuri)furi  mem: \(memSegs)seg/\(memFuri)furi\(pendingNote)")
-            // }
     }
 
     var lifecycleReadView: some View {

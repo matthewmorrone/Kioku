@@ -1,14 +1,13 @@
 import SwiftUI
 
-// Non-speech (♪) cue display: a row of note glyphs scaled to the interlude's duration — a
-// four-second gap and a three-minute instrumental break both used to render as the exact same
-// single "♪", giving no sense of how long the wait is. The active card additionally pulses the
-// notes in sequence while that cue is the one actually playing, as a "still going" signal.
-// Persisted cue text itself is untouched (still a plain "♪" — SubtitleParser.isNonSpeechCue
-// keeps working on it); this is a display-time expansion in both the active card and the
-// scrolling rows. The active card's notes follow the music: their size tracks its loudness and
-// their pulse its busyness (InterludeRhythm), so a quiet intro gets small, gently pulsing notes
-// and a loud section big, quick ones.
+// Non-speech (♪) cue display: a row of note glyphs scaled to the interlude's duration, so a
+// four-second gap and a three-minute instrumental break look different. The active card
+// additionally pulses the notes in sequence while that cue is the one actually playing, as a "still
+// going" signal. Persisted cue text itself is untouched (still a plain "♪" —
+// SubtitleParser.isNonSpeechCue keeps working on it); this is a display-time expansion in both the
+// active card and the scrolling rows. The active card's notes follow the music: their size tracks
+// its loudness and their pulse its busyness (InterludeRhythm), so a quiet intro gets small, gently
+// pulsing notes and a loud section big, quick ones.
 extension LyricsView {
     // Whether the cue at `index` is a non-speech (♪) marker rather than a sung line.
     func isNonSpeechCue(at index: Int) -> Bool {

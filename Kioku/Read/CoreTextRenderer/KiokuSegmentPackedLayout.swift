@@ -153,13 +153,12 @@ enum KiokuSegmentPackedLayout {
             // would overlap by that amount.
             let segAttr = inputs.attributedString.attributedSubstring(from: segRange)
             let segLine = CTLineCreateWithAttributedString(segAttr as CFAttributedString)
-            // Kept unrounded: ceiling this per-segment (as every prior version did) rounds
-            // up to a whole point on EVERY segment in the line, and those roundups stack
-            // as cursorX advances — a 4-segment line could drift ~4pt wider than the
-            // single-CTLine (ruby-spacing-off) rendering of the same text with zero actual
-            // overhang anywhere. Exact widths sum correctly; rounding (if ever needed for
-            // pixel snapping) happens once, on the final line/content width below, not once
-            // per segment.
+            // Kept unrounded: ceiling this per-segment rounds up to a whole point on EVERY segment
+            // in the line, and those roundups stack as cursorX advances — a 4-segment line would
+            // drift ~4pt wider than the single-CTLine (ruby-spacing-off) rendering of the same text
+            // with zero actual overhang anywhere. Exact widths sum correctly; rounding (if ever
+            // needed for pixel snapping) happens once, on the final line/content width below, not
+            // once per segment.
             let headwordWidth = CGFloat(CTLineGetTypographicBounds(segLine, nil, nil, nil))
             // Compute per-kanji-run ruby overhang on each side of the segment. For a
             // segment like 美しい with ruby うつく on just 美 (the first kanji), ruby

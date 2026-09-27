@@ -3,12 +3,11 @@ import UIKit
 
 // Segment data utilities: edge application, range construction, persistence helpers, and furigana extraction.
 extension ReadView {
-    // Punctuation that the segmenter emits as standalone tokens. These were previously dropped
-    // from the segment list as "noise", but doing so broke the concat-equals-content invariant
-    // that load-time validation relies on — segments could no longer be restored from disk
-    // because they didn't cover whitespace/punctuation in the source text. Now noise edges are
-    // kept in the segment list, and noise filtering happens only at the lookup/tap layer via
-    // shouldIgnoreSegmentForDefinitionLookup — taps on whitespace/punctuation still no-op.
+    // Punctuation that the segmenter emits as standalone tokens. They stay in the segment list: the
+    // segments must concatenate to the note's content, which load-time validation relies on to
+    // restore segments from disk, so whitespace/punctuation can't be dropped there. Noise filtering
+    // happens only at the lookup/tap layer via shouldIgnoreSegmentForDefinitionLookup — taps on
+    // whitespace/punctuation no-op.
     private static let noiseSegmentCharacters: Set<Character> = ["―", "？", "！", "?", "!"]
 
     // Returns true when the edge's surface is composed entirely of noise punctuation,

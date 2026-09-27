@@ -6,14 +6,11 @@ import SwiftDagre
 // per-path chip strip, and the node/edge lattice diagram. Extracted from WordDetailView+Helpers
 // so that file stays under the line-count invariant.
 extension WordDetailView {
-    // Visual chart for the "Paths" section, sitting above the existing flat text list (not
-    // replacing it): one row per candidate segmentation path, in sublatticePaths' existing
-    // most-divided-first order (see WordDetailView+Helpers's sort in the .task loader), each
-    // segment its own chip. Replaced an earlier shared-edge lattice-arc diagram (candidate paths
-    // sharing a segment collapsed into one curved arc, with divergent alternatives fanned into
-    // separate lanes) — mathematically that laid out correctly, but for any note with several
-    // divergent short segments the result was small, needle-thin arcs that didn't read as arcs at
-    // all. One row per path has no such failure mode: every row is a plain horizontal strip
+    // Visual chart for the "Paths" section, sitting above the flat text list (not replacing it):
+    // one row per candidate segmentation path, in sublatticePaths' most-divided-first order (see
+    // WordDetailView+Helpers's sort in the .task loader), each segment its own chip. One row per
+    // path, not a shared-edge arc diagram: with several divergent short segments, arcs come out
+    // small and needle-thin and stop reading as arcs, while a plain horizontal strip per row works
     // regardless of how many paths there are or how much they diverge.
     @ViewBuilder
     var sublatticeDiagramRowsPerPath: some View {

@@ -1,11 +1,9 @@
 import UIKit
 
-// NOTE: a `ProviderBox` @unchecked-Sendable wrapper and a background `providerQueue` used to live
-// here, smuggling the @MainActor-isolated provider closures onto a background queue. That tripped
-// a dispatch_assert_queue(main) precondition at runtime (SIGTRAP on every word tap) — the wrapper
-// silenced the compile-time isolation check but not the runtime one. The providers read ReadView
-// @State and must run on the main actor; see refreshSheetSupplementalDataAsync below. Both the box
-// and the queue were removed.
+// The sheet's supplemental-data providers read ReadView @State and must run on the main actor (see
+// refreshSheetSupplementalDataAsync). Don't hop them to a background queue behind an
+// @unchecked-Sendable wrapper: that silences the compile-time isolation check but not the runtime
+// dispatch_assert_queue(main) precondition, and every word tap then SIGTRAPs (commit 4f1e6bc).
 
 extension SegmentLookupSheet {
     // Re-installs the split editor's cost provider once the segmenter is loaded and re-costs the cuts

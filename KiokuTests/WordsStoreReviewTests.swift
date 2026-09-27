@@ -253,14 +253,11 @@ final class WordsStoreReviewTests: XCTestCase {
 
     // MARK: - applyLegacyReviewBackup (backup restore path)
 
-    // Restoring a backup folds the review payload onto the saved cards and persists it. This is
-    // the path that replaced ReviewStore.replaceAll: backups still ship review data as a separate
-    // payload keyed by entry id, which now has to land on the word rows.
-    //
-    // Note the difference from the old whole-store replaceAll, which discarded everything it
-    // wasn't given: a word the payload doesn't mention keeps the stats it already had (999 here),
-    // because those stats are part of the word row the restore is merging into rather than a
-    // separate table it can swap wholesale.
+    // Restoring a backup folds the review payload onto the saved cards and persists it. Backups
+    // ship review data as a separate payload keyed by entry id, which has to land on the word rows.
+    // A word the payload doesn't mention keeps the stats it already had (999 here), because those
+    // stats are part of the word row the restore is merging into rather than a separate table it
+    // can swap wholesale.
     func testLegacyBackupRestoreMergesOntoSavedCardsAndPersists() {
         let writer = makeStore(saving: [10, 20, 30, 999])
         writer.recordCorrect(for: 999) // some prior state

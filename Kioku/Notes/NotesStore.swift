@@ -1,18 +1,17 @@
 import SwiftUI
 import Combine
 
-// Persists notes as one JSON file per note under Application Support/Notes/ with an
-// _index.json file recording display order. Replaces the prior single-UserDefaults-blob
-// storage so:
+// Persists notes as one JSON file per note under Application Support/Notes/ with an _index.json
+// file recording display order, so:
 //   - One corrupt note doesn't take the whole collection down (per-note decode is isolated)
-//   - A transient read failure on launch can't be silently overwritten by a stale empty
-//     in-memory state on the next save (see `flushPendingSave` defense)
-//   - The collection survives any kind of process crash / sudden quit; only an explicit
-//     uninstall or `replaceAll(with: [])` can clear it
+//   - A transient read failure on launch can't be silently overwritten by a stale empty in-memory
+//     state on the next save (see `flushPendingSave` defense)
+//   - The collection survives any kind of process crash / sudden quit; only an explicit uninstall or
+//     `replaceAll(with: [])` can clear it
 //
-// First launch after upgrade migrates from the legacy `kioku.notes.v1` UserDefaults key
-// (read-only) and leaves it untouched on disk for downgrade safety. Files are the
-// authoritative store from that point on.
+// If the files don't exist yet, notes are read once from the old `kioku.notes.v1` UserDefaults key,
+// which is left untouched on disk for downgrade safety. Files are the authoritative store from then
+// on.
 @MainActor
 final class NotesStore: ObservableObject {
     @Published var notes: [Note] {
@@ -437,11 +436,10 @@ final class NotesStore: ObservableObject {
         return [SegmentRange(surface: note.content)]
     }
 
-    // Persists the current notes array to disk synchronously. Diffs against the last-known
-    // on-disk state so only changed/added notes are rewritten and removed notes are deleted.
-    // Synchronous so a follow-up save can't race a pending detached writer and lose data
-    // (the previous detached-task approach allowed regenerate-style "clear then write"
-    // pairs to interleave incorrectly).
+    // Persists the current notes array to disk synchronously. Diffs against the last-known on-disk
+    // state so only changed/added notes are rewritten and removed notes are deleted. Synchronous so
+    // a follow-up save can't race a pending detached writer and lose data (a regenerate-style
+    // "clear then write" pair would otherwise be able to interleave).
     private func save() {
         if notes.isEmpty, diskSnapshotByID.isEmpty == false, allowEmptySave == false {
             // Same guard as flushPendingSave: refuse to overwrite populated disk state

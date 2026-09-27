@@ -1,30 +1,10 @@
 import SwiftUI
 import UIKit
 
-// One queued automatic-segmentation invocation awaiting user confirmation. The action enum
-// names the deferred work (rather than a closure) so PendingAutoSegRequest can be Identifiable
-// and SwiftUI's `.alert(item:)` can drive the dialog. On confirm, dispatch executes the named
-// action against current ReadView state.
-struct PendingAutoSegRequest: Identifiable {
-    let id = UUID()
-    let reason: String
-    let action: AutoSegAction
-}
-
+// The deferred work an automatic-segmentation request names, dispatched by requestAutoSegConfirm.
 enum AutoSegAction {
     case refreshSegmentationRanges
     case scheduleFuriganaGeneration(sourceText: String, edges: [LatticeEdge])
-
-    // String fingerprint used to dedupe queue entries. Two requests with the same fingerprint
-    // do not deserve two prompts — they're the same work re-requested by a different caller.
-    var dedupeKey: String {
-        switch self {
-        case .refreshSegmentationRanges:
-            return "refreshSegmentationRanges"
-        case .scheduleFuriganaGeneration(let sourceText, let edges):
-            return "scheduleFuriganaGeneration|\(sourceText.utf16.count)|\(edges.count)|\(edges.first?.surface ?? "")|\(edges.last?.surface ?? "")"
-        }
-    }
 }
 
 // Hosts note loading and persistence helpers for the read screen.
@@ -259,46 +239,13 @@ extension ReadView {
         onActiveNoteChanged?(savedNoteID)
     }
 
-    // Confirm dialog disabled — auto-dispatch the action directly so auto-seg runs as if every
-    // prompt were tapped Confirm. To re-enable the dialog: restore the queue-append logic
-    // below, restore the `.alert(...)` modifier in ReadView (alertingReadView), and remove the
-    // direct switch dispatch.
+    // Runs an automatic-segmentation request's action immediately.
     func requestAutoSegConfirm(reason _: String, action: AutoSegAction) {
         switch action {
         case .refreshSegmentationRanges:
             performRefreshSegmentationRanges()
         case .scheduleFuriganaGeneration(let sourceText, let edges):
             performScheduleFuriganaGeneration(for: sourceText, edges: edges)
-        }
-        // let trimmedReason = reason.split(separator: "(").first.map(String.init) ?? reason
-        // if pendingAutoSegQueue.contains(where: { $0.action.dedupeKey == action.dedupeKey }) {
-        //     return
-        // }
-        // pendingAutoSegQueue.append(
-        //     PendingAutoSegRequest(reason: trimmedReason, action: action)
-        // )
-    }
-
-    // Dispatches a confirmed auto-segmentation request, then drops it from the queue.
-    func commitPendingAutoSeg(_ request: PendingAutoSegRequest) {
-        switch request.action {
-        case .refreshSegmentationRanges:
-            performRefreshSegmentationRanges()
-        case .scheduleFuriganaGeneration(let sourceText, let edges):
-            performScheduleFuriganaGeneration(for: sourceText, edges: edges)
-        }
-        dropPendingAutoSeg(request)
-    }
-
-    // Discards a queued auto-segmentation request without running its action.
-    func cancelPendingAutoSeg(_ request: PendingAutoSegRequest) {
-        dropPendingAutoSeg(request)
-    }
-
-    // Removes the request from the queue by id — shared between cancellation and consumption paths.
-    private func dropPendingAutoSeg(_ request: PendingAutoSegRequest) {
-        if let index = document.pendingAutoSegQueue.firstIndex(where: { $0.id == request.id }) {
-            document.pendingAutoSegQueue.remove(at: index)
         }
     }
 

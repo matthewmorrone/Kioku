@@ -34,13 +34,13 @@ final class DictionaryDownloadManagerTests: XCTestCase {
     }
 
     // Guards against a fix that's committed locally but never actually reaches a device:
-    // dictionary.sqlite is downloaded from a pinned GitHub Release (DictionaryDownloadManager
-    // never re-checks it unless releaseTag/expectedSHA256 change), so regenerating the local
-    // file without bumping those two constants and publishing a new release leaves every
-    // install — old and fresh — silently stuck on stale data forever. This exact gap shipped
-    // in 065090a. If this test fails, publish a new GitHub Release and bump
+    // dictionary.sqlite is downloaded from a pinned GitHub Release (DictionaryDownloadManager never
+    // re-checks it unless releaseTag/expectedSHA256 change), so regenerating the local file without
+    // bumping those two constants and publishing a new release leaves every install — old and fresh
+    // — silently stuck on stale data forever. This exact gap shipped in 065090a. If this test
+    // fails, publish a new GitHub Release with scripts/publish_dictionary_release.sh and bump
     // DictionaryDownloadManager.releaseTag/expectedSHA256 (and Resources/data-manifest.json's
-    // dictionary entry) to match — see docs/superpowers/plans/2026-07-15-dictionary-offload.md Task 6.
+    // dictionary entry) to match.
     func testLocalDictionarySQLiteMatchesPinnedRelease() throws {
         let digest = try DictionaryDownloadManager.sha256(ofFileAt: TestReadResources.dictionaryDatabaseURL())
         XCTAssertEqual(

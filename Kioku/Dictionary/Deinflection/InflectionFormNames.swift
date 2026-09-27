@@ -5,12 +5,11 @@ import Foundation
 // stem-recovery steps are omitted — they are mechanical backtracking, not user-facing forms.
 //
 // Keys are NOT the raw deinflection.json group names ("teForms", "negativePastForms") — the
-// deinflector normalizes each rule's group label before it ever reaches here (Deinflector.
-// normalizedRuleLabel: strips the "Forms" suffix, then splits camelCase into lowercase
-// space-separated words — "negativePastForms" -> "negative past"). Keying this table by the raw
-// group names meant every lookup missed silently: describe(_:) always returned "", so no word
-// ever showed a grammatical-form caption. Confirmed via a live chain dump for 見てる,
-// which reported chain=["progressive"], not chain=["progressiveForms"].
+// deinflector normalizes each rule's group label before it ever reaches here
+// (Deinflector.normalizedRuleLabel: strips the "Forms" suffix, then splits camelCase into lowercase
+// space-separated words — "negativePastForms" -> "negative past"). A table keyed by the raw names
+// misses every lookup silently: describe(_:) returns "" and no word shows a form caption. 見てる's
+// chain, for example, is ["progressive"], not ["progressiveForms"].
 nonisolated enum InflectionFormNames {
     // Display name per normalized chain label. Labels absent here (the internal recovery-step
     // labels: "stem recovery", "ichidan stem", "passive stem recovery", "desire negative recovery", "compound

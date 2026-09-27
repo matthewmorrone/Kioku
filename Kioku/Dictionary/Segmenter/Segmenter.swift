@@ -3,16 +3,15 @@ import Foundation
 // Builds segmentation lattice edges by querying dictionary prefix matches at each text position.
 nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
-    // var, not let: ContentView's startup sequence publishes a cheap PLACEHOLDER Segmenter
-    // (empty trie) immediately so the UI has something non-optional to bind to, then swaps in
-    // the real trie/deinflector once the slow dictionary load finishes — see reconfigure(...).
-    // Any closure that captured a reference to this Segmenter instance before that swap (e.g.
-    // a SwiftUI struct's implicit `self` capture inside a nested UIKit-bridged callback chain)
-    // would otherwise be permanently stuck seeing an empty trie for the rest of the app's life,
-    // since ContentView previously replaced the whole Segmenter object rather than updating it —
-    // reconfigure() keeps this instance's IDENTITY stable so every existing reference (stale or
-    // fresh) observes the same populated data once loading completes.
-    // Not private (like the other three below): Segmenter+LemmaResolution.swift reads these.
+    // var, not let: ContentView's startup sequence publishes a cheap PLACEHOLDER Segmenter (empty
+    // trie) immediately so the UI has something non-optional to bind to, then fills in the real
+    // trie/deinflector once the slow dictionary load finishes — see reconfigure(...). reconfigure()
+    // keeps this instance's IDENTITY stable: any closure that captured a reference to it before
+    // loading finished (e.g. a SwiftUI struct's implicit `self` capture inside a nested
+    // UIKit-bridged callback chain) observes the populated data too, instead of being stuck with an
+    // empty trie for the rest of the app's life, as it would be if the whole Segmenter were
+    // replaced. Not private (like the other three below): Segmenter+LemmaResolution.swift reads
+    // these.
     var trie: DictionaryTrie
     var deinflector: Deinflector?
     private let config: SegmenterConfig

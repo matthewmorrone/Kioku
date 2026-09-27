@@ -2,12 +2,11 @@ import XCTest
 import UIKit
 @testable import Kioku
 
-// Guards the dev-only debug overlay geometry. The most load-bearing invariant here is
-// the BISECTOR CORRECTNESS: the headword bisector must lie at the geometric center
-// of the rendered kanji, and the furigana bisector must coincide with it (because
-// CTRubyAnnotation `.center` aligns ruby midpoint over base midpoint). A regression
-// in either would make the overlay lie about glyph positions, which defeats its
-// entire purpose as a debugging aid.
+// Guards the dev-only debug overlay geometry. The most load-bearing invariant here is the BISECTOR
+// CORRECTNESS: the headword bisector must lie at the geometric center of the rendered kanji, and
+// the furigana bisector must coincide with it (ruby is drawn centered over its kanji run). A
+// regression in either would make the overlay lie about glyph positions, which defeats its entire
+// purpose as a debugging aid.
 @MainActor
 final class KiokuDebugOverlayGeometryTests: XCTestCase {
 

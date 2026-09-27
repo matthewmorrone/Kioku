@@ -26,32 +26,29 @@ extension Segmenter {
         lemmaCandidates(for: surface).first
     }
 
-    // Returns the trie-backed lemma candidates for `surface`, sorted
-    // best-first by `preferredLemmaScore` with the same length / lexicographic
-    // tiebreakers `preferredLemma` used to fold into a single answer. The
-    // picker presents these to the user in this order, with the auto-picked
-    // candidate appearing first.
+    // Returns the trie-backed lemma candidates for `surface`, sorted best-first by
+    // `preferredLemmaScore` with the same length / lexicographic tiebreakers `preferredLemma` uses
+    // to fold them into a single answer. The picker presents these to the user in this order, with
+    // the auto-picked candidate appearing first.
     //
     // POS gating applies ONLY to `deinflected` candidates (see resolvedTrieLemmas) — surfaces the
     // deinflector reached via an actual conjugation-chain guess. Keep such a candidate only if it
     // EITHER has no known POS data at all (sparse dictionary data — an imperfect candidate is more
     // useful than none) OR has at least one entry whose POS confirms it actually conjugates
     // (verb/adjective). A candidate with KNOWN POS data that's confirmed non-conjugating (e.g.
-    // noun-only) is excluded outright, even when it's the only trie hit reachable. This distinction
-    // matters: an earlier version fell back to the FULL unfiltered set whenever nothing survived
-    // the verb/adjective filter, which meant a coincidental deinflection chain landing on a real
-    // but unrelated dictionary noun (どこかに →[に→ぬ]→ どこかぬ →[かぬ→く]→ どこく, JMdict's
-    // archaic word for "Turkey") won by default — there was nothing else in the pool to prefer
-    // it over. Distinguishing "no POS data" from "confirmed non-verb POS" (mirroring the same
-    // distinction Lexicon.admittedLemmasAndPaths already makes for its own candidate gate) is
-    // what lets this case return no candidate instead of a wrong one. When `surface == candidate`
-    // the gate is skipped — the user typed the dictionary form directly, so all POS classes are
-    // legitimate.
+    // noun-only) is excluded outright, even when it's the only trie hit reachable. Do not fall back
+    // to the unfiltered set when nothing survives: a coincidental chain landing on a real but
+    // unrelated noun (どこかに →[に→ぬ]→ どこかぬ →[かぬ→く]→ どこく, JMdict's archaic word for "Turkey") would
+    // then win by default. Distinguishing "no POS data" from "confirmed non-verb POS" (the same
+    // distinction Lexicon.admittedLemmasAndPaths makes for its own candidate gate) is what lets
+    // this case return no candidate instead of a wrong one.
     //
-    // `trusted` candidates (exact trie hits, iteration-mark expansions, kana-script normalization
-    // like katakana スマイ → hiragana すまい) bypass the gate entirely: they're script/notation
-    // equivalences, not conjugation guesses, so "does it conjugate" isn't a meaningful filter for
-    // them — a common noun written in katakana must still resolve regardless of its POS.
+    // When `surface == candidate` the gate is skipped — the user typed the dictionary form
+    // directly, so all POS classes are legitimate. `trusted` candidates (exact trie hits,
+    // iteration-mark expansions, kana-script normalization like katakana スマイ → hiragana すまい) bypass
+    // the gate entirely: they're script/notation equivalences, not conjugation guesses, so "does it
+    // conjugate" isn't a meaningful filter for them — a common noun written in katakana must still
+    // resolve regardless of its POS.
     func lemmaCandidates(for surface: String) -> [String] {
         let (trusted, deinflected) = resolvedTrieLemmasBySource(for: surface)
         guard trusted.isEmpty == false || deinflected.isEmpty == false else { return [] }

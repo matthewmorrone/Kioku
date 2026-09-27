@@ -89,12 +89,9 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
             let userInfo = String(describing: exception.userInfo ?? [:])
             let callStack = exception.callStackSymbols
 
-            // Write SYNCHRONOUSLY: the process aborts as soon as this handler returns,
-            // so an async hop loses the record — the same dead-on-dispatch bug the
-            // signal path already fixed (see installSignalHandlers).
-            // Task { @MainActor in
-            //     CrashLogger.writeExceptionCrash(name: name, reason: reason, userInfo: userInfo, callStack: callStack)
-            // }
+            // Write SYNCHRONOUSLY: the process aborts as soon as this handler returns, so an async
+            // hop (a Task or dispatch) loses the record. installSignalHandlers writes synchronously
+            // for the same reason.
             CrashLogger.writeExceptionCrash(name: name, reason: reason, userInfo: userInfo, callStack: callStack)
         }
 

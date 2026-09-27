@@ -81,21 +81,20 @@ extension SongStepperView {
     //
     // Treats `surface` as a single, already-known word — a `SongWord` bullet is one atomic
     // vocabulary item by construction — rather than asking the segmenter to rediscover word
-    // boundaries inside it via `longestMatchEdges`. That distinction matters: with no
-    // surrounding sentence to weigh frequency against, the segmenter's cost model can favor
-    // splitting a real compound into its individual kanji over the compound itself when the
-    // compound's own frequency rank is worse than its parts' (e.g. 王子様 "prince" — a real,
-    // correctly-read dictionary entry — used to come back split as 王/子/様, each kanji read
-    // in isolation, purely because segmenting three bare characters with zero context picked
-    // that path). A single synthetic edge spanning the whole surface skips that risk entirely:
-    // FuriganaResolver.build still uses its full lemma/projection/fallback pipeline (including
-    // the last-resort per-kanji reading for a surface that genuinely isn't a dictionary word),
-    // it's just never given the option to sub-divide a string this function already knows is
-    // one word — that's about READING resolution only. segmentationRanges is independent: one
-    // span per kanji run (see kanjiRunSegments) rather than one span for the whole surface, so
-    // KiokuCoreTextAttributedStringBuilder's ruby-overhang kern compensation — which pushes
-    // apart SEGMENT boundaries, not run boundaries — has a real neighbor to push for every run
-    // but the very first, the same as buildFuriganaCache's real per-line segments give it.
+    // boundaries inside it via `longestMatchEdges`. With no surrounding sentence to weigh frequency
+    // against, the segmenter's cost model can favor splitting a real compound into its individual
+    // kanji when the compound's own frequency rank is worse than its parts' (王子様 "prince" would
+    // come out 王/子/様, each kanji read in isolation). A single synthetic edge spanning the whole
+    // surface removes that option: FuriganaResolver.build still uses its full
+    // lemma/projection/fallback pipeline (including the last-resort per-kanji reading for a surface
+    // that genuinely isn't a dictionary word), it's just never given the option to sub-divide a
+    // string this function already knows is one word — that's about READING resolution only.
+    //
+    // segmentationRanges is independent: one span per kanji run (see kanjiRunSegments) rather than
+    // one span for the whole surface, so KiokuCoreTextAttributedStringBuilder's ruby-overhang kern
+    // compensation — which pushes apart SEGMENT boundaries, not run boundaries — has a real
+    // neighbor to push for every run but the very first, the same as buildFuriganaCache's real
+    // per-line segments give it.
     private func buildWordFuriganaCache(forIsolated surface: String) -> LineFuriganaCache {
         guard let segmenter, surface.isEmpty == false else {
             return LineFuriganaCache(

@@ -13,13 +13,11 @@ nonisolated struct StudyWordSelection {
 }
 
 // Decides which saved words a Learn-tab study session may draw from. Flashcards, Multiple Choice,
-// and Fill in the Blank each used to carry their own private copy of this filter, which is how
-// "learned" words kept showing up in study sets: the exclusion has to hold in all three (and in the
-// counts they display), and three copies of a rule is three places for it to be missing from.
-//
-// Pure and closure-injected — no store, no MainActor — so the rule is testable on its own and the
-// three views keep owning their own state. `nonisolated` for the same reason as AutoLearnPolicy:
-// callable from plain (non-`@MainActor`) unit tests.
+// and Fill in the Blank all use this one filter: the learned-word exclusion has to hold in all
+// three (and in the counts they display), and a rule copied into each view is a rule that can go
+// missing from one. Pure and closure-injected — no store, no MainActor — so the rule is testable on
+// its own and the three views keep owning their own state. `nonisolated` for the same reason as
+// AutoLearnPolicy: callable from plain (non-`@MainActor`) unit tests.
 nonisolated enum StudyWordPool {
     // The words eligible for a session: note filter AND JLPT filter AND scope, with words the user
     // has already learned dropped when `excludeLearned` is on (the default — see

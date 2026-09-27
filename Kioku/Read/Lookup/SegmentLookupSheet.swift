@@ -69,10 +69,16 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     // Prices candidate cuts of the current segment with the segmenter's own path costs, in the
     // context of the segment's line (Segmenter.splitCosts) — the split editor's only source of scores.
     var splitCostsProvider: (([[String]]) -> [Int?])?
-    // The presented sheet's height from the screen bottom, once it has measured its content (the
-    // same height its content-fitted detent resolves to); nil before then and after dismissal. The
-    // read view scrolls the selected word above this rather than above a guessed sheet height.
-    var presentedSheetHeight: CGFloat?
+    // How far the presented sheet's top sits above the screen bottom, read from its on-screen frame
+    // once it's shown and after every resize; nil before then and after dismissal. The read view
+    // scrolls the selected word above this rather than above a guessed sheet height.
+    var presentedSheetHeight: CGFloat? {
+        didSet { if let presentedSheetHeight { lastPresentedSheetHeight = presentedSheetHeight } }
+    }
+    // The most recent presentedSheetHeight, kept after dismissal: the read view scrolls against it
+    // the moment a word is tapped, before the new sheet has measured itself, so the scroll starts
+    // immediately and only needs a small correction once the real height arrives.
+    var lastPresentedSheetHeight: CGFloat?
     // Called when presentedSheetHeight changes, so the read view can re-place the selected word.
     var onSheetHeightChanged: (() -> Void)?
     // Provides the minimal dictionary entry needed to render visible senses for the current segment.
@@ -149,17 +155,15 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     }
 
     // Presents the current definition in a UIKit popover anchored to the tapped segment rectangle.
-    // Row layout: star (save toggle) — word (tap to speak) — definition — chevron (escalate
-    // to the full sheet). isSavedProvider/onSaveToggle mirror the same
-    // star contract presentSheet's action-bar save button uses, so the popover and the
-    // full sheet can never disagree about a word's saved state.
-    //
-    // onEscalate, not a self-built presentSurfaceSheet call: the popover has no access to the
-    // rich provider set (readings, sublattice, frequency, lemma info, ...) that only ReadView can
-    // build — an earlier version of this method tried to read those off `self.sheetReadingsProvider`
-    // etc., which are only ever populated by presentSheet's own full call, so the escalated sheet
-    // rendered empty. The caller supplies onEscalate to open the SAME full sheet the direct-tap
-    // path already knows how to build correctly.
+    // Row layout: star (save toggle) — word (tap to speak) — definition — chevron (escalate to the
+    // full sheet). isSavedProvider/onSaveToggle mirror the same star contract presentSheet's
+    // action-bar save button uses, so the popover and the full sheet can never disagree about a
+    // word's saved state. onEscalate, not a self-built presentSurfaceSheet call: the popover has no
+    // access to the rich provider set (readings, sublattice, frequency, lemma info, ...) that only
+    // ReadView can build — the `self.sheetReadingsProvider` etc. properties are only populated by
+    // presentSheet's own full call, so a sheet built from them here would render empty. The caller
+    // supplies onEscalate to open the SAME full sheet the direct-tap path already knows how to
+    // build correctly.
     func presentPopover(
         definition: String,
         surface: String,
@@ -375,11 +379,11 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         wordButton.setTitleColor(.label, for: .normal)
         wordButton.contentHorizontalAlignment = .leading
         popoverWordButton = wordButton
-        // Dotted underline signals "tap to hear this" without adding a separate icon. Font must
-        // be an attribute here, not set via titleLabel?.font — that's ignored once an attributed
-        // title is in play, which previously let the button fall back to a different font than
-        // preferredPopoverSize measured, under-sizing the popover and forcing definitionLabel to
-        // wrap character-by-character.
+        // Dotted underline signals "tap to hear this" without adding a separate icon. Font must be
+        // an attribute here, not set via titleLabel?.font — that's ignored once an attributed title
+        // is in play, and the button would fall back to a different font than preferredPopoverSize
+        // measured, under-sizing the popover and forcing definitionLabel to wrap
+        // character-by-character.
         applyPopoverWordButtonAppearance(surface: surface)
         // Reads popoverSurface (not a captured `surface` snapshot) so a reused, in-place-updated
         // popover always speaks the currently-shown word, not whichever word first built this button.

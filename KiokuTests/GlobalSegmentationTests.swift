@@ -1,16 +1,13 @@
 import XCTest
 @testable import Kioku
 
-// Real assertions on the CHOSEN path of the global longest-match strategy — the coverage that was
-// missing while SegmentationDumpTests only printed. Each case pins the linguistically-correct
-// segmentation of a phrase the user flagged as mis-segmented under global.
-//
-// These run with frequency data loaded (TestReadResources now builds frequencyScoreBySurface), so
-// they exercise the real production cost model, not a frequency-blind one.
-//
-// The cost model is −ln P(word) over frequencies of each surface as written (see
-// SegmenterScoring.edgeCost), which is what keeps the のす / のま / たの fusions out: a kana string
-// nobody writes as a word is unranked, so the compositional parse is cheaper.
+// Real assertions on the CHOSEN path of the global longest-match strategy. Each case pins the
+// linguistically-correct segmentation of a phrase the global strategy is prone to getting wrong.
+// These run with frequency data loaded (TestReadResources builds frequencyScoreBySurface), so they
+// exercise the real production cost model, not a frequency-blind one. The cost model is −ln P(word)
+// over frequencies of each surface as written (see SegmenterScoring.edgeCost), which is what keeps
+// the のす / のま / たの fusions out: a kana string nobody writes as a word is unranked, so the
+// compositional parse is cheaper.
 @MainActor
 final class GlobalSegmentationTests: XCTestCase {
 

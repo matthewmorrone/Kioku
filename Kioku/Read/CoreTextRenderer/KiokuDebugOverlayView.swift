@@ -1,15 +1,14 @@
 import UIKit
 
-// Draws the dev-only debug overlays for the CoreText Read renderer. Mirrors the
-// semantics of FuriganaOverlayView's debug branch:
+// Draws the dev-only debug overlays for the CoreText Read renderer. Mirrors the semantics of
+// FuriganaOverlayView's debug branch (the edit-mode TextKit 2 path):
 //   - Line bands tint the headword / furigana regions of each line
 //   - Headword / furigana rects show per-segment glyph extents
-//   - Envelope rects show the (headword ∪ furigana) union — the same envelope used
-//     for selection / hit testing in TK2
-//   - Bisectors draw a vertical line at the geometric center of each kanji run; the
-//     headword and furigana bisectors coincide (CTRubyAnnotation `.center`), so
-//     when both toggles are on the line is yellow (aligned). Drift would surface
-//     as a green line — a future regression signal if ruby alignment changes.
+//   - Envelope rects show the (headword ∪ furigana) union — the same envelope used for selection /
+//     hit testing in TK2
+//   - Bisectors draw a vertical line at the geometric center of each kanji run; ruby is drawn
+//     centered over its run, so the headword and furigana bisectors coincide and, with both toggles
+//     on, the line is yellow (aligned). A green line means ruby alignment has drifted.
 //   - Pixel ruler draws a faint 10pt grid for hand-measuring layouts
 //   - Left-inset guide marks the content-inset boundary
 //   - Illegal-merge boundary draws a red bar at the bisector of a flagged segment

@@ -1,12 +1,8 @@
 import SwiftUI
 
 // The swipeable pages in the Learn tab: Flashcards, Multiple Choice, Matching, Fill in the Blank,
-// Cloze, and the kana chart.
-// (Breakdown, formerly `songs`, moved to the Read tab as a per-note sheet. Coverage moved to the
-// Read tab's Extract Words sheet as a third mode alongside Lines/Vocab, since it's scoped to one
-// note and the Learn tab's note-picker entry point was redundant with reaching it from Read.)
-// `LearnPagerView`'s persisted page index clamps on read, so a stale index from a previous
-// install with a different page count snaps back into range on next launch without crashing.
+// Cloze, and the kana chart. `LearnPagerView`'s persisted page index clamps on read, so a stale
+// index saved under a different page count snaps back into range on next launch without crashing.
 enum LearnPage: Int, CaseIterable, Identifiable {
     case flashcards
     case multipleChoice

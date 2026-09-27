@@ -302,11 +302,10 @@ struct HorseDecoration: View {
 
 // Owned by KanjiDecoration.view(for:) — registered for the literal 犬.
 struct DogDecoration: View {
-    // Dog silhouette running across the bottom — body + head + tail + four
-    // legs in a galloping cycle, plus a paw-print trail it leaves behind.
-    // The paw trail gives the running dog continuity; the silhouette gives it
-    // identity. Previously was just paw prints, which the user found too
-    // abstract to read as "dog."
+    // Dog silhouette running across the bottom — body + head + tail + four legs in a galloping
+    // cycle, plus a paw-print trail it leaves behind. The paw trail gives the running dog
+    // continuity; the silhouette gives it identity (paw prints alone read as too abstract for
+    // "dog").
     var body: some View {
         TimelineView(.animation) { context in
             let t = context.date.timeIntervalSinceReferenceDate

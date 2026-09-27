@@ -55,46 +55,38 @@ extension DictionaryStore {
         }
 
         // Ranking strategy for a kana surface lookup (matchKana && !matchKanji):
-        //   1. Kana-only entries first. An entry whose primary form IS the queried kana
-        //      (no kanji_forms rows) is by definition a more exact match than an entry
-        //      that merely lists that kana as a reading of a kanji headword. Particles
-        //      (の, は, が), interjections, and sound effects always live in kana-only
-        //      entries; without this tier they get buried under whatever kanji shares the
-        //      reading (eg tapping は returns 派 "group; faction" instead of the topic
-        //      particle, because wordfreq has no row for the particle so its zipf-based
-        //      pseudo-rank collapses to the catch-all bucket).
-        //   2. Within each tier, sort by JPDB rank, then a zipf-derived pseudo-rank for
-        //      kana-only entries that lack JPDB data, then by sense order and entry id.
-        // For matchKanji-only the WHERE clause already excludes kana-only entries, so
-        // the primary tier is a no-op there; for matchKana && matchKanji (kanji surface
-        // lookups), kana-only entries can't match a kanji surface either, so again a
-        // no-op. Result: the tier only changes ordering for the kana-surface case where
-        // the homophone collision actually occurs.
         //
-        // Tier 1 (POS boost) is gated to `matchKana && !matchKanji` only. Particles like
-        // が / の have archaic kanji forms (我, 乃, 之), so when the user explicitly looks
-        // up a kanji surface — tap on 我 in text or search for "我" directly — the WHERE
-        // clause matches both the pronoun 我 (われ) AND the particle が entry. Without the
-        // gate, the particle entry's `prt` POS tag would promote it ahead of the actual
-        // kanji-word match for surfaces the user clearly intended in their kanji form.
-        // Tier 1: particle / functional-word / demonstrative entries first, for kana-surface
-        // lookups only. The qualifying POS set (prt / cop / aux / aux-* / adj-pn) lives in
-        // FrequencySQL.functionalPosMatch — one definition shared with the startup canonical-id
-        // map so the two rankings can't drift. adj-pn earns its place because 園 ("garden") has
-        // kana form その, so without the boost the demonstrative その loses the tie to it; JMdict
-        // has many such collisions (この vs 此, その vs 園, あの vs 彼の) and the user always wants
-        // the functional word. Gated to matchKana && !matchKanji so an explicit kanji-surface
-        // lookup (tapping 我) doesn't promote a particle homograph over the intended kanji word.
-        // NB: `candidates.entry_id` here (not `e.id`) — this tier runs in the outer ORDER BY
-        // over the `candidates` CTE below, where the `entries e` alias is no longer in scope.
-        // Must stay qualified: entry_functional_pos itself has a column named `entry_id`, so an
-        // unqualified `entry_id` inside functionalPosMatch's correlated EXISTS subquery resolves
-        // to that inner table (`efp.entry_id = efp.entry_id`, always true) instead of the outer
-        // candidate — silently turning this whole tier into a no-op. That shipped bug is why
-        // fetchMatchedEntries disagreed with the precomputed surface_canonical_entry table on
-        // every pure-kana surface where a functional/deictic entry should have won (e.g. その
-        // resolving to 園 "garden" instead of the demonstrative) — see
-        // testCanonicalEntryIDMapAgreesWithLiveRankingForEveryAmbiguousSurface.
+        // 1. Functional words first (POS boost). Particle / functional-word / demonstrative entries win,
+        //    for kana-surface lookups only. The qualifying POS set (prt / cop / aux / aux-* / adj-pn) lives
+        //    in FrequencySQL.functionalPosMatch — one definition shared with the startup canonical-id map so
+        //    the two rankings can't drift. adj-pn earns its place because 園 ("garden") has kana form その,
+        //    so without the boost the demonstrative その loses the tie to it; JMdict has many such collisions
+        //    (この vs 此, その vs 園, あの vs 彼の) and the user always wants the functional word. Gated to
+        //    matchKana && !matchKanji: particles like が / の have archaic kanji forms (我, 乃, 之), so an
+        //    explicit kanji-surface lookup (tapping 我, or searching "我") matches both the pronoun 我 (われ)
+        //    AND the particle が entry, and must not promote the particle over the intended kanji word.
+        // 2. Kana-only entries next. An entry whose primary form IS the queried kana (no kanji_forms rows)
+        //    is a more exact match than an entry that merely lists that kana as a reading of a kanji
+        //    headword. Particles, interjections, and sound effects always live in kana-only entries; without
+        //    this tier they get buried under whatever kanji shares the reading (は would return 派 "group;
+        //    faction", because wordfreq has no row for the particle so its zipf-based pseudo-rank collapses
+        //    to the catch-all bucket).
+        // 3. Then the sibling real-rank tier (FrequencySQL.siblingRealRankTier), then effective rank (JPDB
+        //    rank, or a zipf-derived pseudo-rank for entries that lack JPDB data), then sense order and
+        //    entry id.
+        //
+        // For matchKanji-only the WHERE clause already excludes kana-only entries, and for
+        // matchKana && matchKanji (kanji surface lookups) kana-only entries can't match a kanji
+        // surface either, so tier 2 only changes ordering for the kana-surface case where the
+        // homophone collision actually occurs.
+        //
+        // NB: `candidates.entry_id` in tier 1 (not `e.id`, and not a bare `entry_id`) — the tier
+        // runs in the outer ORDER BY over the `candidates` CTE below, where the `entries e` alias
+        // is out of scope, and entry_functional_pos itself has a column named `entry_id`, so an
+        // unqualified reference inside functionalPosMatch's correlated EXISTS resolves to the inner
+        // table (`efp.entry_id = efp.entry_id`, always true) and silently turns the whole tier into
+        // a no-op. testCanonicalEntryIDMapAgreesWithLiveRankingForEveryAmbiguousSurface catches
+        // that (その resolving to 園 instead of the demonstrative).
         let posBoostTier: String
         if matchKana && !matchKanji {
             posBoostTier = "CASE WHEN \(FrequencySQL.functionalPosMatch(entryIDExpr: "candidates.entry_id")) THEN 0 ELSE 1 END ASC,\n"

@@ -45,12 +45,11 @@ struct NumberDotsDecoration: View {
                 let topHalfY = size.height * 0.5
                 let availableH = max(topHalfY - inset, 1)
                 for i in 0..<count {
-                    // Halton low-discrepancy sequence — deterministic AND well-
-                    // distributed across i. The kanjiSeedFraction hash this used to
-                    // call produces near-collisions at indices i and i+7 (because
-                    // 7×73 mod 256 ≈ 0), which made 十 render as 7 visible dots
-                    // because three pairs overlapped almost exactly. Halton's
-                    // base-2/base-3 pair has no such cycle in the small-index range.
+                    // Halton low-discrepancy sequence — deterministic AND well-distributed across
+                    // i. The kanjiSeedFraction hash produces near-collisions at indices i and i+7
+                    // (because 7×73 mod 256 ≈ 0), which renders 十 as 7 visible dots when three
+                    // pairs overlap almost exactly. Halton's base-2/base-3 pair has no such cycle
+                    // in the small-index range.
                     let xSeed = haltonValue(index: i + 1, base: 2)
                     let ySeed = haltonValue(index: i + 1, base: 3)
                     let phase = haltonValue(index: i + 1, base: 5) * 2 * .pi

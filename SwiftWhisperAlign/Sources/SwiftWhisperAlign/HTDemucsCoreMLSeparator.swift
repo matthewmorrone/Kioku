@@ -48,13 +48,11 @@ enum HTDemucsCoreMLSeparator {
     static func loadModel(onStage: (@Sendable (String) -> Void)? = nil) async throws -> MLModel {
         let url = try await HTDemucsModelStore.ensureModel(onStage: onStage)
         let cfg = MLModelConfiguration()
-        // .all, not .cpuOnly: this model's Transformer attention layers used to crash CoreML's
-        // GPU/ANE compilation on iOS 27 beta 24A5380h — a fault in Apple's own
-        // MetalPerformanceShadersGraph MLIR optimizer (FoldMultiplyIntoSDPAScale), the same bug
-        // CTCForcedAligner hit and confirmed fixed on 24A5430a (see its doc comment history).
-        // Confirmed fixed here too, on-device on 24A5430a: a full-song separation via .all ran
-        // clean in ~69s vs. the MLX separator's ~184s for the same song's separation stage — ANE
-        // is both faster and more power-efficient than the CPU fallback this used to require.
+        // .all, not .cpuOnly: GPU/ANE is faster and more power-efficient than the CPU. On iOS 27
+        // beta 24A5380h this model's attention layers crashed CoreML's GPU/ANE compilation inside
+        // Apple's MetalPerformanceShadersGraph MLIR optimizer (FoldMultiplyIntoSDPAScale), which
+        // forced .cpuOnly for a while (commit 6494aab); later betas compile it fine. If that crash
+        // reappears on a new OS build, fall back to .cpuOnly.
         cfg.computeUnits = .all
         return try MLModel(contentsOf: url, configuration: cfg)
     }
@@ -90,15 +88,13 @@ enum HTDemucsCoreMLSeparator {
         // Attempts spent on the chunk at `start`; reset each time one lands.
         var chunkAttempts = 0
         while start < L {
-            // Throws (not `break`): acc/wacc are pre-sized to the FULL song length but only
-            // filled as chunks complete, so a `break` before the first chunk finishes used to
-            // silently return an all-zero array of the correct length. That passed the caller's
-            // `isEmpty` guard and got cached by VocalStemCache as if it were a real isolation —
-            // poisoning every future Re-align of that song with a permanently silent stem (root
-            // cause of a complete, repeatable alignment failure on one song, 2026-09-22: cancel
-            // fired before the first 7.8s chunk, and the cache never had a reason to invalidate
-            // itself since "isEmpty" was never true). Throwing here means a cancelled isolation
-            // is never mistaken for a completed one.
+            // Throws (not `break`): acc/wacc are pre-sized to the FULL song length but only filled
+            // as chunks complete, so a `break` before the first chunk finishes returns an all-zero
+            // array of the correct length. That passes the caller's `isEmpty` guard and gets cached
+            // by VocalStemCache as if it were a real isolation — poisoning every future Re-align of
+            // that song with a permanently silent stem, and the cache never invalidates it since
+            // "isEmpty" is never true (seen 2026-09-22, commit 6717695). Throwing means a cancelled
+            // isolation is never mistaken for a completed one.
             if cancellationCheck?() == true { throw CancellationError() }
             await waitUntilReady?()
             if cancellationCheck?() == true { throw CancellationError() }

@@ -401,18 +401,15 @@ final class KiokuCoreTextView: UIView {
             // kanji, the inter-segment kern compensation in the builder has already pushed
             // the neighbors away to make room.
             let x = kanjiRect.midX - rubyWidth / 2
-            // "furiganaGap" = pixels between the ruby's VISIBLE BOTTOM and the kanji's
-            // VISIBLE TOP — that's what a user means when they reach for the slider. Solve
-            // for the ruby baseline:
+            // "furiganaGap" = pixels between the ruby's VISIBLE BOTTOM and the kanji's VISIBLE TOP
+            // — that's what a user means when they reach for the slider. Solve for the ruby
+            // baseline:
             //   rubyVisibleBottom = baseline + rubyDescent
-            //   kanjiVisibleTop   ≈ kanjiRect.minY      (Japanese-dominant lines)
+            //   kanjiVisibleTop   ≈ kanjiRect.minY  (Japanese-dominant lines)
             //   gap = kanjiVisibleTop - rubyVisibleBottom = furiganaGap
             //   → baseline = kanjiRect.minY - furiganaGap - rubyDescent
-            //
-            // Prior version subtracted rubyAscent here, which placed the ruby's TOP (not
-            // bottom) `furiganaGap` above the kanji — visually offset by ~rubyAscent + the
-            // gap, i.e. way too far up. With default gap=2 the visible regression was a
-            // ~7pt jump, matching the reported "way too much space" symptom.
+            // Subtracting rubyAscent instead would place the ruby's TOP (not bottom) `furiganaGap`
+            // above the kanji — ~7pt too high at the default gap of 2.
             let baselineTopDown = kanjiRect.minY - furiganaGap - rubyDescent
             let baselineBottomUp = bounds.height - baselineTopDown
 

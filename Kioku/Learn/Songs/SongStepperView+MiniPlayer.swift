@@ -149,10 +149,10 @@ extension SongStepperView {
     }
 
     // Stepping between lines always works (narration doesn't need a matched sung clip); only
-    // stepping past either end into the intro/outro needs there to actually BE one — a first
-    // line already at ms 0 has no intro, and a last line already at the source's end has no
-    // outro. Checking just "some line matched a cue" (as this used to) left the button enabled
-    // in those cases even though playIntro()/playOutro() would then no-op.
+    // stepping past either end into the intro/outro needs there to actually BE one — a first line
+    // already at ms 0 has no intro, and a last line already at the source's end has no outro. "Some
+    // line matched a cue" isn't enough: it leaves the button enabled in those cases even though
+    // playIntro()/playOutro() would no-op.
     private var canStepPrevious: Bool {
         switch currentPlaybackStep {
         case .intro: return false

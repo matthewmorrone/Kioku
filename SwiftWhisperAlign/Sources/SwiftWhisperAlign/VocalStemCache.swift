@@ -1,33 +1,33 @@
 // VocalStemCache.swift
 //
-// On-disk cache for isolated vocal stems. Vocal isolation (HTDemucs-FT in CTCForcedAligner) is
-// the most expensive stage of alignment — minutes, not seconds — yet the isolated stem is a
-// *pure function* of the source audio. Caching it lets every Re-align of unchanged audio skip
-// both the stereo decode and the isolation, dropping straight into the (cheap) trim/VAD/align
-// stages.
+// On-disk cache for isolated vocal stems. Vocal isolation (HTDemucsCoreMLSeparator) is the most
+// expensive stage of alignment — minutes, not seconds — yet the isolated stem is a *pure function*
+// of the source audio. Caching it lets every Re-align of unchanged audio skip both the stereo
+// decode and the isolation, dropping straight into the (cheap) trim/VAD/align stages.
 //
 // Format: 96 kbps AAC mono @ 44.1 kHz in an .m4a — about 3 MB for a 4-minute song, a tenth of the
 // raw Float32 buffer HTDemucs returns and a third of 16-bit Apple Lossless. Lossy, but measured on
-// 8 songs by aligning from a lossless and an AAC copy of the same stem: 236 → 238 lines within
-// ±500 ms, no song worse, largest line shift 1.3 s (an improvement); AVAudioFile trims the encoder
-// priming, so the read-back stem is sample-aligned with the mix. Directly playable — the "listen to
-// the isolated vocals" affordance plays the cache file itself. Samples beyond ±1.0 clip. Stems
-// cached before this are Apple Lossless and still read as they are. Stored under Application Support/VocalStems (NOT Caches, despite being
-// regenerable): a Caches-resident stem was observed getting wiped across ordinary dev-reinstall
-// cycles on a nearly-empty 512 GB device — nowhere near genuine storage pressure — so Caches'
-// "OS may purge any time" contract was costing a real ~3.5 min HTDemucs-FT re-isolation on
-// every rebuild during testing, and would just as well bite a real user's low-storage moment.
-// `enforceBudget` (below) is the self-imposed cap that Caches used to give us for free; marked
-// excluded from iCloud backup (Application Support IS backed up by default, unlike Caches) so a
-// multi-hundred-MB regenerable cache doesn't burn the user's iCloud quota.
+// 8 songs by aligning from a lossless and an AAC copy of the same stem: 236 → 238 lines within ±500
+// ms, no song worse (commit cdacb85); AVAudioFile trims the encoder priming, so the read-back stem
+// is sample-aligned with the mix. Directly playable — the "listen to the isolated vocals"
+// affordance plays the cache file itself. Samples beyond ±1.0 clip. Apple Lossless stems are still
+// read as they are.
 //
-// Keyed by (filename, byte size): app audio is UUID-named so cross-song collisions are
-// impossible, and content-distinct audio essentially always differs in byte size, so a
-// re-import that changes the audio misses and regenerates while repeated Re-aligns of
-// unchanged audio hit. (mtime is deliberately excluded so the key is reproducible from name
-// + size alone — robust to backup/restore and copies that rewrite mtime, and computable
-// off-device when seeding the cache.) The `formatVersion` prefix invalidates every entry at
-// once if the isolation algorithm ever changes.
+// Stored under Application Support/VocalStems (NOT Caches, despite being regenerable): a
+// Caches-resident stem gets wiped across ordinary dev-reinstall cycles even on a nearly-empty
+// device, nowhere near genuine storage pressure, and each wipe costs a multi-minute re-isolation —
+// a real user's low-storage moment would hit the same. `enforceBudget` (below) is the self-imposed
+// cap Caches would otherwise provide; the folder is marked excluded from iCloud backup (Application
+// Support IS backed up by default, unlike Caches) so a multi-hundred-MB regenerable cache doesn't
+// burn the user's iCloud quota.
+//
+// Keyed by (filename, byte size): app audio is UUID-named so cross-song collisions are impossible,
+// and content-distinct audio essentially always differs in byte size, so a re-import that changes
+// the audio misses and regenerates while repeated Re-aligns of unchanged audio hit. (mtime is
+// deliberately excluded so the key is reproducible from name + size alone — robust to
+// backup/restore and copies that rewrite mtime, and computable off-device when seeding the cache.)
+// The `formatVersion` prefix invalidates every entry at once if the isolation algorithm ever
+// changes.
 
 import AVFoundation
 import Foundation
