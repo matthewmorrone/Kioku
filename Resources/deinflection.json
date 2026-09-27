@@ -430,7 +430,6 @@
       "kanaIn": "っている",
       "kanaOut": "う",
       "rulesIn": [
-        "v5",
         "v1"
       ],
       "rulesOut": [
@@ -441,7 +440,6 @@
       "kanaIn": "っている",
       "kanaOut": "つ",
       "rulesIn": [
-        "v5",
         "v1"
       ],
       "rulesOut": [
@@ -452,7 +450,6 @@
       "kanaIn": "っている",
       "kanaOut": "る",
       "rulesIn": [
-        "v5",
         "v1"
       ],
       "rulesOut": [
@@ -463,7 +460,6 @@
       "kanaIn": "んでいる",
       "kanaOut": "む",
       "rulesIn": [
-        "v5",
         "v1"
       ],
       "rulesOut": [
@@ -474,7 +470,6 @@
       "kanaIn": "んでいる",
       "kanaOut": "ぶ",
       "rulesIn": [
-        "v5",
         "v1"
       ],
       "rulesOut": [
@@ -485,7 +480,6 @@
       "kanaIn": "んでいる",
       "kanaOut": "ぬ",
       "rulesIn": [
-        "v5",
         "v1"
       ],
       "rulesOut": [
@@ -496,7 +490,6 @@
       "kanaIn": "いている",
       "kanaOut": "く",
       "rulesIn": [
-        "v5",
         "v1"
       ],
       "rulesOut": [
@@ -507,7 +500,6 @@
       "kanaIn": "いでいる",
       "kanaOut": "ぐ",
       "rulesIn": [
-        "v5",
         "v1"
       ],
       "rulesOut": [
@@ -518,7 +510,6 @@
       "kanaIn": "している",
       "kanaOut": "す",
       "rulesIn": [
-        "v5",
         "v1"
       ],
       "rulesOut": [
@@ -561,7 +552,6 @@
       "kanaIn": "ってる",
       "kanaOut": "う",
       "rulesIn": [
-        "v5",
         "v1"
       ],
       "rulesOut": [
@@ -572,7 +562,6 @@
       "kanaIn": "ってる",
       "kanaOut": "つ",
       "rulesIn": [
-        "v5",
         "v1"
       ],
       "rulesOut": [
@@ -583,7 +572,6 @@
       "kanaIn": "ってる",
       "kanaOut": "る",
       "rulesIn": [
-        "v5",
         "v1"
       ],
       "rulesOut": [
@@ -594,7 +582,6 @@
       "kanaIn": "んでる",
       "kanaOut": "む",
       "rulesIn": [
-        "v5",
         "v1"
       ],
       "rulesOut": [
@@ -605,7 +592,6 @@
       "kanaIn": "んでる",
       "kanaOut": "ぶ",
       "rulesIn": [
-        "v5",
         "v1"
       ],
       "rulesOut": [
@@ -616,7 +602,6 @@
       "kanaIn": "んでる",
       "kanaOut": "ぬ",
       "rulesIn": [
-        "v5",
         "v1"
       ],
       "rulesOut": [
@@ -627,7 +612,6 @@
       "kanaIn": "いてる",
       "kanaOut": "く",
       "rulesIn": [
-        "v5",
         "v1"
       ],
       "rulesOut": [
@@ -638,7 +622,6 @@
       "kanaIn": "いでる",
       "kanaOut": "ぐ",
       "rulesIn": [
-        "v5",
         "v1"
       ],
       "rulesOut": [
@@ -649,7 +632,6 @@
       "kanaIn": "してる",
       "kanaOut": "す",
       "rulesIn": [
-        "v5",
         "v1"
       ],
       "rulesOut": [
@@ -3970,7 +3952,53 @@
       ]
     },
     {
+      "kanaIn": "てって",
+      "kanaOut": "て",
+      "rulesIn": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ],
+      "rulesOut": [
+        "te"
+      ]
+    },
+    {
+      "kanaIn": "てった",
+      "kanaOut": "て",
+      "rulesIn": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ],
+      "rulesOut": [
+        "te"
+      ]
+    },
+    {
       "kanaIn": "でく",
+      "kanaOut": "で",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "te"
+      ]
+    },
+    {
+      "kanaIn": "でって",
+      "kanaOut": "で",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "te"
+      ]
+    },
+    {
+      "kanaIn": "でった",
       "kanaOut": "で",
       "rulesIn": [
         "v5"
@@ -9207,5 +9235,8 @@
     "まいる",
     "蹴る",
     "ける"
+  ],
+  "intermediateForms": [
+    "te"
   ]
 }

@@ -25,8 +25,14 @@ nonisolated final class Deinflector {
     //   きる (切る godan vs 着る ichidan), へる (減る godan vs 経る ichidan).
     private let knownNonIchidanRuVerbs: Set<String>
 
+    // Grammar states that are a step inside a chain, not a dictionary form: a rule whose rulesOut
+    // names one (てく → て, rulesOut ["te"]) says "this is a て-form", so the surface it leaves is
+    // traversed further but is never a lemma candidate — otherwise についてく → について would admit
+    // the expression について as the word. Sourced from deinflection.json's "intermediateForms".
+    private let intermediateForms: Set<String>
+
     // Stores deinflection rules used by candidate generation.
-    init(rules: [DeinflectionRule], trie: DictionaryTrie, nonIchidanRuVerbs: Set<String> = []) {
+    init(rules: [DeinflectionRule], trie: DictionaryTrie, nonIchidanRuVerbs: Set<String> = [], intermediateForms: Set<String> = []) {
         self.rules = rules.sorted { lhs, rhs in
             lhs.kanaIn.count > rhs.kanaIn.count
         }
@@ -35,10 +41,11 @@ nonisolated final class Deinflector {
         }
         self.trie = trie
         self.knownNonIchidanRuVerbs = nonIchidanRuVerbs
+        self.intermediateForms = intermediateForms
     }
 
     // Stores grouped deinflection rules while preserving group labels used for chain reporting.
-    init(groupedRules: [String: [DeinflectionRule]], trie: DictionaryTrie, nonIchidanRuVerbs: Set<String> = []) {
+    init(groupedRules: [String: [DeinflectionRule]], trie: DictionaryTrie, nonIchidanRuVerbs: Set<String> = [], intermediateForms: Set<String> = []) {
         let expandedLabeledRules = groupedRules
             .flatMap { label, grouped in
                 grouped.map { rule in
@@ -55,18 +62,21 @@ nonisolated final class Deinflector {
         }
         self.trie = trie
         self.knownNonIchidanRuVerbs = nonIchidanRuVerbs
+        self.intermediateForms = intermediateForms
     }
 
-    // The non-rule sibling key alongside the rule groups (teForms, pastForms, …) in deinflection.json.
+    // The non-rule sibling keys alongside the rule groups (teForms, pastForms, …) in deinflection.json.
     private static let nonIchidanRuVerbsKey = "nonIchidanRuVerbs"
+    private static let intermediateFormsKey = "intermediateForms"
 
-    // Loads grouped rules from JSON data while preserving rule-group labels. Strips the
-    // non-rule "nonIchidanRuVerbs" key first so the rest still decodes as pure rule groups.
+    // Loads grouped rules from JSON data while preserving rule-group labels. Strips the non-rule
+    // "nonIchidanRuVerbs" / "intermediateForms" keys first so the rest decodes as pure rule groups.
     static func loadGroupedRules(from data: Data) throws -> [String: [DeinflectionRule]] {
         guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return try JSONDecoder().decode([String: [DeinflectionRule]].self, from: data)
         }
         object.removeValue(forKey: nonIchidanRuVerbsKey)
+        object.removeValue(forKey: intermediateFormsKey)
         let rulesData = try JSONSerialization.data(withJSONObject: object)
         return try JSONDecoder().decode([String: [DeinflectionRule]].self, from: rulesData)
     }
@@ -79,6 +89,16 @@ nonisolated final class Deinflector {
             return []
         }
         return Set(verbs)
+    }
+
+    // Loads the grammar states that are never a lemma (see intermediateForms) from deinflection.json's
+    // top-level "intermediateForms" array.
+    static func loadIntermediateForms(from data: Data) throws -> Set<String> {
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let forms = object[intermediateFormsKey] as? [String] else {
+            return []
+        }
+        return Set(forms)
     }
 
     // Loads grouped rules from JSON data and flattens them into a linear rule list.
@@ -140,7 +160,8 @@ nonisolated final class Deinflector {
         let data = try Data(contentsOf: jsonFileURL)
         let groupedRules = try Self.loadGroupedRules(from: data)
         let nonIchidanRuVerbs = try Self.loadNonIchidanRuVerbs(from: data)
-        self.init(groupedRules: groupedRules, trie: trie, nonIchidanRuVerbs: nonIchidanRuVerbs)
+        let intermediateForms = try Self.loadIntermediateForms(from: data)
+        self.init(groupedRules: groupedRules, trie: trie, nonIchidanRuVerbs: nonIchidanRuVerbs, intermediateForms: intermediateForms)
     }
 
     // Builds a deinflector from grouped-rule JSON in the app bundle.
@@ -193,7 +214,9 @@ nonisolated final class Deinflector {
             }
 
             visited.insert(state)
-            pathsBySurface[item.surface, default: []].append((chain: item.chain, transitions: item.transitions))
+            if item.grammar.map({ intermediateForms.contains($0) }) != true {
+                pathsBySurface[item.surface, default: []].append((chain: item.chain, transitions: item.transitions))
+            }
 
             for labeledRule in labeledRules {
                 let rule = labeledRule.rule
