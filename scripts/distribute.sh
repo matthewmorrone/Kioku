@@ -86,7 +86,6 @@ xcodebuild -scheme "$SCHEME" -configuration Release \
   -derivedDataPath "$DERIVED" \
   -archivePath "$ARCHIVE" \
   -allowProvisioningUpdates \
-  -skipPackagePluginValidation -skipMacroValidation \
   archive
 
 cat > "$PLIST" <<PLISTEOF

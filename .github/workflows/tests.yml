@@ -51,12 +51,8 @@ jobs:
       - name: Show installed Xcode versions
         run: ls /Applications | grep -i '^Xcode' || true
 
-      # Pin to 26.5 rather than latest-stable: on macos-26, latest-stable
-      # resolves to Xcode 26.6 RC, which ships the Metal compiler as a
-      # separately-downloadable component the image doesn't preinstall — so the
-      # mlx-swift dependency's .metal shaders fail to compile ("missing Metal
-      # Toolchain"). 26.5 has Metal preinstalled. The download step below is a
-      # belt-and-suspenders net if a future image drops the preinstalled tool.
+      # Pin to 26.5 rather than latest-stable: on macos-26, latest-stable resolves
+      # to an RC, and the DerivedData cache key below names the Xcode version.
       - name: Select Xcode 26.5
         uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -67,11 +63,6 @@ jobs:
           xcodebuild -version
           swift --version
 
-      # Ensure the Metal Toolchain is present so mlx-swift's .metal shaders
-      # compile. No-op on Xcode versions that bundle it; downloads it otherwise.
-      - name: Ensure Metal Toolchain
-        run: xcodebuild -downloadComponent MetalToolchain || true
-
       # Don't pre-boot the simulator in an earlier step: booting alongside the cache restore and
       # build stretches the boot to ~8 min on these runners (vs ~2.5 min booted by xcodebuild
       # after the build), so it made runs slower (runs 35959658405, 35979275850).
@@ -80,8 +71,8 @@ jobs:
 
       # Restores the DerivedData (resolved package checkouts + already-compiled package products)
       # that warm-cache.yml saves from main, so a PR only compiles what it changed instead of the
-      # whole SwiftPM graph (MLX, swift-nio, HuggingFace, whisper.cpp, …) — ~10 of a cold run's
-      # ~14 minutes. Restore-only: a cache saved from a PR ref is readable by that PR alone, so
+      # packages (mecab, dagre-swift, zinnia-swift, SwiftWhisperAlign) and the unchanged app
+      # sources. Restore-only: a cache saved from a PR ref is readable by that PR alone, so
       # saving here just piled up ~1.1 GB per PR that no other run could use. The key is the
       # Package.resolved hash, the same key warm-cache.yml writes; restore-keys falls back to the
       # newest older cache after a dependency bump. warm-cache.yml must build with this job's
@@ -117,44 +108,13 @@ jobs:
       # runs against Monoceros always behave — no clones there) doesn't hit this; disabling it
       # trades CI wall-clock time for determinism.
       #
-      # AlignmentQualityTests is excluded outright, not just serialized: it runs real on-device
-      # Whisper/CTC-forced-alignment compute via MLX/Metal against real audio fixtures (30-90s
-      # each, by design — see the test file's own header). On this runner it crashes during MLX's
-      # Metal device initialization (libc++ hardening assertion inside
-      # mlx::core::metal::Device::Device()), which reads as this runner's simulator lacking a
-      # functional Metal/GPU backend for MLX — not something fixable from the test/app side. The
-      # test file's own header already recommends this exact -skip-testing flag "to skip quality
-      # tests during a fast iteration cycle" and separately documents that CI-env-var-based
-      # skipping was already tried and found unreliable (doesn't propagate into the simulator
-      # test process), so a build-flag exclusion here is the intended mechanism, not a workaround.
-      #
-      # -skipPackagePluginValidation: mlx-swift's Package.swift declares a "CudaBuild" build-tool
-      # plugin (for its optional CUDA/Linux backend, irrelevant to this iOS build) that Xcode
-      # otherwise refuses to run non-interactively with "Plugin \"CudaBuild\" from package
-      # \"mlx-swift\" must be enabled before it can be used" — there's no CI-safe way to grant that
-      # trust ahead of time (it's normally an Xcode GUI prompt), so this flag skips the trust
-      # check entirely. Scoped to this one invocation rather than a machine-wide
-      # `defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidation` so it only
-      # affects this job, not every Xcode invocation on the runner.
-      #
-      # Only applied for trusted triggers (a push, or a pull_request whose head lives in this
-      # same repo) — never for a pull_request from a fork. A fork PR could otherwise redirect the
-      # package graph to a malicious build-tool plugin and have it execute on the runner, with
-      # access to the job's environment, before any human reviews the diff. A fork PR's `ios`
-      # check stays red on the CudaBuild error permanently — re-running the same job does NOT
-      # help, since head.repo.full_name is fixed by the original event. Recovering requires a
-      # maintainer-controlled path outside this condition (e.g. pushing the reviewed diff to a
-      # same-repo branch, or a trusted-label/workflow_dispatch gate) — not implemented here. A
-      # permanently-red fork-PR check is the deliberate fail-safe, not a bug.
+      # AlignmentQualityTests is excluded outright: each fixture runs the full aligner on real
+      # audio (30-90 s each) and is meant for the device — see the test file's own header, which
+      # also records that CI-env-var-based skipping doesn't propagate into the simulator test
+      # process, so a build-flag exclusion is the mechanism.
       - name: Build & test
-        env:
-          TRUST_PACKAGE_PLUGINS: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           set -o pipefail
-          plugin_flag=()
-          if [[ "$TRUST_PACKAGE_PLUGINS" == "true" ]]; then
-            plugin_flag=(-skipPackagePluginValidation)
-          fi
           xcodebuild test \
             -project Kioku.xcodeproj \
             -scheme Kioku \
@@ -164,7 +124,6 @@ jobs:
             -enableCodeCoverage YES \
             -derivedDataPath build \
             -resultBundlePath build/Kioku.xcresult \
-            "${plugin_flag[@]}" \
             CODE_SIGNING_ALLOWED=NO
 
       # Emit a per-target line-coverage summary into the workflow run page so

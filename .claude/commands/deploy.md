@@ -19,7 +19,7 @@ Steps to perform — run them in order, stopping if any fails. If `$ARGUMENTS` c
 
 1. **Build for the device.** Run in the background and wait for completion. Treat `BUILD FAILED` or any `error:` line as fatal.
    ```bash
-   xcodebuild -scheme Kioku -configuration Debug -destination 'platform=iOS,id=00008150-00140DC10123C01C' -derivedDataPath ~/Library/Caches/kioku-build -skipPackagePluginValidation -skipMacroValidation build
+   xcodebuild -scheme Kioku -configuration Debug -destination 'platform=iOS,id=00008150-00140DC10123C01C' -derivedDataPath ~/Library/Caches/kioku-build build
    ```
 
 2. **Install the app on the device.** This replaces any prior install of the same bundle ID.

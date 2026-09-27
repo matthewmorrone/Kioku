@@ -49,9 +49,6 @@ jobs:
         with:
           xcode-version: '26.5'
 
-      - name: Ensure Metal Toolchain
-        run: xcodebuild -downloadComponent MetalToolchain || true
-
       # Same key as tests.yml's restore step. When an exact-key cache already exists this step
       # restores it and the save at the end is skipped; otherwise the build below populates it.
       - name: DerivedData cache
@@ -71,8 +68,6 @@ jobs:
 
       # Build only — no tests. Destination, coverage and derivedDataPath must match tests.yml's
       # `xcodebuild test` exactly, or the PR run treats the restored products as out of date.
-      # A push to main is a trusted trigger, so the package-plugin trust skip applies (see the
-      # long note on the same flag in tests.yml).
       - name: Build for testing
         run: |
           set -o pipefail
@@ -82,5 +77,4 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
             -enableCodeCoverage YES \
             -derivedDataPath build \
-            -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO
