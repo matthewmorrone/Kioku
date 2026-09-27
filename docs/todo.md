@@ -39,8 +39,8 @@ written so a new session can pick it up cold.
 ## Segmentation & Lookup
 
 - [ ] **Dictionary rebuild pending for new `extras.json` entries** — シェノン (French *chaînon*,
-      "link in a chain"; sung in 月色Chainon) was added 2026-09-26 and is inert until the next
-      from-source rebuild. Batch it with the next dictionary change: `Resources/generate_db.py`,
+      "link in a chain") and リュミエール (French *lumière*, "light"), both sung in 月色Chainon, were
+      added 2026-09-26 and are inert until the next from-source rebuild. Batch it with the next dictionary change: `Resources/generate_db.py`,
       bump `releaseTag`/`expectedSHA256` in `DictionaryDownloadManager.swift`, then
       `scripts/publish_dictionary_release.sh`, and re-measure with `scripts/segmentation-eval`.
 - [ ] **`DictionaryTrie.Node.children` is `[Character: Node]` — consider a scalar-keyed
