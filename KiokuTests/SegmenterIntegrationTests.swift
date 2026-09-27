@@ -81,6 +81,13 @@ final class SegmenterIntegrationTests: XCTestCase {
         })
     }
 
+    // Verifies a verb inflected in katakana for effect (lyrics' ナカナイ) deinflects through its
+    // hiragana form, so the lookup sheet finds 泣く instead of falling back to a guessed gloss.
+    func testKatakanaInflectedVerbDeinflectsThroughHiraganaForm() throws {
+        let resources = try sharedResources()
+        XCTAssertEqual(resources.segmenter.preferredLemma(for: "ナカナイ"), "なく")
+    }
+
     // Verifies compound-verb recovery still contributes alternate lemmas through the shared deinflector path.
     func testBuildLatticeUsesCompoundVerbRecoveryCandidate() throws {
         let resources = try sharedResources()

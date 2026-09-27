@@ -202,6 +202,14 @@ nonisolated final class Deinflector {
         )] = [
             (surface: surface, grammar: nil, chain: [], transitions: [])
         ]
+        // Rules match hiragana endings, so a verb written in katakana for effect (ナカナイ) is also
+        // traversed in its hiragana form (なかない → なく). A katakana surface the dictionary already
+        // knows as a word (ゼッタイ) is not re-read as an inflection.
+        if trie.contains(surface) == false {
+            for normalized in normalizedKanaCandidates(for: surface).sorted() {
+                queue.append((surface: normalized, grammar: nil, chain: [], transitions: []))
+            }
+        }
 
         var cursor = 0
         while cursor < queue.count {
