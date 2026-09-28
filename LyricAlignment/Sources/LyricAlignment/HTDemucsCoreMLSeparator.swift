@@ -3,43 +3,33 @@
 // The model (HTDemucsSpec) takes raw stereo [1,2,343980] @44.1kHz and returns the VOCALS
 // spectrogram (complex-as-channels) + the vocals time-branch; this file does the cheap iSTFT
 // overlap-add in Swift (coremltools can't convert it) and the 7.8s chunked overlap-add over a
-// full song. All STFT/iSTFT math is bit-exact vs torch (verified: scripts/htdemucs-coreml).
+// full song. The iSTFT matches torch.istft to float rounding (scripts/htdemucs-coreml).
 import Foundation
 import CoreML
 import Accelerate
+import os
+
+private let logger = Logger(subsystem: "matthewmorrone.LyricAlignment", category: "HTDemucsCoreMLSeparator")
 
 enum HTDemucsCoreMLSeparator {
-    static let N = 4096, H = 1024, K = 2049, Fq = 2048
+    static let N = 4096, H = 1024, Fq = 2048
+    static let log2N = 12
     static let SEG = 343_980          // model's fixed input length (7.8 s @ 44.1kHz)
     static let T = 336                 // spectrogram frames the model returns
     static let Tfull = 340             // frames after restoring the 2-frame crop each side
     static let cropOffset = N / 2 + (H / 2 * 3)   // center-pad (2048) + _spec pad (1536) = 3584
 
-    // Inverse-DFT basis [K x N] row-major, periodic Hann window, and the window-overlap
-    // normalization curve. Built per-isolation and dropped on return (≈67 MB) so it isn't
-    // resident competing with the aligner's MLX allocations.
-    private struct DSP { let icos: [Float]; let isin: [Float]; let win: [Float]; let wsum: [Float]; let outLen: Int }
-    private static func buildDSP() -> DSP {
-        var icos = [Float](repeating: 0, count: K * N)
-        var isin = [Float](repeating: 0, count: K * N)
-        let sN = Float(N).squareRoot()
-        for k in 0..<K {
-            let c: Float = (k == 0 || k == N / 2) ? 1.0 : 2.0
-            let scale = c / Float(N) * sN
-            let twoPiK = 2.0 * Float.pi * Float(k) / Float(N)
-            for n in 0..<N {
-                let ang = twoPiK * Float(n)
-                icos[k * N + n] = scale * cosf(ang)
-                isin[k * N + n] = -scale * sinf(ang)
-            }
-        }
+    // Periodic Hann window and the window-overlap normalization curve for the iSTFT (≈1.4 MB),
+    // built once.
+    private struct DSP { let win: [Float]; let wsum: [Float]; let outLen: Int }
+    private static let dsp: DSP = {
         var win = [Float](repeating: 0, count: N)
         for n in 0..<N { win[n] = 0.5 - 0.5 * cosf(2.0 * Float.pi * Float(n) / Float(N)) }
         let outLen = (Tfull - 1) * H + N
         var wsum = [Float](repeating: 0, count: outLen)
         for t in 0..<Tfull { for n in 0..<N { wsum[t * H + n] += win[n] * win[n] } }
-        return DSP(icos: icos, isin: isin, win: win, wsum: wsum, outLen: outLen)
-    }
+        return DSP(win: win, wsum: wsum, outLen: outLen)
+    }()
 
     // ---- model loading via [[HTDemucsModelStore]]: first-run download + Application
     // Support cache, same purge-resistant placement as the ASR + CTC aligner weights.
@@ -75,10 +65,17 @@ enum HTDemucsCoreMLSeparator {
         let L = min(stereo[0].count, stereo[1].count)
         guard L > 0 else { return [] }
         let model = try await loadModel(onStage: onStage)
-        let dsp = buildDSP()
+        guard let fft = vDSP_create_fftsetup(vDSP_Length(log2N), FFTRadix(kFFTRadix2)) else { return [] }
+        defer { vDSP_destroy_fftsetup(fft) }
+        // Where the time goes, logged once at the end: the model call vs our iSTFT/overlap-add.
+        var predictSeconds = 0.0
+        var postSeconds = 0.0
+        let started = Date()
 
-        // 7.8 s chunks, 25% overlap, triangular transition weight (demucs apply_model style).
-        let overlap = SEG / 4
+        // 7.8 s chunks, 10% overlap, triangular transition weight (demucs apply_model style).
+        // 10% rather than demucs' default 25% processes ~17% less audio; the triangle weights
+        // are renormalized per sample, so the seams blend the same way over a shorter span.
+        let overlap = SEG / 10
         let stride = SEG - overlap
         let triangle = transitionWeight(SEG)
 
@@ -113,10 +110,13 @@ enum HTDemucsCoreMLSeparator {
                 var rch = [Float](repeating: 0, count: SEG)
                 for i in 0..<n { lch[i] = stereo[0][start + i]; rch[i] = stereo[1][start + i] }
 
+                let predictStart = Date()
                 let (specL, specR, timeL, timeR) = try predict(model: model, left: lch, right: rch)
+                let postStart = Date()
+                predictSeconds += postStart.timeIntervalSince(predictStart)
                 // Vocals = iSTFT(spec) + time-branch, per channel; downmix to mono.
-                let freqL = istftChannel(re: specL.re, im: specL.im, dsp: dsp)
-                let freqR = istftChannel(re: specR.re, im: specR.im, dsp: dsp)
+                let freqL = istftChannel(re: specL.re, im: specL.im, fft: fft)
+                let freqR = istftChannel(re: specR.re, im: specR.im, fft: fft)
                 // Overlap-add (triangular) into the accumulator.
                 for i in 0..<n {
                     let w = triangle[i]
@@ -127,6 +127,7 @@ enum HTDemucsCoreMLSeparator {
                 // Fraction of audio processed (not chunk index) so the phase reaches a true 100%
                 // on the final chunk — chunk-count estimates over-shoot and stall the bar at ~97%.
                 onProgress?(Double(end) / Double(L))
+                postSeconds += Date().timeIntervalSince(postStart)
             }
             } catch is CancellationError {
                 throw CancellationError()
@@ -145,6 +146,8 @@ enum HTDemucsCoreMLSeparator {
         }
         var out = [Float](repeating: 0, count: L)
         for i in 0..<L { out[i] = wacc[i] > 1e-6 ? acc[i] / wacc[i] : 0 }
+        let total = Date().timeIntervalSince(started)
+        logger.info("isolated \(Double(L) / 44_100, format: .fixed(precision: 1)) s of audio in \(total, format: .fixed(precision: 1)) s: model \(predictSeconds, format: .fixed(precision: 1)) s, iSTFT+overlap-add \(postSeconds, format: .fixed(precision: 1)) s")
         return out
     }
 
@@ -188,39 +191,40 @@ enum HTDemucsCoreMLSeparator {
         return (specL, specR, timeL, timeR)
     }
 
-    // iSTFT for one channel: re/im [Fq * T] (k major) -> SEG samples.
-    private static func istftChannel(re: [Float], im: [Float], dsp: DSP) -> [Float] {
-        // Restore to [Tfull x K]: bin K-1 (Nyquist) = 0; frames 0,1 and Tfull-2,Tfull-1 = 0.
-        var reFull = [Float](repeating: 0, count: Tfull * K)
-        var imFull = [Float](repeating: 0, count: Tfull * K)
-        for t in 0..<T {
-            let dst = (t + 2) * K
-            for k in 0..<Fq {
-                reFull[dst + k] = re[k * T + t]
-                imFull[dst + k] = im[k * T + t]
-            }
-        }
-        // Y[Tfull x N] = reFull[Tfull x K] @ icos[K x N] + imFull[Tfull x K] @ isin[K x N].
-        var y = [Float](repeating: 0, count: Tfull * N)
-        dsp.icos.withUnsafeBufferPointer { ic in
-            reFull.withUnsafeBufferPointer { rf in
-                cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                            Int32(Tfull), Int32(N), Int32(K), 1.0,
-                            rf.baseAddress, Int32(K), ic.baseAddress, Int32(N), 0.0, &y, Int32(N))
-            }
-        }
-        dsp.isin.withUnsafeBufferPointer { isb in
-            imFull.withUnsafeBufferPointer { iff in
-                cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                            Int32(Tfull), Int32(N), Int32(K), 1.0,
-                            iff.baseAddress, Int32(K), isb.baseAddress, Int32(N), 1.0, &y, Int32(N))
-            }
-        }
-        // Window each frame + overlap-add + normalize.
+    // iSTFT for one channel: re/im [Fq * T] (k major) -> SEG samples. Each frame is an inverse
+    // real FFT scaled like torch.istft(normalized=True) — √N · irfft — then windowed and
+    // overlap-added. The model drops the Nyquist bin and the 2 edge frames each side; those are
+    // zero, so the edge frames contribute nothing and are skipped.
+    private static func istftChannel(re: [Float], im: [Float], fft: FFTSetup) -> [Float] {
+        let half = N / 2
+        // vDSP's inverse real FFT of a true spectrum returns N · x; √N · x is what torch gives.
+        let scale = Float(N).squareRoot() / Float(N)
         var out = [Float](repeating: 0, count: dsp.outLen)
-        for t in 0..<Tfull {
-            let yb = t * N, ob = t * H
-            for n in 0..<N { out[ob + n] += y[yb + n] * dsp.win[n] }
+        var realp = [Float](repeating: 0, count: half)
+        var imagp = [Float](repeating: 0, count: half)
+        var frame = [Float](repeating: 0, count: N)
+        for t in 0..<T {
+            // Bins 0..<N/2 fill the packed format directly; imagp[0] holds the (zero) Nyquist bin,
+            // and the DC bin's imaginary part is ignored, as irfft ignores it.
+            for k in 0..<half {
+                realp[k] = re[k * T + t]
+                imagp[k] = im[k * T + t]
+            }
+            imagp[0] = 0
+            realp.withUnsafeMutableBufferPointer { rp in
+                imagp.withUnsafeMutableBufferPointer { ip in
+                    var split = DSPSplitComplex(realp: rp.baseAddress!, imagp: ip.baseAddress!)
+                    vDSP_fft_zrip(fft, &split, 1, vDSP_Length(log2N), FFTDirection(FFT_INVERSE))
+                    frame.withUnsafeMutableBufferPointer { fp in
+                        fp.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: half) {
+                            vDSP_ztoc(&split, 1, $0, 2, vDSP_Length(half))
+                        }
+                    }
+                }
+            }
+            // Window + overlap-add at this frame's slot in the uncropped [Tfull] timeline.
+            let ob = (t + 2) * H
+            for n in 0..<N { out[ob + n] += frame[n] * scale * dsp.win[n] }
         }
         for i in 0..<dsp.outLen { out[i] = dsp.wsum[i] > 1e-8 ? out[i] / dsp.wsum[i] : 0 }
         // Crop to SEG samples starting at the center+_spec pad offset.
