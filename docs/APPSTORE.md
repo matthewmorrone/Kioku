@@ -60,7 +60,7 @@ product name. The on-device display name under the icon is independent of this.
 > PRIVATE BY DESIGN
 > • No accounts, no analytics, no tracking — the privacy label is empty
 > • Everything stays on your phone; full backup export/import included
-> • Optional AI features use your own API key, stored in the device Keychain
+> • Optional AI features run on Apple Intelligence or your own API key, stored in the device Keychain
 >
 > Dictionary data from JMdict (EDRDG), used under Creative Commons
 > Attribution-ShareAlike. Full attributions in Settings → About.
@@ -113,18 +113,19 @@ Store Connect will not ask.
 >    device. Never reachable from the internet. This is why the app declares
 >    NSLocalNetworkUsageDescription and NSBonjourServices.
 >
-> 2. AI CORRECTION (Settings → AI Correction, OFF by default): user supplies
->    their own OpenAI or Anthropic API key; the app sends only the text the
->    user asks to correct. No account or sign-in is required to use the app
->    (Guideline 5.1.1 — the feature is optional and keys are user-provided).
+> 2. AI FEATURES (correction, song breakdowns; OFF until configured): run on
+>    Apple Intelligence, or on OpenAI / Anthropic with an API key the user
+>    supplies; the app sends only the text the user asks about. No account or
+>    sign-in is required to use the app (Guideline 5.1.1 — the features are
+>    optional and keys are user-provided).
 >
 > 3. SUBTITLE SEARCH (optional, requires the user's own jimaku.cc API key,
 >    unconfigured by default): searches a community subtitle index so users
 >    can study song lyrics and dialogue alongside audio they already possess.
 >    The app does not bundle, host, or distribute any copyrighted media.
 >
-> No demo account is needed — all functionality is available immediately
-> offline.
+> No demo account is needed. The dictionary downloads once on first launch;
+> after that, everything except the optional features above works offline.
 
 ## ⚠️ Steps only you can do
 
@@ -135,8 +136,8 @@ Store Connect will not ask.
    your iPhone (1320 × 2868). Suggested five: Read view with furigana, a
    word-detail sheet, dictionary search with handwriting input, flashcard
    review, karaoke lyrics view. Settings → no personal notes visible.
-3. **Archive & upload**: Xcode → Product → Archive → Distribute App →
-   App Store Connect. Xcode mints the Distribution certificate automatically.
+3. **Archive & upload**: `scripts/distribute.sh` (see RELEASE.md §5), or
+   Xcode → Product → Archive → Distribute App → App Store Connect.
 4. **TestFlight smoke test** on an iOS 18.x device if you can borrow one —
    all automated testing ran on the iOS 26.5 simulator and 18.0 is the new
    deployment floor (the lyric-translation feature sits exactly at it).

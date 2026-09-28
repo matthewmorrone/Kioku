@@ -6,11 +6,13 @@ Pre-submission checklist for shipping a Kioku build to the App Store. Pair with
 
 ## 1. Repo state
 - [ ] On `main`, working tree clean (`git status`), latest pulled.
-- [ ] CI green on the release commit: **tests.yml** and **invariants.yml** both passing.
+- [ ] CI green on the release commit: **invariants.yml** (automatic) and **tests.yml** (manual —
+      run it from the Actions tab on the release commit) both passing.
 - [ ] No open blockers in [todo.md](todo.md) that this release claims to fix.
 
-## 2. Automated gates (must pass locally too)
-- [ ] `xcodebuild test` (Kioku scheme) — full unit suite green.
+## 2. Automated gates
+- [ ] Segmentation eval (`scripts/segmentation-eval`: held2k, kana2k, lyrics, named cases) no
+      worse than the last release if segmentation or the dictionary changed.
 - [ ] Validate Invariants build phase passes (intent comments, file-size caps —
       see [INVARIANTS.md](INVARIANTS.md)); warnings acceptable, failures not.
 - [ ] No new `print()` regressions / debug toggles exposed in release config
@@ -28,8 +30,8 @@ tests land (todo: "UI automation tests for the core loop"), this is done by hand
 - [ ] **Notes**: create a note, paste Japanese text, segmentation renders with furigana.
 - [ ] **Lookup/save**: tap a word → lookup sheet shows reading/lemma/inflected-form label;
       star it → appears in Words ▸ Saved with the glow in Read view.
-- [ ] **Dictionary search**: query resolves; filters work (JLPT, POS, Common Only,
-      frequency tier); kanji-content filter (All / Kanji Only / No Kanji).
+- [ ] **Dictionary search**: query resolves; Words filters work (History/Saved, review status,
+      JLPT level, note, list, sort, Show Kanji).
 - [ ] **Kanji detail**: readings (on'yomi in hiragana), components section, common words,
       stroke-order animation, handwriting + radical input.
 - [ ] **Study**: flashcards, multiple-choice, cloze, kana chart — each starts and grades.
@@ -49,7 +51,8 @@ tests land (todo: "UI automation tests for the core loop"), this is done by hand
 ## 6. TestFlight
 - [ ] TestFlight smoke test on an **iOS 18.x** device if available — automated
       testing ran on the iOS 26.5 simulator; 18.0 is the deployment floor.
-- [ ] Verify on-device model assets download/decompress on first run (handwriting model, etc.).
+- [ ] Verify first-run downloads complete: the dictionary (GitHub release), and the MMS aligner
+      and HTDemucs vocal isolator (Hugging Face) when a song is first aligned.
 
 ## 7. Submit
 - [ ] Paste metadata from APPSTORE.md (description, keywords, privacy/age/export answers, review notes).

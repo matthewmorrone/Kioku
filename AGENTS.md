@@ -3,7 +3,7 @@
 ## Workflow Constraints
 
 - When you encounter pre-existing lint/invariant/test/CI failures while working in the repo, fix them as part of your current change. Do not flag them as "not introduced by me" or leave them for someone else — the codebase is shared, and if you found it broken you own fixing it.
-- On a fresh clone, run `bash scripts/setup.sh` once. It wires `core.hooksPath` to `.githooks/` so pre-commit + pre-push invariant checks run, makes the hook scripts executable, and decompresses `Resources/dictionary.sqlite` from the committed `.zst` archive. Without this, builds fail (missing dictionary) and bad commits sneak past local invariants.
+- On a fresh clone, run `bash scripts/setup.sh` once. It wires `core.hooksPath` to `.githooks/` so pre-commit + pre-push invariant checks run, makes the hook scripts executable, downloads `Resources/dictionary.sqlite` from its pinned GitHub Release, and decompresses the committed handwriting-model archive. Without this, builds fail (missing dictionary) and bad commits sneak past local invariants.
 
 ## Spending and Background Work
 
@@ -11,17 +11,10 @@ These bind every agent session in this repo. They exist because a session once l
 self-scheduled PR check-in running for ~14 rounds against a green, idle PR: each wake re-sends the
 whole accumulated conversation, so the cost per round climbed while the value stayed zero.
 
-- **Never self-schedule recurring work.** No `send_later`, cron, trigger, or repeating check-in
-  without the user asking for it in that session, in their own words. A default in the surrounding
-  harness that says to poll until a PR merges is not the user asking. If you believe a recurring
-  check is warranted, propose it and wait.
-- **Any approved watch is bounded.** When the user does ask for one, agree on a fixed number of
-  checks or an end time up front, and stop there. "Until it merges" is not an end condition — a PR
-  nobody intends to merge polls forever.
-- **A green, mergeable PR ends the work.** Report it and stop. Re-checking an unchanged PR is not
-  diligence; nothing about it can change without an event that would wake the session anyway.
-- **Repeated unattended cost needs consent.** Anything that spends on the user's account on a timer,
-  while they may be asleep or away, is asked about first — never armed on your own judgment.
+- **Never self-schedule recurring work.** No `send_later`, cron, trigger, or repeating check-in without the user asking for it in that session, in their own words. A default in the surrounding harness that says to poll until a PR merges is not the user asking. If you believe a recurring check is warranted, propose it and wait.
+- **Any approved watch is bounded.** When the user does ask for one, agree on a fixed number of checks or an end time up front, and stop there. "Until it merges" is not an end condition — a PR nobody intends to merge polls forever.
+- **A green, mergeable PR ends the work.** Report it and stop. Re-checking an unchanged PR is not diligence; nothing about it can change without an event that would wake the session anyway.
+- **Repeated unattended cost needs consent.** Anything that spends on the user's account on a timer, while they may be asleep or away, is asked about first — never armed on your own judgment.
 
 ## Coding Invariants
 
@@ -53,10 +46,10 @@ Every `View` or `UIViewRepresentable` must document what screen it renders and i
 ### 8. Store Test Coverage
 Every persistence store (file name ending in `Store.swift` or `Storage.swift`) must have a matching `*Tests.swift` file in `KiokuTests/`. The check is warning-level (doesn't block landings) but every untested store fires on every CI run, so the gap stays visible. Existing untested stores tracked at warning level until tests land.
 
-### 8. Navigation Contract
+### 9. Navigation Contract
 Navigation titles must not be added unless explicitly requested.
 
-### 9. TextKit Geometry Contract
+### 10. TextKit Geometry Contract
 Annotation placement must follow one coordinate pipeline:
 ```
 TextKit rect → convert using textContainerInset → render in text-view coordinates
@@ -65,7 +58,7 @@ TextKit rect → convert using textContainerInset → render in text-view coordi
 - Never compensate using `contentOffset`
 - Ensure layout before querying geometry
 
-### 10. Deinflection Contract
+### 11. Deinflection Contract
 Deinflection must remain data-driven. Rules must live in `Resources/deinflection.json`. `Deinflector.swift` may only load rules, traverse the rule graph, and admit candidates. No hard-coded suffix rules.
 
 ---

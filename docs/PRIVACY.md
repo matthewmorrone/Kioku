@@ -1,6 +1,6 @@
 # Kioku Privacy Policy
 
-**Effective date:** June 12, 2026
+**Effective date:** September 28, 2026
 
 Kioku is a Japanese reading and study app that runs entirely on your device.
 
@@ -19,15 +19,19 @@ file, and that file goes wherever you choose to save it.
 
 Kioku makes network requests only when you initiate them:
 
-- **Dictionary and reading features** work fully offline. The dictionary is
-  bundled with the app.
-- **Speech-model downloads** (for audio transcription and lyric alignment)
-  fetch model files from Hugging Face when you choose to download a model.
-  These requests carry no personal data.
-- **Optional AI correction** sends the text you ask to correct to OpenAI or
-  Anthropic, using an API key *you* provide. This is off by default, and no
-  request is made unless you enable it. Your key is stored in the device
+- **Dictionary download**: on first launch the dictionary is downloaded once
+  from the project's GitHub releases. After that, dictionary and reading
+  features work fully offline.
+- **Model downloads** (for lyric alignment and vocal isolation) fetch model
+  files from Hugging Face the first time you align a song. These requests
+  carry no personal data. Audio transcription uses Apple's on-device speech
+  recognition.
+- **Optional AI features** (correction, song breakdowns, word explanations)
+  run on Apple Intelligence, or send the text you ask about to OpenAI or
+  Anthropic using an API key *you* provide. They are off by default, and no
+  request is made unless you configure one. Your key is stored in the device
   Keychain, Apple's encrypted credential store.
+- **URL import** fetches the web page whose address you enter.
 - **Optional subtitle search** (Jimaku) sends your search query to jimaku.cc
   using an API key you provide. Off by default.
 - **Optional local-network bridge** hosts a connection on your own Wi-Fi

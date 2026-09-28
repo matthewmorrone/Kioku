@@ -1,6 +1,6 @@
-# Library Candidates for Future Integration
+# Libraries
 
-Libraries evaluated but not yet installed. Revisit when the relevant feature area is being built.
+What the app links, what was evaluated and left out, and why.
 
 ---
 
@@ -12,9 +12,9 @@ What we actually link.
 - **Location:** `LyricAlignment/` (sibling SPM package)
 - **Why installed:** Lyric alignment (HTDemucs vocal isolation + MMS forced alignment, both CoreML); produces the timed cues the read screen consumes. No package dependencies of its own.
 
-### MeCab — eval tooling only, not linked into the app
-- **Where:** `scripts/segmentation-eval/cli` links Homebrew's `libmecab` (`brew install mecab mecab-ipadic`; UniDic optional) and compiles the app's `MeCabTokenizer` / `MeCabSegmenter` (both `#if canImport(mecab)`, so they compile out of the app). `segcli mecab ipadic|unidic < sentences` prints MeCab's split in the same format as `segcli run`.
-- **Why not in the app:** it was only the comparison column of the debug `SegmentationDiffPrinter`, and no MeCab dictionary was ever bundled, so it produced nothing. Re-adding it means the `matthewmorrone/mecab` fork (iOS/C++14 build fixes to landonepps/mecab, tracked by branch because of its unsafeFlags) plus a bundled dictionary.
+### MeCab — dictionary build only, not in the app
+- **Where:** `Resources/generate_db.py`, at dictionary build time. `mecab-python3` + `ipadic` (requirements.txt) back wordfreq's Japanese tokenizer, which supplies `wordfreq_zipf`; the Homebrew `mecab` CLI with `mecab-ipadic` splits expression headwords for `entry_decomposition` (the word screen's おとな + に + なる breakdown).
+- **Not in the app or the eval CLI:** the app segments with its own trie + Viterbi segmenter.
 
 ### zinnia-swift (shinjukunian) ✅
 - **Repo:** https://github.com/shinjukunian/zinnia-swift
@@ -63,10 +63,4 @@ Short list — anything not below was evaluated and rejected.
 - **FluidAudio** — diarization not needed for single-speaker content.
 - **SwiftFFmpeg** — AVFoundation covers our conversion needs; +20 MB binary.
 - **ElevenLabs** — cloud TTS, out of scope.
-- **novi/mecab-swift** — the eval CLI links Homebrew's libmecab directly; the app doesn't need MeCab.
 - **String-Japanese** — KanaNormalizer + ScriptClassifier cover kana/romaji classification.
-- **similarity-search-kit** — duplicate of USearch, same reasoning.
-- **Koloda** — no SPM support; Shuffle is the SPM-compatible equivalent.
-- **RichTextKit** — conflicts with overlay-rendered ruby on plain-text notes.
-- **ESTMusicIndicator** — no SPM, trivial to reimplement as ~30 lines of SwiftUI.
-- **subtweak** — offline preprocessing CLI, not a runtime dependency.

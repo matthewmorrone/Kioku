@@ -4,9 +4,9 @@ Open Kioku work only. Finished items are deleted, not ticked; git history has th
 written so a new session can pick it up cold.
 
 ## Features
-
-- [ ] Quiz on next and previous words/lines
-- [ ] Add manual/custom word creation and editing
+- [ ] Add manual/custom word creation and editing. all entries in extras.json are available for 
+      inspection and modification
+- [ ] Quiz on next and previous words/lines: points for consecutivity 
 - [ ] **Import a subtitle file straight to a note** — rewritten 2026-09-26 from an open design
       question. Today the Words tab's subtitle import (`SubtitleImportView`, also reached from
       Jimaku search via `SubtitleSearchView`) is a vocab-list flow: it segments the file, shows the
@@ -37,7 +37,6 @@ written so a new session can pick it up cold.
 
 
 ## Segmentation & Lookup
-
 - [ ] **Dictionary rebuild pending for new `extras.json` entries** — シェノン (French *chaînon*,
       "link in a chain") and リュミエール (French *lumière*, "light"), both sung in 月色Chainon, were
       added 2026-09-26 and are inert until the next from-source rebuild. Batch it with the next dictionary change: `Resources/generate_db.py`,
@@ -59,8 +58,7 @@ written so a new session can pick it up cold.
       kana are almost always single Unicode scalars). Switching `children` to a scalar key
       (e.g. `[UInt32: Node]` keyed by `Unicode.Scalar.value`) would speed up not just the
       one-time trie build but every lookup during live segmentation too (`contains`,
-      `partOfSpeech`, `ipadicContextIDs`, `hitMeta`, `prefixScan`, `prefixHitScan` — 8 call
-      sites total, all contained to `Kioku/Dictionary/DictionaryTrie.swift` +
+      `partOfSpeech`, `hitMeta`, `prefixScan`, `prefixHitScan` — all contained to `Kioku/Dictionary/DictionaryTrie.swift` +
       `Kioku/Dictionary/Node.swift`, nothing else touches `.children`). Estimated payoff is
       modest and uncertain without benchmarking — maybe 200-400ms off the trie-build step,
       nothing for `fetchSurfaceData` (a separate function; its query plan already uses
@@ -70,8 +68,8 @@ written so a new session can pick it up cold.
       near-zero real-world risk that Japanese dictionary/user text is already NFC-precomposed.
       Not started; on hold until the user says go (2026-09-26). Measure cold start with
       `StartupTimer` before and after.
-## Testing
 
+## Testing
 - [ ] **UI automation tests for the core loop** (notes, lookup/save, study, backup). Store-level
       coverage exists (`CoreLoopSmokeTests`, `AppBackupValidatorTests`); nothing drives the actual UI.
       The `KiokuUITests` target already exists in the project with no source files (the template

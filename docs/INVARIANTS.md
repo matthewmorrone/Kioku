@@ -22,91 +22,36 @@ goal is to drive everything to ✅.
 
 ---
 
-## Alignment & Reconcile (`SubtitleEditorSheet.reconcileFromNote`, `OnDeviceLyricAligner`)
+## Alignment (`WholeSongAlignment`, `OnDeviceLyricAligner`)
 
-The reconcile pipeline takes (audio, current SRT, note text) and produces a
-new SRT. It must be safe — never lose user-authored content — and predictable
-— same input gives same output, and good inputs survive untouched.
+Alignment takes a song's audio and its note text and produces one timed cue
+per note line, which karaoke playback and the lyrics view read.
 
-1. **No-drop**: every non-blank, non-♪ line in the note text appears as text
-   in at least one output cue, even if the aligner produced fewer cues than
-   expected (force-fit fallback fills the rest).
+1. **No-drop**: every non-blank, non-♪ note line appears as text in at least
+   one output cue.
    - *Rationale*: dropping a line is unrecoverable data loss from the user's
      point of view — the line existed in their note and silently vanished
-     from the SRT.
-   - *Status*: ✅ (`SubtitleReconciliationTests.testReconcilePipelineDropsNoLinesOnTotalMismatch`,
-     plus `testUniformDistribute…` family for the force-fit safety net).
+     from the lyrics.
+   - *Status*: ✅ asserted per fixture by `AlignmentQualityTests` — the one
+     assertion there not wrapped in XCTExpectFailure, since a dropped line
+     is a structural defect, not a timing-quality knob.
 
-2. **Monotonic order**: output cues' note-line indices are non-decreasing
-   when sorted by start time.
-   - *Rationale*: cue order out of sync with note order breaks karaoke
-     highlighting — the wrong line lights up.
-   - *Status*: ✅ (`SubtitleReconciliationTests.testMatchAnchorsProducesMonotonicNoteLineIndices`).
-
-3. **Anchor non-disturbance**: when an input cue matches a note line by text
-   and is not adjacent to a gap window, its start/end timings in the output
-   differ from the input by ≤ 1ms.
-   - *Rationale*: users learn cue positions; arbitrary shifts during a
-     targeted fix erode trust in the tool.
-   - *Status*: ✅ (`SubtitleReconciliationTests.testMergePreservesNonConsumedAnchorTimings`).
-
-4. **Idempotence on clean input**: when input SRT already has exactly one cue
-   per note line with matching text and no gaps, reconcile produces a result
-   identical to the input (same cues, same order, same timings).
-   - *Rationale*: running reconcile on a finalized SRT should be a no-op;
-     otherwise users can't trust it not to silently rewrite their work.
-   - *Status*: ✅ (`SubtitleReconciliationTests.testBuildGapsReturnsEmptyForCompleteAnchorCoverage`).
-
-5. **Force-fit completeness**: when a gap window of length L holds N expected
-   lines, `uniformDistribute` returns exactly N cues whose combined coverage
-   spans `[windowStart, windowEnd)`.
-   - *Rationale*: per #1, lines must not be dropped; per user requirement
-     2026-05-23, force-fit is the fallback when the aligner can't help.
-   - *Status*: ✅ (`SubtitleReconciliationTests.testUniformDistribute…` × 5).
-
-6. **Music preservation**: input cues recognized as non-speech (♪ markers)
-   pass through to the output unchanged.
-   - *Rationale*: ♪ markers reflect VAD-detected non-vocal audio; reconcile
-     has no business adjusting them since it's working from text, not audio.
-   - *Status*: ✅ (`SubtitleReconciliationTests.testMergePreservesMusicCuesUnchanged`).
-
-7. **Anchor consumption is contiguous**: when a gap window consumes its
-   preceding anchor, that anchor's original cue does not appear in the
-   output; instead its text appears as the first cue in the gap's aligned
-   output.
-   - *Rationale*: keeping the original alongside the re-aligned version
-     produces overlapping cues at the same range.
-   - *Status*: ✅ (`SubtitleReconciliationTests.testMiddleGapConsumesPrecedingAnchor`,
-     `testTailGapConsumesLastAnchor`, `testHeadGapDoesNotConsumeAnyAnchor`,
-     `testMergeOmitsConsumedAnchors`).
-
-8. **Cancellation cleanliness**: when the alignment task is cancelled
-   mid-run, no partial result is committed to disk and the editor's
-   `srtText` reflects the pre-run state.
-   - *Rationale*: a partial reconcile is worse than no reconcile.
-   - *Status*: ❌.
-
-9. **Quality against ground truth**: on each fixture song, ≥95% of
+2. **Quality against ground truth**: on each fixture song, ≥95% of
    ground-truth cues have a matching output cue (same text) whose start
    time is within 500ms of the ground-truth start. Median start delta ≤
-   200ms. No ground-truth cue is missing from the output. Tested on the
-   shipped whole-song pipeline (`WholeSongAlignment`) against each
-   fixture's consensus oracle (Whisper + Japanese wav2vec2 + MMS; lines the
-   voters dispute carry a 0–0 span and aren't graded).
-   - *Rationale*: the unit tests prove the plumbing — that we don't drop
-     lines and that cue structure survives — but say nothing about whether
-     the aligner *actually finds* the right timestamps. Quality regressions
-     (model change, parameter drift) need a quantitative check against a
-     known-good output, not visual eyeballing.
+   200ms. Graded against each fixture's consensus oracle (Whisper + Japanese
+   wav2vec2 + MMS; lines the voters dispute carry a 0–0 span and aren't
+   graded).
+   - *Rationale*: the no-drop check proves the plumbing but says nothing
+     about whether the aligner finds the right timestamps. Quality
+     regressions (model change, parameter drift) need a quantitative check
+     against a known-good output, not visual eyeballing.
    - *Status*: ⚠️ `AlignmentQualityTests.testQuality_AllFixtures` runs the
-     12 fixtures on the device and prints per-song metrics; the no-drop gate
-     passes, and the coverage/median thresholds stay wrapped in
-     XCTExpectFailure until every song clears them. Latest 12-song device
-     run (2026-09-25): 314/324 confirmed lines within ±500 ms.
-   - *On the AlignmentQualityTests harness*: each fixture also asserts
-     the no-drop guarantee directly. That's the only assertion not
-     wrapped in expectFailure — dropping a line is a structural defect
-     in the pipeline, not a timing-quality knob.
+     12 fixtures on the device and prints per-song metrics; the coverage and
+     median thresholds stay wrapped in XCTExpectFailure until every song
+     clears them. Latest 12-song device run (2026-09-25): 314/324 confirmed
+     lines within ±500 ms. `scripts/alignment-replay` reproduces the shipped
+     aligner on the Mac from phone dumps.
 
 ---
 
@@ -139,21 +84,14 @@ fragments. The invariants govern which source wins and when.
    - *Status*: ⚠️ (implicit in `buildSegmentRanges` filter; no negative-case
      test).
 
-4. **Decomposition-as-origin signal**: any wide entry whose value can be
-   decomposed into a sequence of valid per-character dictionary readings is
-   classified as synthesized (origin = .synthesized).
-   - *Rationale*: enables migration of pre-gate poisoned synthesis output
-     into the replaceable bucket.
-   - *Status*: ✅ (`ReadViewFuriganaTests.testLocationsOfPresumedSynthesizedWideEntries…`).
-
-5. **Synthesis triggers only on complete per-char tiling**: the synthesis
+4. **Synthesis triggers only on complete per-char tiling**: the synthesis
    pass produces a wide entry only when per-character fragments cover the
    kanji run exactly (no gaps, no overlaps).
    - *Rationale*: partial synthesis on incomplete input is the failure mode
      that produced the ものご bug.
    - *Status*: ✅.
 
-6. **No annotation past edit**: when a segment's surface text changes via
+5. **No annotation past edit**: when a segment's surface text changes via
    user edit, all furigana annotations within that segment's previous range
    are dropped.
    - *Rationale*: stale annotations on edited segments display in wrong
