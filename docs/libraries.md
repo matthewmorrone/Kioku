@@ -23,7 +23,7 @@ What we actually link.
 
 ### dagre-swift (lukilabs) ✅
 - **Repo:** https://github.com/lukilabs/dagre-swift
-- **SPM:** remote, `SwiftDagre` product
+- **SPM:** remote, `SwiftDagre` product. **Debug builds only:** the Paths diagram (`WordDetailView+SublatticeDiagram.swift`) and its section are `#if DEBUG`, so Release never references SwiftDagre and the linker drops it.
 - **Why installed:** Lays out the segmentation sublattice diagram on the word detail screen.
 
 ---

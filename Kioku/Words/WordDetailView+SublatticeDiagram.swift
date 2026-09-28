@@ -1,3 +1,6 @@
+// Debug builds only: the Paths diagram is a segmentation-debugging view, and keeping it out of
+// Release keeps SwiftDagre's code out of the shipped app.
+#if DEBUG
 import SwiftUI
 import UIKit
 import SwiftDagre
@@ -486,3 +489,4 @@ extension WordDetailView {
         )
     }
 }
+#endif

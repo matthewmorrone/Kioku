@@ -118,13 +118,7 @@ nonisolated enum Attributions {
     // Third-party Swift libraries actually linked into the app. Mirrors
     // docs/libraries.md "Installed Libraries" — entries here MUST have a real
     // SPM pin in Package.resolved. Do not list aspirational deps.
-    static let libraries: [Library] = [
-        Library(
-            name: "dagre-swift",
-            purpose: "Graph layout for the segmentation diagram on the word detail screen.",
-            license: "lukilabs — MIT",
-            sourceURL: "https://github.com/lukilabs/dagre-swift"
-        ),
+    static let libraries: [Library] = debugOnlyLibraries + [
         Library(
             name: "zinnia-swift",
             purpose: "Swift bindings for the Zinnia handwriting recognition engine, which it vendors.",
@@ -132,6 +126,21 @@ nonisolated enum Attributions {
             sourceURL: "https://github.com/shinjukunian/zinnia-swift"
         ),
     ]
+
+    // Libraries linked only into Debug builds' code (Release compiles out every use, so the
+    // linker leaves them out of the shipped app).
+    #if DEBUG
+    private static let debugOnlyLibraries: [Library] = [
+        Library(
+            name: "dagre-swift",
+            purpose: "Graph layout for the word detail screen's Paths diagram (debug builds only).",
+            license: "lukilabs — MIT",
+            sourceURL: "https://github.com/lukilabs/dagre-swift"
+        ),
+    ]
+    #else
+    private static let debugOnlyLibraries: [Library] = []
+    #endif
 
     // Bundle short version + build for the About header. Falls back to a
     // sentinel so the UI never shows a blank version line in odd build configs.

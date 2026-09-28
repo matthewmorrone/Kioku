@@ -140,11 +140,14 @@ extension WordDetailView {
         // diagram. Skipped when the compound-verb header (base + auxiliary, with glosses)
         // already answers the same "how does this decompose" question more clearly — showing
         // both duplicated the same insight in two places, one clean (header) and one raw (this).
+        // Debug builds only (see WordDetailView+SublatticeDiagram.swift).
+        #if DEBUG
         if sublatticePaths.count > 1, derivation?.compoundVerbParts == nil {
             Section("Paths") {
                 sublatticeDiagram
             }
         }
+        #endif
 
         // Forms section — shown for verbs and i-adjectives. Displays te-form / negative /
         // past inline, with an "All conjugations" row that opens ConjugationSheetView.
