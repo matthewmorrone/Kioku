@@ -176,8 +176,8 @@ def materialize_source(entry):
 
 
 # Fails fast, before any long phase, when the tools the build depends on are missing. wordfreq
-# and the mecab CLI both feed ranking/segmentation columns; silently skipping either ships a
-# degraded dictionary (see import_wordfreq and import_mecab_context_ids).
+# feeds the frequency columns and the mecab CLI the headword decompositions; silently skipping
+# either ships a degraded dictionary (see import_wordfreq and import_entry_decomposition).
 def check_build_tools():
     problems = []
     try:
@@ -329,14 +329,6 @@ def create_schema(conn):
             -- ke_inf information tags only (ateji, io, iK, oK, rK, sK), comma-joined.
             info TEXT,
             wordfreq_zipf REAL,
-            -- IPADic context IDs for this surface, harvested at build time via the mecab CLI.
-            -- Used by the trie segmenter's Viterbi path to look up bigram costs directly in
-            -- matrix.bin instead of averaging into POS-class buckets. left_id is consulted
-            -- when this edge appears on the RIGHT side of a transition (i.e., something
-            -- precedes it); right_id when on the LEFT (something follows). Null when the
-            -- surface failed to tokenize cleanly through mecab.
-            ipadic_left_id INTEGER,
-            ipadic_right_id INTEGER,
             FOREIGN KEY(entry_id) REFERENCES entries(id)
         );
 
@@ -351,9 +343,6 @@ def create_schema(conn):
             -- 1 when the re_nokanji flag is set (reading does not apply to any kanji form).
             re_nokanji INTEGER NOT NULL DEFAULT 0,
             wordfreq_zipf REAL,
-            -- See ipadic_left_id / ipadic_right_id comment on kanji above.
-            ipadic_left_id INTEGER,
-            ipadic_right_id INTEGER,
             FOREIGN KEY(entry_id) REFERENCES entries(id)
         );
 
@@ -995,12 +984,10 @@ def import_entry_decomposition(conn):
     # MeCab is the only source in the manifest that knows this. JMdict has no compositional
     # field (an expression carries "exp" and its glosses, nothing structural), its xrefs are
     # editorial "see also" pointers, and UniDic's lexicon is per-token — none of them decompose
-    # anything. A morphological analyzer does exactly this job, and generate_db.py already
-    # depends on the mecab CLI for import_mecab_context_ids, so this adds no new requirement.
+    # anything. A morphological analyzer does exactly this job.
     #
-    # Build time, not runtime: an entry's decomposition never changes, and the shipped app has
-    # only matrix.bin — the full IPADic (sys.dic/unk.dic) is not bundled, so there is no MeCab
-    # on the device to ask.
+    # Build time, not runtime: an entry's decomposition never changes, and the app has no MeCab
+    # to ask.
     import shutil
     import subprocess
 
@@ -1026,8 +1013,8 @@ def import_entry_decomposition(conn):
         print("  No expression headwords to decompose")
         return
 
-    # Same batch protocol as import_mecab_context_ids: one surface per input line, __EOS__
-    # terminating each line's token list, so output groups line up with input by position.
+    # One surface per input line, __EOS__ terminating each line's token list, so output groups
+    # line up with input by position.
     # %m = surface, %f[0] = POS, %f[6] = base form.
     proc = subprocess.run(
         [
@@ -1086,136 +1073,6 @@ def import_entry_decomposition(conn):
     dropped = len(by_key) - len({(r[0], r[1]) for r in verified})
     print(f"  Done: {len({(r[0], r[1]) for r in verified})} headwords decomposed"
           f" ({len(verified)} pieces){f', {dropped} dropped as non-reconstructing' if dropped else ''}")
-
-
-def import_mecab_context_ids(conn):
-    # Tags every kanji + kana surface with its IPADic (left_id, right_id) so the trie
-    # segmenter's Viterbi path can look up real bigram costs in matrix.bin at runtime
-    # instead of averaging the matrix into POS-class buckets (which loses the signal
-    # that distinguishes good segmentations from bad ones).
-    #
-    # We invoke the homebrew mecab CLI in batch mode (stdin = one surface per line) and
-    # parse its node-format output. For multi-token expansions (e.g. 勉強する → 勉強 + する),
-    # we take the FIRST token's left_id (what precedes the entry connects to this side)
-    # and the LAST token's right_id (what follows the entry sees this side). That keeps
-    # the trie entry behaving correctly when surrounded by adjacent lattice edges.
-    #
-    # Requires `mecab` on PATH and `mecab-ipadic` installed (homebrew default location).
-    import shutil
-    import subprocess
-
-    mecab_path = shutil.which("mecab")
-    if mecab_path is None:
-        print("  mecab CLI not on PATH — skipping IPADic context ID harvest")
-        return
-
-    print("  Harvesting IPADic context IDs via mecab CLI...")
-
-    # Distinct surfaces across both tables; preserve insertion order so the streamed
-    # output lines align with the input lines we sent on stdin.
-    cur = conn.execute("SELECT DISTINCT text FROM kanji UNION SELECT DISTINCT text FROM kana_forms")
-    surfaces = [row[0] for row in cur.fetchall() if row[0]]
-
-    if not surfaces:
-        print("  No surfaces to tag")
-        return
-
-    # Sentinel newlines/tabs in surfaces would desync the per-line input/output pairing.
-    sanitized = [s.replace("\n", "").replace("\r", "").replace("\t", "") for s in surfaces]
-
-    # %phl / %phr are mecab's "context id" format specifiers (left / right). EOS terminates
-    # each input line's token list, so we can split mecab's output into per-surface groups.
-    proc = subprocess.run(
-        [
-            mecab_path,
-            "--node-format=%phl\t%phr\n",
-            "--unk-format=%phl\t%phr\n",
-            "--eos-format=__EOS__\n",
-        ],
-        input="\n".join(sanitized) + "\n",
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-
-    surface_to_ids = {}
-    current_first = None
-    current_last = None
-    surface_index = 0
-
-    for line in proc.stdout.splitlines():
-        if line == "__EOS__":
-            if surface_index < len(surfaces):
-                surface_to_ids[surfaces[surface_index]] = (current_first, current_last)
-            surface_index += 1
-            current_first = None
-            current_last = None
-            continue
-        parts = line.split("\t")
-        if len(parts) < 2:
-            continue
-        try:
-            left_id = int(parts[0])
-            right_id = int(parts[1])
-        except ValueError:
-            continue
-        if current_first is None:
-            current_first = left_id
-        current_last = right_id
-
-    # UPDATE in batches keyed by surface text. Both tables share the same text column.
-    updated_kanji = 0
-    updated_kana = 0
-    for surface, ids in surface_to_ids.items():
-        left_id, right_id = ids
-        if left_id is None or right_id is None:
-            continue
-        result = conn.execute(
-            "UPDATE kanji SET ipadic_left_id = ?, ipadic_right_id = ? WHERE text = ?",
-            (left_id, right_id, surface),
-        )
-        updated_kanji += result.rowcount
-        result = conn.execute(
-            "UPDATE kana_forms SET ipadic_left_id = ?, ipadic_right_id = ? WHERE text = ?",
-            (left_id, right_id, surface),
-        )
-        updated_kana += result.rowcount
-
-    print(f"  Tagged {updated_kanji} kanji rows + {updated_kana} kana rows with IPADic context IDs")
-
-    # Strip symbol/EOS-class right IDs (≤4) from rows whose entry isn't an interjection.
-    # MeCab returns one ID pair per surface, but JMdict can have multiple entries per surface;
-    # the surface→IDs broadcast leaks interjection-class tags onto unrelated meanings (e.g.
-    # entry 7's "のま" reading of 々 picks up right=2 which matrix.bin scores as cheap-to-glue,
-    # letting のま beat の+またたく in Viterbi). Nulling these rows lets transitionCost fall
-    # back to the POS-bucket scoring driven by the entry's actual JMdict POS bitfield.
-    cleared_kana = conn.execute(
-        """
-        UPDATE kana_forms
-           SET ipadic_left_id = NULL, ipadic_right_id = NULL
-         WHERE ipadic_right_id IS NOT NULL
-           AND ipadic_right_id <= 4
-           AND NOT EXISTS (
-               SELECT 1 FROM senses s
-                WHERE s.entry_id = kana_forms.entry_id
-                  AND s.pos LIKE '%int%'
-           )
-        """
-    ).rowcount
-    cleared_kanji = conn.execute(
-        """
-        UPDATE kanji
-           SET ipadic_left_id = NULL, ipadic_right_id = NULL
-         WHERE ipadic_right_id IS NOT NULL
-           AND ipadic_right_id <= 4
-           AND NOT EXISTS (
-               SELECT 1 FROM senses s
-                WHERE s.entry_id = kanji.entry_id
-                  AND s.pos LIKE '%int%'
-           )
-        """
-    ).rowcount
-    print(f"  Cleared symbol-class IDs on {cleared_kana} kana + {cleared_kanji} kanji rows (POS mismatch)")
 
 
 def import_jpdb(conn):
@@ -1948,9 +1805,6 @@ def build_database():
         import_wordfreq(conn)
         import_jpdb(conn)
         apply_frequency_overrides(conn, load_frequency_overrides())
-
-    with phase("Tagging surfaces with IPADic context IDs..."):
-        import_mecab_context_ids(conn)
 
     with phase("Decomposing multi-word headwords..."):
         import_entry_decomposition(conn)

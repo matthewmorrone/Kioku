@@ -356,7 +356,7 @@ extension WordsView {
             try? await Task.sleep(for: .milliseconds(250))
             if Task.isCancelled { return }
 
-            // Sentence-parse pass: if the query is Japanese and MeCab splits it into
+            // Sentence-parse pass: if the query is Japanese and the segmenter splits it into
             // ≥2 tokens, render one row per token via parsedSegmentsResultsSection
             // rather than chasing a literal whole-sentence dictionary match (which
             // never lands and just looks like "No Results"). Wildcards bypass this

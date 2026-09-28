@@ -56,7 +56,7 @@ enum LogFeature: String, CaseIterable, Identifiable {
         case .backup: return "App backup export, import, and validation."
         case .wordOfTheDay: return "Word-of-the-day scheduling and notification decisions."
         case .clipboardLookup: return "Clipboard-triggered dictionary lookups."
-        case .segmentation: return "MeCab/lattice segmentation diagnostics."
+        case .segmentation: return "Lattice segmentation diagnostics."
         case .audioAlignment: return "Lyric/subtitle alignment and karaoke playback timing."
         case .audioPlayback: return "Audio session and player failures."
         case .dictionary: return "Dictionary map loading at startup and lookup query failures."

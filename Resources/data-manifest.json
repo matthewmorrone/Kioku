@@ -253,41 +253,6 @@
       "feedsDictionary": false
     },
     {
-      "name": "mecab-ipadic-full",
-      "description": "The complete IPADIC dictionary, read only by the debug MeCab comparison (SegmentationDiffPrinter, behind debugStartupSegmentationDiffs). The app segments with its own trie segmenter and never needs it, so it is not checked in or bundled.",
-      "license": "IPADIC license (Nara Institute of Science and Technology / ICOT; BSD-style, see COPYING in the distribution)",
-      "type": "mecab-dictionary",
-      "path": "Resources/MeCab/ipadic/",
-      "required": false,
-      "derived": false,
-      "url": "https://pypi.org/project/ipadic/",
-      "sha256": "ef01f988eb59ab3dc085d7351aba25e6e9e9769c7f115ad3fc483b101ae31cf4",
-      "sha256Scheme": "tree: SHA-256 of sorted \"relative/path<TAB>file-sha256\" lines joined by newlines with a trailing newline, excluding .DS_Store",
-      "provenance": "Full IPADIC 2.7.0-20070801 (sys.dic + unk.dic + char.bin + dicrc, ~49.5MB, plus the 3.5MB matrix.bin MeCab also needs) — byte-identical to the PyPI `ipadic` package for char.bin/dicrc/matrix.bin; sys.dic/unk.dic differ by build/version of the same standard vocabulary. Only the debug segmentation diff reads it; MeCabSegmenter's failable init returns nil when the files are absent, and the diff skips MeCab. To use it: `pip install ipadic` (or an equivalent mecab-ipadic 2.7.0 distribution) and copy its dicdir files into Resources/MeCab/ipadic/.",
-      "feedsDictionary": false
-    },
-    {
-      "name": "mecab-unidic",
-      "description": "UniDic for the debug MeCab comparison — an alternative to IPADIC with finer-grained parts of speech. ~196MB, deliberately kept outside the Resources/MeCab/ folder Xcode bundles wholesale, and ships to nobody.",
-      "license": "BSD-3-Clause, GPL or LGPL, at your choice (The UniDic Consortium; COPYING in the archive)",
-      "type": "mecab-dictionary",
-      "path": "Resources/MeCab-unidic-optional/unidic/",
-      "required": false,
-      "derived": false,
-      "url": "https://clrd.ninjal.ac.jp/unidic_archive/cwj/2.1.2/unidic-mecab-2.1.2_bin.zip",
-      "sha256": null,
-      "deletedLocally": "2026-08-09 — removed from disk to reclaim 196MB; was confirmed unused (not referenced by Kioku.xcodeproj's build phases, not read by SegmenterBackend.swift or any other Swift source by path). Verified the restore link below is still live and version-matches this entry (same cwj/2.1.2 directory the pitch-accent entry's unidic-mecab_kana-accent-2.1.2_src.zip already comes from) before deleting.",
-      "perFileSHA256BeforeDeletion": {
-        "unidic/sys.dic": "ecf1169a9093b67eabebdf563652f436e591974d487d9bdc7c1572d2c90addde",
-        "unidic/unk.dic": "750939ed0283bd8c12c0a38ab9edb2d14fa99633d029a1cc6ef82ffdfe2db902",
-        "unidic/char.bin": "dd31396563d8924645b80fd3c9aa7b13ca089d7748f25553a1d6bc3f9b511ae8",
-        "unidic/dicrc": "8caf337c81e7041d5ef86027d85576a556a6198c464ee3c3145cd0714d43416c",
-        "unidic/matrix.bin": "88fb99efe1075d9b8b40e01bb2751e4095f1612618f2490af776eb5ed39190a9"
-      },
-      "provenance": "UniDic-MeCab (~196MB) — the largest single resource in the project, and NOT bundled into the app: it lives outside Resources/MeCab/ (which Xcode bundles wholesale as a folder reference) specifically so it's excluded from the shipped app. Read only by the debug segmentation diff (SegmentationDiffPrinter). Sourced from the NINJAL UniDic archive (same host family as this manifest's pitch-accent entry). To restore: download the url above (unidic-mecab-2.1.2_bin.zip, ~44MB — the pre-built binary distribution, not the larger _src.zip), extract sys.dic/unk.dic/char.bin/dicrc/matrix.bin into Resources/MeCab-unidic-optional/unidic/, verify each against perFileSHA256BeforeDeletion above, then re-add that path as a bundled Resources build-phase entry in Kioku.xcodeproj if you want it shipped again.",
-      "feedsDictionary": false
-    },
-    {
       "name": "unidic-kana-accent-src",
       "description": "The UniDic source archive the pitch-accent table is derived from. Pinned as its own entry so the derivation's input is reproducible rather than implied.",
       "license": "BSD-3-Clause, GPL or LGPL, at your choice (The UniDic Consortium; COPYING in the archive)",
@@ -459,7 +424,7 @@
       "mecab": "0.996",
       "mecab-ipadic": "2.7.0-20070801"
     },
-    "note": "wordfreq supplies wordfreq_zipf; the mecab CLI plus mecab-ipadic supplies the IPADic context IDs. generate_db.py fails fast if either is missing."
+    "note": "wordfreq supplies wordfreq_zipf (its Japanese tokenizer needs mecab-python3 + ipadic); the mecab CLI plus mecab-ipadic supplies the headword decompositions. generate_db.py fails fast if either is missing."
   },
   "regeneration": {
     "steps": [

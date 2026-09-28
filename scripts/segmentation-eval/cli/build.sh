@@ -17,17 +17,5 @@ for f in $(cat $HERE/kioku-sources.txt); do
     *) FILES+=($SRC/$f) ;;
   esac
 done
-# MeCab (optional): with Homebrew's mecab installed, a `mecab` module map over its header lets the
-# app's MeCabTokenizer / MeCabSegmenter compile (they're `#if canImport(mecab)`) and enables
-# `segcli mecab`. Without it the CLI builds as before, minus that mode.
-MECAB_PREFIX=$(brew --prefix mecab 2>/dev/null || true)
-MECAB_FLAGS=()
-if [[ -n $MECAB_PREFIX && -f $MECAB_PREFIX/include/mecab.h ]]; then
-  mkdir -p $WORK/build/mecab-module
-  print -r -- "module mecab [system] { header \"$MECAB_PREFIX/include/mecab.h\" link \"mecab\" export * }" \
-    > $WORK/build/mecab-module/module.modulemap
-  MECAB_FLAGS=(-I $WORK/build/mecab-module -L $MECAB_PREFIX/lib)
-  FILES+=($SRC/Dictionary/Segmenter/MeCabNode.swift $SRC/Dictionary/Segmenter/MeCabTokenizer.swift $SRC/Dictionary/Segmenter/MeCabSegmenter.swift)
-fi
-swiftc -O -o $WORK/segcli $FILES $HERE/Stub.swift $WORK/build/main.swift -lsqlite3 $MECAB_FLAGS
+swiftc -O -o $WORK/segcli $FILES $HERE/Stub.swift $WORK/build/main.swift -lsqlite3
 echo "built $WORK/segcli"

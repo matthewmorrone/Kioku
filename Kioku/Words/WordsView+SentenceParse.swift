@@ -116,7 +116,7 @@ extension WordsView {
 
     // MARK: - Segmentation
 
-    // Runs the shared MeCab/Viterbi segmenter over `text` and returns its non-boundary tokens.
+    // Runs the shared Viterbi segmenter over `text` and returns its non-boundary tokens.
     // Returns an empty array when the segmenter is unavailable or the query is degenerate so
     // the caller can fall back to literal entry-search.
     nonisolated static func parseTokens(_ text: String, using segmenter: (any TextSegmenting)?) -> [String] {

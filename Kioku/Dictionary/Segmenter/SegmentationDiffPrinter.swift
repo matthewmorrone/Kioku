@@ -1,15 +1,15 @@
 import Foundation
 
-// Prints three-way segmentation diffs to the console for debugging.
-// Shows only regions where any of the three backends (Trie, IPAdic, UniDic) disagree.
+// Prints segmentation diffs to the console for debugging.
+// Shows only regions where the Trie segmenter and Apple's NLTokenizer disagree.
 enum SegmentationDiffPrinter {
 
-    // Filters whitespace-only segments that MeCab skips but the Trie segmenter emits.
+    // Filters whitespace-only segments that NLTokenizer skips but the Trie segmenter emits.
     private static func stripWhitespace(_ segments: [String]) -> [String] {
         segments.filter { $0.contains(where: { !$0.isWhitespace && !$0.isNewline }) }
     }
 
-    // Runs all three backends on the given text and prints a unified three-way diff.
+    // Runs both backends on the given text and prints a unified diff.
     static func printDiffs(for text: String, trieSegmenter: any TextSegmenting) {
         guard text.isEmpty == false else { return }
 
@@ -17,52 +17,20 @@ enum SegmentationDiffPrinter {
             stripWhitespace(trieSegmenter.longestMatchEdges(for: text).map(\.surface))
         }
 
-        // MeCab columns only where MeCab is linked (the eval CLI); the app compiles them out.
-        #if canImport(mecab)
-        let ipadic: [String]?
-        ipadic = StartupTimer.measure("SegmentationDiffPrinter.ipadic") {
-            if let mecab = MeCabSegmenter(dictionary: .ipadic) {
-                return stripWhitespace(mecab.longestMatchEdges(for: text).map(\.surface))
-            } else {
-                AppLog.debug(.segmentation, "[SegmentationDiff] IPAdic dictionary not available — skipping")
-                return nil
-            }
-        }
-
-        let unidic: [String]?
-        unidic = StartupTimer.measure("SegmentationDiffPrinter.unidic") {
-            if let mecab = MeCabSegmenter(dictionary: .unidic) {
-                return stripWhitespace(mecab.longestMatchEdges(for: text).map(\.surface))
-            } else {
-                AppLog.debug(.segmentation, "[SegmentationDiff] UniDic dictionary not available — skipping")
-                return nil
-            }
-        }
-        #else
-        let ipadic: [String]? = nil
-        let unidic: [String]? = nil
-        #endif
-
         // NLTokenizer is always available — no external dictionary needed.
         let nlTokenizer = StartupTimer.measure("SegmentationDiffPrinter.nlTokenizer") {
             stripWhitespace(NLTokenizerSegmenter().longestMatchEdges(for: text).map(\.surface))
         }
 
-        // Build the list of named segmentations that are available.
-        var named: [(name: String, segments: [String])] = [("Trie", trie)]
-        if let ipadic { named.append(("IPAdic", ipadic)) }
-        if let unidic { named.append(("UniDic", unidic)) }
-        named.append(("NLTokenizer", nlTokenizer))
+        let named: [(name: String, segments: [String])] = [("Trie", trie), ("NLTokenizer", nlTokenizer)]
 
-        guard named.count >= 2 else { return }
-
-        StartupTimer.measure("SegmentationDiffPrinter.printThreeWayDiff") {
-            printThreeWayDiff(named)
+        StartupTimer.measure("SegmentationDiffPrinter.printDiff") {
+            printDiff(named)
         }
     }
 
     // Walks all segmentations in lockstep, emitting divergent regions where any backend disagrees.
-    private static func printThreeWayDiff(_ named: [(name: String, segments: [String])]) {
+    private static func printDiff(_ named: [(name: String, segments: [String])]) {
         let count = named.count
         // Parallel cursors: index into each segmentation's segment array.
         var indices = Array(repeating: 0, count: count)

@@ -537,11 +537,10 @@ extension ReadView {
         if let entry = try? store.lookup(surface: surface, mode: lookupMode).first {
             return entry
         }
-        // Inflected-form fallback. Use Lexicon's deinflector, NOT the segmenter, because the
-        // segmenter is MeCab-based and picks a homograph lemma in cases like 合える
-        // (potential form of 合う): MeCab returns 和える "to dress (vegetables)" which is the
-        // wrong word entirely. Lexicon's deinflector follows JMdict-grounded inflection rules
-        // and correctly produces 合う. The expensive part of Lexicon was the per-candidate
+        // Inflected-form fallback. Use Lexicon's deinflector, NOT the segmenter's preferred
+        // lemma: that is a single pick and can land on a homograph (合える, the potential form of
+        // 合う, read as 和える "to dress (vegetables)"). Lexicon's deinflector follows
+        // JMdict-grounded inflection rules and produces 合う. The expensive part of Lexicon was the per-candidate
         // SQL gating; that's now backed by the in-memory POS-bits map, so this call is
         // pure CPU + hashtable lookups.
         guard let lemma = lexicon?.inflectionInfo(surface: surface)?.lemma, lemma != surface else {

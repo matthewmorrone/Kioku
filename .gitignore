@@ -18,12 +18,6 @@ Resources/kradfile2.utf8
 Resources/kanjivg.xml
 .swiftpm/checkouts
 .remember
-# IPADIC (~49.5MB) is only read by the debug-only MeCab comparison (SegmentationDiffPrinter) —
-# see Resources/data-manifest.json for download instructions.
-Resources/MeCab/ipadic/
-# UniDic (196MB) moved to Resources/MeCab-unidic-optional/ so it's never bundled into the app —
-# see Resources/data-manifest.json. Like IPADIC, only the debug-only MeCab comparison reads it.
-Resources/MeCab-unidic-optional/
 .build/
 build/
 .swiftpm

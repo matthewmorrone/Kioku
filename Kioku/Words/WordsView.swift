@@ -519,7 +519,7 @@ struct WordsView: View {
                 // sentence-parse results, so the query 火曜日 leads with 火 + 曜 + 日 as
                 // tappable kanji rows before falling through to the per-token entries.
                 kanjiResultsSection
-                // Sentence-parse mode: query produced ≥2 tokens via MeCab, so render
+                // Sentence-parse mode: query produced ≥2 tokens via the segmenter, so render
                 // one row per token rather than chasing a literal dictionary lookup.
                 parsedSegmentsResultsSection
             } else {

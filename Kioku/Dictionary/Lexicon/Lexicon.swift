@@ -565,7 +565,7 @@ nonisolated public final class Lexicon {
                 entries.append((lemma: trimmedSurface, depth: 0))
             }
         } else if entries.contains(where: { $0.depth > 0 }) && surfaceIsItsOwnLemma == false {
-            // Surface deinflects to something genuine and MeCab doesn't confirm it as a lemma —
+            // Surface deinflects to something genuine and the segmenter doesn't confirm it as a lemma —
             // treat surface as inflected and drop its self-entry.
             entries.removeAll { $0.lemma == trimmedSurface }
         }

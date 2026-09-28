@@ -15,7 +15,6 @@
 		E3D1C7002F4DFDB8005FDA11 /* dictionary.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */; };
 		E3FBBF9B303F516D009664F4 /* SwiftDagre in Frameworks */ = {isa = PBXBuildFile; productRef = DA6ADE0022FC000040000002 /* SwiftDagre */; };
 		E4WKA00012FA0000200000001 /* LyricAlignment in Frameworks */ = {isa = PBXBuildFile; productRef = E4WKA00022FA0000200000002 /* LyricAlignment */; };
-		F5MECAB032FA0000100000002 /* MeCab in Resources */ = {isa = PBXBuildFile; fileRef = F5MECAB042FA0000100000002 /* MeCab */; };
 		Z1NN1A0012FB0000200000001 /* Zinnia-Swift in Frameworks */ = {isa = PBXBuildFile; productRef = Z1NN1A0022FB0000200000002 /* Zinnia-Swift */; };
 		Z1NN1A1012FB0000200000001 /* handwriting-ja.model in Resources */ = {isa = PBXBuildFile; fileRef = Z1NN1A1022FB0000200000002 /* handwriting-ja.model */; };
 /* End PBXBuildFile section */
@@ -70,7 +69,6 @@
 		E32B0CE82F57BC070020F5C2 /* deinflection.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = deinflection.json; sourceTree = "<group>"; };
 		E32D09B42F638C1600788CAE /* Kioku.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Kioku.xcodeproj; sourceTree = "<group>"; };
 		E32D0BBB2F668D7400788CAE /* Kioku.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Kioku.xcodeproj; sourceTree = "<group>"; };
-		F5MECAB042FA0000100000002 /* MeCab */ = {isa = PBXFileReference; lastKnownFileType = folder; path = MeCab; sourceTree = "<group>"; };
 		Z1NN1A1022FB0000200000002 /* handwriting-ja.model */ = {isa = PBXFileReference; lastKnownFileType = file; path = "handwriting-ja.model"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -190,7 +188,6 @@
 				E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */,
 				E32B0CE02F57BC070020F5C2 /* generate_db.py */,
 				Z1NN1A1022FB0000200000002 /* handwriting-ja.model */,
-				F5MECAB042FA0000100000002 /* MeCab */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -393,7 +390,6 @@
 				E32B0CE32F57BC070020F5C2 /* data-manifest.json in Resources */,
 				E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */,
 				Z1NN1A1012FB0000200000001 /* handwriting-ja.model in Resources */,
-				F5MECAB032FA0000100000002 /* MeCab in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

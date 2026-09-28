@@ -68,7 +68,7 @@ final class LexiconTests: XCTestCase {
     }
 
     // Set-phrase いつだって ("anytime, always") must not be reanalyzed as a verb-conjugation
-    // chain, even if MeCab tokenizes it into multiple morphemes.
+    // chain, even though it segments into multiple morphemes.
     func testSetPhraseSurfaceWinsOverSpuriousDeinflection() throws {
         let surface = try lexiconSurface()
 
