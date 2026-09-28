@@ -16,9 +16,9 @@ What we actually link.
 - **Where:** `scripts/segmentation-eval/cli` links Homebrew's `libmecab` (`brew install mecab mecab-ipadic`; UniDic optional) and compiles the app's `MeCabTokenizer` / `MeCabSegmenter` (both `#if canImport(mecab)`, so they compile out of the app). `segcli mecab ipadic|unidic < sentences` prints MeCab's split in the same format as `segcli run`.
 - **Why not in the app:** it was only the comparison column of the debug `SegmentationDiffPrinter`, and no MeCab dictionary was ever bundled, so it produced nothing. Re-adding it means the `matthewmorrone/mecab` fork (iOS/C++14 build fixes to landonepps/mecab, tracked by branch because of its unsafeFlags) plus a bundled dictionary.
 
-### zinnia-swift (local) ✅
-- **Repo:** https://github.com/sasakure-uk/zinnia-swift
-- **Vendored at:** `Packages/zinnia-swift/`
+### zinnia-swift (shinjukunian) ✅
+- **Repo:** https://github.com/shinjukunian/zinnia-swift
+- **SPM:** remote, pinned to revision `567ac62` (upstream's last commit; the 0.1.0 tag predates the public API the app uses)
 - **Why installed:** Swift bindings for the Zinnia handwriting recognition engine. Powers kanji handwriting input.
 
 ### dagre-swift (lukilabs) ✅

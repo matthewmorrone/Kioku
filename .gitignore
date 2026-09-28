@@ -24,11 +24,6 @@ Resources/MeCab/ipadic/
 # UniDic (196MB) moved to Resources/MeCab-unidic-optional/ so it's never bundled into the app —
 # see Resources/data-manifest.json. Like IPADIC, only the debug-only MeCab comparison reads it.
 Resources/MeCab-unidic-optional/
-# Local working copy of the Zinnia Swift package used by the feat/handwriting
-# branch. Wired as a proper git submodule on that branch (.gitmodules entry +
-# gitlink); ignored on main so the unmerged dir doesn't show up as a stray
-# untracked tree. Remove this line once feat/handwriting lands.
-Packages/zinnia-swift/
 .build/
 build/
 .swiftpm

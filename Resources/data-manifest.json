@@ -188,7 +188,7 @@
       "derived": false,
       "url": "https://tegaki.github.io",
       "sha256": "d58618576d12c1ea38992606f30d19158a0a3beda3ac23bacccf1e48e651f2b2",
-      "provenance": "Tegaki-Zinnia Japanese handwriting recognition model (~25MB). Consumed by the Zinnia recognizer via the Packages/zinnia-swift local Swift package (feat/handwriting branch). License: LGPL — see the Tegaki project for redistribution terms. Download the Japanese model from https://tegaki.github.io and save as Resources/handwriting-ja.model.",
+      "provenance": "Tegaki-Zinnia Japanese handwriting recognition model (~25MB). Consumed by the Zinnia recognizer (shinjukunian/zinnia-swift Swift package). License: LGPL — see the Tegaki project for redistribution terms. Download the Japanese model from https://tegaki.github.io and save as Resources/handwriting-ja.model.",
       "feedsDictionary": false
     },
     {

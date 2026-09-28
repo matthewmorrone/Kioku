@@ -23,18 +23,13 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 30
     steps:
-      - name: Rewrite any SSH submodule URLs to HTTPS
-        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
-
       - name: Checkout
         uses: actions/checkout@v5
-        with:
-          submodules: recursive
 
       # The restored DerivedData can only be reused if unchanged sources look unchanged to the
       # build system. A checkout gives every file a new mtime and inode, which on its own made the
-      # PR run recompile all of Kioku plus the local packages (zinnia-swift,
-      # LyricAlignment). The script stamps each tracked file with an mtime derived from its
+      # PR run recompile all of Kioku plus the local LyricAlignment
+      # package. The script stamps each tracked file with an mtime derived from its
       # content hash, and the default makes XCBuild ignore inode/device changes. warm-cache.yml
       # and tests.yml must both do this, so the stamps match.
       - name: Pin source mtimes

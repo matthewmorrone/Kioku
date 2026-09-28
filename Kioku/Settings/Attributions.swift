@@ -97,7 +97,7 @@ nonisolated enum Attributions {
         Library(
             name: "zinnia-swift",
             purpose: "Swift bindings for the Zinnia handwriting recognition engine.",
-            sourceURL: "https://github.com/sasakure-uk/zinnia-swift"
+            sourceURL: "https://github.com/shinjukunian/zinnia-swift"
         ),
     ]
 

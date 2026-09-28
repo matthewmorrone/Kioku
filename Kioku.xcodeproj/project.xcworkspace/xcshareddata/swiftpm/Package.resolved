@@ -1,5 +1,5 @@
 {
-  "originHash" : "c4cf7887d9522c68d2f7c94ee320f5ea8a2a474f8e68a4c3d00fa38b2daf76ff",
+  "originHash" : "28e75663e85f831c6e6a230020544b1a907b30fdfd947f5ef7ba7a26ce4fe03f",
   "pins" : [
     {
       "identity" : "dagre-swift",
@@ -8,6 +8,14 @@
       "state" : {
         "revision" : "92efb78b73a8b665ee74bacfb0f1f5b17bbe1b38",
         "version" : "0.1.0"
+      }
+    },
+    {
+      "identity" : "zinnia-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/shinjukunian/zinnia-swift",
+      "state" : {
+        "revision" : "567ac6276275ae960bd34df3e765ce373bdddd9f"
       }
     }
   ],

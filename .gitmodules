@@ -1,4 +1,0 @@
-[submodule "Packages/zinnia-swift"]
-	path = Packages/zinnia-swift
-	url = https://github.com/matthewmorrone/zinnia-swift.git
-	branch = kioku-patches

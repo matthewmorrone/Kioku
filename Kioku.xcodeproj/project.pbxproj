@@ -352,7 +352,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				E4WKA00052FA0000200000005 /* XCLocalSwiftPackageReference "LyricAlignment" */,
-				Z1NN1A0052FB0000200000005 /* XCLocalSwiftPackageReference "Packages/zinnia-swift" */,
+				Z1NN1A0052FB0000200000005 /* XCRemoteSwiftPackageReference "zinnia-swift" */,
 				DA6ADE0052FC000040000001 /* XCRemoteSwiftPackageReference "dagre-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -925,10 +925,6 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = LyricAlignment;
 		};
-		Z1NN1A0052FB0000200000005 /* XCLocalSwiftPackageReference "Packages/zinnia-swift" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = "Packages/zinnia-swift";
-		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -938,6 +934,14 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 0.1.0;
+			};
+		};
+		Z1NN1A0052FB0000200000005 /* XCRemoteSwiftPackageReference "zinnia-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/shinjukunian/zinnia-swift";
+			requirement = {
+				kind = revision;
+				revision = 567ac6276275ae960bd34df3e765ce373bdddd9f;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -955,7 +959,7 @@
 		};
 		Z1NN1A0022FB0000200000002 /* Zinnia-Swift */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = Z1NN1A0052FB0000200000005 /* XCLocalSwiftPackageReference "Packages/zinnia-swift" */;
+			package = Z1NN1A0052FB0000200000005 /* XCRemoteSwiftPackageReference "zinnia-swift" */;
 			productName = "Zinnia-Swift";
 		};
 /* End XCSwiftPackageProductDependency section */
