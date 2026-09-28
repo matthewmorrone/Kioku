@@ -56,8 +56,15 @@ struct LyricRomanizer {
                 }
                 morae.append(Mora(kana: kana, offsetUTF16: offset, lengthUTF16: length))
                 offset += length
+            } else if let run = Self.acronymLength(in: utf16, at: offset) {
+                // Short all-caps runs (OK, DJ, TV) are sung as Japanese letter names, one span per
+                // letter, so they get timings like any other word.
+                for i in offset..<(offset + run) {
+                    morae.append(Mora(kana: Self.letterNames[utf16[i]] ?? "", offsetUTF16: i, lengthUTF16: 1))
+                }
+                offset += run
             } else {
-                offset += width   // punctuation, Latin, digits: no span
+                offset += width   // punctuation, digits, other Latin text: no span
             }
         }
 
@@ -79,6 +86,33 @@ struct LyricRomanizer {
 
     private static let vowels: Set<Character> = ["a", "i", "u", "e", "o"]
     private static let smallKana: Set<String> = ["ゃ", "ゅ", "ょ", "ぁ", "ぃ", "ぅ", "ぇ", "ぉ"]
+
+    // Length of the all-caps ASCII run starting at `offset` when it is a whole acronym: 1–4
+    // capitals with no Latin letter directly before or after (so "OK" and "DJ" qualify, while
+    // "Baby" and "LOVELY" are words that shouldn't be spelled out). Nil otherwise.
+    private static func acronymLength(in utf16: [UInt16], at offset: Int) -> Int? {
+        guard isUpper(utf16[offset]), offset == 0 || isLatinLetter(utf16[offset - 1]) == false else { return nil }
+        var end = offset
+        while end < utf16.count, isUpper(utf16[end]) { end += 1 }
+        let length = end - offset
+        guard length <= 4, end == utf16.count || isLatinLetter(utf16[end]) == false else { return nil }
+        return length
+    }
+
+    // True for an ASCII capital A–Z.
+    private static func isUpper(_ u: UInt16) -> Bool { (0x41...0x5A).contains(u) }
+
+    // True for an ASCII letter of either case — the neighbours that make a capital run a word.
+    private static func isLatinLetter(_ u: UInt16) -> Bool { isUpper(u) || (0x61...0x7A).contains(u) }
+
+    // How each capital letter is read aloud in Japanese, in hiragana.
+    private static let letterNames: [UInt16: String] = [
+        0x41: "えー", 0x42: "びー", 0x43: "しー", 0x44: "でぃー", 0x45: "いー", 0x46: "えふ",
+        0x47: "じー", 0x48: "えいち", 0x49: "あい", 0x4A: "じぇー", 0x4B: "けー", 0x4C: "える",
+        0x4D: "えむ", 0x4E: "えぬ", 0x4F: "おー", 0x50: "ぴー", 0x51: "きゅー", 0x52: "あーる",
+        0x53: "えす", 0x54: "てぃー", 0x55: "ゆー", 0x56: "ぶい", 0x57: "だぶりゅー", 0x58: "えっくす",
+        0x59: "わい", 0x5A: "ぜっと",
+    ]
 
     // True for hiragana (after katakana folding) and the long-vowel mark.
     private static func isKana(_ s: String) -> Bool {
