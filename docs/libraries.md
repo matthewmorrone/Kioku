@@ -48,7 +48,7 @@ Short list — anything not below was evaluated and rejected.
 
 ### stable-ts (jianfch)
 - **Repo:** https://github.com/jianfch/stable-ts
-- **Status:** Already in use — drives the offline audio-alignment pipeline producing word-level SRT/TextGrid/JSON for SailorMoon batch and other songs. Not a Swift dependency.
+- **Status:** Offline tooling in `~/Projects/alignment` (`align.py`), not a Swift dependency and not in LyricAlignment. Its Whisper large-v3 runs are one of the three voters (with Japanese wav2vec2 and MMS) in the alignment test oracle (`consensus.py`); it was also the server-side aligner before on-device alignment replaced it (2026-04-10).
 
 ---
 

@@ -20,9 +20,18 @@ final class AttributionsTests: XCTestCase {
             "RADKFILE2 / KRADFILE2",
             "KanjiVG",
             "Tegaki-Zinnia (Japanese)",
+            "JLPT Vocabulary Lists",
+            "OpenCC Japanese Shinjitai Table",
         ]
         let missing = required.subtracting(names)
         XCTAssertTrue(missing.isEmpty, "Missing dataset attributions: \(missing.sorted())")
+    }
+
+    func testAllDownloadedModelsArePresent() {
+        let names = Set(Attributions.models.map(\.name))
+        let required: Set<String> = ["MMS Forced Aligner", "HTDemucs"]
+        let missing = required.subtracting(names)
+        XCTAssertTrue(missing.isEmpty, "Missing model attributions: \(missing.sorted())")
     }
 
     func testAllRequiredLibrariesArePresent() {

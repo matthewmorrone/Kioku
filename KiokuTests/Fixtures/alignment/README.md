@@ -2,8 +2,10 @@
 
 Each subdirectory here is one fixture for `AlignmentQualityTests`. Tests run
 the on-device aligner against the fixture's audio + lyric text and compare the
-output to a stable-ts large-v3 oracle SRT — measuring how close the on-device
-model gets to a SOTA-on-Mac model on the same input.
+output to a consensus oracle SRT (Whisper large-v3 via stable-ts + Japanese
+wav2vec2 + MMS, built by
+~/Projects/alignment/install_consensus_fixtures.py) — lines the voters dispute
+carry a 0–0 span and aren't graded.
 
 ## Fixture layout
 
@@ -16,7 +18,7 @@ while still being easy to scan visually on disk:
 alignment/
 ├── <fixture>.audio.{mp3,m4a,wav}    Source audio
 ├── <fixture>.note.txt               Lyric script — one line per expected cue
-├── <fixture>.ground-truth.srt       Oracle (from stable-ts large-v3)
+├── <fixture>.ground-truth.srt       Consensus oracle (stable-ts Whisper + wav2vec2 + MMS)
 └── <fixture>.tolerance.json         Pass/fail thresholds, see Tolerance below
 ```
 

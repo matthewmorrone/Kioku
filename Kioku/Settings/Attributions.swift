@@ -1,8 +1,8 @@
 import Foundation
 
 // Source-of-truth for what bundled datasets and third-party libraries appear in
-// the About screen. Data is hand-curated to mirror Resources/data-manifest.json
-// and Packages/, with human-readable descriptions and license / URL strings the
+// the About screen. Data is hand-curated to mirror Resources/data-manifest.json's
+// license fields and Package.resolved, with human-readable descriptions and license / URL strings the
 // view can render flat.
 //
 // Kept separate from AboutView so it's unit-testable — see AttributionsTests
@@ -22,6 +22,7 @@ nonisolated enum Attributions {
     struct Library: Equatable {
         let name: String
         let purpose: String
+        let license: String
         let sourceURL: String
     }
 
@@ -43,26 +44,26 @@ nonisolated enum Attributions {
         ),
         Dataset(
             name: "Tatoeba Sentence Pairs",
-            description: "Bilingual Japanese–English example sentences.",
+            description: "Bilingual Japanese–English example sentences; its word-split Japanese index also trains the segmenter's word-transition costs.",
             license: "CC BY 2.0 FR",
             sourceURL: "https://tatoeba.org"
         ),
         Dataset(
             name: "JPDB Frequency (v2.2)",
             description: "Word-frequency rankings for difficulty grading and ranking.",
-            license: "Per Kuuuube/yomitan-dictionaries permalink release",
+            license: "No license stated — ranks from jpdb.io's corpus, compiled by Kuuuube",
             sourceURL: "https://github.com/Kuuuube/yomitan-dictionaries"
         ),
         Dataset(
             name: "wordfreq",
             description: "Zipf frequency scores used as a fallback frequency signal.",
-            license: "MIT (rspeer/wordfreq)",
+            license: "Robyn Speer — Apache-2.0 (code), CC BY-SA 4.0 (data)",
             sourceURL: "https://github.com/rspeer/wordfreq"
         ),
         Dataset(
             name: "UniDic Pitch Accent",
             description: "Mora-level pitch-accent annotations derived from UniDic's kana-accent lexicon.",
-            license: "BSD / GPL / LGPL (triple-licensed) — National Institute for Japanese Language and Linguistics",
+            license: "The UniDic Consortium — BSD, GPL or LGPL (your choice)",
             sourceURL: "https://clrd.ninjal.ac.jp/unidic/"
         ),
         Dataset(
@@ -80,23 +81,54 @@ nonisolated enum Attributions {
         Dataset(
             name: "Tegaki-Zinnia (Japanese)",
             description: "Handwriting recognition model used for kanji handwriting input.",
-            license: "BSD-style (Tegaki / Zinnia project)",
+            license: "Tegaki project — LGPL 2.1",
             sourceURL: "https://github.com/tegaki/tegaki"
+        ),
+        Dataset(
+            name: "JLPT Vocabulary Lists",
+            description: "Per-word JLPT level estimates.",
+            license: "Jonathan Waller (tanos.co.uk) — CC BY; CSV mirror by Bluskyo, MIT",
+            sourceURL: "https://www.tanos.co.uk/jlpt/"
+        ),
+        Dataset(
+            name: "OpenCC Japanese Shinjitai Table",
+            description: "Modern ↔ old-form kanji correspondences, so prewar spellings find their entries.",
+            license: "BYVoid/OpenCC — Apache-2.0",
+            sourceURL: "https://github.com/BYVoid/OpenCC"
+        ),
+    ]
+
+    // Speech models the app downloads on first use (lyric alignment and vocal isolation). Listed
+    // with their licenses because they ship to the device even though they aren't bundled.
+    static let models: [Dataset] = [
+        Dataset(
+            name: "MMS Forced Aligner",
+            description: "Aligns lyrics to a song's vocals (wav2vec2 + CTC), converted to CoreML.",
+            license: "Meta — CC BY-NC 4.0 (non-commercial)",
+            sourceURL: "https://github.com/facebookresearch/fairseq/tree/main/examples/mms"
+        ),
+        Dataset(
+            name: "HTDemucs",
+            description: "Separates a song's vocals from its instrumental, converted to CoreML.",
+            license: "Meta — MIT",
+            sourceURL: "https://github.com/facebookresearch/demucs"
         ),
     ]
 
     // Third-party Swift libraries actually linked into the app. Mirrors
     // docs/libraries.md "Installed Libraries" — entries here MUST have a real
-    // SPM pin or vendored source under Packages/. Do not list aspirational deps.
+    // SPM pin in Package.resolved. Do not list aspirational deps.
     static let libraries: [Library] = [
         Library(
             name: "dagre-swift",
             purpose: "Graph layout for the segmentation diagram on the word detail screen.",
+            license: "lukilabs — MIT",
             sourceURL: "https://github.com/lukilabs/dagre-swift"
         ),
         Library(
             name: "zinnia-swift",
-            purpose: "Swift bindings for the Zinnia handwriting recognition engine.",
+            purpose: "Swift bindings for the Zinnia handwriting recognition engine, which it vendors.",
+            license: "shinjukunian — MIT; Zinnia engine by Taku Kudo — BSD",
             sourceURL: "https://github.com/shinjukunian/zinnia-swift"
         ),
     ]

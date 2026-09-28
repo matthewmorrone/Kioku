@@ -3,8 +3,8 @@ import SwiftUI
 // The About / Credits screen. Pushed from a row in SettingsView. Renders the
 // canonical attribution data from Attributions (kept separate so the data is
 // unit-testable independent of view layout). Sections: app version, dataset
-// attributions (licenses we owe by CC BY-SA, BSD, MIT, etc.), third-party
-// libraries.
+// attributions (licenses we owe by CC BY-SA, BSD, MIT, etc.), downloaded speech
+// models, third-party libraries.
 struct AboutView: View {
     var body: some View {
         Form {
@@ -24,12 +24,23 @@ struct AboutView: View {
                 }
             }
 
+            Section("Speech Models") {
+                ForEach(Attributions.models, id: \.name) { model in
+                    AttributionRow(
+                        title: model.name,
+                        subtitle: model.description,
+                        license: model.license,
+                        urlString: model.sourceURL
+                    )
+                }
+            }
+
             Section("Libraries") {
                 ForEach(Attributions.libraries, id: \.name) { library in
                     AttributionRow(
                         title: library.name,
                         subtitle: library.purpose,
-                        license: nil,
+                        license: library.license,
                         urlString: library.sourceURL
                     )
                 }

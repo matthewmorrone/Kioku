@@ -292,8 +292,8 @@ final class AlignmentQualityTests: XCTestCase {
 
     // Walks the NOTE LINES (the thing the aligner places) and, for each, finds its oracle cue
     // and its output cue by normalized-exact text, both monotonically so repeated chorus lines
-    // can't cross-bind. Oracle cues that match no note line are ignored: stable-ts sometimes
-    // emits fragment cues ("…ダイアモ" / "ンド 夜明けに…") or repeats, and those are oracle
+    // can't cross-bind. Oracle cues that match no note line are ignored: the oracle sometimes
+    // has fragment cues ("…ダイアモ" / "ンド 夜明けに…") or repeats, and those are oracle
     // noise, not lines the aligner failed to place. A note line with no oracle cue can't be
     // graded and is left out of the deltas.
     private func computeMetrics(
