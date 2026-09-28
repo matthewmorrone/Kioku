@@ -69,9 +69,19 @@ nonisolated enum TransitionClass {
     // carries them (LatticeEdge.partOfSpeech), `lexical` the words the table gives a class of their own.
     static func name(surface: String, partOfSpeech bits: UInt64, lexical: Set<String>) -> String {
         if lexical.contains(surface) { return "w:" + surface }
+        if let word = lexicalHiraganaReading(of: surface, lexical: lexical) { return "w:" + word }
         let tag = tag(partOfSpeech: bits)
         guard conjugates(tag), let last = surface.last else { return tag }
         return tag + ":" + String(last)
+    }
+
+    // The hiragana spelling of a katakana surface when that spelling is a function word with a
+    // class of its own — lyrics write particles in katakana for effect (ナカナイヨ), and ヨ read as
+    // its rare dictionary entry instead of よ splits the line. Nil for anything else.
+    static func lexicalHiraganaReading(of surface: String, lexical: Set<String>) -> String? {
+        guard ScriptClassifier.isPureKatakana(surface) else { return nil }
+        let hiragana = KanaNormalizer.katakanaToHiragana(surface)
+        return hiragana != surface && lexical.contains(hiragana) ? hiragana : nil
     }
 
     // The class to fall back to when the table has no evidence about the full one: the tag
