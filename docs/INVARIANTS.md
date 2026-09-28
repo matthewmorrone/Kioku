@@ -344,7 +344,7 @@ never leave the app in mixed old/new state.
    - *Status*: ✅ (`ZipExtractorTests`).
 
 3. **Pinned model downloads**: Hugging Face model/encoder downloads reference
-   an immutable commit (`HTDemucsModelStore.revision`), never a
+   an immutable commit (`HTDemucsModelStore.revision`, `MMSModelStore.revision`), never a
    moving branch.
    - *Rationale*: `resolve/main` lets a future repo compromise change the bytes
      shipped installs receive.

@@ -12,9 +12,10 @@ private let logger = Logger(subsystem: "LyricAlignment", category: "MMSModelStor
 
 public enum MMSModelStore {
     public static let modelId = "matthewmorrone/MMS-ForcedAligner-CoreML"
-    // Pin to a commit once the archive is uploaded; a moving branch means a future force-push
-    // silently changes the bytes every install receives.
-    public static let revision = "main"
+    // Pinned to the upload's commit SHA (NOT `main`) so a future hub-side edit or force-push can't
+    // silently swap the bytes every install receives (docs/INVARIANTS.md, pinned model downloads).
+    // Bump this any time the model is republished.
+    public static let revision = "cb801ee8e71955c779f2f3601ef14dde79a9f297"
     public static let archiveName = "MMSForcedAligner.mlmodelc.zip"
     public static let modelDirName = "MMSForcedAligner.mlmodelc"
 
@@ -37,8 +38,8 @@ public enum MMSModelStore {
     }
 
     // Ensures MMSForcedAligner.mlmodelc is present, downloading + extracting on first miss.
-    // A sideloaded copy under <App Documents>/MMSForcedAligner.mlmodelc wins when present —
-    // the development path while the archive isn't published yet.
+    // A sideloaded copy under <App Documents>/MMSForcedAligner.mlmodelc wins when present, so a
+    // locally converted model can be tried on the device without republishing.
     public static func ensureModel(onStage: (@Sendable (String) -> Void)? = nil) async throws -> URL {
         try await InstallCoordinator.shared.run {
             try await ensureModelUnguarded(onStage: onStage)

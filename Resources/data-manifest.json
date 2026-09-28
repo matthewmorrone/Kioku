@@ -426,9 +426,9 @@
       "path": null,
       "required": false,
       "derived": false,
-      "url": "https://huggingface.co/matthewmorrone/MMS-ForcedAligner-CoreML",
-      "sha256": null,
-      "provenance": "Converted with coremltools 9.0 from torchaudio's MMS_FA bundle (torch 2.8.0), 2026-09-12. The Hugging Face repo is not published yet; until it is, only a copy sideloaded into the app's Documents is used.",
+      "url": "https://huggingface.co/matthewmorrone/MMS-ForcedAligner-CoreML/resolve/cb801ee8e71955c779f2f3601ef14dde79a9f297/MMSForcedAligner.mlmodelc.zip",
+      "sha256": "39e80aab2f77a48f6abf1bfa4ba0566e9946e1da14e82717592ae597de86a81f",
+      "provenance": "Converted with coremltools 9.0 from torchaudio's MMS_FA bundle (torch 2.8.0), 2026-09-12. Published 2026-09-28 at Hugging Face commit cb801ee (MMSModelStore.revision); sha256 is the zip's. A copy sideloaded into the app's Documents still takes precedence.",
       "feedsDictionary": false
     },
     {
@@ -439,7 +439,7 @@
       "path": null,
       "required": false,
       "derived": false,
-      "url": "https://huggingface.co/matthewmorrone/HTDemucs-CoreML",
+      "url": "https://huggingface.co/matthewmorrone/HTDemucs-CoreML/resolve/1814775e602778cc093cb23138d773645166d724/HTDemucsSpec.mlmodelc.zip",
       "sha256": null,
       "provenance": "CoreML conversion of Demucs' HTDemucs weights (conversion scripts in LyricAlignment/scripts/htdemucs-coreml); revision pinned in HTDemucsModelStore.revision.",
       "feedsDictionary": false
