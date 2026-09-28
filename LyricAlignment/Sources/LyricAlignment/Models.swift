@@ -25,16 +25,6 @@ public struct RomanizedSpan: Sendable {
     }
 }
 
-/// A single segment as returned by WhisperKit's transcribe().
-public struct TranscriptionSegment {
-    public let text: String
-    public let start: Double
-    public let end: Double
-    public init(text: String, start: Double, end: Double) {
-        self.text = text; self.start = start; self.end = end
-    }
-}
-
 /// One subtitle entry: original input line plus its aligned timestamps.
 public struct AlignedLine {
     public let text: String

@@ -14,8 +14,7 @@
 		E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE82F57BC070020F5C2 /* deinflection.json */; };
 		E3D1C7002F4DFDB8005FDA11 /* dictionary.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */; };
 		E3FBBF9B303F516D009664F4 /* SwiftDagre in Frameworks */ = {isa = PBXBuildFile; productRef = DA6ADE0022FC000040000002 /* SwiftDagre */; };
-		E4WKA00012FA0000200000001 /* SwiftWhisperAlign in Frameworks */ = {isa = PBXBuildFile; productRef = E4WKA00022FA0000200000002 /* SwiftWhisperAlign */; };
-		F5MECAB012FA0000100000001 /* mecab in Frameworks */ = {isa = PBXBuildFile; productRef = F5MECAB022FA0000100000001 /* mecab */; };
+		E4WKA00012FA0000200000001 /* LyricAlignment in Frameworks */ = {isa = PBXBuildFile; productRef = E4WKA00022FA0000200000002 /* LyricAlignment */; };
 		F5MECAB032FA0000100000002 /* MeCab in Resources */ = {isa = PBXBuildFile; fileRef = F5MECAB042FA0000100000002 /* MeCab */; };
 		Z1NN1A0012FB0000200000001 /* Zinnia-Swift in Frameworks */ = {isa = PBXBuildFile; productRef = Z1NN1A0022FB0000200000002 /* Zinnia-Swift */; };
 		Z1NN1A1012FB0000200000001 /* handwriting-ja.model in Resources */ = {isa = PBXBuildFile; fileRef = Z1NN1A1022FB0000200000002 /* handwriting-ja.model */; };
@@ -129,9 +128,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				E3FBBF9B303F516D009664F4 /* SwiftDagre in Frameworks */,
-				E4WKA00012FA0000200000001 /* SwiftWhisperAlign in Frameworks */,
+				E4WKA00012FA0000200000001 /* LyricAlignment in Frameworks */,
 				Z1NN1A0012FB0000200000001 /* Zinnia-Swift in Frameworks */,
-				F5MECAB012FA0000100000001 /* mecab in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -266,9 +264,8 @@
 			);
 			name = Kioku;
 			packageProductDependencies = (
-				E4WKA00022FA0000200000002 /* SwiftWhisperAlign */,
+				E4WKA00022FA0000200000002 /* LyricAlignment */,
 				Z1NN1A0022FB0000200000002 /* Zinnia-Swift */,
-				F5MECAB022FA0000100000001 /* mecab */,
 				DA6ADE0022FC000040000002 /* SwiftDagre */,
 			);
 			productName = Kioku;
@@ -354,9 +351,8 @@
 			mainGroup = E3070ADF2F4DFDB6005FD323;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				E4WKA00052FA0000200000005 /* XCLocalSwiftPackageReference "SwiftWhisperAlign" */,
+				E4WKA00052FA0000200000005 /* XCLocalSwiftPackageReference "LyricAlignment" */,
 				Z1NN1A0052FB0000200000005 /* XCLocalSwiftPackageReference "Packages/zinnia-swift" */,
-				F5MECAB052FA0000100000003 /* XCRemoteSwiftPackageReference "mecab" */,
 				DA6ADE0052FC000040000001 /* XCRemoteSwiftPackageReference "dagre-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -925,9 +921,9 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		E4WKA00052FA0000200000005 /* XCLocalSwiftPackageReference "SwiftWhisperAlign" */ = {
+		E4WKA00052FA0000200000005 /* XCLocalSwiftPackageReference "LyricAlignment" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = SwiftWhisperAlign;
+			relativePath = LyricAlignment;
 		};
 		Z1NN1A0052FB0000200000005 /* XCLocalSwiftPackageReference "Packages/zinnia-swift" */ = {
 			isa = XCLocalSwiftPackageReference;
@@ -944,14 +940,6 @@
 				minimumVersion = 0.1.0;
 			};
 		};
-		F5MECAB052FA0000100000003 /* XCRemoteSwiftPackageReference "mecab" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/matthewmorrone/mecab.git";
-			requirement = {
-				branch = master;
-				kind = branch;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -960,15 +948,10 @@
 			package = DA6ADE0052FC000040000001 /* XCRemoteSwiftPackageReference "dagre-swift" */;
 			productName = SwiftDagre;
 		};
-		E4WKA00022FA0000200000002 /* SwiftWhisperAlign */ = {
+		E4WKA00022FA0000200000002 /* LyricAlignment */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = E4WKA00052FA0000200000005 /* XCLocalSwiftPackageReference "SwiftWhisperAlign" */;
-			productName = SwiftWhisperAlign;
-		};
-		F5MECAB022FA0000100000001 /* mecab */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = F5MECAB052FA0000100000003 /* XCRemoteSwiftPackageReference "mecab" */;
-			productName = mecab;
+			package = E4WKA00052FA0000200000005 /* XCLocalSwiftPackageReference "LyricAlignment" */;
+			productName = LyricAlignment;
 		};
 		Z1NN1A0022FB0000200000002 /* Zinnia-Swift */ = {
 			isa = XCSwiftPackageProductDependency;

@@ -1,6 +1,6 @@
 import AVFoundation
 import Foundation
-import SwiftWhisperAlign
+import LyricAlignment
 
 // The one way lyrics get timed against a song: a single forced-alignment pass over the whole
 // track from the note text (romanized per line by the caller), then ♪ markers over the

@@ -1,12 +1,12 @@
 // LyricRomanizer.swift
 //
 // Turns one lyric line into the romanized spans the forced aligner reads (see
-// SwiftWhisperAlign.RomanizedSpan): kanji runs get their dictionary reading from the same
+// LyricAlignment.RomanizedSpan): kanji runs get their dictionary reading from the same
 // furigana resolver the reader uses, kana is transliterated directly, and every span remembers
 // the UTF-16 range of the line it came from so the aligner's times land back on the text.
 
 import Foundation
-import SwiftWhisperAlign
+import LyricAlignment
 
 struct LyricRomanizer {
     let segmenter: any TextSegmenting

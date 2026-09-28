@@ -78,7 +78,7 @@ enum CTCAlignmentCore {
             spanTokenRanges.append(ranges)
         }
         guard tokens.count > (star == nil ? 0 : 1) else {
-            throw NSError(domain: "SwiftWhisperAlign.CTC", code: 4,
+            throw NSError(domain: "LyricAlignment.CTC", code: 4,
                           userInfo: [NSLocalizedDescriptionKey: "The lyrics romanized to nothing alignable."])
         }
         if let star { tokens.append(star) }
@@ -86,7 +86,7 @@ enum CTCAlignmentCore {
         if star != nil { optional[0] = true; optional[tokens.count - 1] = true }
         guard let spans = CTCViterbi.align(logProbs: matrix.values, frames: matrix.frames,
                                            classes: MMSEmissions.classes, tokens: tokens, optional: optional) else {
-            throw NSError(domain: "SwiftWhisperAlign.CTC", code: 5,
+            throw NSError(domain: "LyricAlignment.CTC", code: 5,
                           userInfo: [NSLocalizedDescriptionKey: "The lyrics don't fit the sung audio (more text than the song can hold)."])
         }
         log?("viterbi placed \(tokens.count) tokens")

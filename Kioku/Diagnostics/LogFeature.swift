@@ -51,7 +51,7 @@ enum LogFeature: String, CaseIterable, Identifiable {
         case .llmCorrection: return "System/user prompts, raw provider responses, parse and salvage steps."
         case .bridgeServer: return "Incoming HTTP requests/responses on the local-network bridge."
         case .dictionaryDownload: return "Dictionary archive fetch, decompression, and install progress."
-        case .transcription: return "Whisper model downloads and on-device transcription/alignment runs."
+        case .transcription: return "Speech model downloads and on-device transcription/alignment runs."
         case .notesImport: return "OCR capture, URL text import, and bulk import runs."
         case .backup: return "App backup export, import, and validation."
         case .wordOfTheDay: return "Word-of-the-day scheduling and notification decisions."

@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-import SwiftWhisperAlign
+import LyricAlignment
 
 @main
 struct KiokuApp: App {

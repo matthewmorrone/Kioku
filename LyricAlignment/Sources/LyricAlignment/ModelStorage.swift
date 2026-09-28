@@ -39,7 +39,7 @@ public enum ModelStorage {
         let fm = FileManager.default
         guard let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             throw NSError(
-                domain: "SwiftWhisperAlign.ModelStorage",
+                domain: "LyricAlignment.ModelStorage",
                 code: -1,
                 userInfo: [NSLocalizedDescriptionKey: "no Application Support directory available"]
             )

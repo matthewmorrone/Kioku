@@ -4,14 +4,14 @@ import PackageDescription
 // No package dependencies: alignment (MMS), vocal isolation (HTDemucs) and VAD all run on CoreML /
 // Accelerate from this target's own sources.
 let package = Package(
-    name: "SwiftWhisperAlign",
+    name: "LyricAlignment",
     platforms: [.macOS(.v15), .iOS(.v18)],
     products: [
-        .library(name: "SwiftWhisperAlign", targets: ["SwiftWhisperAlign"]),
+        .library(name: "LyricAlignment", targets: ["LyricAlignment"]),
     ],
     targets: [
         .target(
-            name: "SwiftWhisperAlign",
+            name: "LyricAlignment",
             swiftSettings: [
                 // HTDemucsCoreMLSeparator's cblas_sgemm calls already pass the classic Int32
                 // M/N/K/lda/ldb/ldc signature; ACCELERATE_NEW_LAPACK alone opts into the
@@ -21,9 +21,9 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "SwiftWhisperAlignTests",
+            name: "LyricAlignmentTests",
             dependencies: [
-                "SwiftWhisperAlign",
+                "LyricAlignment",
             ]
         ),
     ],

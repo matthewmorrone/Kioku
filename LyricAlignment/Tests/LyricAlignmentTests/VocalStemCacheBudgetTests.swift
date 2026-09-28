@@ -4,7 +4,7 @@
 // and that the most-recently-used entry survives eviction.
 
 import XCTest
-@testable import SwiftWhisperAlign
+@testable import LyricAlignment
 
 final class VocalStemCacheBudgetTests: XCTestCase {
 

@@ -12,12 +12,12 @@
 import Foundation
 import OSLog
 
-private let logger = Logger(subsystem: "matthewmorrone.SwiftWhisperAlign", category: "HTDemucsModelStore")
+private let logger = Logger(subsystem: "matthewmorrone.LyricAlignment", category: "HTDemucsModelStore")
 
 public enum HTDemucsModelStore {
     // HF Hub coordinates. `revision` is pinned to the commit SHA of the upload (NOT `main`)
     // so a future hub-side edit or tag move can't silently swap the model bytes shipping with
-    // installs — same discipline as WhisperDownloadableModel.pinnedRevision. Bump this any
+    // installs (docs/INVARIANTS.md, pinned model downloads). Bump this any
     // time the model is republished.
     public static let modelId = "matthewmorrone/HTDemucs-CoreML"
     public static let revision = "1814775e602778cc093cb23138d773645166d724"
@@ -90,7 +90,7 @@ public enum HTDemucsModelStore {
         guard status == 200 else {
             try? FileManager.default.removeItem(at: tempURL)
             throw NSError(
-                domain: "SwiftWhisperAlign.HTDemucs",
+                domain: "LyricAlignment.HTDemucs",
                 code: 30,
                 userInfo: [NSLocalizedDescriptionKey: "Vocal isolator download failed (HTTP \(status)). Check your connection and try again."]
             )
@@ -104,7 +104,7 @@ public enum HTDemucsModelStore {
 
         guard FileManager.default.fileExists(atPath: probe.path) else {
             throw NSError(
-                domain: "SwiftWhisperAlign.HTDemucs",
+                domain: "LyricAlignment.HTDemucs",
                 code: 31,
                 userInfo: [NSLocalizedDescriptionKey: "Vocal isolator archive missing expected model.mil — archive contents do not match HTDemucsModelStore.modelDirName."]
             )

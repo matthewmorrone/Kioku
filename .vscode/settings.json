@@ -1,7 +1,0 @@
-{
-  "git.ignoredRepositories": [
-    "Packages/SwiftWhisper",
-    "Packages/SwiftWhisper/whisper.cpp",
-    "Packages/SwiftWhisper/whisper.cpp/bindings/ios"
-  ]
-}

@@ -4,7 +4,7 @@ Replays the app's lyric aligner on the Mac, on exactly what the phone saw, in ab
 song — so an aligner change can be tried on real device data without a device build or re-align.
 `build.sh` compiles the app's **real** post-model pipeline (`CTCAlignmentCore`: dropout and deaf
 fill, energy-VAD pin, wordless-intro rule, Viterbi, line timings, repeated-line spreader) from
-`SwiftWhisperAlign/Sources`, so a replay is the shipped code. Verified line-for-line against the
+`LyricAlignment/Sources`, so a replay is the shipped code. Verified line-for-line against the
 phone's saved cues on four songs (2026-09-25).
 
 What it does not cover: vocal isolation and the MMS model itself run only on the phone (or, for the

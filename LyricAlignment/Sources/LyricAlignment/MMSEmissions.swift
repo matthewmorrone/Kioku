@@ -45,14 +45,14 @@ enum MMSEmissions {
               let outFmt = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: Double(sampleRate), channels: 1, interleaved: false),
               let inBuf = AVAudioPCMBuffer(pcmFormat: inFmt, frameCapacity: AVAudioFrameCount(mono.count)),
               let converter = AVAudioConverter(from: inFmt, to: outFmt) else {
-            throw NSError(domain: "SwiftWhisperAlign.MMS", code: 42,
+            throw NSError(domain: "LyricAlignment.MMS", code: 42,
                           userInfo: [NSLocalizedDescriptionKey: "Could not configure the resampler."])
         }
         mono.withUnsafeBufferPointer { inBuf.floatChannelData![0].update(from: $0.baseAddress!, count: mono.count) }
         inBuf.frameLength = AVAudioFrameCount(mono.count)
         let outCapacity = AVAudioFrameCount(Double(mono.count) * Double(sampleRate) / Double(inputRate)) + 256
         guard let outBuf = AVAudioPCMBuffer(pcmFormat: outFmt, frameCapacity: outCapacity) else {
-            throw NSError(domain: "SwiftWhisperAlign.MMS", code: 42,
+            throw NSError(domain: "LyricAlignment.MMS", code: 42,
                           userInfo: [NSLocalizedDescriptionKey: "Could not allocate the resample buffer."])
         }
         var supplied = false
@@ -92,7 +92,7 @@ enum MMSEmissions {
 
             let out = try model.prediction(from: MLDictionaryFeatureProvider(dictionary: ["audio": window]))
             guard let lp = out.featureValue(for: "logprobs")?.multiArrayValue else {
-                throw NSError(domain: "SwiftWhisperAlign.MMS", code: 43,
+                throw NSError(domain: "LyricAlignment.MMS", code: 43,
                               userInfo: [NSLocalizedDescriptionKey: "Aligner model output missing."])
             }
             let F = lp.shape[1].intValue

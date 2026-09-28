@@ -1,3 +1,6 @@
+// Compiled only where the MeCab C library is linked: the segmentation-eval CLI (Homebrew libmecab,
+// scripts/segmentation-eval/cli/build.sh). The app no longer links MeCab, so this compiles out there.
+#if canImport(mecab)
 import Foundation
 import mecab
 
@@ -15,8 +18,9 @@ nonisolated final class MeCabTokenizer {
     // Uses mecab_new (argc/argv) instead of mecab_new2 (single-string-parsed-by-whitespace)
     // because iOS bundle paths contain a literal space (".../Kioku Reader.app/MeCab/...")
     // that mecab_new2 splits on, producing nonexistent split paths and silent init failure.
-    init?(dictionaryPath: String) {
-        guard let rcPath = Bundle.main.path(forResource: "mecabrc", ofType: nil, inDirectory: "MeCab") else {
+    // `rcPath` defaults to the bundled Resources/MeCab/mecabrc; the eval CLI passes Homebrew's.
+    init?(dictionaryPath: String, rcPath explicitRCPath: String? = nil) {
+        guard let rcPath = explicitRCPath ?? Bundle.main.path(forResource: "mecabrc", ofType: nil, inDirectory: "MeCab") else {
             AppLog.error(.segmentation, "MeCabTokenizer: mecabrc not found in bundle")
             return nil
         }
@@ -116,3 +120,4 @@ nonisolated final class MeCabTokenizer {
         return err.map { String(cString: $0) }
     }
 }
+#endif

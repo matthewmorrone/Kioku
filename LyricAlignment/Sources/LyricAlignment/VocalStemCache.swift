@@ -33,7 +33,7 @@ import AVFoundation
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "matthewmorrone.SwiftWhisperAlign", category: "VocalStemCache")
+private let logger = Logger(subsystem: "matthewmorrone.LyricAlignment", category: "VocalStemCache")
 
 // Routes cache housekeeping messages to os.Logger so they are filterable in Console instead of
 // going to stdout. Takes a prebuilt String so call sites can interpolate anything.

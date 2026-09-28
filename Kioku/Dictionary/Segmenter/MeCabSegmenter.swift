@@ -1,3 +1,5 @@
+// Compiled only where MeCab is linked (see MeCabTokenizer.swift).
+#if canImport(mecab)
 import Foundation
 
 // Provides TextSegmenting conformance backed by the MeCab morphological analyzer.
@@ -8,13 +10,19 @@ nonisolated final class MeCabSegmenter: TextSegmenting, @unchecked Sendable {
     private let dictionary: MeCabDictionary
 
     // Creates a MeCab-backed segmenter using the compiled dictionary at the given bundle path.
-    init?(dictionary: MeCabDictionary) {
-        self.dictionary = dictionary
+    convenience init?(dictionary: MeCabDictionary) {
         guard let path = Bundle.main.path(forResource: dictionary.bundleDirectoryName, ofType: nil, inDirectory: "MeCab") else {
             AppLog.error(.segmentation, "MeCabSegmenter: dictionary bundle path not found for \(dictionary.rawValue)")
             return nil
         }
-        guard let tok = MeCabTokenizer(dictionaryPath: path) else {
+        self.init(dictionary: dictionary, dictionaryPath: path)
+    }
+
+    // Creates a MeCab-backed segmenter from an explicit compiled-dictionary directory and mecabrc —
+    // the eval CLI's entry point, which uses Homebrew's dictionaries instead of the app bundle.
+    init?(dictionary: MeCabDictionary, dictionaryPath path: String, rcPath: String? = nil) {
+        self.dictionary = dictionary
+        guard let tok = MeCabTokenizer(dictionaryPath: path, rcPath: rcPath) else {
             AppLog.error(.segmentation, "MeCabSegmenter: MeCabTokenizer initialization failed for \(dictionary.rawValue)")
             return nil
         }
@@ -139,3 +147,4 @@ nonisolated final class MeCabSegmenter: TextSegmenting, @unchecked Sendable {
         return baseForm != nil
     }
 }
+#endif

@@ -1,7 +1,7 @@
 import AVFoundation
 import Combine
 import Foundation
-import SwiftWhisperAlign
+import LyricAlignment
 
 // Plays a SongBreakdown's listen-along script live, one step at a time: each step (a sung clip from
 // the note's own audio, or a speech segment) starts only once the previous one has actually

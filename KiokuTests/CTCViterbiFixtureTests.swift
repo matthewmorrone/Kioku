@@ -1,5 +1,5 @@
 import XCTest
-import SwiftWhisperAlign
+import LyricAlignment
 @testable import Kioku
 
 // Pins the Swift CTC Viterbi to torchaudio's forced_align on real emissions: the fixture is

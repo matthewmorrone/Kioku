@@ -4,7 +4,7 @@
 // GitHub Release asset into Application Support on first launch. Application Support, not Caches: a
 // mid-download purge under storage pressure would strand the app with a half-written file and no
 // dictionary — the same failure mode ModelStorage's header documents for the speech models
-// (SwiftWhisperAlign/Sources/SwiftWhisperAlign/ModelStorage.swift).
+// (LyricAlignment/Sources/LyricAlignment/ModelStorage.swift).
 //
 // Progress comes from a delegate on a session this file owns. Do NOT reach for the shorter
 // URLSession.shared.download(from:delegate:) — that delegate is task-scoped and never receives

@@ -1,5 +1,5 @@
 import Foundation
-import SwiftWhisperAlign
+import LyricAlignment
 
 // The single "audio file → subtitle cues" service shared by EVERY import path (the single-file
 // ReadView import and BulkImportRunner). Callers own their own note lifecycle / progress UI; this

@@ -1,5 +1,5 @@
 import Foundation
-import SwiftWhisperAlign
+import LyricAlignment
 
 // Hosts audio attachment loading logic for ReadView so audio infrastructure stays isolated
 // from the main view body.

@@ -30,11 +30,11 @@ public struct CTCForcedAligner {
         onSegment: (@Sendable ([AlignedLine]) -> Void)? = nil
     ) async throws -> AlignmentResult {
         guard input.lines.isEmpty == false else {
-            throw NSError(domain: "SwiftWhisperAlign.CTC", code: 1,
+            throw NSError(domain: "LyricAlignment.CTC", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "No lyric lines to align."])
         }
         guard input.romanization.count == input.lines.count else {
-            throw NSError(domain: "SwiftWhisperAlign.CTC", code: 3,
+            throw NSError(domain: "LyricAlignment.CTC", code: 3,
                           userInfo: [NSLocalizedDescriptionKey: "Romanization does not match the lyric lines."])
         }
         if cancellationCheck?() == true { throw CancellationError() }
@@ -47,7 +47,7 @@ public struct CTCForcedAligner {
         onStage?("Decoding audio…")
         let stereo = try await Self.decodeStereoFloat(from: input.audioURL)
         guard stereo.count == 2, stereo[0].isEmpty == false else {
-            throw NSError(domain: "SwiftWhisperAlign.CTC", code: 2,
+            throw NSError(domain: "LyricAlignment.CTC", code: 2,
                           userInfo: [NSLocalizedDescriptionKey: "Audio decoded to zero frames."])
         }
         Self.breadcrumb("decoded stereo \(stereo[0].count) frames (~\(stereo[0].count / 44_100)s)")
@@ -74,7 +74,7 @@ public struct CTCForcedAligner {
                 onStage: onStage
             )
             guard mono.isEmpty == false else {
-                throw NSError(domain: "SwiftWhisperAlign.CTC", code: 15,
+                throw NSError(domain: "LyricAlignment.CTC", code: 15,
                               userInfo: [NSLocalizedDescriptionKey: "Vocal isolation produced no output."])
             }
             // Defense in depth alongside HTDemucsCoreMLSeparator now throwing on cancellation
@@ -87,7 +87,7 @@ public struct CTCForcedAligner {
             var peak: Float = 0
             vDSP_maxmgv(mono, 1, &peak, vDSP_Length(mono.count))
             guard peak > 1e-4 else {
-                throw NSError(domain: "SwiftWhisperAlign.CTC", code: 16,
+                throw NSError(domain: "LyricAlignment.CTC", code: 16,
                               userInfo: [NSLocalizedDescriptionKey: "Vocal isolation produced silence."])
             }
             Self.breadcrumb("isolated voice \(mono.count) frames (HTDemucs CoreML)")
@@ -154,14 +154,14 @@ public struct CTCForcedAligner {
         if let cached = VocalStemCache.load(for: url), cached.isEmpty == false { return cached }
         let stereo = try await decodeStereoFloat(from: url)
         guard stereo.count == 2, stereo[0].isEmpty == false else {
-            throw NSError(domain: "SwiftWhisperAlign.CTC", code: 2,
+            throw NSError(domain: "LyricAlignment.CTC", code: 2,
                           userInfo: [NSLocalizedDescriptionKey: "Audio decoded to zero frames."])
         }
         let mono = try await HTDemucsCoreMLSeparator.isolateVocalsMono(
             stereo: stereo, cancellationCheck: cancellationCheck,
             waitUntilReady: waitUntilReady, onProgress: onProgress)
         guard mono.isEmpty == false else {
-            throw NSError(domain: "SwiftWhisperAlign.CTC", code: 15,
+            throw NSError(domain: "LyricAlignment.CTC", code: 15,
                           userInfo: [NSLocalizedDescriptionKey: "Vocal isolation produced no output."])
         }
         VocalStemCache.store(mono, for: url)
@@ -174,7 +174,7 @@ public struct CTCForcedAligner {
         let asset = AVURLAsset(url: url)
         let tracks = try await asset.loadTracks(withMediaType: .audio)
         guard let track = tracks.first else {
-            throw NSError(domain: "SwiftWhisperAlign.CTC", code: 11,
+            throw NSError(domain: "LyricAlignment.CTC", code: 11,
                           userInfo: [NSLocalizedDescriptionKey: "No audio track in the selected file."])
         }
         let settings: [String: Any] = [
@@ -190,12 +190,12 @@ public struct CTCForcedAligner {
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: settings)
         output.alwaysCopiesSampleData = false
         guard reader.canAdd(output) else {
-            throw NSError(domain: "SwiftWhisperAlign.CTC", code: 12,
+            throw NSError(domain: "LyricAlignment.CTC", code: 12,
                           userInfo: [NSLocalizedDescriptionKey: "Could not configure audio reader."])
         }
         reader.add(output)
         guard reader.startReading() else {
-            throw reader.error ?? NSError(domain: "SwiftWhisperAlign.CTC", code: 13,
+            throw reader.error ?? NSError(domain: "LyricAlignment.CTC", code: 13,
                           userInfo: [NSLocalizedDescriptionKey: "Audio reader failed to start."])
         }
         var left: [Float] = []
@@ -217,7 +217,7 @@ public struct CTCForcedAligner {
             while i + 1 < count { left.append(fp[i]); right.append(fp[i + 1]); i += 2 }
         }
         if reader.status == .failed {
-            throw reader.error ?? NSError(domain: "SwiftWhisperAlign.CTC", code: 14,
+            throw reader.error ?? NSError(domain: "LyricAlignment.CTC", code: 14,
                           userInfo: [NSLocalizedDescriptionKey: "Audio reader failed while decoding."])
         }
         return [left, right]

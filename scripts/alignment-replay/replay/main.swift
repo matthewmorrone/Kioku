@@ -1,7 +1,7 @@
 import Foundation
 
 // Replays the app's post-model aligner (CTCAlignmentCore, compiled from this repo's
-// SwiftWhisperAlign sources by ../build.sh) on what the phone dumped for one song: stem and mix
+// LyricAlignment sources by ../build.sh) on what the phone dumped for one song: stem and mix
 // emissions, the romaji, and the cached vocal stem decoded to 44.1 kHz f32 (see ../pull.sh).
 //
 // Usage: replay <dump dir> <stem key> <note.txt> [--phone <cues.json>] [--no-deaf] [--deaf=THR,MINRUN] [--tokens]

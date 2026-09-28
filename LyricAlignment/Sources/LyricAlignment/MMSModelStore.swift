@@ -8,7 +8,7 @@
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "SwiftWhisperAlign", category: "MMSModelStore")
+private let logger = Logger(subsystem: "LyricAlignment", category: "MMSModelStore")
 
 public enum MMSModelStore {
     public static let modelId = "matthewmorrone/MMS-ForcedAligner-CoreML"
@@ -69,7 +69,7 @@ public enum MMSModelStore {
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
         guard status == 200 else {
             try? fm.removeItem(at: tempURL)
-            throw NSError(domain: "SwiftWhisperAlign.MMS", code: 40,
+            throw NSError(domain: "LyricAlignment.MMS", code: 40,
                           userInfo: [NSLocalizedDescriptionKey: "Aligner download failed (HTTP \(status)). Check your connection and try again."])
         }
 
@@ -79,7 +79,7 @@ public enum MMSModelStore {
         try? fm.removeItem(at: tempURL)
         try ZipExtractor.extract(zipData: zipData, to: parent)
         guard fm.fileExists(atPath: probe.path) else {
-            throw NSError(domain: "SwiftWhisperAlign.MMS", code: 41,
+            throw NSError(domain: "LyricAlignment.MMS", code: 41,
                           userInfo: [NSLocalizedDescriptionKey: "Aligner archive missing expected model.mil — archive contents do not match MMSModelStore.modelDirName."])
         }
         logger.info("MMS forced aligner ready at \(target.path)")

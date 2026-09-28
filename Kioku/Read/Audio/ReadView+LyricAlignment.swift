@@ -1,6 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
-import SwiftWhisperAlign
+import LyricAlignment
 
 // Thread-safe cancellation flag for alignment. The @Observable Bool drives UI; this token is
 // what we hand to the @Sendable cancellationCheck closure so the aligner can poll it from

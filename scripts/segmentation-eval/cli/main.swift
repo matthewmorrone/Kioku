@@ -5,6 +5,7 @@ import Foundation
 //   segcli lemmas < surfaces                     → what each surface resolves to, with each lemma's score (the audit's input)
 //   segcli oracle < gold.jsonl                   → per cut-through: is the gold parse in the lattice, and by how much does it lose
 //   segcli run < sentences                         → the shipped path (bundled table, shipped weight)
+//   segcli mecab ipadic|unidic < sentences         → MeCab's split, same format as run (needs Homebrew mecab; MECAB_DIC overrides the dictionary dir)
 // Repo root: four levels up from this file (scripts/segmentation-eval/cli/main.swift), unless KIOKU_CHECKOUT says otherwise.
 let root = ProcessInfo.processInfo.environment["KIOKU_CHECKOUT"]
     ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path
@@ -150,6 +151,22 @@ if mode == "oracle" {
     }
     exit(0)
 }
+
+#if canImport(mecab)
+if mode == "mecab" {
+    // The app's own MeCabSegmenter over Homebrew's compiled dictionaries.
+    guard CommandLine.arguments.count > 2, let dictionary = MeCabDictionary(rawValue: CommandLine.arguments[2]) else {
+        fatalError("usage: segcli mecab ipadic|unidic < sentences")
+    }
+    let prefix = ProcessInfo.processInfo.environment["MECAB_PREFIX"] ?? "/opt/homebrew"
+    let dicDir = ProcessInfo.processInfo.environment["MECAB_DIC"] ?? "\(prefix)/lib/mecab/dic/\(dictionary.rawValue)"
+    guard let mecab = MeCabSegmenter(dictionary: dictionary, dictionaryPath: dicDir, rcPath: "\(prefix)/etc/mecabrc") else {
+        fatalError("MeCab failed to open \(dicDir)")
+    }
+    while let line = readLine() { print(mecab.longestMatchEdges(for: line).map { $0.surface }.joined(separator: separator)) }
+    exit(0)
+}
+#endif
 
 if mode == "run" {
     FileHandle.standardError.write("transition table loaded: \(segmenter.transitionTable != nil)\n".data(using: .utf8)!)

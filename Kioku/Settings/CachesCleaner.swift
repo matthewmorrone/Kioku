@@ -11,7 +11,7 @@
 // those are slow to re-download.
 
 import Foundation
-import SwiftWhisperAlign
+import LyricAlignment
 
 // Nonisolated so Settings can call from a detached background Task without hopping back to
 // MainActor — the work is pure FileManager I/O and returns plain Int.

@@ -8,14 +8,13 @@ Libraries evaluated but not yet installed. Revisit when the relevant feature are
 
 What we actually link.
 
-### SwiftWhisperAlign (local) ✅
-- **Location:** `SwiftWhisperAlign/` (sibling SPM package)
+### LyricAlignment (local) ✅
+- **Location:** `LyricAlignment/` (sibling SPM package)
 - **Why installed:** Lyric alignment (HTDemucs vocal isolation + MMS forced alignment, both CoreML); produces the timed cues the read screen consumes. No package dependencies of its own.
 
-### MeCab (matthewmorrone fork) ✅
-- **Repo:** https://github.com/matthewmorrone/mecab.git
-- **SPM:** remote, pinned in `Package.resolved`
-- **Why installed:** Powers the `.mecab` segmentation backend. Also the planned source of empirical Viterbi bigram costs (see `matrix.def`) once we promote it from alt-backend to scoring oracle.
+### MeCab — eval tooling only, not linked into the app
+- **Where:** `scripts/segmentation-eval/cli` links Homebrew's `libmecab` (`brew install mecab mecab-ipadic`; UniDic optional) and compiles the app's `MeCabTokenizer` / `MeCabSegmenter` (both `#if canImport(mecab)`, so they compile out of the app). `segcli mecab ipadic|unidic < sentences` prints MeCab's split in the same format as `segcli run`.
+- **Why not in the app:** it was only the comparison column of the debug `SegmentationDiffPrinter`, and no MeCab dictionary was ever bundled, so it produced nothing. Re-adding it means the `matthewmorrone/mecab` fork (iOS/C++14 build fixes to landonepps/mecab, tracked by branch because of its unsafeFlags) plus a bundled dictionary.
 
 ### zinnia-swift (local) ✅
 - **Repo:** https://github.com/sasakure-uk/zinnia-swift
@@ -59,12 +58,12 @@ Short list — anything not below was evaluated and rejected.
 - **mlx-swift / soniqo speech-swift** — removed 2026-09-27: only the iOS 18–25 Qwen3-ASR fallback used them, and they (plus ~20 transitive packages: swift-transformers, swift-huggingface, swift-crypto, swift-collections, Jinja, swift-argument-parser for MLX's CudaBuild plugin) were most of every package build. Transcription is SpeechTranscriber, iOS 26+ only.
 - **SwiftLCS** — LLM correction reconciliation already works with custom diff.
 - **swift-subtitle-kit / SwiftSubtitles** — we're SRT-only, server-generated; custom parsing suffices.
-- **swift-audio-marker** — SwiftWhisperAlign already covers per-word timing markers.
+- **swift-audio-marker** — LyricAlignment already covers per-word timing markers.
 - **TextFormation** — notes are Japanese plain text; indentation/bracket helpers don't apply.
 - **FluidAudio** — diarization not needed for single-speaker content.
 - **SwiftFFmpeg** — AVFoundation covers our conversion needs; +20 MB binary.
 - **ElevenLabs** — cloud TTS, out of scope.
-- **novi/mecab-swift** — we already link MeCab directly via the matthewmorrone fork.
+- **novi/mecab-swift** — the eval CLI links Homebrew's libmecab directly; the app doesn't need MeCab.
 - **String-Japanese** — KanaNormalizer + ScriptClassifier cover kana/romaji classification.
 - **similarity-search-kit** — duplicate of USearch, same reasoning.
 - **Koloda** — no SPM support; Shuffle is the SPM-compatible equivalent.

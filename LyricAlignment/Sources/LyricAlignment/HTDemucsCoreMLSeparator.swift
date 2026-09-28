@@ -171,7 +171,7 @@ enum HTDemucsCoreMLSeparator {
         guard let spec = out.featureValue(for: "vocals_spec")?.multiArrayValue,   // [1,4,Fq,T]
               let time = out.featureValue(for: "vocals_time")?.multiArrayValue     // [1,2,SEG]
         else {
-            throw NSError(domain: "SwiftWhisperAlign.HTDemucs", code: 2,
+            throw NSError(domain: "LyricAlignment.HTDemucs", code: 2,
                           userInfo: [NSLocalizedDescriptionKey: "Model output missing."])
         }
         let sp = spec.dataPointer.bindMemory(to: Float.self, capacity: 4 * Fq * T)

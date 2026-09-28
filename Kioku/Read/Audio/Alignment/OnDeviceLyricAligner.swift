@@ -1,9 +1,9 @@
 // OnDeviceLyricAligner.swift
-// App-side entry point for on-device lyric alignment: wraps SwiftWhisperAlign's CTCForcedAligner
+// App-side entry point for on-device lyric alignment: wraps LyricAlignment's CTCForcedAligner
 // with the note's line filtering and a background-task assertion.
 
 import Foundation
-import SwiftWhisperAlign
+import LyricAlignment
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -19,8 +19,8 @@ enum OnDeviceLyricAligner {
         romanize: (String) -> [RomanizedSpan],
         cancellationCheck: (@Sendable () -> Bool)? = nil,
         onStage: (@Sendable (String) -> Void)? = nil,
-        onSegment: (@Sendable ([SwiftWhisperAlign.AlignedLine]) -> Void)? = nil
-    ) async throws -> SwiftWhisperAlign.AlignmentResult {
+        onSegment: (@Sendable ([LyricAlignment.AlignedLine]) -> Void)? = nil
+    ) async throws -> LyricAlignment.AlignmentResult {
         let lines = lyrics
             .components(separatedBy: "\n")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }

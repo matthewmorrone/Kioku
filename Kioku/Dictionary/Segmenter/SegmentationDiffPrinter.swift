@@ -17,6 +17,8 @@ enum SegmentationDiffPrinter {
             stripWhitespace(trieSegmenter.longestMatchEdges(for: text).map(\.surface))
         }
 
+        // MeCab columns only where MeCab is linked (the eval CLI); the app compiles them out.
+        #if canImport(mecab)
         let ipadic: [String]?
         ipadic = StartupTimer.measure("SegmentationDiffPrinter.ipadic") {
             if let mecab = MeCabSegmenter(dictionary: .ipadic) {
@@ -36,6 +38,10 @@ enum SegmentationDiffPrinter {
                 return nil
             }
         }
+        #else
+        let ipadic: [String]? = nil
+        let unidic: [String]? = nil
+        #endif
 
         // NLTokenizer is always available — no external dictionary needed.
         let nlTokenizer = StartupTimer.measure("SegmentationDiffPrinter.nlTokenizer") {

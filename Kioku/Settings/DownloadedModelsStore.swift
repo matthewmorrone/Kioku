@@ -10,7 +10,7 @@
 // re-isolation (stems) next time the corresponding feature runs.
 
 import Foundation
-import SwiftWhisperAlign
+import LyricAlignment
 
 nonisolated enum DownloadedModelsStore {
     // On-disk size of Qwen3-ASR weights an older app version downloaded, or 0. Nothing loads

@@ -1,5 +1,5 @@
 import SwiftUI
-import SwiftWhisperAlign
+import LyricAlignment
 import Translation
 import UIKit
 

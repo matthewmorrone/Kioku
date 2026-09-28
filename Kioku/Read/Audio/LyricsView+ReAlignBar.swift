@@ -1,5 +1,5 @@
 import SwiftUI
-import SwiftWhisperAlign
+import LyricAlignment
 
 // Top action bar for the karaoke view: Re-align (one forced-alignment pass over the whole song;
 // press and hold for Re-align from Scratch, which isolates the vocals again first), the
