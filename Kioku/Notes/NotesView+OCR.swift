@@ -3,7 +3,7 @@ import SwiftUI
 import UIKit
 import Vision
 
-// OCR import flow for the Notes tab. Owns everything from menu button to Vision
+// OCR import flow for the Notes tab (entry points in the Import menu, NotesView+ImportMenu.swift) through Vision
 // recognition; on success forwards the recognized Note up to ContentView via
 // `onOCRImportedNote`, which installs the note, sets it as the active Read note,
 // switches tabs, and arms edit mode (the previous Read-side end state).
@@ -18,42 +18,6 @@ extension NotesView {
                 }
             }
         )
-    }
-
-    // Toolbar menu offering Camera vs. Photo Library entry points. Shows a small spinner
-    // while OCR is running so the user knows the request is in flight and the picker
-    // shouldn't reopen.
-    var ocrImportToolbarButton: some View {
-        Menu {
-            Button {
-                presentCameraOCRIfAvailable()
-            } label: {
-                Label("Camera", systemImage: "camera")
-            }
-            Button {
-                isShowingPhotoLibraryPicker = true
-            } label: {
-                Label("Photo Library", systemImage: "photo.on.rectangle")
-            }
-            Button {
-                isShowingURLImportSheet = true
-            } label: {
-                Label("From URL", systemImage: "link")
-            }
-        } label: {
-            Group {
-                if isPerformingOCRImport {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Image(systemName: "text.viewfinder")
-                        .scaledFont(size: 16)
-                }
-            }
-            .frame(width: 32, height: 32)
-        }
-        .disabled(isPerformingOCRImport)
-        .accessibilityLabel("Import Text with OCR")
     }
 
     // Loads the picker-selected image, runs OCR, forwards the recognized text into a new Note.

@@ -13,6 +13,9 @@ struct ReadView: View {
     // target.noteID and cleared afterward — see jumpToPendingScrollSurfaceIfReady in
     // ReadView+Lifecycle.swift.
     @Binding var pendingScrollTarget: ReadNoteTarget?
+    // Set by ContentView when the Notes tab's Import Audio picks a file; consumed (and cleared) by
+    // the transcribe-into-a-new-note flow in ReadView+AudioTranscription.swift.
+    @Binding var pendingAudioImportURL: URL?
     @EnvironmentObject var notesStore: NotesStore
     @EnvironmentObject var historyStore: HistoryStore
     @EnvironmentObject var wordsStore: WordsStore
@@ -131,6 +134,7 @@ struct ReadView: View {
         selectedNote: Binding<Note?>,
         shouldActivateEditModeOnLoad: Binding<Bool> = .constant(false),
         pendingScrollTarget: Binding<ReadNoteTarget?> = .constant(nil),
+        pendingAudioImportURL: Binding<URL?> = .constant(nil),
         segmenter: any TextSegmenting,
         dictionaryStore: DictionaryStore?,
         lexicon: Lexicon? = nil,
@@ -145,6 +149,7 @@ struct ReadView: View {
         _selectedNote = selectedNote
         _shouldActivateEditModeOnLoad = shouldActivateEditModeOnLoad
         _pendingScrollTarget = pendingScrollTarget
+        _pendingAudioImportURL = pendingAudioImportURL
         self.segmenter = segmenter
         self.dictionaryStore = dictionaryStore
         self.lexicon = lexicon

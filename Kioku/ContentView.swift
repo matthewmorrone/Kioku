@@ -44,6 +44,8 @@ struct ContentView: View {
     // the surface. Carries the noteID too (not just the surface) so ReadView can tell this target
     // apart from stale text still on screen from whichever note was active before the switch.
     @State private var pendingReadScrollTarget: ReadNoteTarget?
+    // Audio file picked by the Notes tab's Import Audio, handed to ReadView to transcribe.
+    @State private var pendingReadAudioImportURL: URL?
     @StateObject private var clipboardCoordinator = ClipboardLookupCoordinator()
     @Environment(\.scenePhase) private var scenePhase
     // Set by notification and read-tab actions; consumed by WordsView.
@@ -67,6 +69,7 @@ struct ContentView: View {
                 selectedNote: $selectedReadNote,
                 shouldActivateEditModeOnLoad: $shouldActivateReadEditMode,
                 pendingScrollTarget: $pendingReadScrollTarget,
+                pendingAudioImportURL: $pendingReadAudioImportURL,
                 segmenter: readResources.segmenter,
                 dictionaryStore: readResources.dictionaryStore,
                 lexicon: readResources.lexicon,
@@ -91,7 +94,8 @@ struct ContentView: View {
                 onSelectNote: handleNoteSelected,
                 onCreateNote: handleNewNoteRequested,
                 onUpdateSelectedNote: handleNoteUpdated,
-                onOCRImportedNote: handleOCRImported
+                onOCRImportedNote: handleOCRImported,
+                onAudioImported: handleAudioImported
             )
             .tag(ContentTab.notes)
             .tabItem {
@@ -355,6 +359,12 @@ struct ContentView: View {
         shouldActivateReadEditMode = true
         selectedReadNote = recognizedNote
         lastActiveNoteID = recognizedNote.id.uuidString
+        selectedTab = .read
+    }
+
+    // Notes tab's Import Audio: switch to Read, which transcribes the file into a new note there.
+    private func handleAudioImported(_ url: URL) {
+        pendingReadAudioImportURL = url
         selectedTab = .read
     }
 

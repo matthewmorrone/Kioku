@@ -1,5 +1,6 @@
 import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 // Displays the notes list and supports selection, editing, and creation actions.
 //
@@ -13,6 +14,8 @@ struct NotesView: View {
     var onCreateNote: (() -> Void)? = nil
     var onUpdateSelectedNote: ((Note?) -> Void)? = nil
     var onOCRImportedNote: ((Note) -> Void)? = nil
+    // Import Audio's picked file, handed to ContentView to transcribe into a new note on Read.
+    var onAudioImported: ((URL) -> Void)? = nil
 
     @EnvironmentObject private var store: NotesStore
     @EnvironmentObject private var wordsStore: WordsStore
@@ -25,7 +28,7 @@ struct NotesView: View {
     // single-note delete so the dialog can name it; nil for a multi-note delete.
     @State private var pendingDeletion: PendingNoteDeletion?
     @State private var renameDraft = ""
-    @State private var isShowingBulkImportSheet = false
+    @State var isShowingBulkImportSheet = false
     // Sort selection, persisted so the tab reopens the way the user left it. Stored as the raw
     // field string (unknown values from a future build fall back to manual) plus a direction flag.
     @AppStorage("notes.sortField") private var sortFieldRaw = NotesSortField.manual.rawValue
@@ -40,6 +43,7 @@ struct NotesView: View {
     @State var isPerformingOCRImport = false
     @State var ocrImportErrorMessage = ""
     @State var isShowingURLImportSheet = false
+    @State var isShowingAudioImporter = false
 
     var body: some View {
         NavigationStack {
@@ -151,26 +155,10 @@ struct NotesView: View {
             }
             .washiBackground()
             .toolbar {
-                // Leading group: file-based and image-based import entry points sit together
-                // on the left so the user reads "import sources" → "selection/editing" → "new"
-                // from left to right across the toolbar.
+                // Leading: one Import menu (files, audio, text from images / URLs), so the toolbar
+                // reads "import" → "selection/editing" → "new" from left to right.
                 ToolbarItemGroup(placement: .topBarLeading) {
-                    // Opens the bulk import sheet so the user can pick txt/srt/audio files. Single
-                    // and multi-file flows both run through here; audio-only items are transcribed
-                    // by BulkImportRunner.
-                    Button {
-                        isShowingBulkImportSheet = true
-                    } label: {
-                        Image(systemName: "tray.and.arrow.down")
-                            .scaledFont(size: 16)
-                            .frame(width: 32, height: 32)
-                    }
-                    .accessibilityLabel("Import Files")
-
-                    // OCR import (Camera or Photo Library). Runs Vision recognition locally
-                    // on Notes and hands the recognized Note to ContentView via
-                    // `onOCRImportedNote` for tab-switch + edit-mode activation.
-                    ocrImportToolbarButton
+                    importMenu
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     sortMenu
@@ -237,6 +225,13 @@ struct NotesView: View {
                 }
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+            }
+            .fileImporter(
+                isPresented: $isShowingAudioImporter,
+                allowedContentTypes: [.audio, .mpeg4Audio, .mp3],
+                allowsMultipleSelection: false
+            ) { result in
+                handleAudioImporterResult(result)
             }
             .photosPicker(
                 isPresented: $isShowingPhotoLibraryPicker,

@@ -162,6 +162,11 @@ extension ReadView {
             .onChange(of: pendingScrollTarget) { _, _ in
                 jumpToPendingScrollSurfaceIfReady()
             }
+            .onChange(of: pendingAudioImportURL) { _, url in
+                guard let url else { return }
+                pendingAudioImportURL = nil
+                Task { await prepareAudioImport(at: url) }
+            }
             // Keeps the reset button's differsFromDefault current; a newer key cancels the older run.
             .task(id: defaultComparisonKey) {
                 await refreshDiffersFromDefault()
@@ -284,11 +289,6 @@ extension ReadView {
             }
         }
         .overlay {
-            if subtitleImport.isShowingSubtitlePopup {
-                subtitlePopupOverlay
-            }
-        }
-        .overlay {
             if audioPlayback.activeAudioAttachmentID != nil {
                 LyricsView(
                     controller: audioPlayback.audioController,
@@ -355,16 +355,6 @@ extension ReadView {
                     resetSegmentationToComputed()
                 }
             )
-        }
-        .fileImporter(
-            isPresented: $subtitleImport.isShowingSubtitlePicker,
-            allowedContentTypes: subtitleImport.subtitlePickerTarget.contentTypes,
-            allowsMultipleSelection: false
-        ) { result in
-            switch subtitleImport.subtitlePickerTarget {
-            case .audio: handleLyricAlignmentAudioSelection(result)
-            case .subtitleFile: handleSubtitleFileSelection(result)
-            }
         }
         // Lyric-button quick-load picker: one shot for audio + subtitle/textgrid. Multi-select so
         // the user can grab "song.mp3" and "song.srt" (or "song.TextGrid") together; the handler

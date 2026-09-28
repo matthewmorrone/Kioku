@@ -8,7 +8,8 @@ import NaturalLanguage
 import SwiftUI
 import UniformTypeIdentifiers
 
-// Hosts audio-import transcription controls and speech-recognition helpers for the read screen.
+// Transcribes an audio file picked from the Notes tab's Import Audio into a new note on the read
+// screen, plus the note status-line helpers the transcription flows share.
 extension ReadView {
     // Binds audio transcription error presentation to whether the read screen currently has a transcription failure message.
     var audioTranscriptionErrorPresented: Binding<Bool> {
@@ -20,57 +21,6 @@ extension ReadView {
                 }
             }
         )
-    }
-
-    // Renders the title-row waveform button that imports an audio file for transcription.
-    var audioTranscriptionButton: some View {
-        Button {
-            subtitleImport.isShowingFileImporter = true
-        } label: {
-            Group {
-                if subtitleImport.isPerformingAudioTranscription {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Image(systemName: "waveform")
-                        .scaledFont(size: 14, weight: .semibold)
-                }
-            }
-            .foregroundStyle(subtitleImport.isPerformingAudioTranscription ? Color.secondary : Color.accentColor)
-            .frame(width: 30, height: 30)
-            .background(
-                Capsule()
-                    .fill(Color(.tertiarySystemFill))
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(subtitleImport.isPerformingAudioTranscription)
-        .accessibilityLabel("Import Audio for Transcription")
-        .fileImporter(
-            isPresented: $subtitleImport.isShowingFileImporter,
-            allowedContentTypes: [.audio, .mpeg4Audio, .mp3],
-            allowsMultipleSelection: false
-        ) { result in
-            subtitleImport.isShowingFileImporter = false
-            handleAudioImportSelection(result)
-        }
-    }
-
-    // Handles the audio-file picker result and kicks off speech recognition.
-    func handleAudioImportSelection(_ result: Result<[URL], Error>) {
-        switch result {
-        case .success(let selectedURLs):
-            guard let sourceURL = selectedURLs.first else {
-                subtitleImport.audioTranscriptionErrorMessage = "No audio file was selected."
-                return
-            }
-
-            Task {
-                await prepareAudioImport(at: sourceURL)
-            }
-        case .failure(let error):
-            subtitleImport.audioTranscriptionErrorMessage = error.localizedDescription
-        }
     }
 
     // Copies the picked audio and checks whether it's speech or singing. Speech transcribes right

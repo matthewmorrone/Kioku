@@ -31,84 +31,9 @@ extension ReadView {
         LyricRomanizer(segmenter: segmenter, surfaceReadingData: surfaceReadingData, kanjiReadingFallback: kanjiReadingFallback)
     }
 
-    var hasEditableSubtitles: Bool {
-        if audioPlayback.activeAudioAttachmentID != nil {
-            return true
-        }
-
-        guard let activeNoteID = document.activeNoteID else {
-            return false
-        }
-
-        return notesStore.note(withID: activeNoteID)?.audioAttachmentID != nil
-    }
-
-    var canOpenSubtitleFlow: Bool {
-        lyricAlignment.isAligning == false
-    }
-
-    var generateSRTButton: some View {
-        Group {
-            if lyricAlignment.isAligning {
-                ProgressView()
-                    .controlSize(.small)
-            } else {
-                Image(systemName: "captions.bubble")
-                    .scaledFont(size: 14, weight: .semibold)
-            }
-        }
-        .foregroundStyle(canOpenSubtitleFlow ? Color.accentColor : Color.secondary)
-        .frame(width: 30, height: 30)
-        .background(
-            Capsule()
-                .fill(Color(.tertiarySystemFill))
-        )
-        .contentShape(Capsule())
-        .onTapGesture {
-            guard canOpenSubtitleFlow else {
-                return
-            }
-            if hasEditableSubtitles {
-                if audioPlayback.activeAudioAttachmentID == nil,
-                   let activeNoteID = document.activeNoteID,
-                   let attachmentID = notesStore.note(withID: activeNoteID)?.audioAttachmentID {
-                    loadAudioAttachmentIfNeeded(attachmentID: attachmentID)
-                }
-                audioPlayback.isShowingLyricsView = true
-            } else {
-                subtitleImport.isShowingSubtitlePopup = true
-            }
-        }
-        .onLongPressGesture(minimumDuration: 0.45) {
-            guard canOpenSubtitleFlow else {
-                return
-            }
-            resetCurrentSubtitleAttachment()
-        }
-        .opacity(canOpenSubtitleFlow ? 1 : 0.6)
-        .accessibilityLabel("Subtitles")
-        .accessibilityHint("Press and hold to clear attached audio and subtitles")
-    }
-
-    // Receives the file picker result for an alignment audio file and copies it to a temporary staging location.
-    @MainActor
-    func handleLyricAlignmentAudioSelection(_ result: Result<[URL], Error>) {
-        switch result {
-        case .success(let selectedURLs):
-            guard let sourceURL = selectedURLs.first else {
-                lyricAlignment.errorMessage = "No audio file was selected."
-                return
-            }
-            preparePendingSubtitleAudioSelection(from: sourceURL)
-        case .failure(let error):
-            lyricAlignment.errorMessage = error.localizedDescription
-        }
-    }
-
     // Aligns the note's lyrics to a newly picked audio file and persists the resulting cues.
-    // Progress rides on the shared `lyricAlignment` state, which the karaoke bar's chip renders —
-    // the subtitle popup closes as the run starts (see submitPendingSubtitleSelection) so the
-    // lyric view is the one place an alignment reports from, first run and re-align alike.
+    // Progress rides on the shared `lyricAlignment` state, which the karaoke bar's chip renders,
+    // so the lyric view is the one place an alignment reports from, first run and re-align alike.
     @MainActor
     func generateAlignedSRT(fromPreparedAudioURL sourceURL: URL, originalAudioFilename: String) async {
         guard lyricAlignment.isAligning == false else {
@@ -471,34 +396,6 @@ extension ReadView {
         }
         subtitleImport.pendingSubtitleTextGridURL = nil
         subtitleImport.pendingSubtitleTextGridFilename = ""
-    }
-
-    // Receives the file picker result for an existing subtitle file and stages it.
-    @MainActor
-    func handleSubtitleFileSelection(_ result: Result<[URL], Error>) {
-        switch result {
-        case .success(let urls):
-            guard let sourceURL = urls.first else {
-                lyricAlignment.errorMessage = "No subtitle file was selected."
-                return
-            }
-            do {
-                clearPendingSubtitleFileSelection()
-                let didAccess = sourceURL.startAccessingSecurityScopedResource()
-                defer { if didAccess { sourceURL.stopAccessingSecurityScopedResource() } }
-                let tempDir = FileManager.default.temporaryDirectory
-                let dest = tempDir.appendingPathComponent(UUID().uuidString + "_" + sourceURL.lastPathComponent)
-                try FileManager.default.copyItem(at: sourceURL, to: dest)
-                subtitleImport.pendingSubtitleFileURL = dest
-                subtitleImport.pendingSubtitleFilename = sourceURL.lastPathComponent
-            } catch {
-                lyricAlignment.errorMessage = error.localizedDescription
-            }
-        case .failure(let error):
-            if Self.isUserCancelledFileSelection(error) == false {
-                lyricAlignment.errorMessage = error.localizedDescription
-            }
-        }
     }
 
     // Clears staged subtitle file selection.
