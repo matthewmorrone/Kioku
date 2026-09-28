@@ -79,7 +79,7 @@ nonisolated enum WordVariants {
     }
 
     // Counts characters classified as kanji — used to detect a kanji↔kana script swap of one
-    // internal word within a kanjiForm alternate (see alternateSpellings' kanjiAlternates filter).
+    // internal word within a kanjiForm alternate (see alternateSpellings' same-count kanji-form filter).
     private static func kanjiCharacterCount(_ text: String) -> Int {
         text.reduce(0) { count, character in
             character.unicodeScalars.contains(where: ScriptClassifier.isKanjiScalar) ? count + 1 : count

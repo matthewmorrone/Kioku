@@ -263,10 +263,6 @@ extension SurfaceSheetViewController {
         saveButton.layer.cornerRadius = 8
         // Icon/tint/accessibility come from the shared three-state refresh so initial render
         // and post-toggle refreshes can't drift apart.
-        // let isSavedInitially = sheet?.sheetIsSavedProvider?() ?? false
-        // saveButton.setImage(UIImage(systemName: isSavedInitially ? "star.fill" : "star"), for: .normal)
-        // saveButton.tintColor = isSavedInitially ? .systemYellow : .secondaryLabel
-        // saveButton.accessibilityLabel = isSavedInitially ? "Unsave" : "Save"
         updateSaveButtonAppearance()
 
         openDetailButton = UIButton(type: .system)

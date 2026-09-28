@@ -212,7 +212,6 @@ extension ReadView {
                 }
 
                 document.segmentLatticeEdges = segmentationResult.latticeEdges
-                // segmenter.debugPrintLattice(for: text)
                 let baseEdges = segmentationResult.selectedEdges
                 let refreshedEdges: [LatticeEdge]
                 if let persistedSegments,
@@ -346,7 +345,6 @@ extension ReadView {
         segmentSelection.selectedSegmentLocation = tappedSegmentLocation
         segmentSelection.selectedHighlightRangeOverride = nil
         segmentSelection.selectedBounds = initialMergedEdgeBounds(for: tappedSegmentLocation)
-        // debugPrintLatticeSectionForCurrentSelection(at: tappedSegmentLocation)
 
         // Dictionary resources (segmenter trie/deinflector) may still be loading in the first
         // moment or two after app launch. A conjugated word's lookup needs preferredLemma, which

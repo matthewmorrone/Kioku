@@ -1,8 +1,8 @@
 import Foundation
 
 // The dictionary kanji headword and kana reading for a saved word, resolved the same way across
-// every quiz/study view (FlashcardCard, MultipleChoiceView, FlashcardTypedAnswerControl,
-// FillInBlankView). Centralizes only the kanjiForms/preferredKana computation, NOT gloss/meaning
+// every quiz/study view (FlashcardCard and the LearnWordPool that feeds Multiple Choice, Fill in
+// the Blank and the rest). Centralizes only the kanjiForms/preferredKana computation, NOT gloss/meaning
 // resolution, which genuinely differs by caller (FlashcardCard stacks every selected meaning for
 // its back face; Multiple Choice/Fill in the Blank pick a single gloss via fallback precedence) and
 // stays defined at each call site.

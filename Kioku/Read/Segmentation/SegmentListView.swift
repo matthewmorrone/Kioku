@@ -148,7 +148,7 @@ struct SegmentListView: View {
     // single expression for the checker to solve. The checkmark/questionmark glyph is a
     // Learned/Not-Learned mark on a SAVED word — gated on isSaved so unsaving a learned/not-learned
     // word visibly reverts to a hollow star instead of leaving the same glyph on screen
-    // (ReviewStore's mark is keyed by canonicalEntryID and outlives the SavedWord card, so
+    // (WordsStore's review mark is keyed by canonicalEntryID and outlives the SavedWord card, so
     // learnedState alone can't tell "still saved" from "not").
     private func starIcon(isSaved: Bool, learnedState: LearnedState) -> some View {
         let icon: String

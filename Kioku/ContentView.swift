@@ -187,7 +187,7 @@ struct ContentView: View {
         // Tapping a source-note name in Word Detail's "Saved" section routes through here — see
         // ReadNoteNavigation's doc comment for why a singleton instead of a threaded callback.
         // Opens the note and hands ReadView the surface to scroll/select once it's active; ReadView
-        // clears pendingReadScrollSurface itself once it's consumed it (see ReadView+Lifecycle.swift).
+        // clears pendingReadScrollTarget itself once it's consumed it (see ReadView+Lifecycle.swift).
         .onChange(of: readNoteNavigation.pendingTarget) { _, target in
             guard let target, let note = notesStore.note(withID: target.noteID) else { return }
             selectedReadNote = note

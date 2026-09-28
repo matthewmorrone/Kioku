@@ -1,7 +1,7 @@
 import Foundation
 
 // One word on a Matching board: the text shown in the left column, the text shown in the right
-// column, and what ReviewStore needs to record the result against the word.
+// column, and what WordsStore needs to record the result against the word.
 struct MatchingPair: Identifiable, Equatable {
     // The word's canonical entry id — also what links a left tile to its right tile.
     let id: Int64

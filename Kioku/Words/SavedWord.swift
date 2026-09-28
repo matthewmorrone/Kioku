@@ -58,7 +58,7 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
     // When the word was first saved — used for newest/oldest sort.
     let savedAt: Date
     // Whole-sense selections. Mutually exclusive with selectedGlosses *for the same sense* —
-    // see WordsStore.applySelection for the enforced invariant. Empty means "no whole-sense
+    // see WordsStore.setSelection, whose callers apply the exclusion. Empty means "no whole-sense
     // selections."
     var selectedSenseIDs: [Int64]
     // Gloss-level selections — one entry per specific synonym the user pinned. Mutually
@@ -79,7 +79,7 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
     var learnedMark: LearnedState
     var mastered: Bool
     // Transient "currently in the wrong pile" flag — true after an "again" answer, cleared by the
-    // next "correct" one. Was ReviewStore.markedWrong.
+    // next "correct" one.
     var markedWrong: Bool
     // SRS/accuracy history. Nil means never reviewed.
     var reviewStats: ReviewWordStats?
@@ -160,7 +160,7 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
         // their true history further back isn't recoverable.
         hasBeenOrphaned = try c.decodeIfPresent(Bool.self, forKey: .hasBeenOrphaned) ?? sourceNoteIDs.isEmpty
         // Cards persisted before the ReviewStore merge decode with the neutral/never-reviewed
-        // defaults — WordsStore's one-time migration (mergeLegacyReviewStoreDataIfNeeded) backfills
+        // defaults — WordsStore's one-time migration (mergingLegacyReviewStoreData) backfills
         // real values from the old kioku.review.* keys on first load after the update.
         learnedMark = try c.decodeIfPresent(LearnedState.self, forKey: .learnedMark) ?? .unmarked
         mastered = try c.decodeIfPresent(Bool.self, forKey: .mastered) ?? false

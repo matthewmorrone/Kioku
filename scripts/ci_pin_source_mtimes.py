@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Give every tracked file (repo + submodules) an mtime derived from its content hash.
+"""Give every tracked file an mtime derived from its content hash.
 
 CI only. A fresh checkout stamps every file with the checkout time, so a DerivedData cache restored
 from another run sees every source as modified and recompiles all of it. Deriving the mtime from the
@@ -26,32 +26,20 @@ def tracked_blobs(repo):
             continue
         meta, path = record.split(b"\t", 1)
         mode, sha, _stage = meta.split(b" ")
-        # 160000 is a submodule gitlink; its files are stamped by the submodule pass.
-        if mode == b"160000":
-            continue
         yield os.path.join(repo, os.fsdecode(path)), sha.decode()
 
 
-# Lists the checked-out submodule roots, so their sources (local SPM packages) are stamped too.
-def submodule_roots(repo):
-    out = subprocess.run(["git", "-C", repo, "submodule", "foreach", "--quiet", "--recursive",
-                          "echo $toplevel/$sm_path"],
-                         check=True, capture_output=True, text=True).stdout
-    return [line for line in out.splitlines() if line]
-
-
-# Stamps every tracked file in the repo and its submodules and reports how many were touched.
+# Stamps every tracked file in the repo and reports how many were touched.
 def main():
     root = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else ".")
     count = 0
-    for repo in [root] + submodule_roots(root):
-        for path, sha in tracked_blobs(repo):
-            # A tracked symlink is stamped on the link itself, never on its target.
-            if not os.path.lexists(path):
-                continue
-            stamp = BASE_EPOCH + int(sha[:12], 16) % SPAN_SECONDS
-            os.utime(path, (stamp, stamp), follow_symlinks=False)
-            count += 1
+    for path, sha in tracked_blobs(root):
+        # A tracked symlink is stamped on the link itself, never on its target.
+        if not os.path.lexists(path):
+            continue
+        stamp = BASE_EPOCH + int(sha[:12], 16) % SPAN_SECONDS
+        os.utime(path, (stamp, stamp), follow_symlinks=False)
+        count += 1
     print(f"Pinned mtimes of {count} tracked files to their content hashes")
 
 

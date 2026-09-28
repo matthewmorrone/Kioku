@@ -8,9 +8,9 @@ struct MultipleChoiceQuestion: Identifiable {
     let options: [String]
     let correct: String
     // Which of the 6 directions this question exercises, so answering it feeds that direction's
-    // own evidence in ReviewStore (see QuestionDirection).
+    // own evidence in WordsStore (see QuestionDirection).
     let direction: QuestionDirection
-    // Carried from the source item so answering can tell ReviewStore which promotion bar applies.
+    // Carried from the source item so answering can tell WordsStore which promotion bar applies.
     let hasKanjiForm: Bool
     // Which side of the word the options are written on, and every answer that would have been
     // accepted — both needed by the on-device refinement pass, which has to know what kind of
@@ -28,7 +28,7 @@ struct MultipleChoiceQuestion: Identifiable {
 }
 
 // Renders the multiple-choice study mode: home configuration, active quiz, and summary.
-// Modeled on FlashcardsView (same scope/note pickers, same ReviewStore grading) but objective:
+// Modeled on FlashcardsView (same scope/note pickers, same WordsStore grading) but objective:
 // a tap is unambiguously right or wrong, so it grades automatically instead of self-assessment.
 // Major sections: toolbar, question header, prompt + option buttons, review home form, summary.
 struct MultipleChoiceView: View {
@@ -466,7 +466,7 @@ struct MultipleChoiceView: View {
         )
     }
 
-    // Records the answer against ReviewStore (correct feeds SRS, wrong marks for relearn) and
+    // Records the answer against WordsStore (correct feeds SRS, wrong marks for relearn) and
     // freezes the option buttons so the feedback colours stay until the user taps Next.
     private func answer(_ option: String, correct: String) {
         guard selected == nil, didReveal == false else { return }

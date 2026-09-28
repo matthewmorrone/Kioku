@@ -10,7 +10,7 @@ struct FillInBlankQuestion: Identifiable {
     // The accepted answers. One string for a Japanese answer; every gloss of the word's selected
     // senses when the answer is English, where "to eat" and "eat" are the same answer.
     let accepted: [String]
-    // Whether the word has a kanji form, so answering can tell ReviewStore which promotion bar
+    // Whether the word has a kanji form, so answering can tell WordsStore which promotion bar
     // applies (see `QuestionDirection.applicable`).
     let hasKanjiForm: Bool
 }
@@ -196,7 +196,7 @@ struct FillInBlankView: View {
         }
     }
 
-    // Grades the typed answer against the current question and records it against ReviewStore.
+    // Grades the typed answer against the current question and records it against WordsStore.
     private func check(question: FillInBlankQuestion) {
         guard typedAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else { return }
         let result = AnswerScorer.grade(input: typedAnswer, anyOf: question.accepted)

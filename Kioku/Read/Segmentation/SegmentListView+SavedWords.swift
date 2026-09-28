@@ -60,7 +60,7 @@ extension SegmentListView {
         // Default sense IDs are only consumed in WordsStore.toggle's create-new-card
         // branch — for an existing card the toggle just flips encountered-surface /
         // note membership. So we only need to pay the 4-query SQL materialization
-        // (lookupEntry → fetchHeader + kanji + kana + senses) on the first save of
+        // (lookupEntry → fetchEntryHeader + kanji + kana + senses) on the first save of
         // a never-saved word. For toggles of existing cards (the common case: unstar,
         // re-star, toggle from another note) we skip the SQL entirely and the tap
         // path is purely in-memory.

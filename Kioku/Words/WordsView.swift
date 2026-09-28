@@ -116,8 +116,6 @@ struct WordsView: View {
     // Opt-in Japanese theme; when on, the row's audio + save icons render white (see wordRow).
     @AppStorage(Theme.storageKey) var japaneseTheme = false
     @State var searchText = ""
-    // convertedKana removed — only the deleted startSearchTask duplicate read it;
-    // the live search path derives romaji→kana inline in runDictionarySearch.
     @State var searchMode: DictionarySearchMode = .japanese
     @State var searchSortMode: DictionarySearchSortMode = .relevance
     @State var searchCommonWordsOnly = false
@@ -199,7 +197,7 @@ struct WordsView: View {
     @State var isSearchFieldFocused: Bool = false
     // Materialized dictionary entries keyed by canonical entry id, populated on view
     // appear and whenever the history list grows. Lets historyContent reuse the
-    // entryRow layout (kanji+reading+gloss+star) without per-row SQL.
+    // wordRow layout (kanji+reading+gloss+star) without per-row SQL.
     @State var materializedHistory: [Int64: DictionaryEntry] = [:]
     // Saved kanji rows in the Saved tab need full KanjiInfo (meanings, grade, JLPT)
     // to render the kanji-tile row. We hydrate them off-main into this cache keyed
@@ -618,7 +616,7 @@ struct WordsView: View {
     }
 
     // Batch-materializes all .entry-kind history rows AND saved-words rows so the
-    // unified entryRow can render them with the same kanji+reading+gloss+star layout
+    // unified wordRow can render them with the same kanji+reading+gloss+star layout
     // as search results. One SQL roundtrip total — re-runs whenever the history set
     // or the saved-words set changes.
     func refreshMaterializedHistory() {

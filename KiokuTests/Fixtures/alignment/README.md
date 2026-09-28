@@ -27,27 +27,15 @@ The fixture name appears in test function names as `testQuality_<Name>()` (in
 
 ## Adding a fixture
 
-1. **Run the oracle generator** with your audio + lyric text:
+1. **Build the oracle** in `~/Projects/alignment`: put the song's mp3 and lyric text in
+   `oracles/<title>.{mp3,txt}`, produce the three voters' timings (stable-ts Whisper large-v3,
+   Japanese wav2vec2, MMS fp32), run `consensus.py` to write `consensus/<title>.srt` and
+   `.disputed.txt`, then `install_consensus_fixtures.py` to copy it here as a fixture (it creates
+   the audio / note / tolerance files for a song that has none yet).
 
-   ```bash
-   python3 scripts/generate-alignment-oracle.py \
-       --audio path/to/song.mp3 \
-       --text path/to/lyrics.txt \
-       --name <fixture-name>
-   ```
-
-   First run downloads the large-v3 model (~3 GB). Subsequent runs reuse it
-   from `~/.cache/whisper/`.
-
-2. **Spot-check `ground-truth.srt` by ear.** Open it in the Kioku subtitle
-   editor (or a desktop SRT editor) and scrub through 3-5 cues. If the oracle
-   is wrong, the tests measure the wrong thing — fix it by hand or regenerate
-   with a different `initial_prompt`. Common issues:
-
-   - Cue text is right but timing is off (the oracle has a known weak spot)
-   - Some cue is missing (large-v3 mis-heard a quiet vocal — usually rare with
-     `initial_prompt` set; if it happens, edit the SRT by hand)
-   - An extra cue appears (background noise mistaken for vocal — delete it)
+2. **Spot-check `ground-truth.srt` by ear** in a desktop SRT editor: scrub through 3-5 cues. If
+   the oracle is wrong, the tests measure the wrong thing — fix it by hand. Lines the voters
+   disputed carry a 0–0 span and aren't graded.
 
 3. **Tune `tolerance.json` if needed.** Defaults are conservative; songs with
    particularly fast/slow vocals or heavy reverb may need looser tolerance.
@@ -81,7 +69,9 @@ failure mode this test is guarding against.
 
 ## Running the tests
 
-The whole quality suite is slow (Whisper-in-the-loop, 30-90s per fixture).
+The whole quality suite is slow (vocal isolation + the MMS aligner on each song). It runs on
+the phone, not the simulator; `scripts/alignment-replay` reproduces the aligner on the Mac in
+about a second per song.
 
 Each test self-skips when its fixture directory isn't in the test bundle —
 adding a fixture (and updating the Xcode test target so the dir ships with
@@ -92,7 +82,7 @@ To run all present quality tests:
 ```bash
 xcodebuild test \
     -project Kioku.xcodeproj -scheme Kioku \
-    -destination 'platform=iOS Simulator,id=...' \
+    -destination 'platform=iOS,id=<device id>' \
     -only-testing:KiokuTests/AlignmentQualityTests \
     -parallel-testing-enabled NO
 ```

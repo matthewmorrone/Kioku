@@ -313,9 +313,8 @@ final class SongLiveListenController: NSObject, ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + gap, execute: item)
     }
 
-    // The silence duration after a finished step, by what kind of segment it was — matches the
-    // old file-render's per-kind silences (SongListenAudioSink.writeSilence) so the pacing of
-    // the listening experience is unchanged.
+    // The silence duration after a finished step, by what kind of segment it was — sets the
+    // pacing of the listening experience.
     private func gapSeconds(after kind: SongListenSegmentKind?) -> Double {
         switch kind {
         case .sentence, nil: return 0.5
@@ -358,8 +357,7 @@ final class SongLiveListenController: NSObject, ObservableObject {
         synthesizer.speak(utterance)
     }
 
-    // A run finished: move to the next run in this segment (a brief inter-voice beat, same as
-    // the old sink's writeSilenceBetweenVoices), or complete the whole step once the last run
+    // A run finished: move to the next run in this segment (a brief inter-voice beat), or complete the whole step once the last run
     // is done.
     private func handleUtteranceFinished() {
         guard isPlaying else { return }

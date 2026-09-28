@@ -22,7 +22,7 @@ nonisolated enum StudyWordPool {
     // The words eligible for a session: note filter AND JLPT filter AND scope, with words the user
     // has already learned dropped when `excludeLearned` is on (the default — see
     // LearnedSettings.excludeLearnedKey). Both `.learned` and `.mastered` go: mastered is strictly
-    // further along, and `masteryStage` is the app's one definition of that ladder (see ReviewStore).
+    // further along, and `masteryStage` is the app's one definition of that ladder (see WordsStore.masteryStage(for:)).
     //
     // Preset sessions (Coverage drilling into a specific level × stage cell, including the Learned
     // cell) deliberately do NOT route through here — they hand their exact word set to the view.

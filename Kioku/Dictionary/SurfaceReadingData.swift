@@ -1,7 +1,6 @@
 import Foundation
 
 // Per-surface reading and frequency data, built once from the materialized surface_readings table.
-// Replaces the three separate startup maps (readingBySurface, readingCandidatesBySurface, frequencyDataBySurface).
 nonisolated struct SurfaceReadingData: Sendable {
     // Readings ordered by JPDB rank (best first), capped at 8.
     let readings: [String]

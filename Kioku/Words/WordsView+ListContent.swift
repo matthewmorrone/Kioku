@@ -45,8 +45,6 @@ extension WordsView {
         // means the user used the kana word — showing the entry's first kanji form (貴方, 例え)
         // attaches script they never saw. Kanji-bearing surfaces keep the kanji headword.
         let surfaceIsKana = surface.isEmpty == false && ScriptClassifier.containsKanji(surface) == false
-        // let headword = entry?.kanjiForms.first?.text
-        // let reading = entry?.kanaForms.first?.text
         let headword = surfaceIsKana ? nil : entry?.kanjiForms.first?.text
         // A reading the user pinned with the detail view's reading switcher wins over the entry's
         // first kana form (涙 shows なだ, not なみだ, once switched) — otherwise the switch appeared

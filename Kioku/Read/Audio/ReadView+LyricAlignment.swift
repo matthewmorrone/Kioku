@@ -8,12 +8,12 @@ import LyricAlignment
 nonisolated final class AlignmentCancellationToken: @unchecked Sendable {
     private let lock = NSLock()
     private var _isCancelled = false
-    // Thread-safe read of the cancellation flag, polled from whisper.cpp inference threads.
+    // Thread-safe read of the cancellation flag, polled from the aligner's background work.
     var isCancelled: Bool {
         lock.lock(); defer { lock.unlock() }
         return _isCancelled
     }
-    // Signals cancellation so the next abort_callback poll returns true.
+    // Signals cancellation so the aligner's next cancellation check returns true.
     func cancel() {
         lock.lock(); _isCancelled = true; lock.unlock()
     }
@@ -106,7 +106,7 @@ extension ReadView {
         )
     }
 
-    // Cancels the in-progress alignment. The abort_callback polls this flag.
+    // Cancels the in-progress alignment. The aligner's cancellationCheck polls this flag.
     @MainActor
     func cancelAlignment() {
         subtitleImport.isCancellingAlignment = true

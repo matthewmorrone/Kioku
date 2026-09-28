@@ -111,9 +111,6 @@ extension ReadView {
         // though it persists segments, so precomputed-but-unedited notes load with the reset
         // button disabled; notes the user actually customized load with it enabled.
         document.hasManualSegmentationEdits = noteToLoad.hasUserEditedSegments
-        // if let encoded = try? JSONEncoder().encode(noteToLoad), let json = String(data: encoded, encoding: .utf8) {
-        //     print("[NOTE LOAD] \(json)")
-        // }
         if shouldActivateEditModeOnLoad {
             editModeScroll.isEditMode = true
             shouldActivateEditModeOnLoad = false

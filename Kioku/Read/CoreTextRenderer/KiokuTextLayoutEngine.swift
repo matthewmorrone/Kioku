@@ -84,7 +84,7 @@ final class KiokuTextLayoutEngine {
     // view can draw per-segment without re-deriving line metrics.
     private(set) var packedLines: [KiokuSegmentPackedLayout.LineLayout] = []
     // True iff the engine is currently using the segment-packed layout. False = classic
-    // CT-typesetter layout. Toggled by `setSegmentPackingEnabled`.
+    // CT-typesetter layout. Toggled by `setSegmentPacking(enabled:…)`.
     private(set) var isSegmentPackingEnabled: Bool = false
     // Mirrors the renderer's wrapping toggle into the segment-packed code path. Classic CT layout
     // already honors `paragraph.lineBreakMode = .byClipping`; the packer doesn't read paragraph

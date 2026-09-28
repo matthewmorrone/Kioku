@@ -11,5 +11,4 @@ struct RichTextEditorStyleSignature: Equatable {
     // isEditMode deliberately excluded: applyTypography's output is identical in both modes,
     // and including it made every edit↔view toggle reset attributedText (full TK2 re-typeset
     // of the entire note) — the toggle-lag bug.
-    // let isEditMode: Bool
 }

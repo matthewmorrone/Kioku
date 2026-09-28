@@ -15,7 +15,7 @@ struct DirectionStats: Codable, Hashable {
     }
 }
 
-// Stores cumulative review results for one word, keyed by canonicalEntryID in ReviewStore.
+// Stores cumulative review results for one word, keyed by canonicalEntryID in WordsStore.
 // Computed properties derive accuracy metrics from the stored counters.
 // SRS scheduling fields (`dueDate`, `consecutiveCorrect`) added in Tier 3; older JSON without
 // these fields is decoded with defaults so existing review history migrates forward intact.

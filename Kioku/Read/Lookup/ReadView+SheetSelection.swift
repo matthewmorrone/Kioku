@@ -671,7 +671,7 @@ extension ReadView {
         // construction — so common kana pieces produced by splitting (こと, する, の, …) fall through
         // both checks above and would render a bare "–". Consult the per-entry-propagated rank map
         // (the same source the segmenter scores against) for the surface and then its lemmas,
-        // synthesizing a FrequencyData so normalizedSheetFrequencyScore yields the same number it
+        // synthesizing a FrequencyData so the sheet's frequency score is the same number it
         // would for a ranked kanji piece. Keyed by candidate surface; the only reader reduces over
         // values, so the key is immaterial.
         for candidate in [surface] + lemmas {

@@ -207,7 +207,7 @@ extension ReadView {
         return (locations, learnedLocations, notLearnedLocations)
     }
 
-    // UTF-16 locations of segments whose word is marked learned or mastered (ReviewStore),
+    // UTF-16 locations of segments whose word is marked learned or mastered (WordsStore),
     // when the "hide furigana for known words" toggle is on — the Read-tab display option
     // that lets a reader stop seeing readings for words they already know. Memoized: `body`
     // re-evaluates far more often than the inputs (wordsStore.words, wordsStore's
@@ -250,7 +250,7 @@ extension ReadView {
     // The heavy computation behind furiganaSuppressedForKnownWordsSegmentLocations, run only
     // on a memo miss. Resolves each segment's surface to a canonicalEntryID via the saved
     // words' encountered-surface sets (lemma-bridged, same technique as the saved-glow
-    // computation above), then checks that entry against ReviewStore's learned/mastered sets.
+    // computation above), then checks that entry against WordsStore's learned/mastered sets.
     // Words that were never saved have no canonicalEntryID to check and are left alone.
     private func computeFuriganaSuppressedForKnownWordsSegmentLocations() -> Set<Int> {
         guard wordsStore.learned.isEmpty == false || wordsStore.mastered.isEmpty == false else {

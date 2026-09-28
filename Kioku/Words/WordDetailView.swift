@@ -378,7 +378,7 @@ struct WordDetailView: View {
                     // Derived forms (弱さ, お酒, 食べ始める …) describe their derivation in place
                     // of the bare POS tag. ～がり屋 returns a structured morpheme list and
                     // renders as a chip strip; compound verbs get their own gloss line below
-                    // instead (see compoundVerbGlossLine) rather than the summary sentence here.
+                    // instead (the compoundVerbParts gloss line) rather than the summary sentence here.
                     if let morphemes = derivation?.morphemes {
                         derivationMorphemeChips(morphemes)
                     } else if derivation?.compoundVerbParts == nil, let posSummary = derivation?.summary ?? entryPOSSummary {

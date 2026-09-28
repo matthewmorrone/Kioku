@@ -305,7 +305,7 @@ extension ReadView {
     // (e.g. ものがたり at [0, 2) over the pre-split 物語) does not fit any narrower successor
     // segment and is dropped here. Entries that DO fit inside their segment are kept, even if
     // they fragment a kanji run — replace-on-overlap backfill collapses those into a single
-    // span when the recompute produces a wider compound reading, and synthesizeCompoundReadings
+    // span when the recompute produces a wider compound reading, and furiganaAfterSynthesizingCompoundReadings
     // concatenates them when the recompute has no compound reading to offer.
     func pruneFuriganaForSegmentation(
         furiganaByLocation: [Int: String],

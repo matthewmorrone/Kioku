@@ -371,7 +371,7 @@ final class NotesAudioStore: NotesAttachmentDeleting {
     // UUIDs are exactly 36 chars with 4 internal hyphens, so splitting the stem on the first
     // hyphen would lose UUID segments into what should be the base — the prefix has to be
     // detected by fixed length + UUID validity. Pinned by
-    // NotesAudioStoreTests.testPreferredSubtitleExportFilenameUsesSRTBasenameWhenPresent.
+    // NotesAudioStoreTests.testPreferredSubtitleExportFilenameDerivesFromAudioBasename.
     private func readableFilename(fromStoredURL url: URL, defaultExtension: String) -> String {
         let stem = url.deletingPathExtension().lastPathComponent
         let ext = url.pathExtension.isEmpty ? defaultExtension : url.pathExtension

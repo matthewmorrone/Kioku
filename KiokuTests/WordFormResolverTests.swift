@@ -2,7 +2,7 @@ import XCTest
 @testable import Kioku
 
 // Characterizes WordFormResolver — the shared kanji/kana computation every quiz/study view now
-// uses, factored out of FlashcardCard/MultipleChoiceView/FlashcardTypedAnswerControl/FillInBlankView.
+// uses, shared by FlashcardCard and LearnWordPool.
 @MainActor
 final class WordFormResolverTests: XCTestCase {
     var store: DictionaryStore!

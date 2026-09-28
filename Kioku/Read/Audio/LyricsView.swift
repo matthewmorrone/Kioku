@@ -223,9 +223,8 @@ struct LyricsView: View {
     @AppStorage(LyricsPopupSettings.showSegmentationKey) var isSegmentationVisible: Bool = LyricsPopupSettings.defaultShowSegmentation
     @AppStorage(LyricsPopupSettings.showFuriganaKey) var isFuriganaVisible: Bool = LyricsPopupSettings.defaultShowFurigana
 
-    // Previously three variants (appleMusic / accentBar / focusCard) selectable from Settings.
-    // Collapsed to one canonical style: centered text, no accent stripe, scale + opacity + blur
-    // fall off with distance from the active cue.
+    // One style: centered text, no accent stripe, scale + opacity + blur fall off with distance
+    // from the active cue.
 
     var body: some View {
         GeometryReader { geo in

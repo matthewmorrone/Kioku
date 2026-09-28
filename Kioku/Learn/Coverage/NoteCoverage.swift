@@ -10,7 +10,7 @@ struct NoteCoverage: Equatable {
     let total: Int
     // How many of them are Learned or Mastered (Mastered implies Learned).
     let learnedCount: Int
-    // How many are due for review right now (disjoint from New; see ReviewStore.isDueForReview).
+    // How many are due for review right now (disjoint from New; see WordsStore.isDueForReview).
     let dueCount: Int
 
     // Note-wide learned fraction (0…1); 0 when the note has no words.

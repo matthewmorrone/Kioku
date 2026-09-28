@@ -47,11 +47,10 @@ public struct AlignmentResult {
     }
 }
 
-/// One forced-aligned token within a single line: its DTW timestamp plus the
+/// One forced-aligned token within a single line: its CTC onset time plus the
 /// span of the *line* text it covers, expressed in UTF-16 units so it maps
 /// directly onto Kioku's `CueCharTiming` checkpoints without re-tokenizing.
-/// `start` is in seconds, already offset to the original audio timeline (the
-/// window-relative time has had the window start added back).
+/// `start` is in seconds on the original audio timeline.
 public struct AlignedToken {
     public let start: Double
     public let charOffsetUTF16: Int

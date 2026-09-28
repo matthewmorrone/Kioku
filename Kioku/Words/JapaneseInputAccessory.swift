@@ -100,8 +100,8 @@ final class JapaneseInputAccessory: NSObject {
     }
 
     // Constructs the persistent toggle bar host once and assigns it as the responder's
-    // inputAccessoryView. The bar's onSelect routes to applyMode; refreshAccessoryBar then
-    // updates the active-highlight by reassigning rootView.
+    // inputAccessoryView. The bar's onSelect routes to applyMode, which updates the
+    // active-highlight by reassigning rootView.
     private func installAccessoryBar() {
         guard let responder else { return }
         let host = UIHostingController(rootView: makeBar())

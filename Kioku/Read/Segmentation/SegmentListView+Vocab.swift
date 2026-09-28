@@ -8,7 +8,7 @@ import SwiftUI
 // directly are internal; everything used only within this file stays `private`.
 extension SegmentListView {
     // The ONE rule for "does this word count as saved" — shared by the chip's checked state, the
-    // Save/Remove baseline below, AND CoverageDetailView's total (fed via noteWordIdentities), so
+    // Save/Remove baseline below, AND CoverageDetailView's total (fed via savedIdentitiesForThisNote), so
     // all three screens' numbers agree. A word is saved or it isn't; which note it was saved from
     // doesn't matter.
     fileprivate func vocabRowCountsAsSaved(_ identity: String) -> Bool {

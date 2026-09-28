@@ -30,7 +30,7 @@ enum DictionaryDownloadError: LocalizedError {
 }
 
 // Downloads and stores dictionary.sqlite in Application Support, with progress reporting for
-// the first-launch gating UI (see DictionaryDownloadGateView).
+// the first-launch status banner (see DictionaryDownloadBanner).
 @Observable
 final class DictionaryDownloadManager {
     // Pinned to a specific release tag, not a moving tag: a moving tag means a future edit to the
