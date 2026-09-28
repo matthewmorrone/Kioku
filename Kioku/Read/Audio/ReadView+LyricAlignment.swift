@@ -562,6 +562,12 @@ extension ReadView {
             } catch {
                 lyricAlignment.errorMessage = error.localizedDescription
             }
+        } else if lyricsForAlignment.isEmpty, #available(iOS 26.0, *) {
+            // No subtitle file, TextGrid or lyrics — transcribe the audio into this note instead.
+            await transcribeImportedAudioIntoNote(
+                preparedAudioURL: audioURL,
+                originalAudioFilename: subtitleImport.pendingSubtitleAudioFilename
+            )
         } else {
             // No subtitle file or TextGrid — run forced alignment.
             await generateAlignedSRT(

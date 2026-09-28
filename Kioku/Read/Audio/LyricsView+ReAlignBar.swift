@@ -3,7 +3,7 @@ import SwiftWhisperAlign
 
 // Top action bar for the karaoke view: Re-align (one forced-alignment pass over the whole song;
 // press and hold for Re-align from Scratch, which isolates the vocals again first), the
-// Mix / Vocals / Instrumental source toggle, Replace Audio, and the settings-popup gear (LyricsView+SettingsPopup.swift). Not private: called from panel(geo:) in
+// Mix / Vocals / Instrumental source toggle, the audio menu (Replace / Remove), and the settings-popup gear (LyricsView+SettingsPopup.swift). Not private: called from panel(geo:) in
 // LyricsView.swift.
 extension LyricsView {
     // The attached song's audio file, which keys its cached vocal stem.
@@ -102,13 +102,17 @@ extension LyricsView {
                 .accessibilityLabel("Playing \(audioSource.label). Tap to switch to \(audioSource.next.label).")
             }
 
-            // Replace Audio: pick a different song file (optionally with srt / TextGrid) for this
-            // note. Hidden mid-run so a replacement can't race the alignment in flight.
+            // Audio menu: Replace Audio picks a different song file (optionally with srt / TextGrid);
+            // Remove Audio deletes the audio and its cues after a confirmation. Hidden mid-run so
+            // neither can race the alignment in flight.
             if isReAligning == false {
-                Button {
-                    onReplaceAudio()
+                Menu {
+                    Button("Replace Audio…", systemImage: "waveform") { onReplaceAudio() }
+                    Button("Remove Audio", systemImage: "trash", role: .destructive) {
+                        isShowingRemoveAudioConfirm = true
+                    }
                 } label: {
-                    Image(systemName: "waveform.badge.plus")
+                    Image(systemName: "waveform")
                         .scaledFont(size: 12, weight: .semibold)
                         .foregroundStyle(Color.secondary)
                         .padding(.horizontal, 12)
@@ -116,8 +120,10 @@ extension LyricsView {
                         .background(Color.secondary.opacity(0.16))
                         .clipShape(Capsule())
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Replace Audio")
+                .accessibilityLabel("Audio")
+                .confirmationDialog("Remove this note's audio?", isPresented: $isShowingRemoveAudioConfirm, titleVisibility: .visible) {
+                    Button("Remove Audio", role: .destructive) { onRemoveAudio() }
+                }
             }
 
             Button {

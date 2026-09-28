@@ -153,6 +153,43 @@ extension ReadView {
         }
     }
 
+    // Audio imported (♪ / Replace Audio) onto a note with no text: there are no lyrics to align, so
+    // transcribe the audio into this note and attach it with the transcript's cues. Sung audio has
+    // its vocals isolated first. Progress shows as the note's status line.
+    @available(iOS 26.0, *)
+    func transcribeImportedAudioIntoNote(preparedAudioURL url: URL, originalAudioFilename: String) async {
+        guard subtitleImport.isPerformingAudioTranscription == false else { return }
+        subtitleImport.isPerformingAudioTranscription = true
+        defer { subtitleImport.isPerformingAudioTranscription = false }
+
+        flushPendingNotePersistenceIfNeeded()
+        let noteID = document.activeNoteID ?? beginStreamingTranscriptionNote(totalChunks: 1)
+        setTranscriptionStatusNote(id: noteID, statusLine: "Checking audio…", body: "")
+        do {
+            let isolate = await AudioContentClassifier.classify(url) == .singing
+            setTranscriptionStatusNote(id: noteID, statusLine: isolate ? "Isolating vocals…" : "Transcribing audio…", body: "")
+            let cues = try await AudioTranscriptionService.transcribe(
+                url: url,
+                isolateVocals: isolate,
+                onStatus: { [self] label in
+                    // A status hop that lands after the run finished must not overwrite the transcript.
+                    Task { @MainActor in
+                        guard subtitleImport.isPerformingAudioTranscription else { return }
+                        setTranscriptionStatusNote(id: noteID, statusLine: label, body: "")
+                    }
+                }
+            )
+            try saveAlignedSubtitles(cues: cues, audioURL: url, originalAudioFilename: originalAudioFilename, noteID: noteID)
+            finalizeStreamingTranscriptionNote(
+                id: noteID,
+                finalText: SubtitleParser.assembleNoteContent(from: cues),
+                attachmentID: notesStore.note(withID: noteID)?.audioAttachmentID
+            )
+        } catch {
+            setTranscriptionStatusNote(id: noteID, statusLine: "Transcription failed", body: error.localizedDescription)
+        }
+    }
+
     // Creates and selects a placeholder note so chunked transcription text can stream into the read area while recognition is running.
     func beginStreamingTranscriptionNote(totalChunks: Int) -> UUID {
         flushPendingNotePersistenceIfNeeded()

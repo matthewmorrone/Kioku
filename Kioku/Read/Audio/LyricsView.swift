@@ -49,6 +49,9 @@ struct LyricsView: View {
     // The top bar's Replace Audio action: opens ReadView's audio/srt/TextGrid picker, whose import
     // replaces this note's attachment.
     var onReplaceAudio: () -> Void = {}
+    // The top bar's Remove Audio action: deletes the note's audio and its cues (after the bar's
+    // confirmation), which also closes this view.
+    var onRemoveAudio: () -> Void = {}
     // True while a whole-song re-align is running, with `reAlignMessage` carrying the live
     // progress text. Drives the top bar's spinner + label.
     var isReAligning: Bool = false
@@ -57,6 +60,7 @@ struct LyricsView: View {
     var onCancelReAlign: () -> Void = {}
     var isCancellingReAlign: Bool = false
     @State var isShowingCancelReAlignConfirm = false
+    @State var isShowingRemoveAudioConfirm = false
     // The top bar's Mix / Vocals / Instrumental toggle; ReadView swaps the playing file.
     var audioSource: LyricsAudioSource = .mix
     var isSwitchingAudioSource: Bool = false
