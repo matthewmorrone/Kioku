@@ -211,6 +211,31 @@ final class SegmenterIntegrationTests: XCTestCase {
         XCTAssertEqual(derived?.compoundVerbParts?.baseGloss, "to walk")
     }
 
+    // 歌い続けて must split as 歌い + 続けて (歌う + 続ける). Its tail "い続けて" also deinflects (続ける→る) to
+    // the real auxiliary いる, so without a verb gate on the head the noun split 歌 + い続けて wins,
+    // DerivationAnalyzer rejects the noun base, and the lookup sheet shows only 歌う.
+    func testAuxiliaryVerbSplitRejectsNounHeadForSingContinuing() throws {
+        let resources = try sharedResources()
+        let edges = try buildLattice(for: "歌い続けて")
+        let posTags: (String) -> [String] = { lemma in
+            let entries = (try? resources.dictionaryStore.lookup(surface: lemma, mode: .kanjiAndKana)) ?? []
+            return entries.flatMap { $0.senses.compactMap(\.pos) }.flatMap { $0.components(separatedBy: ",") }
+        }
+
+        let split = LatticeEdge.auxiliaryVerbSplit(
+            from: edges,
+            auxiliaries: DerivationAnalyzer.auxiliaryVerbs,
+            lemmaResolver: { resources.segmenter.preferredLemma(for: $0, preferring: DerivationAnalyzer.auxiliaryVerbs) },
+            headValidator: { DerivationAnalyzer.anyResolvesToVerb(resources.segmenter.lemmaCandidates(for: $0), baseResolver: posTags) }
+        )
+        XCTAssertEqual(split, ["歌い", "続けて"])
+
+        let resolvedSplit = (split ?? []).map { resources.segmenter.preferredLemma(for: $0, preferring: DerivationAnalyzer.auxiliaryVerbs) ?? $0 }
+        let derived = DerivationAnalyzer.analyze(surface: "歌い続けて", components: resolvedSplit, baseResolver: posTags)
+        XCTAssertEqual(derived?.compoundVerbParts?.base, "歌う")
+        XCTAssertEqual(derived?.compoundVerbParts?.auxiliary, "続ける")
+    }
+
     // Verifies mixed-script passive stems recover the underlying godan dictionary lemma.
     func testDeinflectorRecoversGodanPassiveLemmaForMixedScriptStem() throws {
         let candidates = try deinflectionCandidates(for: "導かれ")

@@ -106,10 +106,16 @@ struct LatticeEdge {
     // resolved lemma — e.g. 歩いてゆこう's tail edge is the volitional ゆこう, which never literally equals
     // the dictionary-form "ゆく" entry in `auxiliaries` no matter what's in the set, but resolves to
     // it. nil means surface-only matching.
+    //
+    // `headValidator`, when given, must accept the head surface — callers pass "resolves to a verb",
+    // since an auxiliary only ever attaches to a verb. Without it a noun head can win on a
+    // coincidental tail: 歌い続けて's "い続けて" deinflects (続ける→る) to the real auxiliary いる, so
+    // 歌 + い続けて is found before the correct 歌い + 続けて and the compound is lost downstream.
     static func auxiliaryVerbSplit(
         from edges: [LatticeEdge],
         auxiliaries: Set<String>,
-        lemmaResolver: ((String) -> String?)? = nil
+        lemmaResolver: ((String) -> String?)? = nil,
+        headValidator: ((String) -> Bool)? = nil
     ) -> [String]? {
         guard let start = edges.map(\.start).min(), let end = edges.map(\.end).max() else { return nil }
 
@@ -131,6 +137,7 @@ struct LatticeEdge {
                 if requireTeLinker {
                     guard headEdge.surface.hasSuffix("て") || headEdge.surface.hasSuffix("で") else { continue }
                 }
+                if let headValidator, headValidator(headEdge.surface) == false { continue }
                 return [headEdge.surface, tailEdge.surface]
             }
         }

@@ -277,6 +277,13 @@ nonisolated enum DerivationAnalyzer {
 
     // MARK: - POS tag helpers
 
+    // True when any candidate lemma resolves to a verb entry. Exposed so callers can gate
+    // LatticeEdge.auxiliaryVerbSplit's head with the same verb test compoundVerb applies to its base.
+    static func anyResolvesToVerb(_ candidates: [String], baseResolver: BaseResolver) -> Bool {
+        candidates.contains { baseResolver($0).contains(where: isVerb) }
+    }
+
+    // True for noun and suru-noun tags (n, n-*, vs, vs-*).
     private static func isNominal(_ tag: String) -> Bool {
         tag == "n" || tag.hasPrefix("n-") || tag == "vs" || tag.hasPrefix("vs-")
     }
