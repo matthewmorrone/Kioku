@@ -627,7 +627,8 @@ extension ReadView {
            let rawSplit = LatticeEdge.auxiliaryVerbSplit(
                from: sublatticeEdgesForCurrentSelectedSegment(),
                auxiliaries: DerivationAnalyzer.auxiliaryVerbs,
-               lemmaResolver: { segmenter.preferredLemma(for: $0, preferring: DerivationAnalyzer.auxiliaryVerbs) }
+               lemmaResolver: { segmenter.preferredLemma(for: $0, preferring: DerivationAnalyzer.auxiliaryVerbs) },
+               headValidator: auxiliaryHeadResolvesToVerb
            ) {
             let split = rawSplit.map { segmenter.preferredLemma(for: $0, preferring: DerivationAnalyzer.auxiliaryVerbs) ?? $0 }
             let derived = DerivationAnalyzer.analyze(surface: surface, components: split, baseResolver: { candidate in
@@ -640,6 +641,17 @@ extension ReadView {
         }
 
         return (lemma: info.lemma, chain: info.chain)
+    }
+
+    // Gates LatticeEdge.auxiliaryVerbSplit's head: an auxiliary only attaches to a verb, so a head
+    // with no verb reading (歌 in 歌 + い続けて) is a coincidental split and must not beat 歌い + 続けて.
+    // Without a dictionary there is nothing to check against, so every head is admitted.
+    func auxiliaryHeadResolvesToVerb(_ head: String) -> Bool {
+        guard let dictionaryStore else { return true }
+        return DerivationAnalyzer.anyResolvesToVerb(segmenter.lemmaCandidates(for: head)) { candidate in
+            let entries = (try? dictionaryStore.lookup(surface: candidate, mode: .kanjiAndKana)) ?? []
+            return entries.flatMap { $0.senses.compactMap(\.pos) }.flatMap { $0.components(separatedBy: ",") }
+        }
     }
 
     // Resolves the reading→FrequencyData map for an arbitrary surface: the direct surface

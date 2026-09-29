@@ -483,7 +483,8 @@ extension ReadView {
         if let split = LatticeEdge.auxiliaryVerbSplit(
             from: sublatticeEdgesForCurrentSelectedSegment(),
             auxiliaries: DerivationAnalyzer.auxiliaryVerbs,
-            lemmaResolver: { segmenter.preferredLemma(for: $0, preferring: DerivationAnalyzer.auxiliaryVerbs) }
+            lemmaResolver: { segmenter.preferredLemma(for: $0, preferring: DerivationAnalyzer.auxiliaryVerbs) },
+            headValidator: auxiliaryHeadResolvesToVerb
         ) {
             let resolvedBase = segmenter.preferredLemma(for: split[0]) ?? split[0]
             TapDiagnostics.mark("definitionPayload: retrying via auxiliaryVerbSplit base=\(resolvedBase)")
