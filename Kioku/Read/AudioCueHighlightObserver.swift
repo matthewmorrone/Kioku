@@ -294,11 +294,10 @@ struct AudioCueHighlightObserver: View {
     // the relevant Unicode blocks. Whitespace falls through to a CharacterSet check; anything
     // else (punctuation, symbols) becomes .other so a punctuation run is treated as one chunk.
     private func characterClass(of scalar: Unicode.Scalar) -> AudioCueCharClass {
-        let v = scalar.value
-        switch v {
-        case 0x4E00...0x9FFF, 0x3400...0x4DBF: return .kanji
-        case 0x3040...0x309F: return .hiragana
-        case 0x30A0...0x30FF, 0xFF66...0xFF9F: return .katakana
+        if ScriptClassifier.isKanjiScalar(scalar) { return .kanji }
+        if ScriptClassifier.isHiraganaScalar(scalar) { return .hiragana }
+        if ScriptClassifier.isKatakanaScalar(scalar) || ScriptClassifier.isHalfWidthKatakanaScalar(scalar) { return .katakana }
+        switch scalar.value {
         case 0x0030...0x0039, 0xFF10...0xFF19: return .digit
         case 0x0041...0x005A, 0x0061...0x007A: return .latin
         default:

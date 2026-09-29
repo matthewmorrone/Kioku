@@ -228,7 +228,7 @@ struct KanjiDetailView: View {
                     }
                     if let jlpt = info.jlptLevel {
                         // "JLPT" prefix dropped — the N# notation is unambiguous on a kanji card.
-                        metadataPill("N\(jlpt)")
+                        metadataPill(DictionaryStore.jlptLabel(for: jlpt))
                     }
                     if let strokes = info.strokeCount {
                         metadataPill("\(strokes) strokes")

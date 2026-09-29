@@ -1,12 +1,5 @@
 import SwiftUI
 
-// Wraps a non-Sendable closure so it can be captured into a @Sendable background
-// dispatch. Safe here because lemmaForSurface only reads from nonisolated Segmenter.
-nonisolated private final class UncheckedSendableBox<T>: @unchecked Sendable {
-    let value: T
-    init(value: T) { self.value = value }
-}
-
 // Saved-word state management for SegmentListView: per-surface star toggling,
 // canonical-id-backed persistence into WordsStore, and the in-memory cache
 // (`savedWordSurfaces`) that drives star rendering. Includes the legacy-card lemma expansion in `applySavedWordState`

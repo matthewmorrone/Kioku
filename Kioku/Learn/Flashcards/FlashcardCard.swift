@@ -334,7 +334,7 @@ struct FlashcardCard: View {
             case .japanesePrompt(let form):
                 // Single line. For the kana form, hold off the kanji fallback while the reading is
                 // still loading so a kana prompt doesn't flash the kanji.
-                if form == .kana, displayKana == nil, isKanaOnly(displaySurface) == false, liveContent == nil {
+                if form == .kana, displayKana == nil, ScriptClassifier.isKanaText(displaySurface) == false, liveContent == nil {
                     EmptyView()
                 } else {
                     headword(japaneseText(for: form, displaySurface: displaySurface, displayKana: displayKana))
@@ -343,7 +343,7 @@ struct FlashcardCard: View {
                 let text = japaneseText(for: form, displaySurface: displaySurface, displayKana: displayKana)
                 headword(text)
                 // Reading beneath the headword, except when the form already IS the reading.
-                if form != .kana, let displayKana, displayKana.isEmpty == false, isKanaOnly(text) == false {
+                if form != .kana, let displayKana, displayKana.isEmpty == false, ScriptClassifier.isKanaText(text) == false {
                     Text(displayKana)
                         .font(japaneseTheme ? .custom("HiraMinProN-W3", size: 20) : .title3)
                         .foregroundStyle(.secondary)
@@ -390,22 +390,15 @@ struct FlashcardCard: View {
     private func displayKanaForCard(displaySurface: String) -> String? {
         if let kana = liveContent?.kana?.trimmingCharacters(in: .whitespacesAndNewlines),
            kana.isEmpty == false { return kana }
-        return isKanaOnly(displaySurface) ? displaySurface : nil
+        return ScriptClassifier.isKanaText(displaySurface) ? displaySurface : nil
     }
 
     // Checks containment after folding katakana → hiragana so variant kana spellings match.
     private func noteContains(_ noteText: String, candidate: String) -> Bool {
         if noteText.contains(candidate) { return true }
-        let folded = noteText.applyingTransform(.hiraganaToKatakana, reverse: true) ?? noteText
-        let foldedCandidate = candidate.applyingTransform(.hiraganaToKatakana, reverse: true) ?? candidate
+        let folded = KanaNormalizer.katakanaToHiragana(noteText)
+        let foldedCandidate = KanaNormalizer.katakanaToHiragana(candidate)
         return folded.contains(foldedCandidate)
-    }
-
-    // Determines whether a surface form is composed entirely of kana so a redundant reading line is suppressed.
-    private func isKanaOnly(_ text: String) -> Bool {
-        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard t.isEmpty == false else { return false }
-        return t.unicodeScalars.allSatisfy(ScriptClassifier.isKanaScalar)
     }
 
     @ViewBuilder

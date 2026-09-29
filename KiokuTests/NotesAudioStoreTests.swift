@@ -76,27 +76,6 @@ final class NotesAudioStoreTests: XCTestCase {
         XCTAssertFalse(store.hasCues(for: id))
     }
 
-    // purgeLegacySRTSidecars removes inert .srt files from the audio container exactly once, and
-    // never touches cues.json (the source of truth) or audio. The one-shot guard lives in
-    // UserDefaults, so the flag is cleared here to keep the test hermetic.
-    func testPurgeLegacySRTSidecarsRemovesSRTOnlyOnce() throws {
-        UserDefaults.standard.removeObject(forKey: "kioku.migration.purgedSRTSidecars")
-        let id = UUID()
-        let strayURL = testRoot.appendingPathComponent("\(id.uuidString)-song.srt")
-        try Data("1\n00:00:00,000 --> 00:00:01,000\nhi\n".utf8).write(to: strayURL)
-        try store.saveCues([SubtitleCue(index: 1, startMs: 0, endMs: 1000, text: "hi")], attachmentID: id)
-
-        store.purgeLegacySRTSidecars()
-        XCTAssertFalse(FileManager.default.fileExists(atPath: strayURL.path), ".srt sidecar must be deleted")
-        XCTAssertFalse(store.loadCues(for: id).isEmpty, "cues.json must survive the purge")
-
-        // Runs once: a sidecar reappearing after the flag is set is left alone until the flag resets.
-        try Data("x".utf8).write(to: strayURL)
-        store.purgeLegacySRTSidecars()
-        XCTAssertTrue(FileManager.default.fileExists(atPath: strayURL.path), "second purge is a no-op (guarded)")
-        UserDefaults.standard.removeObject(forKey: "kioku.migration.purgedSRTSidecars")
-    }
-
     // exportAttachment returns nil when no audio file exists. The backup pipeline uses this
     // signal to decide whether the attachment is "real" enough to include in the snapshot.
     func testExportAttachmentReturnsNilWhenNoAudio() {

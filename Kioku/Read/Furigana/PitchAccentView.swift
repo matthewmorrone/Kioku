@@ -17,7 +17,7 @@ struct PitchAccentView: View {
     // Splits kana into individual mora strings (handles digraphs like きゃ, っ, ー).
     // Converts to hiragana for display since the pitch_accent table stores katakana (UniDic convention).
     private var morae: [String] {
-        let hiragana = accent.kana.applyingTransform(.hiraganaToKatakana, reverse: true) ?? accent.kana
+        let hiragana = KanaNormalizer.katakanaToHiragana(accent.kana)
         return moraeSplit(hiragana)
     }
 

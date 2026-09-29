@@ -18,7 +18,7 @@ final class SavedKanjiStore: ObservableObject {
 
     // Wraps UserDefaults in an unchecked-Sendable box so the persistQueue capture
     // satisfies Swift 6 strict-concurrency. Same pattern as WordsStore.
-    nonisolated private let userDefaultsBox: UncheckedSendableUserDefaults
+    nonisolated private let userDefaultsBox: UncheckedSendableBox<UserDefaults>
 
     // Initializes the store, loading any existing saved kanji from UserDefaults.
     // Storage key defaults to the production key; tests inject a per-suite key so
@@ -26,7 +26,7 @@ final class SavedKanjiStore: ObservableObject {
     init(userDefaults: UserDefaults = .standard, storageKey: String = SavedKanjiStorage.defaultStorageKey) {
         self.userDefaults = userDefaults
         self.storageKey = storageKey
-        self.userDefaultsBox = UncheckedSendableUserDefaults(value: userDefaults)
+        self.userDefaultsBox = UncheckedSendableBox(value: userDefaults)
         self.kanji = SavedKanjiStorage.loadSavedKanji(storageKey: storageKey, userDefaults: userDefaults)
     }
 

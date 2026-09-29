@@ -12,6 +12,13 @@ nonisolated struct WordOfTheDayExample: Codable, Equatable, Sendable {
     let english: String
 }
 
+// One piece of a furigana-aligned headword: `text` is a run of the surface; `ruby` is its reading
+// when the run is kanji that takes furigana, nil for kana that stands on its own.
+nonisolated struct WordOfTheDayRubyRun: Codable, Equatable, Sendable {
+    let text: String
+    let ruby: String?
+}
+
 // A single Word of the Day entry mirrored from the notification schedule into the App Group
 // container so the widget process can read it. Compiled into BOTH the app and widget targets;
 // it is plain Foundation with no app/widget dependencies so it can be unit tested directly.
@@ -31,6 +38,10 @@ nonisolated struct WordOfTheDayMirrorEntry: Codable, Equatable, Sendable {
     let example: WordOfTheDayExample?
     // JLPT level (5…1), shown as a small badge on the larger sizes.
     let jlpt: Int?
+    // Per-kanji-run furigana for the headword, computed by the app's furigana projection when the
+    // mirror is written so the widget renders it without an aligner of its own. nil when the
+    // reading doesn't project onto the surface; the widget then puts one ruby over the whole word.
+    var rubyRuns: [WordOfTheDayRubyRun]?
 
     init(fireDate: Date, surface: String, kana: String?, meaning: String, entryID: Int64,
          senses: [WordOfTheDaySense] = [], example: WordOfTheDayExample? = nil, jlpt: Int? = nil) {
@@ -55,6 +66,7 @@ nonisolated struct WordOfTheDayMirrorEntry: Codable, Equatable, Sendable {
         senses = try c.decodeIfPresent([WordOfTheDaySense].self, forKey: .senses) ?? []
         example = try c.decodeIfPresent(WordOfTheDayExample.self, forKey: .example)
         jlpt = try c.decodeIfPresent(Int.self, forKey: .jlpt)
+        rubyRuns = try c.decodeIfPresent([WordOfTheDayRubyRun].self, forKey: .rubyRuns)
     }
 
     // The primary sense's glosses, guaranteed non-empty by falling back to the primary meaning.

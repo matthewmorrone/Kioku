@@ -14,10 +14,6 @@ nonisolated enum SubtitleSourceLoader {
         case unknown
     }
 
-    enum LoadError: Error {
-        case unreadable
-    }
-
     // Classifies a picked file by extension first — authoritative for our two text formats — then
     // by UTType conformance so the full range of importable audio (mp3, m4a, wav, …) is accepted.
     static func classify(_ url: URL) -> Kind {
@@ -32,16 +28,22 @@ nonisolated enum SubtitleSourceLoader {
         return .unknown
     }
 
-    // Reads a (possibly security-scoped) text file, falling back through common encodings so an
-    // unusual SRT/TextGrid still loads instead of hard-failing. Mirrors SRTDocument's decode order.
+    // Reads a (possibly security-scoped) text file and decodes it with decodeText. Throws only
+    // when the file itself can't be read.
     static func readText(from url: URL) throws -> String {
         let didStart = url.startAccessingSecurityScopedResource()
         defer { if didStart { url.stopAccessingSecurityScopedResource() } }
+        return decodeText(try Data(contentsOf: url))
+    }
 
-        if let utf8 = try? String(contentsOf: url, encoding: .utf8) { return utf8 }
-        if let utf16 = try? String(contentsOf: url, encoding: .utf16) { return utf16 }
-        if let latin = try? String(contentsOf: url, encoding: .isoLatin1) { return latin }
-        throw LoadError.unreadable
+    // Decodes subtitle/TextGrid bytes, falling back UTF-8 → UTF-16 → Latin-1 so a file saved in
+    // an unusual encoding still loads instead of hard-failing. Latin-1 maps every byte, so this
+    // always produces text. Shared by readText and SRTDocument.
+    static func decodeText(_ data: Data) -> String {
+        if let utf8 = String(data: data, encoding: .utf8) { return utf8 }
+        if let utf16 = String(data: data, encoding: .utf16) { return utf16 }
+        if let latin1 = String(data: data, encoding: .isoLatin1) { return latin1 }
+        return String(decoding: data, as: UTF8.self)
     }
 
     // Parses SRT text into cues.

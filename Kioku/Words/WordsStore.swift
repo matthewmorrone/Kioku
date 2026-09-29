@@ -2,16 +2,6 @@ import Combine
 import Foundation
 import SwiftUI
 
-// Box that lets the persist queue ship a UserDefaults across the Sendable boundary even
-// though Foundation hasn't yet annotated UserDefaults as Sendable. Apple documents
-// UserDefaults as thread-safe; this box is the one place we encode that promise.
-// Module-internal rather than file-private because SavedKanjiStore reuses the same
-// capture pattern for its persistQueue and we want one canonical helper, not two.
-nonisolated final class UncheckedSendableUserDefaults: @unchecked Sendable {
-    let value: UserDefaults
-    init(value: UserDefaults) { self.value = value }
-}
-
 // Owns saved-word persistence for the Words tab. Replaces direct UserDefaults access in WordsView.
 @MainActor
 final class WordsStore: ObservableObject {
@@ -638,7 +628,7 @@ final class WordsStore: ObservableObject {
         // thread-safe — wrap in an @unchecked Sendable box so the persistQueue capture
         // satisfies Swift 6 strict-concurrency without spraying nonisolated(unsafe)
         // through every call-site.
-        let userDefaults = UncheckedSendableUserDefaults(value: self.userDefaults)
+        let userDefaults = UncheckedSendableBox(value: self.userDefaults)
         WordsStore.persistQueue.async {
             SavedWordStorage.writeNormalized(normalized, storageKey: storageKey, userDefaults: userDefaults.value)
         }

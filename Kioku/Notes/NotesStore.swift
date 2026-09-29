@@ -22,10 +22,6 @@ final class NotesStore: ObservableObject {
     }
     @Published private(set) var persistenceError: String?
 
-    // Legacy UserDefaults key. Read only on first migration; never written from this class
-    // again so that downgrading to an older build still sees its original snapshot.
-    private let legacyStorageKey = "kioku.notes.v1"
-
     // Per-note JSON files live here; `_index.json` records ordering.
     private let directoryURL: URL
     private let indexURL: URL
@@ -43,10 +39,8 @@ final class NotesStore: ObservableObject {
     private var allowEmptySave = false
     private var pendingAttachmentDeletions: Set<UUID> = []
 
-    // Loads persisted notes so the in-memory store starts from disk state. Tries the
-    // file-based layout first; if none, migrates from the legacy UserDefaults blob and
-    // writes the resulting notes back as files. Either way `diskSnapshotByID` is
-    // populated so subsequent writes can be diff-based.
+    // Loads persisted notes so the in-memory store starts from disk state and populates
+    // `diskSnapshotByID` so subsequent writes can be diff-based.
     init(
         fileManager: FileManager = .default,
         attachmentStore: any NotesAttachmentDeleting = NotesAudioStore.shared,
@@ -66,32 +60,8 @@ final class NotesStore: ObservableObject {
             fileManager: fileManager
         )
 
-        if fromFiles.isEmpty == false {
-            notes = fromFiles
-            diskSnapshotByID = Dictionary(uniqueKeysWithValues: fromFiles.map { ($0.id, $0) })
-            return
-        }
-
-        // No files yet: try a one-time migration from the legacy UserDefaults blob.
-        let fromLegacy = NotesStore.readNotesFromLegacyUserDefaults(key: legacyStorageKey)
-        if fromLegacy.isEmpty == false {
-            notes = fromLegacy
-            do {
-                try NotesStore.writeFiles(
-                    notes: fromLegacy,
-                    previousSnapshot: [:],
-                    directory: directoryURL,
-                    indexURL: indexURL,
-                    fileManager: fileManager,
-                    fileWriter: fileWriter
-                )
-                diskSnapshotByID = Dictionary(uniqueKeysWithValues: fromLegacy.map { ($0.id, $0) })
-            } catch {
-                persistenceError = Self.persistenceMessage(for: error)
-            }
-        } else {
-            notes = []
-        }
+        notes = fromFiles
+        diskSnapshotByID = Dictionary(uniqueKeysWithValues: fromFiles.map { ($0.id, $0) })
     }
 
     // Reloads notes from storage to reflect external updates. Flushes any pending in-memory
@@ -619,18 +589,6 @@ final class NotesStore: ObservableObject {
             .sorted(by: { $0.uuidString < $1.uuidString })
         let finalOrder = orderedIDs + tail
         return finalOrder.compactMap { notesByID[$0] }
-    }
-
-    // Reads legacy UserDefaults data for one-time migration. Never written back to UD so
-    // a downgrade can still see whatever was last persisted under the old layout.
-    private static func readNotesFromLegacyUserDefaults(key: String) -> [Note] {
-        guard
-            let data = UserDefaults.standard.data(forKey: key),
-            let decoded = try? JSONDecoder().decode([Note].self, from: data)
-        else {
-            return []
-        }
-        return decoded
     }
 
     // Creates the notes directory if it doesn't exist. Best-effort; surface failures to

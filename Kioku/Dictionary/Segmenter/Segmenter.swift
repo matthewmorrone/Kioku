@@ -403,12 +403,14 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
         var selectedEdges: [LatticeEdge] = []
         var index = text.startIndex
+        // Read the demotion list once per pass rather than once per comparison.
+        let demoted = SegmentationDemotions.surfaces()
 
         while index < text.endIndex {
             if let candidates = edgesByStart[index] {
                 // Sort candidates best-first so we can try alternates when the top choice strands a っ.
                 let sorted = candidates.sorted { lhs, rhs in
-                    compareEdgePriority(rhs, lhs, in: text)
+                    compareEdgePriority(rhs, lhs, in: text, demoted: demoted)
                 }
                 // Pick the best candidate that does not leave a bare っ immediately after its end.
                 // A lone っ is never a valid morpheme; finding one means the edge over-consumed.
@@ -530,14 +532,14 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     // Breaks longest-match ties by preferring higher-quality lemma resolution for the same span.
     // Pure-kana exact trie matches receive a length bonus so deinflection-only noise candidates
     // (e.g. もき → もく) don't block adjacent real words (e.g. きっと) by winning on raw length.
-    private func compareEdgePriority(_ lhs: LatticeEdge, _ rhs: LatticeEdge, in text: String) -> Bool {
+    private func compareEdgePriority(_ lhs: LatticeEdge, _ rhs: LatticeEdge, in text: String, demoted: Set<String>) -> Bool {
         // Demotion dominates every other discriminator: a surface in the SegmentationDemotions
         // denylist (のか, のす, …) sinks below any non-demoted candidate starting at the same
         // position, regardless of length. This is the greedy analog of edgeCost's soft penalty —
         // a demoted surface is still chosen when it is the only candidate here. Returning true
         // means lhs ranks *lower* than rhs, so lhs loses iff lhs is the demoted one.
-        let lhsDemoted = SegmentationDemotions.contains(lhs.surface)
-        let rhsDemoted = SegmentationDemotions.contains(rhs.surface)
+        let lhsDemoted = demoted.contains(lhs.surface)
+        let rhsDemoted = demoted.contains(rhs.surface)
         if lhsDemoted != rhsDemoted {
             return lhsDemoted
         }

@@ -92,7 +92,7 @@ nonisolated enum SegmentationDemotions {
         return cachedSet
     }
 
-    // O(1) membership test used by both segmentation engines.
+    // One-off membership test. The greedy pass snapshots surfaces() once instead of calling this per comparison.
     static func contains(_ surface: String) -> Bool {
         surfaces().contains(surface)
     }

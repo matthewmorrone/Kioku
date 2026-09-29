@@ -294,7 +294,7 @@ struct CoverageDetailView: View {
     // Human label for a JLPT level row: "N5"…"N1", or "No level" for words not on any list.
     private func levelTitle(_ level: Int?) -> String {
         guard let level else { return "No level" }
-        return "N\(level)"
+        return DictionaryStore.jlptLabel(for: level)
     }
 }
 

@@ -61,16 +61,14 @@ public enum CTCViterbi {
         guard prev[s] > neg else { return nil }
 
         var spans = [(start: Int, end: Int)](repeating: (0, 0), count: L)
-        var t = frames - 1
-        while true {
+        // Walks frames last → first; the backpointer step is skipped at t == 0, where the path ends.
+        for t in stride(from: frames - 1, through: 0, by: -1) {
             if s & 1 == 1 {
                 let k = (s - 1) / 2
                 if spans[k].end == 0 { spans[k].end = t + 1 }
                 spans[k].start = t
             }
-            if t == 0 { break }
-            s -= Int(back[t * S + s])
-            t -= 1
+            if t > 0 { s -= Int(back[t * S + s]) }
         }
         return spans
     }

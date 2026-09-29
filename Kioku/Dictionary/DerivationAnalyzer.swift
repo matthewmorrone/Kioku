@@ -320,6 +320,6 @@ nonisolated enum DerivationAnalyzer {
     // True when the string's first character is a CJK ideograph — gates the honorific prefix rule.
     private static func firstIsKanji(_ s: String) -> Bool {
         guard let scalar = s.unicodeScalars.first else { return false }
-        return (0x4E00...0x9FFF).contains(scalar.value) || (0x3400...0x4DBF).contains(scalar.value)
+        return ScriptClassifier.isKanjiScalar(scalar)
     }
 }

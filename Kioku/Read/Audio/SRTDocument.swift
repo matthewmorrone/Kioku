@@ -16,15 +16,7 @@ struct SRTDocument: FileDocument {
             return
         }
 
-        if let utf8 = String(data: data, encoding: .utf8) {
-            text = utf8
-        } else if let utf16 = String(data: data, encoding: .utf16) {
-            text = utf16
-        } else if let latin1 = String(data: data, encoding: .isoLatin1) {
-            text = latin1
-        } else {
-            text = String(decoding: data, as: UTF8.self)
-        }
+        text = SubtitleSourceLoader.decodeText(data)
     }
 
     // Serialises the SRT text back to UTF-8 bytes so the document can be saved or shared.

@@ -377,7 +377,7 @@ nonisolated final class Deinflector {
         var candidates: Set<String> = []
 
         if ScriptClassifier.isPureKatakana(surface) {
-            let hiraganaSurface = katakanaToHiragana(surface)
+            let hiraganaSurface = katakanaToHiraganaExpandingLongVowels(surface)
             if hiraganaSurface != surface {
                 candidates.insert(hiraganaSurface)
             }
@@ -395,7 +395,7 @@ nonisolated final class Deinflector {
             return candidates
         }
 
-        let normalizedPrefix = katakanaToHiragana(katakanaPrefix)
+        let normalizedPrefix = katakanaToHiraganaExpandingLongVowels(katakanaPrefix)
         let normalizedSurface = normalizedPrefix + hiraganaSuffix
         if normalizedSurface != surface {
             candidates.insert(normalizedSurface)
@@ -431,7 +431,7 @@ nonisolated final class Deinflector {
     // Converts katakana scalars to hiragana, expanding the prolonged sound mark ー to the appropriate
     // vowel based on the preceding mora. This is required so that ショーブ resolves to しょうぶ rather
     // than しょーぶ, which is the form stored in JMdict.
-    private func katakanaToHiragana(_ text: String) -> String {
+    private func katakanaToHiraganaExpandingLongVowels(_ text: String) -> String {
         var result: [UnicodeScalar] = []
         // Tracks the most recently emitted hiragana scalar so ー can expand relative to it.
         var previousHiragana: UnicodeScalar? = nil

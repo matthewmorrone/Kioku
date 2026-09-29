@@ -15,14 +15,11 @@ nonisolated enum SavedKanjiStorage {
         storageKey: String,
         userDefaults: UserDefaults = .standard
     ) -> [SavedKanji] {
-        guard let data = userDefaults.data(forKey: storageKey),
-              let decoded = try? JSONDecoder().decode([SavedKanji].self, from: data) else {
+        guard let decoded = UserDefaultsJSON.load([SavedKanji].self, forKey: storageKey, from: userDefaults, logAs: .storage) else {
             return []
         }
         let normalized = normalizedEntries(decoded)
-        if let normalizedData = try? JSONEncoder().encode(normalized), normalizedData != data {
-            userDefaults.set(normalizedData, forKey: storageKey)
-        }
+        writeNormalized(normalized, storageKey: storageKey, userDefaults: userDefaults)
         return normalized
     }
 
@@ -35,9 +32,7 @@ nonisolated enum SavedKanjiStorage {
     // Encodes and writes an already-normalized array. Used by SavedKanjiStore when
     // it has just normalized and wants to publish to memory + disk in one step.
     static func writeNormalized(_ normalized: [SavedKanji], storageKey: String, userDefaults: UserDefaults = .standard) {
-        if let encoded = try? JSONEncoder().encode(normalized) {
-            userDefaults.set(encoded, forKey: storageKey)
-        }
+        UserDefaultsJSON.save(normalized, forKey: storageKey, to: userDefaults, logAs: .storage)
     }
 
     // Coalesces duplicate saves by kanji literal while preserving first-seen order.

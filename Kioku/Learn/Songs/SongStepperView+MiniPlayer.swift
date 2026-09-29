@@ -122,13 +122,12 @@ extension SongStepperView {
         }
         guard let item = items.first(where: { $0.line.index == lineIndex }) else { return }
         expandedByLineIndex.insert(lineIndex)
+        let rowID = listenWordFocus.map { SongLineCard.wordRowID(lineIndex: lineIndex, surface: $0.surface) }
         withAnimation(.easeInOut(duration: 0.3)) {
             proxy.scrollTo(item.id, anchor: .center)
-        }
-        guard let surface = listenWordFocus?.surface else { return }
-        let rowID = SongLineCard.wordRowID(lineIndex: lineIndex, surface: surface)
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(350))
+        } completion: {
+            // Once the line has landed, fine-tune onto the focused word's row inside it.
+            guard let rowID else { return }
             withAnimation(.easeInOut(duration: 0.25)) {
                 proxy.scrollTo(rowID, anchor: .center)
             }

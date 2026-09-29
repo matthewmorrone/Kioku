@@ -202,6 +202,9 @@ enum WordOfTheDayScheduler {
         for entry in history where seen.insert(entry.fireDate).inserted { merged.append(entry) }
         for entry in entries where seen.insert(entry.fireDate).inserted { merged.append(entry) }
         merged.sort { $0.fireDate < $1.fireDate }
+        for index in merged.indices {
+            merged[index].rubyRuns = FuriganaAttributedString.rubyRuns(surface: merged[index].surface, reading: merged[index].kana)
+        }
         WordOfTheDayMirror.write(merged)
         WidgetCenter.shared.reloadAllTimelines()
     }
@@ -499,8 +502,12 @@ enum WordOfTheDayScheduler {
             return nil
         }
         let detail = WordOfTheDayDetail(senses: liveContent.senses, example: liveContent.example, jlpt: liveContent.jlpt)
-        guard let data = try? JSONEncoder().encode(detail) else { return nil }
-        return String(data: data, encoding: .utf8)
+        do {
+            return String(data: try JSONEncoder().encode(detail), encoding: .utf8)
+        } catch {
+            AppLog.error(.wordOfTheDay, "could not encode notification detail — \(error.localizedDescription)")
+            return nil
+        }
     }
 
     // Decodes the rich detail JSON string from a notification's userInfo.
@@ -598,26 +605,18 @@ enum WordOfTheDayScheduler {
         for (key, value) in cache {
             encoded[String(key)] = value
         }
-        guard let data = try? JSONEncoder().encode(encoded) else { return }
-        UserDefaults.standard.set(data, forKey: liveContentCacheKey)
+        UserDefaultsJSON.save(encoded, forKey: liveContentCacheKey, logAs: .wordOfTheDay)
     }
 
     // Loads the last successfully scheduled batch metadata.
     private static func loadPersistedScheduleState() -> WordOfTheDayScheduleState? {
-        guard
-            let data = UserDefaults.standard.data(forKey: scheduleStateKey),
-            let decoded = try? JSONDecoder().decode(WordOfTheDayScheduleState.self, from: data)
-        else {
-            return nil
-        }
-        return decoded
+        UserDefaultsJSON.load(WordOfTheDayScheduleState.self, forKey: scheduleStateKey, logAs: .wordOfTheDay)
     }
 
     // Persists schedule metadata so launch-time validation can keep an unchanged batch.
     private static func persistScheduleState(signature: String, requestCount: Int) {
         let state = WordOfTheDayScheduleState(signature: signature, requestCount: requestCount, updatedAt: Date())
-        guard let data = try? JSONEncoder().encode(state) else { return }
-        UserDefaults.standard.set(data, forKey: scheduleStateKey)
+        UserDefaultsJSON.save(state, forKey: scheduleStateKey, logAs: .wordOfTheDay)
     }
 
     // Clears persisted schedule metadata when WOTD is disabled or unauthorized.

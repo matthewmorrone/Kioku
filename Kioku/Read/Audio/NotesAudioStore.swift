@@ -85,41 +85,6 @@ final class NotesAudioStore: NotesAttachmentDeleting {
         }
     }
 
-    // One-time sweep folding already-stored duplicate audio (the same song attached more than once
-    // before de-dup existed) into APFS clones of a single canonical copy, reclaiming wasted disk.
-    // Byte-identical only; each duplicate is atomically replaced by a clone of its canonical twin
-    // (same filename, shared blocks — attachments still resolve by UUID prefix). Runs once.
-    func dedupeStoredAudio() {
-        let flag = "kioku.migration.dedupedAudioV1"
-        guard UserDefaults.standard.bool(forKey: flag) == false else { return }
-        defer { UserDefaults.standard.set(true, forKey: flag) }
-        let audioExts: Set<String> = ["mp3", "m4a", "aac", "wav", "caf"]
-        guard let files = try? FileManager.default.contentsOfDirectory(
-            at: audioDirectory, includingPropertiesForKeys: [.fileSizeKey]
-        ) else { return }
-        var bySize: [Int: [URL]] = [:]
-        for f in files where audioExts.contains(f.pathExtension.lowercased()) {
-            let size = (try? f.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1
-            bySize[size, default: []].append(f)
-        }
-        for (_, group) in bySize where group.count > 1 {
-            for i in 1..<group.count {
-                let dup = group[i]
-                guard let canonical = group[0..<i].first(where: {
-                    FileManager.default.contentsEqual(atPath: $0.path, andPath: dup.path)
-                }) else { continue }
-                let tmp = audioDirectory.appendingPathComponent("\(UUID().uuidString).declone")
-                guard Self.cloneFile(at: canonical, to: tmp) else {
-                    try? FileManager.default.removeItem(at: tmp); continue
-                }
-                // Atomic swap: replace the duplicate with its byte-identical clone.
-                if (try? FileManager.default.replaceItemAt(dup, withItemAt: tmp)) == nil {
-                    try? FileManager.default.removeItem(at: tmp)
-                }
-            }
-        }
-    }
-
     // Persists the subtitle cue list for an attachment as JSON.
     func saveCues(_ cues: [SubtitleCue], attachmentID: UUID) throws {
         let destination = audioDirectory.appendingPathComponent(attachmentID.uuidString + ".cues.json")
@@ -149,8 +114,13 @@ final class NotesAudioStore: NotesAttachmentDeleting {
         let srt = SubtitleParser.formatSRT(from: cues)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard (try? srt.write(to: srtURL, atomically: true, encoding: .utf8)) != nil,
-              let json = try? encoder.encode(cues), (try? json.write(to: jsonURL, options: .atomic)) != nil else { return nil }
+        do {
+            try srt.write(to: srtURL, atomically: true, encoding: .utf8)
+            try encoder.encode(cues).write(to: jsonURL, options: .atomic)
+        } catch {
+            AppLog.error(.audioAlignment, "timing export for \(attachmentID) failed — \(error.localizedDescription)")
+            return nil
+        }
         return (srtURL, jsonURL)
     }
 
@@ -171,10 +141,12 @@ final class NotesAudioStore: NotesAttachmentDeleting {
     // Returns empty array on any failure.
     func loadCues(for attachmentID: UUID) -> [SubtitleCue] {
         let source = audioDirectory.appendingPathComponent(attachmentID.uuidString + ".cues.json")
-        guard
-            let data = try? Data(contentsOf: source),
-            let cues = try? JSONDecoder().decode([SubtitleCue].self, from: data)
-        else {
+        guard let data = try? Data(contentsOf: source) else { return [] }
+        let cues: [SubtitleCue]
+        do {
+            cues = try JSONDecoder().decode([SubtitleCue].self, from: data)
+        } catch {
+            AppLog.error(.audioAlignment, "cues for \(attachmentID) did not decode — \(error.localizedDescription)")
             return []
         }
         // The karaoke view renders and seeks cues by array index, assuming start-time order. Enforce
@@ -182,22 +154,6 @@ final class NotesAudioStore: NotesAttachmentDeleting {
         // the wrong side of a ♪ — display correctly without needing a re-align. New writes already
         // arrive sorted; this only repairs stale files.
         return cues.sorted { $0.startMs < $1.startMs }
-    }
-
-    // One-time sweep removing every legacy .srt sidecar from the audio container. The .srt was
-    // demoted to an export-only projection of cues.json (the single source of truth); nothing reads
-    // a stored .srt anymore, so these files are inert. A UserDefaults flag makes it run exactly once.
-    func purgeLegacySRTSidecars() {
-        let flag = "kioku.migration.purgedSRTSidecars"
-        guard UserDefaults.standard.bool(forKey: flag) == false else { return }
-        if let urls = try? FileManager.default.contentsOfDirectory(
-            at: audioDirectory, includingPropertiesForKeys: nil
-        ) {
-            for url in urls where url.pathExtension.lowercased() == "srt" {
-                try? FileManager.default.removeItem(at: url)
-            }
-        }
-        UserDefaults.standard.set(true, forKey: flag)
     }
 
     // Reads all files for one attachment and returns a backup snapshot.

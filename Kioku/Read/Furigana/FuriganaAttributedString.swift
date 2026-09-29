@@ -115,6 +115,26 @@ enum FuriganaAttributedString {
         return (0x30...0x39).contains(value) || (0xFF10...0xFF19).contains(value)
     }
 
+    // Splits a surface into widget-ready ruby runs: each kanji run carries its projected reading,
+    // the kana between runs carries none. nil when there's no reading, the reading equals the
+    // surface, or the reading doesn't project onto the runs.
+    nonisolated static func rubyRuns(surface: String, reading: String?) -> [WordOfTheDayRubyRun]? {
+        guard let reading, reading.isEmpty == false, reading != surface else { return nil }
+        let runs = kanjiRuns(in: surface)
+        guard let readings = projectRunReadings(surface: surface, reading: reading, runs: runs),
+              readings.count == runs.count else { return nil }
+        let chars = Array(surface)
+        var result: [WordOfTheDayRubyRun] = []
+        var cursor = 0
+        for (run, runReading) in zip(runs, readings) {
+            if run.start > cursor { result.append(WordOfTheDayRubyRun(text: String(chars[cursor..<run.start]), ruby: nil)) }
+            result.append(WordOfTheDayRubyRun(text: String(chars[run.start..<run.end]), ruby: runReading.isEmpty ? nil : runReading))
+            cursor = run.end
+        }
+        if cursor < chars.count { result.append(WordOfTheDayRubyRun(text: String(chars[cursor...]), ruby: nil)) }
+        return result
+    }
+
     // Splits a full reading into per-kanji-run readings using okurigana as delimiters.
     // Returns nil when okurigana anchors cannot be matched so the caller falls back.
     nonisolated static func projectRunReadings(surface: String, reading: String, runs: [(start: Int, end: Int)]? = nil) -> [String]? {
@@ -225,14 +245,14 @@ enum FuriganaAttributedString {
         var trimmedReading = reading
 
         if !prefixSurface.isEmpty {
-            guard hasPhoneticPrefix(trimmedReading, matching: prefixSurface) else {
+            guard KanaNormalizer.hasPhoneticPrefix(trimmedReading, matching: prefixSurface) else {
                 return nil
             }
             trimmedReading = String(trimmedReading.dropFirst(prefixSurface.count))
         }
 
         if !suffixSurface.isEmpty {
-            guard hasPhoneticSuffix(trimmedReading, matching: suffixSurface) else {
+            guard KanaNormalizer.hasPhoneticSuffix(trimmedReading, matching: suffixSurface) else {
                 return nil
             }
             trimmedReading = String(trimmedReading.dropLast(suffixSurface.count))
@@ -244,15 +264,5 @@ enum FuriganaAttributedString {
         }
 
         return trimmedReading
-    }
-
-    // Checks whether a reading starts with the same phonetic syllables as a kanji run prefix so prefix kana can be excluded from furigana.
-    nonisolated private static func hasPhoneticPrefix(_ reading: String, matching surfacePrefix: String) -> Bool {
-        KanaNormalizer.hasPhoneticPrefix(reading, matching: surfacePrefix)
-    }
-
-    // Checks whether a reading ends with the same phonetic syllables as a kanji run suffix so trailing kana can be excluded from furigana.
-    nonisolated private static func hasPhoneticSuffix(_ reading: String, matching surfaceSuffix: String) -> Bool {
-        KanaNormalizer.hasPhoneticSuffix(reading, matching: surfaceSuffix)
     }
 }

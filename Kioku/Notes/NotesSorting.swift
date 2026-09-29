@@ -92,15 +92,9 @@ enum NoteTextMetrics {
         for scalar in content.unicodeScalars {
             if CharacterSet.whitespacesAndNewlines.contains(scalar) { continue }
             visible += 1
-            if isKanji(scalar) { kanji += 1 }
+            if ScriptClassifier.isKanjiScalar(scalar) { kanji += 1 }
         }
         return visible == 0 ? 0 : Double(kanji) / Double(visible)
-    }
-
-    // True for CJK Unified Ideographs and the Extension A block — the ranges ordinary Japanese
-    // prose draws its kanji from.
-    private static func isKanji(_ scalar: Unicode.Scalar) -> Bool {
-        (0x4E00...0x9FFF).contains(scalar.value) || (0x3400...0x4DBF).contains(scalar.value)
     }
 }
 

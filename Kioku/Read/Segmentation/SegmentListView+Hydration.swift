@@ -1,12 +1,5 @@
 import SwiftUI
 
-// Wraps a non-Sendable closure so it can be captured into a @Sendable background
-// dispatch. Safe here because lemmaForSurface only reads from nonisolated Segmenter.
-nonisolated private final class UncheckedSendableBox<T>: @unchecked Sendable {
-    let value: T
-    init(value: T) { self.value = value }
-}
-
 // Canonical-entry-id hydration and word-detail presentation for SegmentListView.
 // Star rendering and tap-to-detail both rely on the surface → canonical-id map
 // populated here off the main thread, with a synchronous fast-path when the

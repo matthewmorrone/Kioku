@@ -9,15 +9,12 @@ nonisolated enum SavedWordStorage {
         storageKey: String,
         userDefaults: UserDefaults = .standard
     ) -> [SavedWord] {
-        guard let data = userDefaults.data(forKey: storageKey),
-              let decodedEntries = try? JSONDecoder().decode([SavedWord].self, from: data) else {
+        guard let decodedEntries = UserDefaultsJSON.load([SavedWord].self, forKey: storageKey, from: userDefaults, logAs: .storage) else {
             return []
         }
 
         let normalizedEntries = normalizedEntries(decodedEntries)
-        if let normalizedData = try? JSONEncoder().encode(normalizedEntries), normalizedData != data {
-            userDefaults.set(normalizedData, forKey: storageKey)
-        }
+        writeNormalized(normalizedEntries, storageKey: storageKey, userDefaults: userDefaults)
         return normalizedEntries
     }
 
@@ -30,9 +27,7 @@ nonisolated enum SavedWordStorage {
     // that have just normalized do not pay the cost twice. Used by stores that publish the same
     // snapshot to memory and disk in one step.
     static func writeNormalized(_ normalized: [SavedWord], storageKey: String, userDefaults: UserDefaults = .standard) {
-        if let encoded = try? JSONEncoder().encode(normalized) {
-            userDefaults.set(encoded, forKey: storageKey)
-        }
+        UserDefaultsJSON.save(normalized, forKey: storageKey, to: userDefaults, logAs: .storage)
     }
 
     // Coalesces duplicate saves by canonical entry id while preserving first-seen order.

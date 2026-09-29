@@ -30,92 +30,13 @@ private enum WidgetTheme {
     }
 }
 
-// One piece of a furigana-aligned word: `text` is a run of the surface; `ruby` is its reading when
-// the run is kanji that takes furigana, nil for kana that stands on its own.
-private struct FuriganaSegment {
-    let text: String
-    let ruby: String?
-}
-
-private extension Character {
-    // True for hiragana / katakana (incl. the prolonged sound mark).
-    var isKanaCharacter: Bool {
-        unicodeScalars.allSatisfy { (0x3040...0x30FF).contains($0.value) }
-    }
-}
-
-// Aligns a surface against its full kana reading so furigana lands over each kanji run individually
-// — handling kanji·kana·kanji words like 繰り返す (く over 繰, かえ over 返, り and す plain). The kana
-// runs in the surface are anchors that must appear in order within the reading; the reading between
-// anchors is the furigana for the intervening kanji run. Falls back to a single ruby over the whole
-// surface if the anchors don't line up.
-private enum FuriganaAligner {
-    static func segments(surface: String, reading: String?) -> [FuriganaSegment] {
-        guard let reading, reading.isEmpty == false, reading != surface else {
-            return [FuriganaSegment(text: surface, ruby: nil)]
-        }
-
-        // Group the surface into consecutive kana / non-kana runs.
-        var runs: [(text: String, isKana: Bool)] = []
-        for ch in surface {
-            let kana = ch.isKanaCharacter
-            if var last = runs.last, last.isKana == kana {
-                last.text.append(ch)
-                runs[runs.count - 1] = last
-            } else {
-                runs.append((String(ch), kana))
-            }
-        }
-
-        let r = Array(reading)
-        var ri = 0
-        var result: [FuriganaSegment] = []
-        for (index, run) in runs.enumerated() {
-            if run.isKana {
-                let runChars = Array(run.text)
-                guard ri + runChars.count <= r.count, Array(r[ri..<ri + runChars.count]) == runChars else {
-                    return [FuriganaSegment(text: surface, ruby: reading)]
-                }
-                result.append(FuriganaSegment(text: run.text, ruby: nil))
-                ri += runChars.count
-            } else {
-                let end: Int
-                if index + 1 < runs.count {
-                    let nextChars = Array(runs[index + 1].text)
-                    guard let found = firstIndex(of: nextChars, in: r, from: ri) else {
-                        return [FuriganaSegment(text: surface, ruby: reading)]
-                    }
-                    end = found
-                } else {
-                    end = r.count
-                }
-                guard end >= ri else { return [FuriganaSegment(text: surface, ruby: reading)] }
-                let ruby = String(r[ri..<end])
-                result.append(FuriganaSegment(text: run.text, ruby: ruby.isEmpty ? nil : ruby))
-                ri = end
-            }
-        }
-        guard ri == r.count else { return [FuriganaSegment(text: surface, ruby: reading)] }
-        return result
-    }
-
-    // Earliest index ≥ `start` where `needle` occurs contiguously in `haystack`.
-    private static func firstIndex(of needle: [Character], in haystack: [Character], from start: Int) -> Int? {
-        guard needle.isEmpty == false else { return start }
-        var i = start
-        while i + needle.count <= haystack.count {
-            if Array(haystack[i..<i + needle.count]) == needle { return i }
-            i += 1
-        }
-        return nil
-    }
-}
-
 // Renders a word with per-run furigana. Each kanji run rides its reading in a VStack whose last text
 // baseline aligns with the neighbouring kana, so okurigana stays on the baseline.
 private struct FuriganaText: View {
     let surface: String
     let reading: String?
+    // Per-kanji-run furigana from the mirror; nil puts one ruby over the whole surface.
+    let rubyRuns: [WordOfTheDayRubyRun]?
     let baseFont: Font
     let rubyFont: Font
     // Colors default to the paper-surface ink used by the home families. The Lock Screen accessory
@@ -125,7 +46,8 @@ private struct FuriganaText: View {
     var rubyColor: AnyShapeStyle = AnyShapeStyle(WidgetTheme.inkSecondary)
 
     var body: some View {
-        let segments = FuriganaAligner.segments(surface: surface, reading: reading)
+        let wholeWordRuby = (reading?.isEmpty == false && reading != surface) ? reading : nil
+        let segments = rubyRuns ?? [WordOfTheDayRubyRun(text: surface, ruby: wholeWordRuby)]
         HStack(alignment: .lastTextBaseline, spacing: 0) {
             ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
                 if let ruby = segment.ruby {
@@ -201,7 +123,7 @@ struct WordOfTheDayWidgetView: View {
 
     // The centered furigana headword.
     private func headword(_ word: WordOfTheDayMirrorEntry, base: CGFloat, ruby: CGFloat) -> some View {
-        FuriganaText(surface: word.surface, reading: word.kana,
+        FuriganaText(surface: word.surface, reading: word.kana, rubyRuns: word.rubyRuns,
                      baseFont: WidgetTheme.mincho(base, bold: true), rubyFont: WidgetTheme.mincho(ruby))
             .minimumScaleFactor(0.5)
             .lineLimit(1)
@@ -380,6 +302,7 @@ struct WordOfTheDayWidgetView: View {
         FuriganaText(
             surface: word.surface,
             reading: word.kana,
+            rubyRuns: word.rubyRuns,
             baseFont: WidgetTheme.mincho(base, bold: true),
             rubyFont: WidgetTheme.mincho(ruby),
             baseColor: AnyShapeStyle(.primary),

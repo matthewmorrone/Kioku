@@ -19,7 +19,7 @@ enum OnDeviceLyricAligner {
         romanize: (String) -> [RomanizedSpan],
         cancellationCheck: (@Sendable () -> Bool)? = nil,
         onStage: (@Sendable (String) -> Void)? = nil,
-        onSegment: (@Sendable ([LyricAlignment.AlignedLine]) -> Void)? = nil
+        onSegment: (@Sendable ([AlignedLine]) -> Void)? = nil
     ) async throws -> LyricAlignment.AlignmentResult {
         let lines = lyrics
             .components(separatedBy: "\n")

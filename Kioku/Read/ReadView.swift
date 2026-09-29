@@ -56,21 +56,21 @@ struct ReadView: View {
     // When on, furigana is suppressed for any segment whose word is marked learned or
     // mastered (see WordsStore). Independent of isFuriganaVisible, which is the master
     // on/off switch — this only narrows what shows while furigana is otherwise on.
-    @AppStorage("kioku.settings.hideFuriganaForKnownWords") var isFuriganaHiddenForKnownWords = false
+    @AppStorage(TypographySettings.hideFuriganaForKnownWordsKey) var isFuriganaHiddenForKnownWords = false
     @AppStorage(TypographySettings.colorAlternationKey) var isColorAlternationEnabled = true
-    @AppStorage("kioku.settings.highlightUnknown") var isHighlightUnknownEnabled = false
-    @AppStorage("kioku.settings.applyGlobally") var shouldApplyChangesGlobally = true
+    @AppStorage(TypographySettings.highlightUnknownKey) var isHighlightUnknownEnabled = false
+    @AppStorage(TypographySettings.applyGloballyKey) var shouldApplyChangesGlobally = true
     @AppStorage(TypographySettings.lineWrappingKey) var isLineWrappingEnabled = true
     @AppStorage(TypographySettings.rubySpacingKey) var isRubySpacingEnabled = true
-    @AppStorage("kioku.settings.savedGlow") var isSavedHighlightEnabled = false
+    @AppStorage(TypographySettings.savedGlowKey) var isSavedHighlightEnabled = false
     // Independent per-category visibility toggles for Saved Highlight, set from its submenu.
     // Each category always renders in its own fixed color (see ThemeCustomizeSheet's
     // Saved / Learned / Not Learned color pickers) when its toggle is on — they aren't mutually exclusive,
     // so any combination (or all three) can show at once. A word's status is global (the same
     // everywhere it's saved), so there is no per-note "elsewhere" category.
-    @AppStorage("kioku.settings.savedHighlight.showSaved") var isSavedHighlightShowingSaved = true
-    @AppStorage("kioku.settings.savedHighlight.showLearned") var isSavedHighlightShowingLearned = true
-    @AppStorage("kioku.settings.savedHighlight.showNotLearned") var isSavedHighlightShowingNotLearned = true
+    @AppStorage(TypographySettings.savedHighlightShowSavedKey) var isSavedHighlightShowingSaved = true
+    @AppStorage(TypographySettings.savedHighlightShowLearnedKey) var isSavedHighlightShowingLearned = true
+    @AppStorage(TypographySettings.savedHighlightShowNotLearnedKey) var isSavedHighlightShowingNotLearned = true
     @AppStorage(DebugSettings.pixelRulerKey) var debugPixelRuler: Bool = false
     @AppStorage(DebugSettings.furiganaRectsKey) var debugFuriganaRects: Bool = false
     @AppStorage(DebugSettings.headwordRectsKey) var debugHeadwordRects: Bool = false

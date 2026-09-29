@@ -143,11 +143,27 @@ nonisolated enum ScriptClassifier {
 
     // True for any kana scalar: hiragana, katakana, phonetic extensions, half-width katakana.
     static func isKanaScalar(_ scalar: Unicode.Scalar) -> Bool {
-        let value = scalar.value
-        return (0x3040...0x309F).contains(value)   // Hiragana
-            || (0x30A0...0x30FF).contains(value)   // Katakana
-            || (0x31F0...0x31FF).contains(value)   // Katakana Phonetic Extensions
-            || (0xFF65...0xFF9F).contains(value)   // Half-width Katakana
+        isHiraganaScalar(scalar)
+            || isKatakanaScalar(scalar)
+            || (0x31F0...0x31FF).contains(scalar.value)   // Katakana Phonetic Extensions
+            || isHalfWidthKatakanaScalar(scalar)
+    }
+
+    // True for the half-width katakana block (ｦ…ﾟ, plus the half-width middle dot).
+    static func isHalfWidthKatakanaScalar(_ scalar: Unicode.Scalar) -> Bool {
+        (0xFF65...0xFF9F).contains(scalar.value)
+    }
+
+    // True when user-entered text (an imported CSV cell, a flashcard surface) is written wholly
+    // in kana of any block, half-width included, ignoring surrounding and inner whitespace.
+    // Looser than isPureKana, which the segmenter relies on and deliberately stays narrow.
+    static func isKanaText(_ text: String) -> Bool {
+        var sawKana = false
+        for scalar in text.unicodeScalars where CharacterSet.whitespacesAndNewlines.contains(scalar) == false {
+            guard isKanaScalar(scalar) else { return false }
+            sawKana = true
+        }
+        return sawKana
     }
 
     // True for any scalar that could plausibly be Japanese text (kana or kanji).
@@ -317,12 +333,12 @@ nonisolated enum ScriptClassifier {
     }
 
     // Detects whether one scalar is in the hiragana block.
-    private static func isHiraganaScalar(_ scalar: UnicodeScalar) -> Bool {
+    static func isHiraganaScalar(_ scalar: UnicodeScalar) -> Bool {
         (0x3040...0x309F).contains(scalar.value)
     }
 
-    // Detects whether one scalar is in the katakana block.
-    private static func isKatakanaScalar(_ scalar: UnicodeScalar) -> Bool {
+    // Detects whether one scalar is in the (full-width) katakana block.
+    static func isKatakanaScalar(_ scalar: UnicodeScalar) -> Bool {
         (0x30A0...0x30FF).contains(scalar.value)
     }
 

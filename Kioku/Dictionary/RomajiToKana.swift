@@ -102,26 +102,11 @@ nonisolated enum RomajiToKana {
             guard start + length <= chars.count else { continue }
             let slice = String(chars[start..<(start + length)])
             if let hiragana = syllableMap[slice.lowercased()] {
-                let kana = chars[start].isUppercase ? hiraganaToKatakana(hiragana) : hiragana
+                let kana = chars[start].isUppercase ? KanaNormalizer.hiraganaToKatakana(hiragana) : hiragana
                 return (kana, length)
             }
         }
         return nil
-    }
-
-    // Shifts every hiragana scalar in the input by the +0x60 katakana offset.
-    private static func hiraganaToKatakana(_ s: String) -> String {
-        var result = ""
-        result.reserveCapacity(s.count)
-        for scalar in s.unicodeScalars {
-            let v = scalar.value
-            if (0x3041...0x3096).contains(v), let katakana = Unicode.Scalar(v + 0x60) {
-                result.unicodeScalars.append(katakana)
-            } else {
-                result.unicodeScalars.append(scalar)
-            }
-        }
-        return result
     }
 
     // MARK: - Predicates

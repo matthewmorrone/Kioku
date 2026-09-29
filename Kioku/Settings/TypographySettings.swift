@@ -22,6 +22,14 @@ nonisolated enum TypographySettings {
     static let showFuriganaKey = "kioku.settings.showFurigana"
     static let lineWrappingKey = "kioku.settings.lineWrapping"
     static let colorAlternationKey = "kioku.settings.colorAlternation"
+    // Read-view display toggles set from ReadView's menus.
+    static let hideFuriganaForKnownWordsKey = "kioku.settings.hideFuriganaForKnownWords"
+    static let highlightUnknownKey = "kioku.settings.highlightUnknown"
+    static let applyGloballyKey = "kioku.settings.applyGlobally"
+    static let savedGlowKey = "kioku.settings.savedGlow"
+    static let savedHighlightShowSavedKey = "kioku.settings.savedHighlight.showSaved"
+    static let savedHighlightShowLearnedKey = "kioku.settings.savedHighlight.showLearned"
+    static let savedHighlightShowNotLearnedKey = "kioku.settings.savedHighlight.showNotLearned"
 
     // The implicit ruby-to-base size ratio: furigana defaults to half the headword font size.
     // Single source for the `textSize * 0.5` derivation that the renderers apply (and that

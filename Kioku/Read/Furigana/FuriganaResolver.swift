@@ -7,7 +7,7 @@ import Foundation
 // fallback / okurigana cropping / fallback-reading logic.
 //
 // The split with `FuriganaAttributedString`: that enum owns surface↔reading projection
-// (kanjiRuns, projectRunReadings, hasPhoneticPrefix/Suffix). This struct owns segment-edge
+// (kanjiRuns, projectRunReadings). This struct owns segment-edge
 // resolution: walking edges, picking lemma references, choosing fallback readings when the
 // per-run projection fails.
 //
@@ -138,7 +138,7 @@ nonisolated struct FuriganaResolver {
         // "たち"-like suffix in the reading, so it must not be attached to 私). A single-run surface
         // gets no free pass.
         if !prefixSurface.isEmpty {
-            if FuriganaResolver.hasPhoneticPrefix(trimmedReading, matching: prefixSurface) {
+            if KanaNormalizer.hasPhoneticPrefix(trimmedReading, matching: prefixSurface) {
                 trimmedReading.removeFirst(prefixSurface.count)
             } else {
                 return nil
@@ -146,7 +146,7 @@ nonisolated struct FuriganaResolver {
         }
 
         if !suffixSurface.isEmpty {
-            if FuriganaResolver.hasPhoneticSuffix(trimmedReading, matching: suffixSurface) {
+            if KanaNormalizer.hasPhoneticSuffix(trimmedReading, matching: suffixSurface) {
                 trimmedReading.removeLast(suffixSurface.count)
             } else {
                 return nil
@@ -423,15 +423,5 @@ nonisolated struct FuriganaResolver {
         }
 
         return nil
-    }
-
-    // Checks a reading prefix against surface okurigana using phonetic-normalized kana matching.
-    private static func hasPhoneticPrefix(_ reading: String, matching surfacePrefix: String) -> Bool {
-        KanaNormalizer.hasPhoneticPrefix(reading, matching: surfacePrefix)
-    }
-
-    // Checks a reading suffix against surface okurigana using phonetic-normalized kana matching.
-    private static func hasPhoneticSuffix(_ reading: String, matching surfaceSuffix: String) -> Bool {
-        KanaNormalizer.hasPhoneticSuffix(reading, matching: surfaceSuffix)
     }
 }

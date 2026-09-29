@@ -17,7 +17,7 @@ extension DictionaryStore {
             """
 
             // Convert hiragana to katakana so the query matches the UniDic-derived table.
-            let katakana = kana.applyingTransform(.hiraganaToKatakana, reverse: false) ?? kana
+            let katakana = KanaNormalizer.hiraganaToKatakana(kana)
 
             var statement: OpaquePointer?
             defer { sqlite3_finalize(statement) }
@@ -507,8 +507,8 @@ extension DictionaryStore {
             ].compactMap { $0 }
             for reading in readingCandidates {
                 guard reading.unicodeScalars.contains(where: ScriptClassifier.isKanaScalar) else { continue }
-                let katakana = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
-                let hiragana = reading.applyingTransform(.hiraganaToKatakana, reverse: true) ?? reading
+                let katakana = KanaNormalizer.hiraganaToKatakana(reading)
+                let hiragana = KanaNormalizer.katakanaToHiragana(reading)
                 for literal in try searchKanjiByReading(readings: [katakana, hiragana], limit: 1) {
                     if seen.insert(literal).inserted { ordered.append(literal) }
                 }

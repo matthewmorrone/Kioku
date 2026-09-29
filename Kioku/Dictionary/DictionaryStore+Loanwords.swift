@@ -32,7 +32,7 @@ extension DictionaryStore {
                     guard let kanaText = sqlite3_column_text(stmt, 0), let glossText = sqlite3_column_text(stmt, 2) else { return nil }
                     let kana = String(cString: kanaText)
                     let gloss = Self.normalizedGloss(String(cString: glossText))
-                    guard Self.isKatakana(kana), gloss == term || gloss.replacingOccurrences(of: " ", with: "") == squashed else { return nil }
+                    guard ScriptClassifier.isPureKatakana(kana), gloss == term || gloss.replacingOccurrences(of: " ", with: "") == squashed else { return nil }
                     return LoanwordCandidate(kana: kana, frequency: sqlite3_column_double(stmt, 1))
                 }
             }
@@ -72,10 +72,5 @@ extension DictionaryStore {
             .lowercased().trimmingCharacters(in: .whitespaces)
         if s.hasPrefix("to ") { s = String(s.dropFirst(3)) }
         return s.replacingOccurrences(of: "-", with: " ")
-    }
-
-    // True when every scalar is in the katakana block (ー included).
-    nonisolated private static func isKatakana(_ s: String) -> Bool {
-        s.isEmpty == false && s.unicodeScalars.allSatisfy { (0x30A0...0x30FF).contains($0.value) }
     }
 }

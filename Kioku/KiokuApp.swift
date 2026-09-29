@@ -26,9 +26,6 @@ struct KiokuApp: App {
         StartupTimer.mark("KiokuApp.init")
         KaraokeDebugLog.reset()
         KaraokeDebugLog.log("=== app launch ===")
-        // One-time cleanup: the .srt sidecar was demoted to an export-only projection of cues.json
-        // (the single source of truth), so remove the now-inert sidecars left by older builds.
-        NotesAudioStore.shared.purgeLegacySRTSidecars()
         // Bring the vocal-stem cache back under VocalStemCache.maxBytes; store() keeps it there
         // after this. Off the main thread so the directory scan and deletes never delay launch.
         Task.detached(priority: .utility) {

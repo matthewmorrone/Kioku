@@ -17,7 +17,7 @@ struct BrowseProficiencyView: View {
     @Environment(\.dismiss) private var dismiss
 
     // Display order: easiest (N5) first.
-    private let availableLevels = [5, 4, 3, 2, 1]
+    private let availableLevels = DictionaryStore.jlptLevelsEasiestFirst
 
     var body: some View {
         NavigationStack {
@@ -36,9 +36,9 @@ struct BrowseProficiencyView: View {
                                     Task { await load() }
                                 } label: {
                                     if value == level {
-                                        Label("N\(value)", systemImage: "checkmark")
+                                        Label(DictionaryStore.jlptLabel(for: value), systemImage: "checkmark")
                                     } else {
-                                        Text("N\(value)")
+                                        Text(DictionaryStore.jlptLabel(for: value))
                                     }
                                 }
                             }

@@ -326,7 +326,12 @@ final class SongBreakdownStore: ObservableObject {
         guard let data = try? Data(contentsOf: url) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(SongBreakdown.self, from: data)
+        do {
+            return try decoder.decode(SongBreakdown.self, from: data)
+        } catch {
+            AppLog.error(.storage, "breakdown for \(noteID) did not decode — \(error.localizedDescription)")
+            return nil
+        }
     }
 
     // Builds the per-app Application Support root. SwiftUI's @StateObject and the existing

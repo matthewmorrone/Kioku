@@ -320,14 +320,14 @@ struct CSVImportView: View {
             // "I'm saving kanji pages, not word entries" intent. Multi-character or
             // non-kanji surfaces stay on the SavedWord path as before.
             var savedWords: [SavedWord] = []
-            var kanjiLiterals: [(literal: String, listIDs: [UUID])] = []
+            var kanjiLiterals: [(literal: String, listIDs: [UUID], note: String?)] = []
             for item in items {
                 guard let surface = item.finalSurface, surface.isEmpty == false else { continue }
                 let itemListIDs = listIDsByItemID[item.id] ?? []
                 if surface.count == 1,
                    let scalar = surface.unicodeScalars.first,
                    ScriptClassifier.isKanjiScalar(scalar) {
-                    kanjiLiterals.append((surface, itemListIDs))
+                    kanjiLiterals.append((surface, itemListIDs, item.finalNote))
                     continue
                 }
                 // Rows that can't be resolved to a real dictionary entry are skipped rather than
@@ -351,14 +351,15 @@ struct CSVImportView: View {
                     canonicalEntryID: entry.entryId,
                     surface: canonicalSurface,
                     wordListIDs: itemListIDs,
+                    personalNote: item.finalNote,
                     selectedSenseIDs: senseIDs,
                     encounteredSurfaces: Set([canonicalSurface, surface])
                 ))
             }
             await target.add(savedWords)
             await MainActor.run {
-                for (literal, itemListIDs) in kanjiLiterals {
-                    kanjiTarget.save(literal: literal, wordListIDs: itemListIDs)
+                for (literal, itemListIDs, note) in kanjiLiterals {
+                    kanjiTarget.save(literal: literal, wordListIDs: itemListIDs, personalNote: note)
                 }
             }
         }

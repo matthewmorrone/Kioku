@@ -53,13 +53,13 @@ nonisolated enum CSVImport {
         var candidates: [String] = []
         if let s = surface { candidates.append(s) }
         if let k = kana { candidates.append(k) }
-        if let m = meaning, containsJapaneseScript(m) || isKanaOnly(m) { candidates.append(m) }
+        if let m = meaning, ScriptClassifier.containsJapanese(m) || ScriptClassifier.isKanaText(m) { candidates.append(m) }
         var seen = Set<String>()
         candidates = candidates.filter { seen.insert($0).inserted }
 
         var hit: DictionaryEntry? = nil
         for candidate in candidates {
-            let mode: LookupMode = containsKanji(candidate) ? .kanjiAndKana : .kanaOnly
+            let mode: LookupMode = ScriptClassifier.containsKanji(candidate) ? .kanjiAndKana : .kanaOnly
             if let entry = try? dictionaryStore.lookup(surface: candidate, mode: mode).first {
                 hit = entry
                 break
@@ -97,9 +97,9 @@ nonisolated enum CSVImport {
             guard line.isEmpty == false else { continue }
 
             // Route each line to the appropriate field based on script content.
-            if containsKanji(line) {
+            if ScriptClassifier.containsKanji(line) {
                 out.append(CSVImportItem(lineNumber: lineNo, providedSurface: line, providedKana: nil, providedMeaning: nil, providedNote: nil))
-            } else if isKanaOnly(line) {
+            } else if ScriptClassifier.isKanaText(line) {
                 out.append(CSVImportItem(lineNumber: lineNo, providedSurface: nil, providedKana: line, providedMeaning: nil, providedNote: nil))
             } else {
                 out.append(CSVImportItem(lineNumber: lineNo, providedSurface: nil, providedKana: nil, providedMeaning: line, providedNote: nil))
@@ -222,14 +222,14 @@ nonisolated enum CSVImport {
         let values = cols.compactMap { trim($0) }
         guard values.isEmpty == false else { return (nil, nil, nil, nil) }
 
-        let japaneseSurface = values.first(where: { containsKanji($0) })
-            ?? values.first(where: { containsJapaneseScript($0) })
+        let japaneseSurface = values.first(where: { ScriptClassifier.containsKanji($0) })
+            ?? values.first(where: { ScriptClassifier.containsJapanese($0) })
 
-        let kana = values.first(where: { isKanaOnly($0) })
-            ?? values.first(where: { containsJapaneseScript($0) && containsKanji($0) == false && looksLikeEnglish($0) == false })
+        let kana = values.first(where: { ScriptClassifier.isKanaText($0) })
+            ?? values.first(where: { ScriptClassifier.containsJapanese($0) && ScriptClassifier.containsKanji($0) == false && looksLikeEnglish($0) == false })
 
         let meaning = values.first(where: { looksLikeEnglish($0) })
-            ?? values.first(where: { containsJapaneseScript($0) == false })
+            ?? values.first(where: { ScriptClassifier.containsJapanese($0) == false })
 
         var used = Set<String>()
         if let s = japaneseSurface { used.insert(s) }
@@ -287,36 +287,10 @@ nonisolated enum CSVImport {
 
     // MARK: - Script classification helpers
 
-    private static func containsKanji(_ text: String) -> Bool {
-        ScriptClassifier.containsKanji(text)
-    }
-
-    // Returns true when the text consists entirely of kana with no kanji or Latin characters.
-    private static func isKanaOnly(_ text: String) -> Bool {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false else { return false }
-        var sawKana = false
-        for scalar in trimmed.unicodeScalars {
-            if CharacterSet.whitespacesAndNewlines.contains(scalar) { continue }
-            let v = scalar.value
-            if (0x3040...0x309F).contains(v) || (0x30A0...0x30FF).contains(v) || (0xFF66...0xFF9F).contains(v) {
-                sawKana = true
-            } else {
-                return false
-            }
-        }
-        return sawKana
-    }
-
-    // Returns true when the text contains at least one hiragana, katakana, or kanji scalar.
-    private static func containsJapaneseScript(_ text: String) -> Bool {
-        ScriptClassifier.containsJapanese(text)
-    }
-
     // Returns true when the text has Latin letters but no Japanese script, used to skip gloss columns.
     private static func looksLikeEnglish(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false, containsJapaneseScript(trimmed) == false else { return false }
+        guard trimmed.isEmpty == false, ScriptClassifier.containsJapanese(trimmed) == false else { return false }
         return trimmed.unicodeScalars.contains {
             (0x0041...0x005A).contains($0.value) || (0x0061...0x007A).contains($0.value)
         }

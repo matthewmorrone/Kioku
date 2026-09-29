@@ -32,10 +32,28 @@ nonisolated enum KanaNormalizer {
         return result
     }
 
+    // Converts hiragana to the corresponding full-width katakana, leaving every other scalar
+    // untouched — the inverse of katakanaToHiragana over the same 0x60-offset blocks. Used to
+    // probe katakana spellings of a kana reading and to render uppercase romaji as katakana.
+    static func hiraganaToKatakana(_ text: String) -> String {
+        var result = ""
+        result.unicodeScalars.reserveCapacity(text.unicodeScalars.count)
+        for scalar in text.unicodeScalars {
+            // 0x3041…0x3096 (ぁ…ゖ) map 1:1 onto katakana 0x30A1…0x30F6.
+            if (0x3041...0x3096).contains(scalar.value),
+               let converted = Unicode.Scalar(scalar.value + 0x60) {
+                result.unicodeScalars.append(converted)
+            } else {
+                result.unicodeScalars.append(scalar)
+            }
+        }
+        return result
+    }
+
     // Checks whether `reading` starts with the same phonetic syllables as `surfacePrefix`,
     // using furigana-alignment normalization so equivalent kana spellings match. Lets prefix
     // okurigana be excluded from a kanji run's furigana. Shared by FuriganaResolver and
-    // FuriganaAttributedString (previously identical private copies in each).
+    // FuriganaAttributedString.
     static func hasPhoneticPrefix(_ reading: String, matching surfacePrefix: String) -> Bool {
         guard reading.count >= surfacePrefix.count else {
             return false

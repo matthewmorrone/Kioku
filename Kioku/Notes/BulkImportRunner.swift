@@ -300,21 +300,15 @@ final class BulkImportRunner: ObservableObject {
         return trimmedBase.isEmpty ? "Untitled" : trimmedBase
     }
 
-    // Reads a text file from a security-scoped URL, falling back to Latin-1 when the file
-    // is not valid UTF-8 so unusual encodings still import without surfacing a hard failure.
+    // Reads a text file through the shared subtitle loader, reporting an unreadable file as this
+    // importer's own error so the per-item status names it.
     private nonisolated static func readText(from url: URL) throws -> String {
-        let didStart = url.startAccessingSecurityScopedResource()
-        defer {
-            if didStart { url.stopAccessingSecurityScopedResource() }
+        do {
+            return try SubtitleSourceLoader.readText(from: url)
+        } catch {
+            AppLog.error(.notesImport, "bulk import: could not read \(url.lastPathComponent): \(error.localizedDescription)")
+            throw BulkImportError.unreadableTextFile
         }
-
-        if let utf8 = try? String(contentsOf: url, encoding: .utf8) {
-            return utf8
-        }
-        if let latin = try? String(contentsOf: url, encoding: .isoLatin1) {
-            return latin
-        }
-        throw BulkImportError.unreadableTextFile
     }
 
     // Reads a subtitle file and returns both its raw text and parsed cues. Both are needed:

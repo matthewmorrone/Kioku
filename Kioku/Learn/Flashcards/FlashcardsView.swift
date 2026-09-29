@@ -494,7 +494,7 @@ struct FlashcardJLPTPicker: View {
                     }
                     Divider()
                     // N5 (easiest) first.
-                    ForEach(Array(stride(from: 5, through: 1, by: -1)), id: \.self) { level in
+                    ForEach(DictionaryStore.jlptLevelsEasiestFirst, id: \.self) { level in
                         Button {
                             if selectedLevels.contains(level) {
                                 selectedLevels.remove(level)
@@ -502,7 +502,7 @@ struct FlashcardJLPTPicker: View {
                                 selectedLevels.insert(level)
                             }
                         } label: {
-                            let title = "N\(level) (\(count(for: level)))"
+                            let title = "\(DictionaryStore.jlptLabel(for: level)) (\(count(for: level)))"
                             if selectedLevels.contains(level) {
                                 Label(title, systemImage: "checkmark")
                             } else {
@@ -530,6 +530,6 @@ struct FlashcardJLPTPicker: View {
     // Short label describing the current selection for the menu's trigger text.
     private var summary: String {
         if selectedLevels.isEmpty { return "Any" }
-        return selectedLevels.sorted(by: >).map { "N\($0)" }.joined(separator: ", ")
+        return selectedLevels.sorted(by: >).map(DictionaryStore.jlptLabel(for:)).joined(separator: ", ")
     }
 }

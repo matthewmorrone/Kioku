@@ -102,9 +102,9 @@ struct WordsFilterView: View {
     private var jlptLevelRow: some View {
         Menu {
             // N-numbers descend 5→1 so the menu reads N5 (easiest) first.
-            ForEach(Array(stride(from: 5, through: 1, by: -1)), id: \.self) { level in
+            ForEach(DictionaryStore.jlptLevelsEasiestFirst, id: \.self) { level in
                 Button { tapJLPT(level) } label: {
-                    Label("N\(level)", systemImage: jlptLevel == level ? "checkmark" : "graduationcap")
+                    Label(DictionaryStore.jlptLabel(for: level), systemImage: jlptLevel == level ? "checkmark" : "graduationcap")
                 }
             }
         } label: {
@@ -167,7 +167,7 @@ struct WordsFilterView: View {
     }
 
     private var jlptLevelLabel: String {
-        jlptLevel.map { "N\($0)" } ?? "Any"
+        jlptLevel.map(DictionaryStore.jlptLabel(for:)) ?? "Any"
     }
 
     private var noteLabel: String {

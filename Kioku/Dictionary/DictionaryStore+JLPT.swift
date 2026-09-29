@@ -9,12 +9,14 @@ import SQLite3
 extension DictionaryStore {
 
     // Lowest (easiest) and highest (hardest) stored level values; N5…N1 map to 5…1.
-    static let jlptLevelRange = 1...5
+    nonisolated static let jlptLevelRange = 1...5
 
-    // Renders a stored level integer as its JLPT label, e.g. 5 → "N5". nil passes through.
-    nonisolated static func jlptLabel(for level: Int?) -> String? {
-        guard let level else { return nil }
-        return "N\(level)"
+    // Stored levels in picker order, easiest first: 5 (N5) … 1 (N1).
+    nonisolated static var jlptLevelsEasiestFirst: [Int] { jlptLevelRange.reversed() }
+
+    // Renders a stored level integer as its JLPT label, e.g. 5 → "N5".
+    nonisolated static func jlptLabel(for level: Int) -> String {
+        "N\(level)"
     }
 
     // O(1) level lookup for an entry. nil when the entry carries no JLPT level (not in the list).

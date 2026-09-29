@@ -61,16 +61,11 @@ final class WordListsStore: ObservableObject {
 
     // Loads word lists from UserDefaults, returning empty array if none exist.
     private func load() -> [WordList] {
-        guard let data = userDefaults.data(forKey: storageKey),
-              let decoded = try? JSONDecoder().decode([WordList].self, from: data) else {
-            return []
-        }
-        return decoded
+        UserDefaultsJSON.load([WordList].self, forKey: storageKey, from: userDefaults, logAs: .storage) ?? []
     }
 
     // Persists the current lists array to UserDefaults.
     private func persist() {
-        guard let encoded = try? JSONEncoder().encode(lists) else { return }
-        userDefaults.set(encoded, forKey: storageKey)
+        UserDefaultsJSON.save(lists, forKey: storageKey, to: userDefaults, logAs: .storage)
     }
 }
