@@ -17,6 +17,11 @@ enum CTCAlignmentCore {
     // versus the fixed 0.20 s lead this replaces.
     static let onsetMassThreshold: Float = 0.10
     static let onsetMaxBack = 0.4
+    // The HuBERT phoneme model's spikes are sharp, with little ramp to walk back along, so starts
+    // still land late (+72 ms median, 11 of 12 songs). This much more is taken off every start.
+    // Swept 0–120 ms on the 12-song reference: 40 ms is the largest shift that loses no line
+    // (+2 lines, median error 81 → 57 ms); 50–70 ms centre the bias better but cost a セラヴィ line.
+    static let onsetLead = 0.04
     // Frames this far outside a sung region are pinned to blank.
     static let regionMargin = 0.5
 
@@ -167,7 +172,7 @@ enum CTCAlignmentCore {
         for ranges in spanTokenRanges {
             let placed = ranges.flatMap { Array($0) }
             if let first = placed.first, let last = placed.last {
-                lineStart.append(time(onsetOf(tokenSpans[first].start)))
+                lineStart.append(max(0, time(onsetOf(tokenSpans[first].start)) - onsetLead))
                 lineEnd.append(time(tokenSpans[last].end))
             } else {
                 lineStart.append(nil); lineEnd.append(nil)
@@ -196,7 +201,7 @@ enum CTCAlignmentCore {
             var lastStart = -Double.infinity
             for (span, range) in zip(romanization[i], spanTokenRanges[i]) {
                 guard let first = range.first else { continue }
-                var t = max(start, time(onsetOf(tokenSpans[first].start)))
+                var t = max(start, time(onsetOf(tokenSpans[first].start)) - onsetLead)
                 // Keep checkpoints distinct and forward-only, clamped to the line end.
                 if t < lastStart + 0.1 { t = min(lastStart + 0.1, end) }
                 lastStart = t
