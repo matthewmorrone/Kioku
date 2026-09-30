@@ -6,7 +6,7 @@ import Foundation
 // ones are their own headwords, so neither shows its parts on its own; the surface's lattice still
 // holds the natural head + auxiliary split, and DerivationAnalyzer's compound-verb rule confirms it.
 // Shared with scripts/segmentation-eval's `compounds` mode so the split is measured as shipped.
-nonisolated enum CompoundVerbSplitter {
+enum CompoundVerbSplitter {
 
     // Returns the base + auxiliary lemmas for `surface`, or nil when it isn't a compound verb.
     // `edges` is the surface's lattice (or the selection's slice of the note's lattice); `posTags`
