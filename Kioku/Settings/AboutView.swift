@@ -6,6 +6,9 @@ import SwiftUI
 // attributions (licenses we owe by CC BY-SA, BSD, MIT, etc.), downloaded speech
 // models, third-party libraries.
 struct AboutView: View {
+    // The bundled license file whose text is being shown, pushed from a row's license line.
+    @State private var shownLicenseFile: String?
+
     var body: some View {
         Form {
             Section("Kioku") {
@@ -20,7 +23,7 @@ struct AboutView: View {
                         subtitle: dataset.description,
                         license: dataset.license,
                         urlString: dataset.sourceURL,
-                        licenseTextFile: dataset.licenseTextFile
+                        onShowLicense: dataset.licenseTextFile.map { file in { shownLicenseFile = file } }
                     )
                 }
             }
@@ -47,6 +50,9 @@ struct AboutView: View {
                 }
             }
         }
+        .navigationDestination(item: $shownLicenseFile) { file in
+            LicenseTextView(resourceName: file)
+        }
         .navigationTitle("About")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -65,42 +71,17 @@ struct AboutView: View {
     }
 }
 
-// One attribution row: bold title, subtitle, optional license line, and one tap target — the
-// whole row opens the bundled license text when the license's full text ships in the app,
-// otherwise a source link. Used uniformly for datasets and libraries so the list stays consistent.
+// One attribution row: bold title, subtitle, optional license line, tappable source link. When the
+// license's full text ships in the app, the license line itself is tappable and opens that text,
+// separately from the link. Used uniformly for datasets and libraries so the list stays consistent.
 private struct AttributionRow: View {
     let title: String
     let subtitle: String
     let license: String?
     let urlString: String
-    var licenseTextFile: String? = nil
+    var onShowLicense: (() -> Void)? = nil
 
     var body: some View {
-        if let licenseTextFile {
-            NavigationLink {
-                LicenseTextView(resourceName: licenseTextFile)
-            } label: {
-                details
-                    .padding(.vertical, 2)
-            }
-        } else {
-            VStack(alignment: .leading, spacing: 4) {
-                details
-                if let url = URL(string: urlString) {
-                    Link(destination: url) {
-                        Text(urlString)
-                            .font(.caption.monospaced())
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                }
-            }
-            .padding(.vertical, 2)
-        }
-    }
-
-    // Title, subtitle and license line shared by both row forms.
-    private var details: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.body.weight(.semibold))
@@ -108,10 +89,29 @@ private struct AttributionRow: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             if let license {
-                Text(license)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                if let onShowLicense {
+                    Button(action: onShowLicense) {
+                        Text(license)
+                            .font(.caption)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .buttonStyle(.borderless)
+                } else {
+                    Text(license)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            if let url = URL(string: urlString) {
+                Link(destination: url) {
+                    Text(urlString)
+                        .font(.caption.monospaced())
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .buttonStyle(.borderless)
             }
         }
+        .padding(.vertical, 2)
     }
 }
