@@ -65,9 +65,9 @@ struct AboutView: View {
     }
 }
 
-// One attribution row: bold title, subtitle, optional license line, tappable
-// source link, and a "License text" link when the license's full text ships in the app.
-// Used uniformly for datasets and libraries so the rendered list stays consistent.
+// One attribution row: bold title, subtitle, optional license line, and one tap target — the
+// whole row opens the bundled license text when the license's full text ships in the app,
+// otherwise a source link. Used uniformly for datasets and libraries so the list stays consistent.
 private struct AttributionRow: View {
     let title: String
     let subtitle: String
@@ -76,6 +76,31 @@ private struct AttributionRow: View {
     var licenseTextFile: String? = nil
 
     var body: some View {
+        if let licenseTextFile {
+            NavigationLink {
+                LicenseTextView(resourceName: licenseTextFile)
+            } label: {
+                details
+                    .padding(.vertical, 2)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                details
+                if let url = URL(string: urlString) {
+                    Link(destination: url) {
+                        Text(urlString)
+                            .font(.caption.monospaced())
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    // Title, subtitle and license line shared by both row forms.
+    private var details: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.body.weight(.semibold))
@@ -87,23 +112,6 @@ private struct AttributionRow: View {
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
-            if let url = URL(string: urlString) {
-                Link(destination: url) {
-                    Text(urlString)
-                        .font(.caption.monospaced())
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
-            if let licenseTextFile {
-                NavigationLink {
-                    LicenseTextView(resourceName: licenseTextFile)
-                } label: {
-                    Text("License text")
-                        .font(.caption)
-                }
-            }
         }
-        .padding(.vertical, 2)
     }
 }
