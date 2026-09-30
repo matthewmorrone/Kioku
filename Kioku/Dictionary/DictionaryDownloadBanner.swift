@@ -40,9 +40,9 @@ struct DictionaryDownloadBanner: View {
                     .controlSize(.small)
             } else {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Downloading Dictionary")
+                    Text(downloadManager.isUnpacking ? "Installing Dictionary" : "Downloading Dictionary")
                         .font(.callout.weight(.medium))
-                    if let progress = downloadManager.progress {
+                    if let progress = downloadManager.progress, downloadManager.isUnpacking == false {
                         Text("\(Int(progress * 100))%")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -50,8 +50,14 @@ struct DictionaryDownloadBanner: View {
                     }
                 }
                 Spacer(minLength: 8)
-                ProgressView(value: downloadManager.progress ?? 0)
-                    .frame(maxWidth: 60)
+                Group {
+                    if downloadManager.isUnpacking {
+                        ProgressView()
+                    } else {
+                        ProgressView(value: downloadManager.progress ?? 0)
+                    }
+                }
+                .frame(maxWidth: 60)
             }
         }
         .padding(.horizontal, 14)

@@ -1,7 +1,8 @@
 // DictionaryDownloadManager.swift
 //
-// dictionary.sqlite (~350MB) is not bundled inside Kioku.app — it's downloaded once from a pinned
-// GitHub Release asset into Application Support on first launch. Application Support, not Caches: a
+// dictionary.sqlite (~384MB) is not bundled inside Kioku.app — it's downloaded once, xz-compressed
+// (~100MB, see DictionaryArchiveExtractor), from a pinned GitHub Release asset and unpacked into
+// Application Support on first launch. Application Support, not Caches: a
 // mid-download purge under storage pressure would strand the app with a half-written file and no
 // dictionary — the same failure mode ModelStorage's header documents for the speech models
 // (LyricAlignment/Sources/LyricAlignment/ModelStorage.swift).
@@ -47,13 +48,12 @@ final class DictionaryDownloadManager {
     nonisolated static let releaseTag = "dictionary-v13"
     nonisolated static let expectedSHA256 = "66ea2389aeb4349809f7804571d46e4b0d3c491a22956c585a4a9052ab212deb"
 
-    // Public GitHub Release asset URL — matthewmorrone/Kioku is a public repo, so this needs no
-    // authentication to fetch.
-    // nonisolated: DictionaryStore's init (Kioku/Dictionary/DictionaryStore.swift) reads this
-    // from a nonisolated context reached via Task.detached in ContentView, which can't see a
-    // MainActor-isolated member under this project's default MainActor isolation.
+    // Public GitHub Release asset URL of the xz-compressed database — matthewmorrone/Kioku is a
+    // public repo, so this needs no authentication to fetch. The release also carries the raw
+    // dictionary.sqlite, which scripts/ensure_dictionary.sh and CI download; the app takes the
+    // archive because it is a quarter of the size. `expectedSHA256` pins the UNCOMPRESSED bytes.
     nonisolated static var remoteURL: URL {
-        URL(string: "https://github.com/matthewmorrone/Kioku/releases/download/\(releaseTag)/dictionary.sqlite")!
+        URL(string: "https://github.com/matthewmorrone/Kioku/releases/download/\(releaseTag)/dictionary.sqlite.xz")!
     }
 
     // Per-model subdirectory under Application Support where the downloaded database is stored.
@@ -103,6 +103,8 @@ final class DictionaryDownloadManager {
     private(set) var isInstalled: Bool
     // 0...1 while a download is in flight; nil otherwise.
     private(set) var progress: Double?
+    // True while the downloaded archive is being unpacked and verified (a few seconds).
+    private(set) var isUnpacking = false
     private(set) var errorMessage: String?
 
     // Snapshots the current on-disk install state.
@@ -110,8 +112,8 @@ final class DictionaryDownloadManager {
         isInstalled = Self.isInstalled
     }
 
-    // Downloads dictionary.sqlite to Application Support, verifying its checksum before making
-    // it visible at installedDatabaseURL. No-op if already installed or a download is in flight.
+    // Downloads the dictionary archive, unpacks it next to installedDatabaseURL and verifies the
+    // unpacked bytes against the pin before making it visible at installedDatabaseURL. No-op if already installed or a download is in flight.
     // Explicitly @MainActor (redundant with this project's default MainActor isolation, but
     // documents that every direct property write below is safe to interleave with the delegate's
     // Task { @MainActor in ... } hop without a lock, since both land on the same serial executor).
@@ -128,7 +130,7 @@ final class DictionaryDownloadManager {
 
         do {
             try FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
-            // Re-downloadable, ~350MB — keep it out of iCloud/device backups, mirroring
+            // Re-downloadable, ~384MB — keep it out of iCloud/device backups, mirroring
             // ModelStorage.directory(for:)'s identical reasoning for the speech models.
             var directoryURL = Self.directory
             var excludedFromBackup = URLResourceValues()
@@ -140,7 +142,15 @@ final class DictionaryDownloadManager {
             AppLog.debug(.dictionaryDownload, "downloadIfNeeded: temp file at \(tempURL.path)")
             defer { try? FileManager.default.removeItem(at: tempURL) }
 
-            let digest = try Self.sha256(ofFileAt: tempURL)
+            // Unpack beside the final location (same volume, so the move below is a rename) and off
+            // the main actor: decoding ~384MB takes several seconds on a phone.
+            isUnpacking = true
+            defer { isUnpacking = false }
+            let stagingURL = Self.directory.appendingPathComponent("dictionary.sqlite.unpacking")
+            defer { try? FileManager.default.removeItem(at: stagingURL) }
+            let digest = try await Task.detached(priority: .userInitiated) {
+                try DictionaryArchiveExtractor.extract(archiveAt: tempURL, to: stagingURL)
+            }.value
             guard digest == Self.expectedSHA256 else {
                 AppLog.error(.dictionaryDownload, "downloadIfNeeded: checksum mismatch — expected \(Self.expectedSHA256), got \(digest)")
                 throw DictionaryDownloadError.checksumMismatch
@@ -149,7 +159,7 @@ final class DictionaryDownloadManager {
             if FileManager.default.fileExists(atPath: Self.installedDatabaseURL.path) {
                 try FileManager.default.removeItem(at: Self.installedDatabaseURL)
             }
-            try FileManager.default.moveItem(at: tempURL, to: Self.installedDatabaseURL)
+            try FileManager.default.moveItem(at: stagingURL, to: Self.installedDatabaseURL)
             try Self.releaseTag.write(to: Self.installedReleaseMarkerURL, atomically: true, encoding: .utf8)
             AppLog.info(.dictionaryDownload, "downloadIfNeeded: installed to \(Self.installedDatabaseURL.path)")
 
@@ -235,7 +245,7 @@ private final class DictionaryDownloadProgressDelegate: NSObject, URLSessionDown
     // returns, so the move has to happen here and synchronously rather than on a later hop.
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         let destination = FileManager.default.temporaryDirectory
-            .appendingPathComponent("dictionary-download-\(UUID().uuidString).sqlite")
+            .appendingPathComponent("dictionary-download-\(UUID().uuidString).sqlite.xz")
         do {
             try FileManager.default.moveItem(at: location, to: destination)
             downloadedURL = destination
