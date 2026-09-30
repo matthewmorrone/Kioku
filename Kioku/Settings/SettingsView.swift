@@ -25,8 +25,6 @@ struct SettingsView: View {
     // Color overrides live in ThemeCustomizeSheet, opened from the Theme section.
     @State private var isShowingThemeCustomizeSheet = false
     @AppStorage(ClipboardSettings.autoDetectKey) private var clipboardAutoDetect: Bool = ClipboardSettings.defaultAutoDetect
-    @AppStorage(DictionarySettings.includeArchaicReadingsKey)
-    var includeArchaicReadings: Bool = DictionarySettings.defaultIncludeArchaicReadings
     @AppStorage(DictionarySettings.showJapaneseInPopoverKey)
     private var showJapaneseInPopover: Bool = DictionarySettings.defaultShowJapaneseInPopover
     @AppStorage(DictionarySettings.prefersSheetDirectSegmentActionsKey)
@@ -106,7 +104,7 @@ struct SettingsView: View {
     // reports its own deletions back so the Clear Caches readout re-measures too.
     @State private var storageRefreshToken = 0
 
-    // engineSettings (the dictionary, diagnostics and debug sections) lives in
+    // engineSettings (the diagnostics and debug sections) lives in
     // SettingsView+EngineSections.swift to keep this file under the line-count guardrail.
 
     var body: some View {
@@ -151,8 +149,11 @@ struct SettingsView: View {
 
                 // MARK: Lookup — how the word popover behaves, and clipboard pickup.
                 Section {
-                    Toggle("Show Japanese in Popover", isOn: $showJapaneseInPopover)
                     Toggle("Open Full Lookup on Tap", isOn: $prefersSheetDirectSegmentActions)
+                    // Only meaningful while taps open the popover; with full lookup on tap there is none.
+                    if prefersSheetDirectSegmentActions == false {
+                        Toggle("Show Japanese in Popover", isOn: $showJapaneseInPopover)
+                    }
                     Toggle("Auto-detect Japanese in Clipboard", isOn: $clipboardAutoDetect)
                 } header: {
                     Text("Lookup")
@@ -226,7 +227,7 @@ struct SettingsView: View {
                     Text("Data")
                 }
 
-                // MARK: Dictionary, diagnostics and debug sections. See engineSettings.
+                // MARK: Diagnostics and debug sections. See engineSettings.
                 engineSettings
                 // MARK: Storage — models, isolated vocals and caches (own file: self-contained
                 // @State + alerts). Its Clear Caches state stays on this view.

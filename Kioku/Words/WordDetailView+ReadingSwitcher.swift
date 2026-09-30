@@ -16,9 +16,9 @@ extension WordDetailView {
     }
 
     // The readings the switcher offers: one per distinct reading STRING (so a single entry's several
-    // kana readings each appear, matching the sheet), archaic/obscure-only readings dropped unless the
-    // user opted in (the active reading is always kept so a word saved on its archaic reading still
-    // shows). Empty or single → the switcher stays hidden.
+    // kana readings each appear, matching the sheet), archaic/obscure-only readings dropped only when
+    // DictionarySettings.includeArchaicReadings is false (the active reading is always kept so a word
+    // saved on its archaic reading still shows). Empty or single → the switcher stays hidden.
     var switchableReadings: [ReadingVariants.Variant] {
         let includeArchaic = DictionarySettings.includeArchaicReadings
         var seen = Set<String>()

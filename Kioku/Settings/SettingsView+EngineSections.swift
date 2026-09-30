@@ -1,19 +1,12 @@
 import SwiftUI
 
-// The dictionary, diagnostics and debug sections of the main Settings screen.
+// The diagnostics and debug sections of the main Settings screen.
 // Split out of SettingsView.swift to keep that file under the line-count guardrail; shares the same @State/@AppStorage as the main file
 // (see SettingsView.swift for the properties this reads/writes — several are also read by
 // SettingsPreviewRenderer in `body`, which is why they're internal rather than private).
 extension SettingsView {
     @ViewBuilder
     var engineSettings: some View {
-        // MARK: Dictionary — engine-level lookup knobs.
-        Section {
-            Toggle("Include Archaic & Obscure Readings", isOn: $includeArchaicReadings)
-        } header: {
-            Text("Dictionary")
-        }
-
         // MARK: Diagnostics, developer diagnostics and debug overlays — hidden in release builds.
         #if DEBUG
         Section {
