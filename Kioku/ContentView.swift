@@ -46,6 +46,9 @@ struct ContentView: View {
     @State private var pendingReadScrollTarget: ReadNoteTarget?
     // Audio file picked by the Notes tab's Import Audio, handed to ReadView to transcribe.
     @State private var pendingReadAudioImportURL: URL?
+    // Note that ReadView should start playing (lyrics view open) once it's the active note — set
+    // by the "Play Kioku" Siri action, cleared by ReadView when consumed.
+    @State private var pendingReadAutoplayNoteID: UUID?
     @StateObject private var clipboardCoordinator = ClipboardLookupCoordinator()
     @Environment(\.scenePhase) private var scenePhase
     // Set by notification and read-tab actions; consumed by WordsView.
@@ -70,6 +73,7 @@ struct ContentView: View {
                 shouldActivateEditModeOnLoad: $shouldActivateReadEditMode,
                 pendingScrollTarget: $pendingReadScrollTarget,
                 pendingAudioImportURL: $pendingReadAudioImportURL,
+                pendingAutoplayNoteID: $pendingReadAutoplayNoteID,
                 segmenter: readResources.segmenter,
                 dictionaryStore: readResources.dictionaryStore,
                 lexicon: readResources.lexicon,
@@ -158,6 +162,8 @@ struct ContentView: View {
         .onAppear {
             StartupTimer.mark("onAppear fired")
             restoreLastActiveNote()
+            // A Siri launch can raise the request before this view exists to observe the change.
+            playRandomAudioNoteIfRequested()
             loadReadResourcesIfNeeded()
             // Wires the live notes store into the bridge so any MCP-side mutations route
             // through the same single-writer store the UI binds against.
@@ -195,6 +201,10 @@ struct ContentView: View {
             selectedTab = .read
             pendingReadScrollTarget = target
             readNoteNavigation.pendingTarget = nil
+        }
+        // "Play Kioku" (PlayRandomNoteIntent) while the app is already running.
+        .onChange(of: readNoteNavigation.isRandomPlaybackRequested) { _, _ in
+            playRandomAudioNoteIfRequested()
         }
         // Bump the segmenter revision so ReadView re-segments existing text with the new strategy.
         .onChange(of: segmentationStrategySetting) { _, _ in
@@ -366,6 +376,27 @@ struct ContentView: View {
     private func handleAudioImported(_ url: URL) {
         pendingReadAudioImportURL = url
         selectedTab = .read
+    }
+
+    // Serves PlayRandomNoteIntent: opens a random note whose audio file exists in Read and asks
+    // ReadView to start playing it. Prefers a note other than the one already open, so asking
+    // again moves on to a different song.
+    private func playRandomAudioNoteIfRequested() {
+        guard readNoteNavigation.isRandomPlaybackRequested else { return }
+        readNoteNavigation.isRandomPlaybackRequested = false
+        let candidates = notesStore.notes.filter { note in
+            guard let attachmentID = note.audioAttachmentID else { return false }
+            return NotesAudioStore.shared.audioURL(for: attachmentID) != nil
+        }
+        let others = candidates.filter { $0.id.uuidString != lastActiveNoteID }
+        guard let note = (others.isEmpty ? candidates : others).randomElement() else {
+            AppLog.info(.audioPlayback, "[ContentView] random playback requested but no note has audio")
+            return
+        }
+        selectedReadNote = note
+        lastActiveNoteID = note.id.uuidString
+        selectedTab = .read
+        pendingReadAutoplayNoteID = note.id
     }
 
     // Restores the previously active note so users return to their last reading context.

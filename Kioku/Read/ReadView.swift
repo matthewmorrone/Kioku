@@ -16,6 +16,9 @@ struct ReadView: View {
     // Set by ContentView when the Notes tab's Import Audio picks a file; consumed (and cleared) by
     // the transcribe-into-a-new-note flow in ReadView+AudioTranscription.swift.
     @Binding var pendingAudioImportURL: URL?
+    // Set by ContentView for the "Play Kioku" Siri action; consumed (and cleared) once that note
+    // is active — see startPendingAutoplayIfReady in ReadView+Lifecycle.swift.
+    @Binding var pendingAutoplayNoteID: UUID?
     @EnvironmentObject var notesStore: NotesStore
     @EnvironmentObject var historyStore: HistoryStore
     @EnvironmentObject var wordsStore: WordsStore
@@ -135,6 +138,7 @@ struct ReadView: View {
         shouldActivateEditModeOnLoad: Binding<Bool> = .constant(false),
         pendingScrollTarget: Binding<ReadNoteTarget?> = .constant(nil),
         pendingAudioImportURL: Binding<URL?> = .constant(nil),
+        pendingAutoplayNoteID: Binding<UUID?> = .constant(nil),
         segmenter: any TextSegmenting,
         dictionaryStore: DictionaryStore?,
         lexicon: Lexicon? = nil,
@@ -150,6 +154,7 @@ struct ReadView: View {
         _shouldActivateEditModeOnLoad = shouldActivateEditModeOnLoad
         _pendingScrollTarget = pendingScrollTarget
         _pendingAudioImportURL = pendingAudioImportURL
+        _pendingAutoplayNoteID = pendingAutoplayNoteID
         self.segmenter = segmenter
         self.dictionaryStore = dictionaryStore
         self.lexicon = lexicon

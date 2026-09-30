@@ -176,6 +176,10 @@ extension ReadView {
                 // can finish either before or after pendingScrollTarget arrives from ContentView —
                 // whichever onChange fires last is the one that actually has both pieces ready.
                 jumpToPendingScrollSurfaceIfReady()
+                startPendingAutoplayIfReady()
+            }
+            .onChange(of: pendingAutoplayNoteID) { _, _ in
+                startPendingAutoplayIfReady()
             }
             .onChange(of: editModeScroll.isEditMode) { _, editing in
                 if editing {
@@ -405,6 +409,17 @@ extension ReadView {
                 }
             }
         }
+    }
+
+    // Starts the "Play Kioku" note from the top with the lyrics view open, once that note is the
+    // one loaded (its audio attachment is loaded in the same pass as activeNoteID). Waits on
+    // activeNoteID for the same ordering reason as jumpToPendingScrollSurfaceIfReady.
+    func startPendingAutoplayIfReady() {
+        guard let noteID = pendingAutoplayNoteID, document.activeNoteID == noteID else { return }
+        pendingAutoplayNoteID = nil
+        guard audioPlayback.activeAudioAttachmentID != nil else { return }
+        audioPlayback.isShowingLyricsView = true
+        audioPlayback.audioController.playFromStart()
     }
 
     // Consumes pendingScrollTarget once the note it names is actually the one loaded into `text`

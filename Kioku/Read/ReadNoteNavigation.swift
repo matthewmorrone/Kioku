@@ -16,4 +16,7 @@ final class ReadNoteNavigation: ObservableObject {
     static let shared = ReadNoteNavigation()
 
     @Published var pendingTarget: ReadNoteTarget? = nil
+    // Raised by PlayRandomNoteIntent ("Play Kioku"); ContentView picks a note with audio, opens it
+    // in Read with autoplay, and lowers the flag.
+    @Published var isRandomPlaybackRequested = false
 }
