@@ -12,6 +12,7 @@ import hashlib
 import bisect
 import tarfile
 import urllib.request
+import xml.etree.ElementTree as ET
 import zipfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -619,11 +620,32 @@ def create_schema(conn):
     )
 
 
-# ke_inf tags that carry orthographic information (distinct from ke_pri frequency/priority tags).
-KE_INF_TAGS = {"ateji", "io", "iK", "oK", "rK", "sK"}
+# (ent_seq, written form) → comma-joined JMdict priority tags (ke_pri / re_pri: ichi1, news1, spec1,
+# gai1, nf01–nf48). jmdict-simplified folds these into one `common` boolean, so they are read from
+# EDRDG's own XML (manifest entry jmdict-priority-xml) and joined back on ent_seq. Filled by
+# load_jmdict_priorities before any entry is inserted.
+PRIORITY_BY_FORM = {}
 
-# re_inf tags that carry reading information (distinct from re_pri frequency/priority tags).
-RE_INF_TAGS = {"gikun", "ik", "ok", "uK", "sk"}
+
+# Streams the EDRDG JMdict XML and collects each kanji and reading form's priority tags, keyed by
+# entry sequence number and spelling. The XML is a daily build, so a form it lacks (renamed or added
+# since the JSON release) simply gets no tags.
+def load_jmdict_priorities():
+    entry = load_manifest()["jmdict-priority-xml"]
+    archive = fetch_archive(entry)
+    priorities = {}
+    with open_source_member(entry["fetch"], archive) as raw:
+        for _, element in ET.iterparse(raw, events=("end",)):
+            if element.tag != "entry":
+                continue
+            ent_seq = int(element.findtext("ent_seq"))
+            for form_tag, text_tag, pri_tag in (("k_ele", "keb", "ke_pri"), ("r_ele", "reb", "re_pri")):
+                for form in element.iter(form_tag):
+                    tags = sorted({p.text for p in form.iter(pri_tag) if p.text})
+                    if tags:
+                        priorities[(ent_seq, form.findtext(text_tag))] = ",".join(tags)
+            element.clear()
+    return priorities
 
 
 def load_jmdict_entries():
@@ -758,12 +780,10 @@ def insert_entry(conn, entry, ent_seq):
             )
             kanji_rows.append((cur.lastrowid, k))
         else:
+            # jmdict-simplified's tags are ke_inf info tags only; priority comes from the XML.
             tags = k.get("tags") or []
-            # Separate ke_pri frequency/priority tags from ke_inf orthographic-info tags.
-            pri_tags = [t for t in tags if t not in KE_INF_TAGS]
-            inf_tags = [t for t in tags if t in KE_INF_TAGS]
-            priority_str = ",".join(sorted(set(pri_tags))) if pri_tags else None
-            info_str = ",".join(sorted(set(inf_tags))) if inf_tags else None
+            priority_str = PRIORITY_BY_FORM.get((ent_seq, k["text"]))
+            info_str = ",".join(sorted(set(tags))) if tags else None
             cur = conn.execute(
                 "INSERT INTO kanji (text, entry_id, priority, info) VALUES (?, ?, ?, ?)",
                 (k["text"], entry_id, priority_str, info_str),
@@ -779,12 +799,10 @@ def insert_entry(conn, entry, ent_seq):
             )
             kana_rows.append((cur.lastrowid, r, frozenset()))
         else:
+            # jmdict-simplified's tags are re_inf info tags only; priority comes from the XML.
             tags = r.get("tags") or []
-            # Separate re_pri frequency/priority tags from re_inf reading-info tags.
-            pri_tags = [t for t in tags if t not in RE_INF_TAGS]
-            inf_tags = [t for t in tags if t in RE_INF_TAGS]
-            priority_str = ",".join(sorted(set(pri_tags))) if pri_tags else None
-            info_str = ",".join(sorted(set(inf_tags))) if inf_tags else None
+            priority_str = PRIORITY_BY_FORM.get((ent_seq, r["text"]))
+            info_str = ",".join(sorted(set(tags))) if tags else None
             nokanji = 1 if r.get("nokanji") else 0
             cur = conn.execute(
                 "INSERT INTO kana_forms (text, entry_id, priority, info, re_nokanji) VALUES (?, ?, ?, ?, ?)",
@@ -1793,6 +1811,9 @@ def build_database():
         create_schema(conn)
 
     with phase("Loading and inserting JMdict + extra entries..."):
+        PRIORITY_BY_FORM.clear()
+        PRIORITY_BY_FORM.update(load_jmdict_priorities())
+        print(f"  {len(PRIORITY_BY_FORM)} JMdict forms carry priority tags")
         entries = load_jmdict_entries()
         extra_entries = load_extra_entries()
 

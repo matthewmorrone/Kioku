@@ -54,8 +54,10 @@ nonisolated struct SegmenterScoring {
     // losing kana-written 間 (ながいま → な|が|いま).
     static let loneKanaPenalty = 1.5
 
-    // The same penalty for a two-kana string (Jiten ranks まお and いよ as kana spellings).
-    static let twoKanaPenalty = 0.35
+    // The same penalty for a two-kana string that is not a common JMdict reading (Jiten ranks まお
+    // and いよ as kana spellings; common のみ, よみ, なる are exempt). Measured against 0.35 on the
+    // Jiten list: 1.5 is better on kana2k (85.65 / 250 cut-throughs vs 85.48 / 253).
+    static let twoKanaPenalty = 1.5
 
     // Unknown (non-dictionary) text: a flat word cost plus a steep per-character cost, in nats, so
     // stranding a fragment is always worse than any parse that covers it with real words.

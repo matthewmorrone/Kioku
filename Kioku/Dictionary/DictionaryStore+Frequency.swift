@@ -230,6 +230,26 @@ extension DictionaryStore {
         }
     }
 
+    // Kana spellings JMdict marks as common (a reading carrying ichi1, news1, spec1, spec2 or gai1 —
+    // jmdict-simplified's own definition of "common"). The segmenter uses it to tell a real short kana
+    // word (のみ, よみ, なる) from a kana fragment a frequency list happens to rank (まお, いよ).
+    nonisolated func fetchCommonKanaSurfaces() throws -> Set<String> {
+        try withSerializedDatabaseAccess {
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            try prepare(sql: """
+                SELECT DISTINCT text FROM kana_forms
+                WHERE ',' || priority || ',' GLOB '*,ichi1,*' OR ',' || priority || ',' GLOB '*,news1,*'
+                   OR ',' || priority || ',' GLOB '*,spec1,*' OR ',' || priority || ',' GLOB '*,spec2,*'
+                   OR ',' || priority || ',' GLOB '*,gai1,*'
+                """, statement: &statement)
+            let surfaces = try stepRows(statement: statement) { stmt in
+                sqlite3_column_text(stmt, 0).map { String(cString: $0) }
+            }
+            return Set(surfaces)
+        }
+    }
+
     // Fetches all unique dictionary surfaces from kanji and kana_forms tables.
     nonisolated public func fetchAllSurfaces() throws -> [String] {
         try withSerializedDatabaseAccess {

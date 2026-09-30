@@ -22,6 +22,25 @@
       "feedsDictionary": true
     },
     {
+      "name": "jmdict-priority-xml",
+      "description": "EDRDG's own JMdict XML, read only for the ke_pri/re_pri priority tags (ichi1, news1, spec1, gai1, nf01–nf48) that jmdict-simplified folds into a single common flag. Joined onto the JSON entries by ent_seq and spelling to fill kanji.priority and kana_forms.priority.",
+      "license": "CC BY-SA 4.0 (Electronic Dictionary Research and Development Group)",
+      "type": "jmdict",
+      "path": null,
+      "required": true,
+      "derived": false,
+      "url": "http://ftp.edrdg.org/pub/Nihongo/JMdict_e.gz",
+      "sha256": null,
+      "provenance": "JMdict_e.gz as served on 2026-09-30 (header \"JMdict created: 2026-09-30\"). EDRDG rebuilds it daily, so a re-download will not match the pinned hash; refreshing it is a deliberate re-pin. It is newer than the jmdict-eng JSON release, so a few forms added or renamed since then carry no tags.",
+      "fetch": {
+        "url": "http://ftp.edrdg.org/pub/Nihongo/JMdict_e.gz",
+        "format": "gz",
+        "cacheName": "JMdict_e-2026-09-30.gz",
+        "archiveSha256": "749f303d713157be1a4d873011aa32698ef6c633ee503d5cd3fb9f865ec82634"
+      },
+      "feedsDictionary": true
+    },
+    {
       "name": "extras",
       "description": "Hand-written entries for words JMdict does not carry, mostly katakana fragments (ユア) the segmenter needs in order to split compounds. Merged into the same tables as JMdict so lookup and segmentation cannot tell them apart.",
       "license": "Project-maintained (Kioku)",
