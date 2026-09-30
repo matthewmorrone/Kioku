@@ -1,28 +1,32 @@
 // CoreMLArchiveInstaller.swift
 //
-// First-run download + extraction shared by every zipped .mlmodelc this package fetches from the
-// HF Hub (the MMS aligner, the HTDemucs isolator). A .mlmodelc is a directory bundle, so it ships
+// First-run download + extraction shared by every zipped .mlmodelc this package fetches (the HuBERT
+// phoneme aligner from a Kioku GitHub Release, the HTDemucs isolator from the HF Hub). A .mlmodelc is a directory bundle, so it ships
 // as a .zip that is downloaded, extracted into [[ModelStorage]]'s purge-resistant Application
 // Support tree, and health-checked by probing for model.mil inside the bundle.
 
+import CryptoKit
 import Foundation
 import os
 
 private let logger = Logger(subsystem: "LyricAlignment", category: "CoreMLArchiveInstaller")
 
-// Hub coordinates and user-facing wording for one model archive.
+// Download pin and user-facing wording for one model archive.
 struct CoreMLArchiveSpec: Sendable {
+    // Names the model's directory under [[ModelStorage]] (and its row in storage management).
     let modelId: String
-    // Commit SHA the archive is pinned to (docs/INVARIANTS.md, pinned model downloads).
-    let revision: String
-    let archiveName: String
+    // Immutable location of the zip (docs/INVARIANTS.md, pinned model downloads): an HF commit URL,
+    // or a GitHub Release asset, whose bytes a re-upload could change — so that one sets `sha256`.
+    let archiveURL: URL
+    // Expected sha256 of the zip, checked before extraction; nil for commit-pinned HF archives.
+    let sha256: String?
     let modelDirName: String
     // Lower-case noun for HUD stage text ("Downloading isolator… 42%").
     let stageNoun: String
     // Sentence-case noun for error messages ("Vocal isolator download failed").
     let errorNoun: String
     let errorDomain: String
-    // Download failure uses this code; a malformed archive uses errorCodeBase + 1.
+    // Download failure uses this code; a malformed archive errorCodeBase + 1, a sha256 mismatch + 2.
     let errorCodeBase: Int
 }
 
@@ -62,7 +66,7 @@ actor CoreMLArchiveInstaller {
             try fm.removeItem(at: target)
         }
 
-        let archiveURL = URL(string: "https://huggingface.co/\(spec.modelId)/resolve/\(spec.revision)/\(spec.archiveName)")!
+        let archiveURL = spec.archiveURL
         logger.info("downloading \(spec.modelId) from \(archiveURL.absoluteString)")
         onStage?("Downloading \(spec.stageNoun)…")
         let delegate = ModelDownloadProgressDelegate { fraction in
@@ -79,6 +83,17 @@ actor CoreMLArchiveInstaller {
             )
         }
 
+        if let expected = spec.sha256 {
+            let actual = try sha256Hex(of: tempURL)
+            guard actual == expected else {
+                throw NSError(
+                    domain: spec.errorDomain,
+                    code: spec.errorCodeBase + 2,
+                    userInfo: [NSLocalizedDescriptionKey: "\(spec.errorNoun) download is corrupt or has changed (sha256 \(actual.prefix(12))… ≠ pinned \(expected.prefix(12))…)."]
+                )
+            }
+        }
+
         onStage?("Extracting \(spec.stageNoun)…")
         let parent = try ModelStorage.directory(for: spec.modelId)
         try ZipExtractor.extract(archiveAt: tempURL, to: parent)
@@ -91,6 +106,19 @@ actor CoreMLArchiveInstaller {
         }
         logger.info("\(spec.modelId) ready at \(target.path)")
         return target
+    }
+
+    // Hex sha256 of a file, read in 4 MB chunks so a ~170 MB archive never sits in memory whole.
+    private static func sha256Hex(of url: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        var chunk = try handle.read(upToCount: 4 << 20) ?? Data()
+        while chunk.isEmpty == false {
+            hasher.update(data: chunk)
+            chunk = try handle.read(upToCount: 4 << 20) ?? Data()
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     // Deletes the URLSession temp file. Failure only leaves a file in tmp/, which the OS reclaims,

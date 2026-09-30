@@ -29,7 +29,7 @@ final class AttributionsTests: XCTestCase {
 
     func testAllDownloadedModelsArePresent() {
         let names = Set(Attributions.models.map(\.name))
-        let required: Set<String> = ["MMS Forced Aligner", "HTDemucs"]
+        let required: Set<String> = ["Japanese HuBERT Phoneme Aligner", "HTDemucs"]
         let missing = required.subtracting(names)
         XCTAssertTrue(missing.isEmpty, "Missing model attributions: \(missing.sorted())")
     }

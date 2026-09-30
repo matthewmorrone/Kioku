@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Runs the phone's CoreML MMS aligner model on the Mac over a 16 kHz mono f32 file, with the app's
-window stitching (MMSEmissions: 32 s windows, 2 s lead, 1 s tail trim), and writes the emission
+window stitching (CTCEmissions: 32 s windows, 2 s lead, 1 s tail trim), and writes the emission
 matrix the replay reads. Lets an audio change (a different stem encoding, a different isolator) be
 tested without the phone: decode it, run this, replay.
 

@@ -281,9 +281,10 @@ never leave the app in mixed old/new state.
      header-driven allocation are the two classic attacks.
    - *Status*: ✅ (`ZipExtractorTests`).
 
-3. **Pinned model downloads**: Hugging Face model/encoder downloads reference
-   an immutable commit (`HTDemucsModelStore.revision`, `MMSModelStore.revision`), never a
-   moving branch.
+3. **Pinned model downloads**: model downloads reference immutable bytes — a
+   Hugging Face commit (`HTDemucsModelStore.revision`) or a Kioku GitHub Release
+   asset checked against a pinned sha256 (`HubertPhonemeModelStore.sha256`) —
+   never a moving branch.
    - *Rationale*: `resolve/main` lets a future repo compromise change the bytes
      shipped installs receive.
    - *Status*: ✅ (by construction; URL built from the pinned constant).

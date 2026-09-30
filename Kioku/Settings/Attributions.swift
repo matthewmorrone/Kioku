@@ -107,10 +107,10 @@ nonisolated enum Attributions {
     // with their licenses because they ship to the device even though they aren't bundled.
     static let models: [Dataset] = [
         Dataset(
-            name: "MMS Forced Aligner",
-            description: "Aligns lyrics to a song's vocals (wav2vec2 + CTC), converted to CoreML.",
-            license: "Meta — CC BY-NC 4.0 (non-commercial)",
-            sourceURL: "https://github.com/facebookresearch/fairseq/tree/main/examples/mms"
+            name: "Japanese HuBERT Phoneme Aligner",
+            description: "Aligns lyrics to a song's vocals (HuBERT + CTC over Japanese phonemes), converted to CoreML.",
+            license: "prj-beatrice, rinna — Apache-2.0; trained on ReazonSpeech",
+            sourceURL: "https://huggingface.co/prj-beatrice/japanese-hubert-base-phoneme-ctc-v4"
         ),
         Dataset(
             name: "HTDemucs",

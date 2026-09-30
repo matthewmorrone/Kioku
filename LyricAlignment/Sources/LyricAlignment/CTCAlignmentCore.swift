@@ -20,11 +20,11 @@ enum CTCAlignmentCore {
     // Frames this far outside a sung region are pinned to blank.
     static let regionMargin = 0.5
 
-    // Aligns the romanized lyric to the emissions. `stem` and `mix` are the MMS log-probabilities
+    // Aligns the romanized lyric to the emissions. `stem` and `mix` are the aligner's log-probabilities
     // for the vocal stem and the raw mix; `vocalMono` is the 44.1 kHz stem the sung regions are
     // read from. `log` receives the same breadcrumbs the device writes.
     static func align(
-        stem: MMSEmissions.Matrix, mix: MMSEmissions.Matrix, vocalMono: [Float],
+        stem: CTCEmissions.Matrix, mix: CTCEmissions.Matrix, vocalMono: [Float],
         lines: [String], romanization: [[RomanizedSpan]],
         log: ((String) -> Void)? = nil
     ) throws -> (lines: [AlignedLine], lineTokens: [[AlignedToken]]) {
@@ -50,26 +50,26 @@ enum CTCAlignmentCore {
                 let f1 = min(matrix.frames, Int((r.end + regionMargin) / matrix.frameSec))
                 if f1 > f0 { for f in f0..<f1 { sung[f] = true } }
             }
-            let C = MMSEmissions.classes
+            let C = CTCEmissions.classes
             for f in 0..<matrix.frames where sung[f] == false {
                 for c in 0..<C { matrix.values[f * C + c] = -1e4 }
-                matrix.values[f * C + MMSEmissions.blank] = 0
+                matrix.values[f * C + CTCEmissions.blank] = 0
             }
         }
 
         // Flatten every span's romaji into one token sequence, remembering each span's range. An
-        // optional star (MMS's "any vocal" class) at each end of the song absorbs wordless intros and
+        // optional star (the model's pause/silence class) at each end of the song absorbs wordless intros and
         // fades so they can't capture the first or last line. Between lines it would also eat weak
         // short lines (measured: セラヴィ's 駆け抜けて), so it is only placed at the edges.
-        let star = MMSEmissions.labels.firstIndex(of: "*")
+        let star = CTCEmissions.labels.firstIndex(of: "*")
         var tokens: [Int] = star.map { [$0] } ?? []
         var spanTokenRanges: [[Range<Int>]] = []   // per line, per span
         for lineSpans in romanization {
             var ranges: [Range<Int>] = []
             for span in lineSpans {
                 let start = tokens.count
-                for ch in span.romaji {
-                    if let idx = MMSEmissions.labels.firstIndex(of: ch), idx != MMSEmissions.blank {
+                for ch in RomajiPhonemes.encode(span.romaji) {
+                    if let idx = CTCEmissions.labels.firstIndex(of: ch), idx != CTCEmissions.blank {
                         tokens.append(idx)
                     }
                 }
@@ -85,7 +85,7 @@ enum CTCAlignmentCore {
         var optional = [Bool](repeating: false, count: tokens.count)
         if star != nil { optional[0] = true; optional[tokens.count - 1] = true }
         guard let spans = CTCViterbi.align(logProbs: matrix.values, frames: matrix.frames,
-                                           classes: MMSEmissions.classes, tokens: tokens, optional: optional) else {
+                                           classes: CTCEmissions.classes, tokens: tokens, optional: optional) else {
             throw NSError(domain: "LyricAlignment.CTC", code: 5,
                           userInfo: [NSLocalizedDescriptionKey: "The lyrics don't fit the sung audio (more text than the song can hold)."])
         }
@@ -113,8 +113,8 @@ enum CTCAlignmentCore {
     // heard word there is no line to lose, while leaving the intro in lets a weak first line
     // (ムーンハートシークエンス's first セーラームーン) be placed on it. Keeps every region when no
     // region is heard at all.
-    static func droppingWordlessIntro(_ regions: [(start: Double, end: Double)], stem: MMSEmissions.Matrix, mix: MMSEmissions.Matrix) -> [(start: Double, end: Double)] {
-        let C = MMSEmissions.classes, blank = MMSEmissions.blank, star = MMSEmissions.labels.firstIndex(of: "*")
+    static func droppingWordlessIntro(_ regions: [(start: Double, end: Double)], stem: CTCEmissions.Matrix, mix: CTCEmissions.Matrix) -> [(start: Double, end: Double)] {
+        let C = CTCEmissions.classes, blank = CTCEmissions.blank, star = CTCEmissions.labels.firstIndex(of: "*")
         func isHeard(_ r: (start: Double, end: Double)) -> Bool {
             for m in [stem, mix] {
                 let f0 = max(0, Int(r.start / m.frameSec)), f1 = min(m.frames, Int(r.end / m.frameSec))
@@ -131,8 +131,8 @@ enum CTCAlignmentCore {
 
     // For every frame, the frame where the letter-mass ramp leading up to it begins (see
     // `onsetMassThreshold`): a token whose spike is at frame f starts at onsets[f].
-    private static func onsetFrames(matrix: MMSEmissions.Matrix) -> [Int] {
-        let C = MMSEmissions.classes, blank = MMSEmissions.blank, star = MMSEmissions.labels.firstIndex(of: "*")
+    private static func onsetFrames(matrix: CTCEmissions.Matrix) -> [Int] {
+        let C = CTCEmissions.classes, blank = CTCEmissions.blank, star = CTCEmissions.labels.firstIndex(of: "*")
         var mass = [Float](repeating: 0, count: matrix.frames)
         for f in 0..<matrix.frames {
             var m: Float = 0

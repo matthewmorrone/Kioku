@@ -1,12 +1,12 @@
 // CTCForcedAligner.swift
 //
 // On-device forced alignment of lyric lines to a song. Pipeline: isolate vocals (HTDemucs
-// CoreML, cached per audio file) → 16 kHz → per-frame CTC log-probabilities from Meta's MMS
-// forced aligner (wav2vec2, CoreML, see [[MMSEmissions]]) over the whole stem and the raw mix →
+// CoreML, cached per audio file) → 16 kHz → per-frame CTC log-probabilities from a Japanese
+// HuBERT phoneme model (CoreML, see [[CTCEmissions]]) over the whole stem and the raw mix →
 // [[CTCAlignmentCore]]: mix fill, energy-VAD pin, one CTC Viterbi pass over the whole romanized
 // lyric, per-line/per-span times.
 //
-// The aligner reads romanized text, so the caller supplies each line's romanization as spans
+// The aligner reads romanized text (converted to phonemes by [[RomajiPhonemes]]), so the caller supplies each line's romanization as spans
 // that carry the UTF-16 range of the line text they cover ([[RomanizedSpan]]); those spans
 // become the per-line karaoke checkpoints.
 
@@ -98,26 +98,26 @@ public struct CTCForcedAligner {
         onProgress?(0.4)
 
         onStage?("Preparing aligner…")
-        let model = try await MMSEmissions.loadModel(onStage: onStage)
+        let model = try await CTCEmissions.loadModel(onStage: onStage)
         Self.breadcrumb("aligner model loaded")
         if cancellationCheck?() == true { throw CancellationError() }
 
         onStage?("Aligning lyrics…")
-        let audio16k = try MMSEmissions.resample(vocalMono, from: 44_100)
-        let matrix = try MMSEmissions.logProbs(
+        let audio16k = try CTCEmissions.resample(vocalMono, from: 44_100)
+        let matrix = try CTCEmissions.logProbs(
             model: model, audio: audio16k, cancellationCheck: cancellationCheck,
             onProgress: { frac in
                 onProgress?(0.45 + 0.25 * frac)
                 onStage?("Aligning lyrics… \(Int((50 * frac).rounded()))%")
             }
         )
-        Self.breadcrumb("emissions \(matrix.frames) frames × \(MMSEmissions.classes)")
+        Self.breadcrumb("emissions \(matrix.frames) frames × \(CTCEmissions.classes)")
         #if DEBUG
         Self.debugDump(matrix.values.withUnsafeBufferPointer { Data(buffer: $0) },
                        name: "\(VocalStemCache.identityKey(for: input.audioURL)).emissions.f32")
         #endif
-        let mixMatrix = try MMSEmissions.logProbs(
-            model: model, audio: try MMSEmissions.resample(mixMono, from: 44_100), cancellationCheck: cancellationCheck,
+        let mixMatrix = try CTCEmissions.logProbs(
+            model: model, audio: try CTCEmissions.resample(mixMono, from: 44_100), cancellationCheck: cancellationCheck,
             onProgress: { frac in
                 onProgress?(0.70 + 0.20 * frac)
                 onStage?("Aligning lyrics… \(50 + Int((50 * frac).rounded()))%")

@@ -403,16 +403,16 @@
       "provenance": "OpenCC (BYVoid/OpenCC, Apache-2.0) data/dictionary/JPShinjitaiCharacters.txt pinned to commit 6aa8c54: shinjitai <-> old-form (kyujitai / variant) kanji correspondences built from the Jouyou kanji table, the Jinmeiyou variant table and 22 shinjitai from the Hyougai kanji character-shape table. Input to scripts/generate_kyujitai_table.py, which writes Kioku/Dictionary/KyujitaiTable.swift (the table KyujitaiNormalizer applies in the trie and in dictionary lookup). Not used by generate_db.py."
     },
     {
-      "name": "mms-forced-aligner",
-      "description": "Meta's MMS forced aligner (wav2vec2 + CTC over a romanized alphabet), exported to CoreML at fp16 as MMSForcedAligner.mlmodelc. LyricAlignment's MMSModelStore downloads it on first alignment; never bundled or committed.",
-      "license": "CC BY-NC 4.0 (Meta; fairseq examples/mms: 'The MMS code and model weights are released under the CC-BY-NC 4.0 license'). Non-commercial.",
+      "name": "hubert-phoneme-aligner",
+      "description": "Japanese HuBERT-base phoneme CTC model (prj-beatrice/japanese-hubert-base-phoneme-ctc-v4, OpenJTalk phonemes), exported to CoreML as HubertPhonemeAligner.mlmodelc. LyricAlignment's HubertPhonemeModelStore downloads it on first alignment; never bundled or committed.",
+      "license": "Apache-2.0 (prj-beatrice fine-tune; base rinna/japanese-hubert-base, Apache-2.0; trained on ReazonSpeech under Japanese Copyright Act Art. 30-4).",
       "type": "runtime-model",
       "path": null,
       "required": false,
       "derived": false,
-      "url": "https://huggingface.co/matthewmorrone/MMS-ForcedAligner-CoreML/resolve/cb801ee8e71955c779f2f3601ef14dde79a9f297/MMSForcedAligner.mlmodelc.zip",
-      "sha256": "39e80aab2f77a48f6abf1bfa4ba0566e9946e1da14e82717592ae597de86a81f",
-      "provenance": "Converted with coremltools 9.0 from torchaudio's MMS_FA bundle (torch 2.8.0), 2026-09-12. Published 2026-09-28 at Hugging Face commit cb801ee (MMSModelStore.revision); sha256 is the zip's. A copy sideloaded into the app's Documents still takes precedence.",
+      "url": "https://github.com/matthewmorrone/Kioku/releases/download/aligner-hubert-v1/HubertPhonemeAligner.mlmodelc.zip",
+      "sha256": "a159a58fafb294ba44894769cbf2f80c1e141a2cf7dc081c92228498f2b0d42a",
+      "provenance": "Converted with coremltools 9.0 (torch 2.14.1) from prj-beatrice/japanese-hubert-base-phoneme-ctc-v4 @ f5fe070, fp16 with norm/reduction ops fp32, 48 phonemes reduced to 42 labels in-model (export_coreml.py attached to the release), 2026-09-30. Published as Kioku GitHub Release aligner-hubert-v1 (HubertPhonemeModelStore.releaseTag); sha256 is the zip's and is verified on download. Replaced Meta's MMS aligner (CC BY-NC 4.0).",
       "feedsDictionary": false
     },
     {

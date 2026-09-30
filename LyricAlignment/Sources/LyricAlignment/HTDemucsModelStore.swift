@@ -22,8 +22,8 @@ public enum HTDemucsModelStore {
 
     static let spec = CoreMLArchiveSpec(
         modelId: modelId,
-        revision: revision,
-        archiveName: archiveName,
+        archiveURL: URL(string: "https://huggingface.co/\(modelId)/resolve/\(revision)/\(archiveName)")!,
+        sha256: nil,
         modelDirName: modelDirName,
         stageNoun: "isolator",
         errorNoun: "Vocal isolator",

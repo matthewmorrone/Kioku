@@ -1,7 +1,7 @@
 // ModelStorage.swift
 //
-// Resolves the on-disk directory for downloaded speech models (the MMS aligner, the HTDemucs
-// isolator). iOS purges Caches under storage pressure and a half-transferred model cannot
+// Resolves the on-disk directory for downloaded speech models (the HuBERT phoneme aligner, the
+// HTDemucs isolator). iOS purges Caches under storage pressure and a half-transferred model cannot
 // resume — so a mid-download purge strands the next launch on "downloading alignment model
 // 83%". Application Support is not purgeable; the directory is also
 // flagged out of iCloud backup so a ~600 MB re-downloadable blob doesn't burn the user's
@@ -17,10 +17,11 @@ public enum ModelStorage {
         "aufklarer/Qwen3-ASR-CoreML",
         "aufklarer/Qwen3-ASR-0.6B-MLX-4bit",
     ]
-    // Qwen3 forced-aligner builds earlier app versions downloaded. Nothing loads them (the
-    // aligner is now MMS via [[MMSModelStore]]), but the storage-management screen still
-    // measures and reclaims them ([[DownloadedModelsStore]]).
+    // Forced-aligner builds earlier app versions downloaded (Qwen3, then Meta's MMS). Nothing
+    // loads them (the aligner is [[HubertPhonemeModelStore]]), but the storage-management screen
+    // still measures and reclaims them ([[DownloadedModelsStore]]).
     public static let retiredForcedAlignerModelIds = [
+        "matthewmorrone/MMS-ForcedAligner-CoreML",
         "aufklarer/Qwen3-ForcedAligner-0.6B-4bit",
         "aufklarer/Qwen3-ForcedAligner-0.6B-8bit",
         "aufklarer/Qwen3-ForcedAligner-0.6B-bf16",

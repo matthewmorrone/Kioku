@@ -19,15 +19,15 @@ nonisolated enum DownloadedModelsStore {
         ModelStorage.retiredASRModelIds.reduce(0) { $0 + sizeBytes(at: try? ModelStorage.directory(for: $1)) }
     }
 
-    // On-disk size of the forced-aligner weights, or 0 if not yet downloaded. Sums the MMS
-    // CoreML model the app loads plus any retired Qwen3 aligner build an older app version
+    // On-disk size of the forced-aligner weights, or 0 if not yet downloaded. Sums the HuBERT
+    // phoneme CoreML model the app loads, the retired MMS model, plus any retired Qwen3 aligner build an older app version
     // downloaded — orphaned, but still worth reclaiming.
     static func qwenForcedAlignerSizeBytes() -> Int {
         forcedAlignerModelIds.reduce(0) { $0 + sizeBytes(at: try? ModelStorage.directory(for: $1)) }
     }
 
     private static var forcedAlignerModelIds: [String] {
-        [MMSModelStore.modelId] + ModelStorage.retiredForcedAlignerModelIds
+        [HubertPhonemeModelStore.modelId] + ModelStorage.retiredForcedAlignerModelIds
     }
 
     // Sums every on-disk copy of the vocal isolator a user could have: the CoreML .mlmodelc

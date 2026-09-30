@@ -1,6 +1,6 @@
-// MMSEmissions.swift
+// CTCEmissions.swift
 //
-// Runs the CoreML MMS forced aligner (wav2vec2 + CTC head) over a 16 kHz mono signal in
+// Runs the CoreML phoneme aligner (HuBERT + CTC head, [[HubertPhonemeModelStore]]) over a 16 kHz mono signal in
 // fixed 32 s windows and stitches the per-frame log-probabilities into one matrix for the
 // whole signal. The export has a fixed input shape, so the signal is cut into overlapping
 // windows and each window's interior frames are kept — the 2 s of context on either side is
@@ -10,14 +10,15 @@ import AVFoundation
 import CoreML
 import Foundation
 
-enum MMSEmissions {
+enum CTCEmissions {
     static let sampleRate = 16_000
     static let windowSec = 32.0
     static let windowSamples = 512_000
     static let overlapSec = 2.0
-    // Output alphabet of the export: blank, then MMS's uroman letters, then the star token.
-    static let labels: [Character] = ["-", "a", "i", "e", "n", "o", "u", "t", "s", "r", "m", "k", "l", "d", "g", "h", "y", "b", "p", "w", "c", "v", "j", "z", "f", "'", "q", "x", "*"]
-    static let classes = 29
+    // Output alphabet of the export: CTC blank, OpenJTalk phonemes one Character each (see
+    // RomajiPhonemes), then '*' = pause/silence, the class the edge stars use.
+    static let labels: [Character] = Array("-aiueoNQkgsztdnhbpmyrwfjvSCTKGYHBPMRDUFWX*")
+    static let classes = 42
     static let blank = 0
 
     struct Matrix {
@@ -27,9 +28,10 @@ enum MMSEmissions {
     }
 
     static func loadModel(onStage: (@Sendable (String) -> Void)? = nil) async throws -> MLModel {
-        let url = try await MMSModelStore.ensureModel(onStage: onStage)
+        let url = try await HubertPhonemeModelStore.ensureModel(onStage: onStage)
         let cfg = MLModelConfiguration()
-        // CPU only, deliberately. Measured on an iPhone 17 for a 260 s song: `.all` loads in
+        // CPU only, deliberately. Measured on an iPhone 17 with the earlier MMS model (wav2vec2-large),
+        // 260 s song: `.all` loads in
         // 11 s, holds ~1.1 GB and writes ~1 GB of compile cache on first use for a 5 s emission
         // pass; CPU loads in 1 s with ~100 MB and takes 9 s — identical output, faster overall,
         // and no memory cliff next to the isolator. `.cpuAndNeuralEngine` differs numerically
@@ -45,14 +47,14 @@ enum MMSEmissions {
               let outFmt = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: Double(sampleRate), channels: 1, interleaved: false),
               let inBuf = AVAudioPCMBuffer(pcmFormat: inFmt, frameCapacity: AVAudioFrameCount(mono.count)),
               let converter = AVAudioConverter(from: inFmt, to: outFmt) else {
-            throw NSError(domain: "LyricAlignment.MMS", code: 42,
+            throw NSError(domain: "LyricAlignment.Aligner", code: 42,
                           userInfo: [NSLocalizedDescriptionKey: "Could not configure the resampler."])
         }
         mono.withUnsafeBufferPointer { inBuf.floatChannelData![0].update(from: $0.baseAddress!, count: mono.count) }
         inBuf.frameLength = AVAudioFrameCount(mono.count)
         let outCapacity = AVAudioFrameCount(Double(mono.count) * Double(sampleRate) / Double(inputRate)) + 256
         guard let outBuf = AVAudioPCMBuffer(pcmFormat: outFmt, frameCapacity: outCapacity) else {
-            throw NSError(domain: "LyricAlignment.MMS", code: 42,
+            throw NSError(domain: "LyricAlignment.Aligner", code: 42,
                           userInfo: [NSLocalizedDescriptionKey: "Could not allocate the resample buffer."])
         }
         var supplied = false
@@ -92,7 +94,7 @@ enum MMSEmissions {
 
             let out = try model.prediction(from: MLDictionaryFeatureProvider(dictionary: ["audio": window]))
             guard let lp = out.featureValue(for: "logprobs")?.multiArrayValue else {
-                throw NSError(domain: "LyricAlignment.MMS", code: 43,
+                throw NSError(domain: "LyricAlignment.Aligner", code: 43,
                               userInfo: [NSLocalizedDescriptionKey: "Aligner model output missing."])
             }
             let F = lp.shape[1].intValue

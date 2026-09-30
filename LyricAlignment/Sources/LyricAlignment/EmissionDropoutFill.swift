@@ -12,8 +12,8 @@ enum EmissionDropoutFill {
     static let minRunSec = 2.0             // shortest stem-quiet run the mix may fill
 
     // Substitutes mix frames into `stem` inside every qualifying run; returns what was replaced.
-    static func fill(stem: inout MMSEmissions.Matrix, mix: MMSEmissions.Matrix) -> (frames: Int, runs: Int) {
-        let C = MMSEmissions.classes, blank = MMSEmissions.blank
+    static func fill(stem: inout CTCEmissions.Matrix, mix: CTCEmissions.Matrix) -> (frames: Int, runs: Int) {
+        let C = CTCEmissions.classes, blank = CTCEmissions.blank
         let n = min(stem.frames, mix.frames)
         guard n > 0 else { return (0, 0) }
         let stemMass = smoothed(nonBlank(stem, frames: n, classes: C, blank: blank), half: Int(smoothSec / stem.frameSec))
@@ -51,8 +51,8 @@ enum EmissionDropoutFill {
     // shipped `fill` needs the mix to clear `threshold`, which misses a passage the model barely
     // hears in either signal (ムーンプライド 44–62 s: stem ~0, mix 0.01–0.02) and leaves those lines
     // nothing to lock onto. Runs after `fill`, so frames it already replaced aren't touched.
-    static func fillDeaf(stem: inout MMSEmissions.Matrix, mix: MMSEmissions.Matrix, sung: [(start: Double, end: Double)]) -> (frames: Int, runs: Int) {
-        let C = MMSEmissions.classes, blank = MMSEmissions.blank
+    static func fillDeaf(stem: inout CTCEmissions.Matrix, mix: CTCEmissions.Matrix, sung: [(start: Double, end: Double)]) -> (frames: Int, runs: Int) {
+        let C = CTCEmissions.classes, blank = CTCEmissions.blank
         let n = min(stem.frames, mix.frames)
         guard n > 0 else { return (0, 0) }
         let stemMass = smoothed(nonBlank(stem, frames: n, classes: C, blank: blank), half: Int(smoothSec / stem.frameSec))
@@ -77,16 +77,16 @@ enum EmissionDropoutFill {
     }
 
     // Frames in `range` where some letter reaches `deafHeardLetter` — the mix actually hearing words.
-    private static func heardFrames(_ m: MMSEmissions.Matrix, _ range: Range<Int>) -> Int {
-        let C = MMSEmissions.classes, blank = MMSEmissions.blank, star = MMSEmissions.labels.firstIndex(of: "*")
+    private static func heardFrames(_ m: CTCEmissions.Matrix, _ range: Range<Int>) -> Int {
+        let C = CTCEmissions.classes, blank = CTCEmissions.blank, star = CTCEmissions.labels.firstIndex(of: "*")
         let floor = log(deafHeardLetter)
         return range.filter { f in (0..<C).contains { c in c != blank && c != star && m.values[f * C + c] >= floor } }.count
     }
 
     // Per-frame probability mass on the letter classes. Summed directly rather than as 1 − blank,
     // because the export also carries a star class that shares the blank's mass.
-    private static func nonBlank(_ m: MMSEmissions.Matrix, frames: Int, classes: Int, blank: Int) -> [Float] {
-        let star = MMSEmissions.labels.firstIndex(of: "*")
+    private static func nonBlank(_ m: CTCEmissions.Matrix, frames: Int, classes: Int, blank: Int) -> [Float] {
+        let star = CTCEmissions.labels.firstIndex(of: "*")
         return (0..<frames).map { f in
             var mass: Float = 0
             for c in 0..<classes where c != blank && c != star { mass += exp(m.values[f * classes + c]) }

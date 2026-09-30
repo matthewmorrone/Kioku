@@ -25,10 +25,10 @@ func floats(_ path: String) -> [Float] {
     return data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
 }
 
-// Loads an emission dump as the aligner's matrix (29 classes, 32 s / 1599 frames per window).
-func matrix(_ path: String) -> MMSEmissions.Matrix {
+// Loads an emission dump as the aligner's matrix (CTCEmissions.classes wide, 32 s / 1599 frames per window).
+func matrix(_ path: String) -> CTCEmissions.Matrix {
     let v = floats(path)
-    return MMSEmissions.Matrix(frames: v.count / MMSEmissions.classes, frameSec: 32.0 / 1599.0, values: v)
+    return CTCEmissions.Matrix(frames: v.count / CTCEmissions.classes, frameSec: 32.0 / 1599.0, values: v)
 }
 
 let lines = (try? String(contentsOfFile: args[3], encoding: .utf8))?.components(separatedBy: "\n")

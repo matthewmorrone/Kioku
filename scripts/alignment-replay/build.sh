@@ -5,6 +5,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$HERE/../../LyricAlignment/Sources/LyricAlignment"
 mkdir -p "$HERE/work"
 swiftc -O -swift-version 5 "$HERE/replay/main.swift" "$HERE/replay/stubs.swift" \
-    "$SRC"/{CTCAlignmentCore,RepeatedLineSpreader,CTCViterbi,EmissionDropoutFill,EnergyVAD,MMSEmissions,Models}.swift \
+    "$SRC"/{CTCAlignmentCore,RepeatedLineSpreader,CTCViterbi,EmissionDropoutFill,EnergyVAD,CTCEmissions,Models,RomajiPhonemes}.swift \
     -o "$HERE/work/replay"
 echo "built $HERE/work/replay"
