@@ -17,7 +17,7 @@ extension DictionaryStore {
     }
 
     // Returns up to `limit` entries whose kanji form contains the given character, ordered by
-    // best JPDB rank so the most common words containing this kanji appear first.
+    // best frequency rank so the most common words containing this kanji appear first.
     // Used by the standalone kanji detail page to surface example words.
     nonisolated func searchEntriesContainingKanji(literal: String, limit: Int = 100) throws -> [DictionaryEntry] {
         let trimmed = literal.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -26,7 +26,7 @@ extension DictionaryStore {
 
         let entryIDs: [Int64] = try withSerializedDatabaseAccess {
             let sql = """
-            SELECT k.entry_id, MIN(wf.jpdb_rank) AS best_rank
+            SELECT k.entry_id, MIN(wf.frequency_rank) AS best_rank
             FROM kanji k
             LEFT JOIN word_frequency wf ON wf.entry_id = k.entry_id
             WHERE k.text LIKE ?1 ESCAPE '\\'
@@ -110,7 +110,7 @@ extension DictionaryStore {
     }
 
     // Returns entry ids whose kanji surface OR kana form contains the literal term as
-    // a substring, ordered by best JPDB frequency rank (most common first).
+    // a substring, ordered by best frequency rank (most common first).
     //
     // Path depends on term length:
     //   • ≥ 3 chars → FTS5 trigram MATCH (sub-millisecond, indexed)
@@ -130,13 +130,13 @@ extension DictionaryStore {
             let matchToken = ftsPhraseToken(for: term)
             let sql = """
             SELECT entry_id, MIN(best_rank) AS best_rank FROM (
-                SELECT k.entry_id, MIN(wf.jpdb_rank) AS best_rank
+                SELECT k.entry_id, MIN(wf.frequency_rank) AS best_rank
                 FROM kanji_fts JOIN kanji k ON k.id = kanji_fts.rowid
                 LEFT JOIN word_frequency wf ON wf.entry_id = k.entry_id
                 WHERE kanji_fts MATCH ?1
                 GROUP BY k.entry_id
                 UNION ALL
-                SELECT kf.entry_id, MIN(wf.jpdb_rank) AS best_rank
+                SELECT kf.entry_id, MIN(wf.frequency_rank) AS best_rank
                 FROM kana_forms_fts JOIN kana_forms kf ON kf.id = kana_forms_fts.rowid
                 LEFT JOIN word_frequency wf ON wf.entry_id = kf.entry_id
                 WHERE kana_forms_fts MATCH ?1
@@ -166,13 +166,13 @@ extension DictionaryStore {
             let pattern = "\(escapeLikeLiteral(term))%"
             let sql = """
             SELECT entry_id, MIN(best_rank) AS best_rank FROM (
-                SELECT k.entry_id, MIN(wf.jpdb_rank) AS best_rank
+                SELECT k.entry_id, MIN(wf.frequency_rank) AS best_rank
                 FROM kanji k
                 LEFT JOIN word_frequency wf ON wf.entry_id = k.entry_id
                 WHERE k.text LIKE ?1 ESCAPE '\\'
                 GROUP BY k.entry_id
                 UNION ALL
-                SELECT kf.entry_id, MIN(wf.jpdb_rank) AS best_rank
+                SELECT kf.entry_id, MIN(wf.frequency_rank) AS best_rank
                 FROM kana_forms kf
                 LEFT JOIN word_frequency wf ON wf.entry_id = kf.entry_id
                 WHERE kf.text LIKE ?1 ESCAPE '\\'
@@ -344,7 +344,7 @@ extension DictionaryStore {
                         ELSE 3
                     END
                 ) AS match_bucket,
-                MIN(wf.jpdb_rank) AS best_rank
+                MIN(wf.frequency_rank) AS best_rank
             FROM glosses_fts
             JOIN glosses g ON g.id = glosses_fts.rowid
             JOIN senses s ON s.id = g.sense_id

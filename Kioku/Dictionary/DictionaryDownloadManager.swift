@@ -44,8 +44,8 @@ final class DictionaryDownloadManager {
     // whatever tag is pinned here if the local Resources/dictionary.sqlite doesn't hash-match
     // it — so editing dictionary.sqlite locally without bumping this pin first gets silently
     // reverted on the very next build.
-    nonisolated static let releaseTag = "dictionary-v12"
-    nonisolated static let expectedSHA256 = "b2b99f95d1abf2392721631dac7acbf6185e3bd3049fd4588a08ad9901893e4a"
+    nonisolated static let releaseTag = "dictionary-v13"
+    nonisolated static let expectedSHA256 = "66ea2389aeb4349809f7804571d46e4b0d3c491a22956c585a4a9052ab212deb"
 
     // Public GitHub Release asset URL — matthewmorrone/Kioku is a public repo, so this needs no
     // authentication to fetch.

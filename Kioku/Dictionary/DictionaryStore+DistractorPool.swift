@@ -42,7 +42,7 @@ extension DictionaryStore {
                  ORDER BY s2.order_index, g.order_index LIMIT 1) AS gloss,
                 (SELECT GROUP_CONCAT(DISTINCT s3.pos) FROM senses s3
                  WHERE s3.entry_id = e.id AND s3.pos IS NOT NULL) AS pos_concat,
-                MIN(wf.jpdb_rank) AS best_rank
+                MIN(wf.frequency_rank) AS best_rank
             FROM entries e
             JOIN word_frequency wf ON wf.entry_id = e.id
             GROUP BY e.id

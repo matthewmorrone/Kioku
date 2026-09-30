@@ -4,8 +4,8 @@ import SQLite3
 // Frequency query surface — builds the unified surface reading map used by segmentation, furigana, and frequency display.
 extension DictionaryStore {
 
-    // Fetches one page of dictionary entries by JPDB frequency rank, materialized for browse-view display.
-    // Entries with multiple readings collapse to their best-ranked reading (MIN(jpdb_rank)).
+    // Fetches one page of dictionary entries by frequency rank, materialized for browse-view display.
+    // Entries with multiple readings collapse to their best-ranked reading (MIN(frequency_rank)).
     nonisolated func fetchTopFrequencyEntries(limit: Int, offset: Int = 0) throws -> [DictionaryEntry] {
         let entryIDs = try fetchTopFrequencyEntryIDs(limit: limit, offset: offset)
         var entries: [DictionaryEntry] = []
@@ -18,14 +18,14 @@ extension DictionaryStore {
         return entries
     }
 
-    // Returns entry ids ordered by ascending JPDB rank, `limit` rows starting at `offset`.
+    // Returns entry ids ordered by ascending frequency rank, `limit` rows starting at `offset`.
     // entry_id breaks rank ties so consecutive pages never overlap or skip.
     nonisolated private func fetchTopFrequencyEntryIDs(limit: Int, offset: Int) throws -> [Int64] {
         try withSerializedDatabaseAccess {
             let sql = """
-            SELECT entry_id, MIN(jpdb_rank) AS best_rank
+            SELECT entry_id, MIN(frequency_rank) AS best_rank
             FROM word_frequency
-            WHERE jpdb_rank IS NOT NULL
+            WHERE frequency_rank IS NOT NULL
             GROUP BY entry_id
             ORDER BY best_rank ASC, entry_id ASC
             LIMIT ?1 OFFSET ?2
@@ -46,18 +46,22 @@ extension DictionaryStore {
 
 
     // Builds the unified per-surface reading and frequency map from the materialized surface_readings table.
-    // Ordered by (surface ASC, has_direct_rank DESC, best_rank ASC, wordfreq_zipf DESC, reading ASC).
+    // Ordered by (surface ASC, has_direct_rank DESC, best_rank ASC, reading_order ASC, wordfreq_zipf DESC, reading ASC).
+    //
+    // reading_order (JMdict's listing order) breaks best_rank ties before wordfreq_zipf: Jiten ranks
+    // every reading of an entry the same (今日 = 93 for きょう and こんにち), and JMdict lists the
+    // common reading first.
     //
     // has_direct_rank comes first: best_rank is an entry-wide value shared by every reading of a
-    // multi-reading entry (JPDB ranks one written form per entry) — a reading with no rank of its
+    // multi-reading entry (the frequency list ranks written forms, not every reading) — a reading with no rank of its
     // own just INHERITS the entry's best_rank from whichever sibling reading actually earned it,
     // which makes it tie exactly with that sibling's best_rank. has_direct_rank (1 = this exact
-    // pair has its own kanji_kana_links.jpdb_rank, 0 = inherited-only) breaks that tie in favor of
+    // pair has its own kanji_kana_links.frequency_rank, 0 = inherited-only) breaks that tie in favor of
     // the reading that's actually ranked, before best_rank is even consulted — without it, 夜
-    // defaulted to よ (inherited rank 287, tied with よる's real rank 287) because the NEXT
+    // defaulted to よ (inherited rank 357, tied with よる's real rank 357) because the NEXT
     // tiebreaker, wordfreq_zipf, is corpus-noise-inflated for short/common-mora readings like よ.
-    // (jpdb_rank itself can't make this distinction — generate_db.py's materialization already
-    // COALESCEs it to the entry-wide fallback, so both よ and よる show jpdb_rank=287 there.)
+    // (frequency_rank itself can't make this distinction — generate_db.py's materialization already
+    // COALESCEs it to the entry-wide fallback, so both よ and よる show frequency_rank=357 there.)
     //
     // wordfreq_zipf still breaks ties WITHIN a has_direct_rank/best_rank tier by actual usage
     // before falling back to alphabetical — without it, ties fell through to plain alphabetical
@@ -66,13 +70,13 @@ extension DictionaryStore {
     // own materialization ORDER BY.
     //
     // Each surface retains up to maxReadingsPerSurface distinct readings; frequency data is populated
-    // for any reading that has at least one frequency signal (jpdb_rank or wordfreq_zipf).
+    // for any reading that has at least one frequency signal (frequency_rank or wordfreq_zipf).
     nonisolated func fetchSurfaceReadingData(maxReadingsPerSurface: Int = 8) throws -> [String: SurfaceReadingData] {
         try withSerializedDatabaseAccess {
             let sql = """
-            SELECT surface, reading, jpdb_rank, wordfreq_zipf
+            SELECT surface, reading, frequency_rank, wordfreq_zipf
             FROM surface_readings
-            ORDER BY surface, has_direct_rank DESC, best_rank, wordfreq_zipf DESC, reading
+            ORDER BY surface, has_direct_rank DESC, best_rank, reading_order, wordfreq_zipf DESC, reading
             """
 
             var statement: OpaquePointer?
@@ -120,8 +124,8 @@ extension DictionaryStore {
                     currentReadings.append(reading)
                 }
 
-                // Column 2: jpdb_rank (nullable int)
-                let jpdbRank: Int? = sqlite3_column_type(statement, 2) == SQLITE_NULL
+                // Column 2: frequency_rank (nullable int)
+                let frequencyRank: Int? = sqlite3_column_type(statement, 2) == SQLITE_NULL
                     ? nil
                     : Int(sqlite3_column_int(statement, 2))
 
@@ -131,8 +135,8 @@ extension DictionaryStore {
                     : sqlite3_column_double(statement, 3)
 
                 // Only store frequency data when at least one signal is present.
-                if jpdbRank != nil || wordfreqZipf != nil {
-                    currentFrequency[reading] = FrequencyData(jpdbRank: jpdbRank, wordfreqZipf: wordfreqZipf)
+                if frequencyRank != nil || wordfreqZipf != nil {
+                    currentFrequency[reading] = FrequencyData(frequencyRank: frequencyRank, wordfreqZipf: wordfreqZipf)
                 }
 
                 stepCode = sqlite3_step(statement)
@@ -149,18 +153,18 @@ extension DictionaryStore {
         }
     }
 
-    // Builds a surface → best JPDB rank map (lower = more frequent) directly from `word_frequency`,
-    // the table that actually carries jpdb_rank.
+    // Builds a surface → best frequency rank map (lower = more frequent) directly from `word_frequency`,
+    // the table that actually carries frequency_rank.
     //
-    // Propagation is per ENTRY, not per writing: jpdb ranks one written form (usually the kanji,
+    // Propagation is per ENTRY, not per writing: the frequency list ranks the entry's written forms (usually the kanji,
     // e.g. 喧嘩), but every writing of that entry is the same word, so we apply the entry's best
     // rank to ALL its kana and kanji surfaces. That rescues alternate writings the segmenter sees in
-    // text — ケンカ inherits 喧嘩's rank (3207), わがまま inherits 我儘's (14647) — instead of those
+    // text — ケンカ inherits 喧嘩's rank (3934), わがまま inherits 我儘's (26903) — instead of those
     // kana spellings reading as rank-none. A genuinely unranked entry (たの, an `exp`) stays NONE,
     // which is the signal that distinguishes real words from junk. (Conjugations like 会いたい aren't
     // stored surfaces; they inherit frequency via the deinflected lemma in resolvedTrieLemmas.)
     //
-    // This is the propagation `surface_readings` lacks — its kana rows carry NULL jpdb_rank — so it
+    // This is the propagation `surface_readings` lacks — its kana rows carry NULL frequency_rank — so it
     // backs both the segmenter (via fetchFrequencyScoreBySurface) and the lookup/split-editor
     // frequency fallback (via FrequencyRankMap → frequencyData(forSurface:)).
     nonisolated func fetchBestRankBySurface() throws -> [String: Int] {
@@ -184,8 +188,8 @@ extension DictionaryStore {
             // Per-entry best rank, propagated to every writing of that entry (kana + kanji).
             let entryRankCTE = """
                 WITH entry_rank AS (
-                    SELECT entry_id, MIN(jpdb_rank) AS rank
-                    FROM word_frequency WHERE jpdb_rank IS NOT NULL GROUP BY entry_id
+                    SELECT entry_id, MIN(frequency_rank) AS rank
+                    FROM word_frequency WHERE frequency_rank IS NOT NULL GROUP BY entry_id
                 )
                 """
             try accumulate(sql: entryRankCTE + """
@@ -202,11 +206,12 @@ extension DictionaryStore {
     }
 
     // Surface → frequency-score map (~0–7 Zipf-equivalent, higher = more common) used by the
-    // segmenter's cost model. Read from `surface_frequency`, which carries the JPDB rank of each
-    // surface AS IT IS WRITTEN: する scores by its kana-spelling rank (11), not by its rare kanji
-    // form 為る (34586); kana はこ scores far below 箱; a kana string nobody writes as a word (がそ
-    // for 画素) has no row at all and so reads as unranked. That orthography match is what lets
-    // the segmenter tell a real kana word from a particle fused onto the next word's first kana.
+    // segmenter's cost model. Read from `surface_frequency`, which carries the frequency rank of each
+    // surface AS IT IS WRITTEN: する scores by its kana-spelling rank (10), not by its rare kanji
+    // form 為る (14848); kana はこ (36205) scores far below 箱 (1975). That orthography match is
+    // what lets the segmenter tell a real kana word from a particle fused onto the next word's
+    // first kana. (The list also ranks some kana strings nobody writes as a word — がそ for 画素 —
+    // which the segmenter's two-kana penalty prices back up; see SegmenterScoring.twoKanaPenalty.)
     // Deliberately NOT the per-entry-propagated ranks of fetchBestRankBySurface — propagation
     // gives every spelling of an entry the same rank, which erases exactly this distinction.
     nonisolated func fetchFrequencyScoreBySurface() throws -> [String: Double] {
@@ -214,15 +219,35 @@ extension DictionaryStore {
             var scoreBySurface: [String: Double] = [:]
             var statement: OpaquePointer?
             defer { sqlite3_finalize(statement) }
-            try prepare(sql: "SELECT surface, jpdb_rank FROM surface_frequency", statement: &statement)
+            try prepare(sql: "SELECT surface, frequency_rank FROM surface_frequency", statement: &statement)
             while sqlite3_step(statement) == SQLITE_ROW {
                 guard let textPointer = sqlite3_column_text(statement, 0) else { continue }
                 let rank = Int(sqlite3_column_int(statement, 1))
-                if let score = FrequencyData(jpdbRank: rank, wordfreqZipf: nil).normalizedScore, score > 0 {
+                if let score = FrequencyData(frequencyRank: rank, wordfreqZipf: nil).normalizedScore, score > 0 {
                     scoreBySurface[String(cString: textPointer)] = score
                 }
             }
             return scoreBySurface
+        }
+    }
+
+    // Kana spellings JMdict marks as common (a reading carrying ichi1, news1, spec1, spec2 or gai1 —
+    // jmdict-simplified's own definition of "common"). The segmenter uses it to tell a real short kana
+    // word (のみ, よみ, なる) from a kana fragment a frequency list happens to rank (まお, いよ).
+    nonisolated func fetchCommonKanaSurfaces() throws -> Set<String> {
+        try withSerializedDatabaseAccess {
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            try prepare(sql: """
+                SELECT DISTINCT text FROM kana_forms
+                WHERE ',' || priority || ',' GLOB '*,ichi1,*' OR ',' || priority || ',' GLOB '*,news1,*'
+                   OR ',' || priority || ',' GLOB '*,spec1,*' OR ',' || priority || ',' GLOB '*,spec2,*'
+                   OR ',' || priority || ',' GLOB '*,gai1,*'
+                """, statement: &statement)
+            let surfaces = try stepRows(statement: statement) { stmt in
+                sqlite3_column_text(stmt, 0).map { String(cString: $0) }
+            }
+            return Set(surfaces)
         }
     }
 

@@ -119,7 +119,7 @@ struct WordsView: View {
     @State var searchMode: DictionarySearchMode = .japanese
     @State var searchSortMode: DictionarySearchSortMode = .relevance
     @State var searchCommonWordsOnly = false
-    // Usage-frequency cutoff (JPDB rank); `.any` = no cutoff. See DictionaryFrequencyTier.
+    // Usage-frequency cutoff (frequency rank); `.any` = no cutoff. See DictionaryFrequencyTier.
     @State var searchFrequencyTier: DictionaryFrequencyTier = .any
     @State var searchSelectedPartsOfSpeech: Set<String> = []
     // Whether the "Kanji" section appears in search results. Persisted (survives launches);

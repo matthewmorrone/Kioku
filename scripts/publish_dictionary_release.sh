@@ -3,7 +3,7 @@
 # DictionaryDownloadManager.swift. Run this locally after regenerating the
 # dictionary (Resources/generate_db.py) and bumping releaseTag/expectedSHA256
 # to a new tag — never in CI: generate_db.py's upstream inputs (JMDict,
-# KANJIDIC, JPDB frequency data, etc.) are gitignored, so only whichever
+# KANJIDIC, Jiten frequency data, etc.) are gitignored, so only whichever
 # machine actually ran the generator has the correct bytes to publish.
 #
 # Requires: `gh` CLI authenticated with a token that can create releases on

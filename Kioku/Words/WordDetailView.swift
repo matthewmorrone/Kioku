@@ -195,13 +195,13 @@ struct WordDetailView: View {
 
     // Frequency tier ("Very Common" … "Very Rare") of the saved/active entry, shown ONCE as a
     // header badge. Frequency is a property of a written surface, not of an individual sense or
-    // meaning — every source we have (wordfreq scores a string, JPDB ranks a written form) is
+    // meaning — every source we have (wordfreq scores a string, the frequency list ranks a written form) is
     // surface-keyed, and homographs that share a surface (その "that" vs 園 "garden") therefore
     // share one frequency. Rendering a tier per sense-card falsely implied each entry had its
     // own; surfacing it once here keeps the claim honest. Nil when no frequency signal exists.
     private var headerFrequencyLabel: String? {
         guard let entry = savedDisplayData?.entry else { return nil }
-        return FrequencyData(jpdbRank: entry.jpdbRank, wordfreqZipf: entry.wordfreqZipf).frequencyLabel
+        return FrequencyData(frequencyRank: entry.frequencyRank, wordfreqZipf: entry.wordfreqZipf).frequencyLabel
     }
 
     // Returns the verb class detected from the saved entry's POS tags, or nil for non-verbs.

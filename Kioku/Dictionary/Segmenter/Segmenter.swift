@@ -19,12 +19,15 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     // Per-entry POS bitfields loaded from the dictionary; empty when built without metadata.
     var partOfSpeechByEntryID: [Int: UInt64]
     // Surface → unified frequency score (~0–7 Zipf-equivalent; higher = more common), derived from
-    // jpdb_rank (and wordfreq Zipf when present). Two consumers:
+    // frequency_rank (and wordfreq Zipf when present). Two consumers:
     //   • edgeCost — the core statistical node cost of the global path (rare words cost more).
     //   • preferredLemmaScore — frequency tiebreak between equally-script-matched lemma candidates.
     // Empty when the segmenter is built without the surface-reading map (e.g., test fixtures); in
     // that case the scoring falls back to the script-only tiebreakers and a zero frequency term.
     var frequencyScoreBySurface: [String: Double]
+    // Kana spellings JMdict marks as common readings; they are exempt from the two-kana penalty
+    // (see SegmenterScoring.twoKanaPenalty). Empty when built without a dictionary store.
+    var commonKanaSurfaces: Set<String>
     // Transition costs between adjacent word classes on a path; nil scores paths by word costs alone.
     var transitionTable: SegmenterTransitionTable?
     // Set to true locally to print POS transition decisions during Viterbi runs.
@@ -62,6 +65,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         config: SegmenterConfig = SegmenterConfig(),
         scoring: SegmenterScoring = .default,
         frequencyScoreBySurface: [String: Double] = [:],
+        commonKanaSurfaces: Set<String> = [],
         transitionTable: SegmenterTransitionTable? = nil
     ) {
         self.trie = trie
@@ -70,6 +74,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         self.config = config
         self.scoring = scoring
         self.frequencyScoreBySurface = frequencyScoreBySurface
+        self.commonKanaSurfaces = commonKanaSurfaces
         self.transitionTable = transitionTable
     }
 
@@ -89,6 +94,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             deinflector: deinflector,
             partOfSpeechByEntryID: partOfSpeechByEntryID,
             frequencyScoreBySurface: (try? dictionaryStore?.fetchFrequencyScoreBySurface()) ?? [:],
+            commonKanaSurfaces: (try? dictionaryStore?.fetchCommonKanaSurfaces()) ?? [],
             transitionTable: SegmenterTransitionTable.bundled()
         )
     }
@@ -100,9 +106,11 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         deinflector: Deinflector?,
         partOfSpeechByEntryID: [Int: UInt64],
         frequencyScoreBySurface: [String: Double],
+        commonKanaSurfaces: Set<String>,
         transitionTable: SegmenterTransitionTable?
     ) {
         self.transitionTable = transitionTable
+        self.commonKanaSurfaces = commonKanaSurfaces
         self.trie = trie
         self.deinflector = deinflector
         self.partOfSpeechByEntryID = partOfSpeechByEntryID
@@ -118,6 +126,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             deinflector: other.deinflector,
             partOfSpeechByEntryID: other.partOfSpeechByEntryID,
             frequencyScoreBySurface: other.frequencyScoreBySurface,
+            commonKanaSurfaces: other.commonKanaSurfaces,
             transitionTable: other.transitionTable
         )
     }
@@ -237,17 +246,21 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     // Frequency, step count and POS of whichever reading of the surface is cheaper.
                     let reading = pricedReading(of: surface, lemmas: lemmas, inflectionSteps: inflectionSteps)
                     edge.frequencyScore = reading.score
-                    // A lone kana that is neither a function word with a transition class of its own
-                    // (か, と, よ…) nor a counter (つ) is rarely a word in running text, however JPDB
-                    // ranks it: ま is one gold token in 15,959 occurrences. Without this, ま|って beat
-                    // 待って on a line of its own. See SegmenterScoring.loneKanaPenalty.
-                    if surface.count == 1, ScriptClassifier.isPureKana(surface),
+                    // A one- or two-kana string that is neither a function word with a transition
+                    // class of its own (か, と, よ…) nor a counter (つ) is rarely a word in running
+                    // text, however the frequency list ranks it: ま is one gold token in 15,959
+                    // occurrences, and Jiten ranks まお and いよ as kana spellings. Without this,
+                    // ま|って beat 待って on a line of its own. A two-kana reading JMdict marks as
+                    // common (のみ, よみ, なる) is a real word and pays nothing. See
+                    // SegmenterScoring.loneKanaPenalty and twoKanaPenalty.
+                    if surface.count <= 2, ScriptClassifier.isPureKana(surface),
+                       surface.count == 1 || commonKanaSurfaces.contains(surface) == false,
                        let lexical = transitionTable?.lexical, lexical.contains(surface) == false,
                        PartOfSpeech.isCounter(edge.partOfSpeech) == false,
                        edge.frequencyScore > 0 {
                         edge.frequencyScore = max(
                             SegmenterScoring.unrankedDictionaryScore,
-                            edge.frequencyScore - SegmenterScoring.loneKanaPenalty
+                            edge.frequencyScore - (surface.count == 1 ? SegmenterScoring.loneKanaPenalty : SegmenterScoring.twoKanaPenalty)
                         )
                     }
                     edge.inflectionSteps = reading.inflectionSteps

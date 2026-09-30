@@ -660,7 +660,7 @@ extension ReadView {
     // nested-compound rows) so all of them agree.
     //
     // EMPTINESS GUARD: a surface can be present in `surface_readings` (so the map lookup
-    // succeeds) while carrying no jpdb/wordfreq signal — its `frequencyByReading` is then an
+    // succeeds) while carrying no frequency-rank/wordfreq signal — its `frequencyByReading` is then an
     // empty dict. Bare fragments produced by splitting a segment routinely land on such
     // entries. Returning that empty dict would be non-nil and short-circuit the lemma fallback,
     // so the piece's lemma (which usually DOES have a frequency) is never consulted and the
@@ -679,7 +679,7 @@ extension ReadView {
             }
         }
 
-        // surface_readings carries jpdb_rank only on kanji writings — its kana rows are NULL by
+        // surface_readings carries frequency_rank only on kanji writings — its kana rows are NULL by
         // construction — so common kana pieces produced by splitting (こと, する, の, …) fall through
         // both checks above and would render a bare "–". Consult the per-entry-propagated rank map
         // (the same source the segmenter scores against) for the surface and then its lemmas,
@@ -688,7 +688,7 @@ extension ReadView {
         // values, so the key is immaterial.
         for candidate in [surface] + lemmas {
             if let rank = frequencyRankBySurface[candidate] {
-                return [candidate: FrequencyData(jpdbRank: rank, wordfreqZipf: nil)]
+                return [candidate: FrequencyData(frequencyRank: rank, wordfreqZipf: nil)]
             }
         }
 

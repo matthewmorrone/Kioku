@@ -22,6 +22,25 @@
       "feedsDictionary": true
     },
     {
+      "name": "jmdict-priority-xml",
+      "description": "EDRDG's own JMdict XML, read only for the ke_pri/re_pri priority tags (ichi1, news1, spec1, gai1, nf01–nf48) that jmdict-simplified folds into a single common flag. Joined onto the JSON entries by ent_seq and spelling to fill kanji.priority and kana_forms.priority.",
+      "license": "CC BY-SA 4.0 (Electronic Dictionary Research and Development Group)",
+      "type": "jmdict",
+      "path": null,
+      "required": true,
+      "derived": false,
+      "url": "http://ftp.edrdg.org/pub/Nihongo/JMdict_e.gz",
+      "sha256": null,
+      "provenance": "JMdict_e.gz as served on 2026-09-30 (header \"JMdict created: 2026-09-30\"). EDRDG rebuilds it daily, so a re-download will not match the pinned hash; refreshing it is a deliberate re-pin. It is newer than the jmdict-eng JSON release, so a few forms added or renamed since then carry no tags.",
+      "fetch": {
+        "url": "http://ftp.edrdg.org/pub/Nihongo/JMdict_e.gz",
+        "format": "gz",
+        "cacheName": "JMdict_e-2026-09-30.gz",
+        "archiveSha256": "749f303d713157be1a4d873011aa32698ef6c633ee503d5cd3fb9f865ec82634"
+      },
+      "feedsDictionary": true
+    },
+    {
       "name": "extras",
       "description": "Hand-written entries for words JMdict does not carry, mostly katakana fragments (ユア) the segmenter needs in order to split compounds. Merged into the same tables as JMdict so lookup and segmentation cannot tell them apart.",
       "license": "Project-maintained (Kioku)",
@@ -35,29 +54,29 @@
       "feedsDictionary": true
     },
     {
-      "name": "jpdb-frequency-kana",
-      "description": "Word-frequency ranks measured over a large corpus of Japanese media, keyed by kana spelling. Drives the Common/Rare tier badge and orders homographs so the reading a learner will actually meet is the one shown first.",
-      "license": "No license stated: ranks from jpdb.io's corpus, compiled by Kuuuube/yomitan-dictionaries",
+      "name": "jiten-frequency-global",
+      "description": "Word-frequency ranks from Jiten's corpus of ~16.5k anime, drama, film, novel and visual-novel titles, in Yomitan term_meta_bank layout: a rank for each word as written in kanji, plus a rank for its kana spelling (marked ㋕). Drives the Common/Rare tier badge, search and browse order, and the segmenter's per-spelling word cost. Jiten ranks words, not readings, so homograph readings tie and JMdict's reading order breaks the tie.",
+      "license": "CC BY-SA 4.0 (Jiten, jiten.moe), commercial use permitted",
       "type": "frequency-dictionary",
-      "path": "Resources/jpdb-frequency-kana-2.2.json",
-      "required": false,
+      "path": "Resources/jiten-frequency-global.json",
+      "required": true,
       "derived": false,
-      "url": "https://github.com/Kuuuube/yomitan-dictionaries/releases/download/yomitan-permalink/JPDB_v2.2_Frequency_Kana.zip",
-      "sha256": "ae3a3fc396ba53836bf14a4e01b002fd3d4aa8e0ad8727fde503287a3a2da283",
-      "provenance": "JPDB v2.2 frequency dictionary by Kuuuube (yomitan-permalink release); generate_db.py downloads the zip and extracts term_meta_bank_1.json to Resources/jpdb-frequency-kana-2.2.json",
+      "url": "https://api.jiten.moe/api/frequency-list/download?downloadType=yomitan",
+      "sha256": "71d3098dbd0c3e991996e8cfa4326f55b07768750bf59774a6fa3939be0ed946",
+      "provenance": "Jiten global frequency list, Yomitan export (index.json revision \"Jiten 26-09-27\", downloaded 2026-09-29). The endpoint serves the current list, so a re-download will not match the pinned archive hash; refreshing it is a deliberate re-pin. generate_db.py extracts term_meta_bank_1.json to Resources/jiten-frequency-global.json.",
       "fetch": {
-        "url": "https://github.com/Kuuuube/yomitan-dictionaries/releases/download/yomitan-permalink/JPDB_v2.2_Frequency_Kana.zip",
+        "url": "https://api.jiten.moe/api/frequency-list/download?downloadType=yomitan",
         "format": "zip",
         "member": "term_meta_bank_1.json",
-        "cacheName": "JPDB_v2.2_Frequency_Kana.zip",
-        "archiveSha256": "4fa06c784155ea0ea0953740b99d421296c775ee0d035cfe1ff65a40d7d3e685"
+        "cacheName": "jiten-freq-global-2026-09-27.zip",
+        "archiveSha256": "3ebfb307389efd8f98ab6362c18f76adb8ad7274e93305b3d9f3ea92cb22aee2"
       },
       "materialize": true,
       "feedsDictionary": true
     },
     {
       "name": "wordfreq",
-      "description": "Python package giving a Zipf frequency for any Japanese string. It is the only frequency source covering words usually written in kana (この, する, こと), which JPDB's kana ranks miss; without it those everyday words rank as Rare, so the build hard-fails rather than ship that silently.",
+      "description": "Python package giving a Zipf frequency for any Japanese string. It is the only frequency source covering words usually written in kana (この, する, こと), which the frequency list's kanji-context ranks don't describe; without it those everyday words rank as Rare, so the build hard-fails rather than ship that silently.",
       "license": "Apache-2.0 (code) and CC BY-SA 4.0 (data); the NOTICE requires crediting Robyn Speer by that name",
       "type": "frequency-tool",
       "path": null,
@@ -225,13 +244,13 @@
     {
       "name": "dictionary",
       "description": "The SQLite database the app actually queries — every resource below marked feedsDictionary compiled into a single file by generate_db.py. Downloaded on first launch instead of bundled, because at ~350MB it would otherwise dominate the install.",
-      "license": "A compilation: each feedsDictionary source keeps its own license (see those entries). JMdict and KANJIDIC2's CC BY-SA 4.0 governs redistribution; the JPDB ranks inside carry no stated license",
+      "license": "A compilation: each feedsDictionary source keeps its own license (see those entries). JMdict, KANJIDIC2 and Jiten's CC BY-SA 4.0 governs redistribution",
       "type": "sqlite",
       "path": "Resources/dictionary.sqlite",
       "required": true,
       "derived": true,
-      "url": "https://github.com/matthewmorrone/Kioku/releases/download/dictionary-v11/dictionary.sqlite",
-      "sha256": "49fb37174596d5b967e791137a9f26da2b81826f5b874b24432edbb09e22acb7",
+      "url": "https://github.com/matthewmorrone/Kioku/releases/download/dictionary-v13/dictionary.sqlite",
+      "sha256": "66ea2389aeb4349809f7804571d46e4b0d3c491a22956c585a4a9052ab212deb",
       "provenance": "Generated by generate_db.py from every manifest entry with feedsDictionary=true (see the top-level \"regeneration\" and \"tools\" blocks). Neither bundled into Kioku.app nor committed to git: the local Resources/dictionary.sqlite is downloaded from the release url above by scripts/ensure_dictionary.sh (for tests, CI, and generate_db.py's own staleness check), and at runtime DictionaryDownloadManager fetches that same asset into Application Support on first launch, verified against the sha256 above. To republish after a rebuild with meaningfully different content: run generate_db.py, bump the tag, recompute the sha256 both here and in DictionaryDownloadManager.releaseTag/expectedSHA256, then run scripts/publish_dictionary_release.sh locally. There is no CI automation for this — generate_db.py's upstream inputs are gitignored and exist only on whichever machine ran the generator.",
       "feedsDictionary": false
     },

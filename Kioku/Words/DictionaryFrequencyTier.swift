@@ -1,6 +1,6 @@
 import Foundation
 
-// Frequency-rank threshold for live dictionary search: keeps only entries whose JPDB usage rank
+// Frequency-rank threshold for live dictionary search: keeps only entries whose usage rank
 // (lower = more frequent) falls within the tier. Distinct from the JMdict-based "Common Words
 // Only" toggle — that's a coarse editorial flag, this is a finer usage-frequency cutoff. `.any`
 // disables the filter.
@@ -12,7 +12,7 @@ enum DictionaryFrequencyTier: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    // Inclusive JPDB-rank cap; nil means no frequency filtering. Entries with no JPDB rank are
+    // Inclusive frequency-rank cap; nil means no frequency filtering. Entries with no frequency rank are
     // excluded whenever a cap is set (unranked ⇒ not among the most-frequent words).
     var maxRank: Int? {
         switch self {

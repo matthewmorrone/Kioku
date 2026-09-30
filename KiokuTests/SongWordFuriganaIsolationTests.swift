@@ -7,7 +7,7 @@ import XCTest
 // surface as a single synthetic edge rather than re-segmenting it, because with no surrounding
 // sentence to weigh frequency against, the segmenter's cost model can prefer splitting a compound
 // into individually-common kanji when the compound's own frequency rank is worse than its parts' —
-// true for 王子様 (jpdb_rank ~9999999, i.e. effectively unranked). Uses the real production
+// true for 王子様 (frequency_rank ~9999999, i.e. effectively unranked). Uses the real production
 // segmenter/dictionary (via TestReadResources), same as SavedGlowLemmaBridgeTests, since this is a
 // real trie/cost-model behavior, not something a stub segmenter could reproduce.
 @MainActor

@@ -12,6 +12,7 @@ import hashlib
 import bisect
 import tarfile
 import urllib.request
+import xml.etree.ElementTree as ET
 import zipfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -30,7 +31,9 @@ MANIFEST_PATH = RESOURCES_DIR / "data-manifest.json"
 SOURCE_CACHE_DIR = Path(os.environ.get("KIOKU_SOURCE_CACHE") or Path.home() / "Projects" / "kioku-source-cache")
 JMDICT_PATH = RESOURCES_DIR / "jmdict-eng-3.6.2.json"
 EXTRAS_PATH = RESOURCES_DIR / "extras.json"
-JPDB_PATH = RESOURCES_DIR / "jpdb-frequency-kana-2.2.json"
+# Jiten's global frequency list (Yomitan term_meta_bank "freq" layout), read by import_frequency_ranks
+# and materialize_surface_frequency.
+FREQUENCY_PATH = RESOURCES_DIR / "jiten-frequency-global.json"
 KANJIDIC2_PATH = RESOURCES_DIR / "kanjidic2-all.json"
 RADKFILE_PATH = RESOURCES_DIR / "radkfile2.utf8"
 KRADFILE_PATH = RESOURCES_DIR / "kradfile2.utf8"
@@ -43,7 +46,7 @@ OUTPUT_DB = RESOURCES_DIR / "dictionary.sqlite"
 UNRANKED_RANK_SENTINEL = 9999999
 
 # Added to a reading's best_rank (the surface_readings ORDER BY sort key ONLY — never the
-# jpdb_rank column that's actually displayed) when JMdict's own re_inf tags mark it as not the
+# frequency_rank column that's actually displayed) when JMdict's own re_inf tags mark it as not the
 # reading to show by default: "ok" (outdated/obsolete kana usage), "ik" (irregular kana usage),
 # "sk" (search-only kana form — explicitly meant to never surface as a real reading). Without
 # this, a reading wordfreq scores highly for corpus-noise reasons (short strings are prone to
@@ -58,23 +61,6 @@ UNRANKED_RANK_SENTINEL = 9999999
 # preference, not the reading's own validity).
 DEPRIORITIZED_READING_TAGS = ("ok", "ik", "sk")
 DEPRIORITIZED_READING_RANK_PENALTY = 50_000_000
-
-# (surface, reading) pairs where JPDB's corpus rank picks a reading that isn't the one Japanese
-# speakers actually default to, and JMdict carries no re_inf tag (ok/ik/sk) to catch it because
-# both readings are fully valid, common modern words — this isn't obsolescence, just a corpus
-# skew. E.g. 抱く: JPDB ranks いだく (literary/formal, "to harbor a feeling") ahead of だく (the
-# modern, colloquial default for "to hold/embrace"), likely because いだく's dialogue-corpus usage
-# skews toward being spelled out in kanji while だく's more casual/spoken usage doesn't. Subtracting
-# a large bonus from best_rank (the surface_readings ORDER BY sort key ONLY — never the jpdb_rank
-# column that's actually displayed) guarantees the preferred reading always wins regardless of the
-# corpus number, mirroring DEPRIORITIZED_READING_RANK_PENALTY above but in the opposite direction.
-# Keep this list small — it's a manually curated exception list, not a general ranking signal.
-PREFERRED_READING_OVERRIDES = {("抱く", "だく")}
-PREFERRED_READING_RANK_BONUS = 50_000_000
-
-
-def _sql_string_literal(text):
-    return "'" + text.replace("'", "''") + "'"
 
 
 def sha256_of_file(path: Path) -> str:
@@ -349,7 +335,7 @@ def create_schema(conn):
         CREATE TABLE kanji_kana_links (
             kanji_id INTEGER NOT NULL,
             kana_id INTEGER NOT NULL,
-            jpdb_rank INTEGER,
+            frequency_rank INTEGER,
             -- on/kun classification for this (kanji surface, kana reading) pair.
             -- 'on' | 'kun' | 'mixed' | 'unknown'. Populated after KANJIDIC2 import.
             reading_type TEXT,
@@ -391,7 +377,7 @@ def create_schema(conn):
         -- LEFT JOINs it, and since it has no indexable entry_id, SQLite built an AUTOMATIC
         -- COVERING INDEX per query — a flat ~310ms tax on every lookup. A real table with an
         -- entry_id index turns that into an index seek. It can't be created here because the
-        -- source tables (kanji.wordfreq_zipf, kanji_kana_links.jpdb_rank) aren't populated yet.
+        -- source tables (kanji.wordfreq_zipf, kanji_kana_links.frequency_rank) aren't populated yet.
 
         -- Sense-level application restrictions (stagk / stagr).
         -- type: 'stagk' restricts to a specific kanji form; 'stagr' restricts to a specific kana form.
@@ -612,11 +598,32 @@ def create_schema(conn):
     )
 
 
-# ke_inf tags that carry orthographic information (distinct from ke_pri frequency/priority tags).
-KE_INF_TAGS = {"ateji", "io", "iK", "oK", "rK", "sK"}
+# (ent_seq, written form) → comma-joined JMdict priority tags (ke_pri / re_pri: ichi1, news1, spec1,
+# gai1, nf01–nf48). jmdict-simplified folds these into one `common` boolean, so they are read from
+# EDRDG's own XML (manifest entry jmdict-priority-xml) and joined back on ent_seq. Filled by
+# load_jmdict_priorities before any entry is inserted.
+PRIORITY_BY_FORM = {}
 
-# re_inf tags that carry reading information (distinct from re_pri frequency/priority tags).
-RE_INF_TAGS = {"gikun", "ik", "ok", "uK", "sk"}
+
+# Streams the EDRDG JMdict XML and collects each kanji and reading form's priority tags, keyed by
+# entry sequence number and spelling. The XML is a daily build, so a form it lacks (renamed or added
+# since the JSON release) simply gets no tags.
+def load_jmdict_priorities():
+    entry = load_manifest()["jmdict-priority-xml"]
+    archive = fetch_archive(entry)
+    priorities = {}
+    with open_source_member(entry["fetch"], archive) as raw:
+        for _, element in ET.iterparse(raw, events=("end",)):
+            if element.tag != "entry":
+                continue
+            ent_seq = int(element.findtext("ent_seq"))
+            for form_tag, text_tag, pri_tag in (("k_ele", "keb", "ke_pri"), ("r_ele", "reb", "re_pri")):
+                for form in element.iter(form_tag):
+                    tags = sorted({p.text for p in form.iter(pri_tag) if p.text})
+                    if tags:
+                        priorities[(ent_seq, form.findtext(text_tag))] = ",".join(tags)
+            element.clear()
+    return priorities
 
 
 def load_jmdict_entries():
@@ -632,23 +639,17 @@ def load_jmdict_entries():
 
 
 def load_extras_json():
-    # Top level is either the legacy bare list of entries (back-compat), or:
-    # {
-    #   entries?: [ ...same entry shape as the legacy list... ],
-    #   frequencyOverrides?: [
-    #     { kanji: string, kana: string, wordfreqZipf: number | null, reason?: string }
-    #   ]
-    # }
+    # Top level is either a bare list of entries or { entries?: [ ...same entry shape... ] }.
     if not EXTRAS_PATH.exists():
-        return [], []
+        return []
 
     with open(EXTRAS_PATH, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     if isinstance(data, list):
-        return data, []
+        return data
     if isinstance(data, dict):
-        return data.get("entries", []), data.get("frequencyOverrides", [])
+        return data.get("entries", [])
 
     raise ValueError("Unexpected extras JSON structure")
 
@@ -673,13 +674,8 @@ def load_extra_entries():
     #       # normalizes to sense: [{ gloss: [...] }]
     #   }
     # ]
-    entries, _ = load_extras_json()
+    entries = load_extras_json()
     return [normalize_extra_entry(entry, i) for i, entry in enumerate(entries)]
-
-
-def load_frequency_overrides():
-    _, overrides = load_extras_json()
-    return overrides
 
 
 def normalize_extra_entry(entry, entry_index):
@@ -751,12 +747,10 @@ def insert_entry(conn, entry, ent_seq):
             )
             kanji_rows.append((cur.lastrowid, k))
         else:
+            # jmdict-simplified's tags are ke_inf info tags only; priority comes from the XML.
             tags = k.get("tags") or []
-            # Separate ke_pri frequency/priority tags from ke_inf orthographic-info tags.
-            pri_tags = [t for t in tags if t not in KE_INF_TAGS]
-            inf_tags = [t for t in tags if t in KE_INF_TAGS]
-            priority_str = ",".join(sorted(set(pri_tags))) if pri_tags else None
-            info_str = ",".join(sorted(set(inf_tags))) if inf_tags else None
+            priority_str = PRIORITY_BY_FORM.get((ent_seq, k["text"]))
+            info_str = ",".join(sorted(set(tags))) if tags else None
             cur = conn.execute(
                 "INSERT INTO kanji (text, entry_id, priority, info) VALUES (?, ?, ?, ?)",
                 (k["text"], entry_id, priority_str, info_str),
@@ -772,12 +766,10 @@ def insert_entry(conn, entry, ent_seq):
             )
             kana_rows.append((cur.lastrowid, r, frozenset()))
         else:
+            # jmdict-simplified's tags are re_inf info tags only; priority comes from the XML.
             tags = r.get("tags") or []
-            # Separate re_pri frequency/priority tags from re_inf reading-info tags.
-            pri_tags = [t for t in tags if t not in RE_INF_TAGS]
-            inf_tags = [t for t in tags if t in RE_INF_TAGS]
-            priority_str = ",".join(sorted(set(pri_tags))) if pri_tags else None
-            info_str = ",".join(sorted(set(inf_tags))) if inf_tags else None
+            priority_str = PRIORITY_BY_FORM.get((ent_seq, r["text"]))
+            info_str = ",".join(sorted(set(tags))) if tags else None
             nokanji = 1 if r.get("nokanji") else 0
             cur = conn.execute(
                 "INSERT INTO kana_forms (text, entry_id, priority, info, re_nokanji) VALUES (?, ?, ?, ?, ?)",
@@ -905,8 +897,8 @@ def import_wordfreq(conn):
     # Populates wordfreq_zipf on kanji and kana_forms rows using the wordfreq Python package.
     #
     # This is a REQUIRED build phase, not an optional one. wordfreq is the ONLY frequency signal
-    # for words usually written in kana (この, その, する, こと …): JPDB ranks only their rare kanji
-    # spelling, never the everyday kana surface. A build without wordfreq silently produces an
+    # for words usually written in kana (この, その, する, こと …) on the entry level: the frequency list's
+    # kanji-context rank describes their rare kanji spelling, not the everyday kana surface. A build without wordfreq silently produces an
     # all-NULL wordfreq_zipf column, which mislabels those extremely common words as "Rare" and
     # misorders their homographs — the exact bug this guard exists to prevent. So a missing package
     # is a hard error, never a silent skip. Install deps: pip install -r requirements.txt.
@@ -934,47 +926,6 @@ def import_wordfreq(conn):
         conn.execute("UPDATE kana_forms SET wordfreq_zipf = ? WHERE id = ?", (score if score > 0 else None, kana_id))
 
     print(f"  Done: {len(kanji_rows)} kanji, {len(kana_rows)} kana forms scored")
-
-
-def apply_frequency_overrides(conn, overrides):
-    # Manually corrects wordfreq_zipf for specific (kanji, reading) pairs where the wordfreq
-    # package's corpus-based Zipf score is misleading — e.g. 黄昏's rare on'yomi reading こうこん
-    # scores HIGHER (5.01) than the reading actually used, たそがれ (2.73), which flips the
-    # surface_readings tie-break (see materialize_surface_readings) and makes the rare reading
-    # the default furigana/lookup reading. Runs right after import_wordfreq() so it wins over
-    # the package's own value. `wordfreqZipf: null` suppresses the wordfreq signal for that one
-    # reading entirely, letting jpdb_rank and the other reading's own zipf settle the ordering.
-    # Scoped by (kanji, kana) pair via kanji_kana_links, not by kana text alone, so an override
-    # can't accidentally touch an unrelated entry that happens to share the same reading string.
-    if not overrides:
-        return
-
-    print(f"  Applying {len(overrides)} frequency override(s) from extras.json...")
-    for i, override in enumerate(overrides):
-        kanji_text = override.get("kanji")
-        kana_text = override.get("kana")
-        if not kanji_text or not kana_text:
-            raise ValueError(f"extras.json frequencyOverrides[{i}] requires both 'kanji' and 'kana'")
-
-        cur = conn.execute(
-            """
-            UPDATE kana_forms
-            SET wordfreq_zipf = ?
-            WHERE text = ?
-              AND id IN (
-                  SELECT kkl.kana_id
-                  FROM kanji_kana_links kkl
-                  JOIN kanji k ON k.id = kkl.kanji_id
-                  WHERE k.text = ?
-              )
-            """,
-            (override.get("wordfreqZipf"), kana_text, kanji_text),
-        )
-        if cur.rowcount == 0:
-            raise ValueError(
-                f"extras.json frequencyOverrides[{i}] ({kanji_text}/{kana_text}) matched no kana_forms row "
-                "— the (kanji, kana) pair may no longer exist in this JMdict revision."
-            )
 
 
 def import_entry_decomposition(conn):
@@ -1075,15 +1026,15 @@ def import_entry_decomposition(conn):
           f" ({len(verified)} pieces){f', {dropped} dropped as non-reconstructing' if dropped else ''}")
 
 
-def import_jpdb(conn):
-    # Populates jpdb_rank on kanji_kana_links using the JPDB v2.2 Frequency Kana dictionary.
-    # File must be downloaded separately (not checked in); see data-manifest.json.
-    # Only Shape B entries without the ㋕ marker are used (kanji expression + kana reading).
-    if not JPDB_PATH.exists():
-        print(f"  JPDB frequency file not found at {JPDB_PATH} — skipping")
-        return
+def import_frequency_ranks(conn):
+    # Populates frequency_rank on kanji_kana_links from Jiten's global frequency list (fetched and
+    # extracted by ensure_sources; see data-manifest.json). Only Shape B entries without the ㋕ marker
+    # are used (kanji expression + kana reading). Jiten gives every reading of a word the same rank,
+    # so materialize_surface_readings breaks those ties by JMdict's reading order.
+    if not FREQUENCY_PATH.exists():
+        raise RuntimeError(f"Frequency list not found at {FREQUENCY_PATH}; see data-manifest.json.")
 
-    print(f"  Importing JPDB frequency ranks from {JPDB_PATH.name}...")
+    print(f"  Importing frequency ranks from {FREQUENCY_PATH.name}...")
 
     # Build lookup: (kanji_text, kana_text) → (kanji_id, kana_id)
     cur = conn.execute(
@@ -1098,7 +1049,7 @@ def import_jpdb(conn):
     for kanji_text, kana_text, kanji_id, kana_id in cur.fetchall():
         link_map[(kanji_text, kana_text)] = (kanji_id, kana_id)
 
-    with open(JPDB_PATH, "r", encoding="utf-8") as f:
+    with open(FREQUENCY_PATH, "r", encoding="utf-8") as f:
         rows = json.load(f)
 
     updated = 0
@@ -1130,12 +1081,12 @@ def import_jpdb(conn):
         if key in link_map:
             kanji_id, kana_id = link_map[key]
             conn.execute(
-                "UPDATE kanji_kana_links SET jpdb_rank = ? WHERE kanji_id = ? AND kana_id = ?",
+                "UPDATE kanji_kana_links SET frequency_rank = ? WHERE kanji_id = ? AND kana_id = ?",
                 (rank, kanji_id, kana_id),
             )
             updated += 1
 
-    print(f"  Done: {updated} kanji_kana_links updated with JPDB rank")
+    print(f"  Done: {updated} kanji_kana_links updated with frequency rank")
 
 
 def import_kanjidic2(conn):
@@ -1786,6 +1737,9 @@ def build_database():
         create_schema(conn)
 
     with phase("Loading and inserting JMdict + extra entries..."):
+        PRIORITY_BY_FORM.clear()
+        PRIORITY_BY_FORM.update(load_jmdict_priorities())
+        print(f"  {len(PRIORITY_BY_FORM)} JMdict forms carry priority tags")
         entries = load_jmdict_entries()
         extra_entries = load_extra_entries()
 
@@ -1803,8 +1757,7 @@ def build_database():
 
     with phase("Importing frequency data..."):
         import_wordfreq(conn)
-        import_jpdb(conn)
-        apply_frequency_overrides(conn, load_frequency_overrides())
+        import_frequency_ranks(conn)
 
     with phase("Decomposing multi-word headwords..."):
         import_entry_decomposition(conn)
@@ -1860,7 +1813,7 @@ def build_database():
 
 
 # The two materialization passes below are split into standalone functions as a single source
-# of truth for both consumers of wordfreq/jpdb data. DROP ... IF EXISTS makes them safe to
+# of truth for both consumers of wordfreq/frequency-rank data. DROP ... IF EXISTS makes them safe to
 # re-run against an already-built database.
 def materialize_surface_readings(conn):
     print("Materializing surface_readings lookup table...")
@@ -1870,10 +1823,6 @@ def materialize_surface_readings(conn):
         f"(',' || COALESCE(kf.info, '') || ',') LIKE '%,{tag},%'"
         for tag in DEPRIORITIZED_READING_TAGS
     )
-    preferred_predicate = " OR ".join(
-        f"(kj.text = {_sql_string_literal(surface)} AND kf.text = {_sql_string_literal(reading)})"
-        for surface, reading in PREFERRED_READING_OVERRIDES
-    ) or "0"
     conn.executescript(
         f"""
         DROP TABLE IF EXISTS surface_readings;
@@ -1882,36 +1831,42 @@ def materialize_surface_readings(conn):
             surface TEXT NOT NULL,
             reading TEXT NOT NULL,
             best_rank INTEGER NOT NULL,
-            jpdb_rank INTEGER,
+            frequency_rank INTEGER,
             wordfreq_zipf REAL,
-            -- 1 when this exact (surface, reading) pair has its OWN kanji_kana_links.jpdb_rank
-            -- (a real, directly-measured rank for this specific reading), 0 when jpdb_rank above
+            -- 1 when this exact (surface, reading) pair has its OWN kanji_kana_links.frequency_rank
+            -- (a real, directly-measured rank for this specific reading), 0 when frequency_rank above
             -- is only inherited from the entry's headword rank (er.rank) because the pair itself
-            -- was never ranked. jpdb_rank alone can't tell these apart (both cases end up with a
+            -- was never ranked. frequency_rank alone can't tell these apart (both cases end up with a
             -- non-NULL, entry-shared value) — see the ORDER BY below for why that distinction
-            -- matters: 夜 defaulted to よ (inherited rank 287, same as よる's real rank 287, then
+            -- matters: 夜 defaulted to よ (inherited rank 357, same as よる's real rank 357, then
             -- won the wordfreq_zipf tiebreak on corpus noise) instead of よる.
-            has_direct_rank INTEGER NOT NULL DEFAULT 0
+            has_direct_rank INTEGER NOT NULL DEFAULT 0,
+            -- JMdict's own order for this reading (the smallest kana_forms.id behind the pair).
+            -- JMdict lists an entry's common reading first, so this breaks best_rank ties before
+            -- wordfreq_zipf does: Jiten gives every reading of an entry the same rank (今日 = 93
+            -- for きょう, こんにち, こんじつ, こんち), and wordfreq then picked こんにち.
+            reading_order INTEGER NOT NULL
         );
 
         WITH entry_rank AS (
-            -- Per-entry best (lowest) jpdb rank, sourced from the kanji-kana links that carry it.
-            -- JPDB ranks a single written form per entry (the kanji headword), so propagating that
+            -- Per-entry best (lowest) frequency rank, sourced from the kanji-kana links that carry it.
+            -- The frequency list ranks an entry's written forms (the kanji headword), so propagating that
             -- rank to every writing lets kana spellings (こと, する) and alternate writings inherit it
             -- instead of reading as rank-none. Mirrors fetchBestRankBySurface()/word_frequency so
             -- surface_readings agrees, surface-for-surface, with every other frequency consumer.
-            SELECT k.entry_id AS entry_id, MIN(kkl.jpdb_rank) AS rank
+            SELECT k.entry_id AS entry_id, MIN(kkl.frequency_rank) AS rank
             FROM kanji_kana_links kkl
             JOIN kanji k ON k.id = kkl.kanji_id
-            WHERE kkl.jpdb_rank IS NOT NULL
+            WHERE kkl.frequency_rank IS NOT NULL
             GROUP BY k.entry_id
         )
-        INSERT INTO surface_readings (surface, reading, best_rank, jpdb_rank, wordfreq_zipf, has_direct_rank)
+        INSERT INTO surface_readings (surface, reading, best_rank, frequency_rank, wordfreq_zipf, has_direct_rank, reading_order)
         SELECT surface, reading,
                MIN(best_rank) AS best_rank,
-               MIN(jpdb_rank) AS jpdb_rank,
+               MIN(frequency_rank) AS frequency_rank,
                MAX(wordfreq_zipf) AS wordfreq_zipf,
-               MAX(has_direct_rank) AS has_direct_rank
+               MAX(has_direct_rank) AS has_direct_rank,
+               MIN(reading_order) AS reading_order
         FROM (
             -- Kanji form as surface, kana form as reading. Joins through kanji_kana_links (built
             -- from each reading's re_restr/appliesToKanji, see build_entry()) rather than raw
@@ -1930,13 +1885,13 @@ def materialize_surface_readings(conn):
             -- ににん and 一人 to いちにん — both readings shared one borrowed rank, so the tie broke
             -- alphabetically by reading (に before ふ, い before ひ) instead of by actual frequency.
             SELECT kj.text AS surface, kf.text AS reading,
-                   COALESCE(kkl.jpdb_rank, er.rank, {UNRANKED_RANK_SENTINEL})
+                   COALESCE(kkl.frequency_rank, er.rank, {UNRANKED_RANK_SENTINEL})
                        + CASE WHEN {deprioritized_predicate} THEN {DEPRIORITIZED_READING_RANK_PENALTY} ELSE 0 END
-                       - CASE WHEN {preferred_predicate} THEN {PREFERRED_READING_RANK_BONUS} ELSE 0 END
                        AS best_rank,
-                   COALESCE(kkl.jpdb_rank, er.rank) AS jpdb_rank,
+                   COALESCE(kkl.frequency_rank, er.rank) AS frequency_rank,
                    kf.wordfreq_zipf AS wordfreq_zipf,
-                   CASE WHEN kkl.jpdb_rank IS NOT NULL THEN 1 ELSE 0 END AS has_direct_rank
+                   CASE WHEN kkl.frequency_rank IS NOT NULL THEN 1 ELSE 0 END AS has_direct_rank,
+                   kf.id AS reading_order
             FROM kanji kj
             JOIN kanji_kana_links kkl ON kkl.kanji_id = kj.id
             JOIN kana_forms kf ON kf.id = kkl.kana_id
@@ -1949,28 +1904,30 @@ def materialize_surface_readings(conn):
             -- たゆたう (揺蕩う), and anything JMdict tags "usually written in kana alone."
             -- Hiragana-rendered text would then fall through to the unknown-token path,
             -- producing the kind of garbage segmentation 流されてたゆたうのこのまま showed.
-            -- jpdb_rank/best_rank are INHERITED from the entry's headword rank (er.rank) — was NULL —
+            -- frequency_rank/best_rank are INHERITED from the entry's headword rank (er.rank) — was NULL —
             -- so common kana spellings carry frequency instead of rendering "–" in the lookup/split
             -- editor; wordfreq_zipf is still carried from the kana form itself.
             SELECT kf.text AS surface, kf.text AS reading,
                    COALESCE(er.rank, {UNRANKED_RANK_SENTINEL})
                        + CASE WHEN {deprioritized_predicate} THEN {DEPRIORITIZED_READING_RANK_PENALTY} ELSE 0 END
                        AS best_rank,
-                   er.rank AS jpdb_rank,
+                   er.rank AS frequency_rank,
                    kf.wordfreq_zipf AS wordfreq_zipf,
-                   0 AS has_direct_rank
+                   0 AS has_direct_rank,
+                   kf.id AS reading_order
             FROM kana_forms kf
             LEFT JOIN entry_rank er ON er.entry_id = kf.entry_id
         )
         GROUP BY surface, reading
-        -- has_direct_rank DESC comes FIRST: a reading with its own real jpdb_rank must never lose
+        -- has_direct_rank DESC comes FIRST: a reading with its own real frequency_rank must never lose
         -- a tie to a sibling that merely inherited the same entry-wide best_rank (see the
         -- has_direct_rank column comment above — this is what fixes 夜 defaulting to よ). Then
-        -- wordfreq_zipf DESC breaks best_rank ties by actual per-reading usage before falling back
+        -- reading_order puts JMdict's first-listed reading ahead of a sibling with the same rank,
+        -- and wordfreq_zipf DESC breaks any remaining tie by per-reading usage before falling back
         -- to alphabetical — SQLite sorts NULL first in ASC / last in DESC, so a reading with no
         -- real frequency signal (e.g. ににん) correctly loses to one that has it (ふたり) instead
         -- of winning-by-coincidence on kana ordering. See the branch-1 comment above.
-        ORDER BY surface ASC, MAX(has_direct_rank) DESC, MIN(best_rank) ASC, MAX(wordfreq_zipf) DESC, reading ASC;
+        ORDER BY surface ASC, MAX(has_direct_rank) DESC, MIN(best_rank) ASC, MIN(reading_order) ASC, MAX(wordfreq_zipf) DESC, reading ASC;
 
         CREATE INDEX idx_surface_readings_surface ON surface_readings(surface);
         """
@@ -1981,7 +1938,7 @@ def materialize_surface_readings(conn):
 
 def materialize_word_frequency(conn):
     # Materialize word_frequency as an indexed table now that wordfreq_zipf (on kanji/kana_forms)
-    # and jpdb_rank (on kanji_kana_links) are fully populated. See the schema-phase note above for
+    # and frequency_rank (on kanji_kana_links) are fully populated. See the schema-phase note above for
     # why this is a table, not a view: the per-lookup LEFT JOIN was re-materializing the whole
     # view + building a throwaway index every call (~310ms). idx_wf_entry_id makes it an O(log n)
     # seek; kana_id/kanji_id indexes serve the reading-constrained frequency subqueries.
@@ -1992,13 +1949,13 @@ def materialize_word_frequency(conn):
 
         CREATE TABLE word_frequency AS
             SELECT k.entry_id, k.id AS kanji_id, kf.id AS kana_id,
-                   kkl.jpdb_rank, k.wordfreq_zipf
+                   kkl.frequency_rank, k.wordfreq_zipf
             FROM kanji_kana_links kkl
             JOIN kanji k ON k.id = kkl.kanji_id
             JOIN kana_forms kf ON kf.id = kkl.kana_id
             UNION ALL
             SELECT kf.entry_id, NULL AS kanji_id, kf.id AS kana_id,
-                   NULL AS jpdb_rank, kf.wordfreq_zipf
+                   NULL AS frequency_rank, kf.wordfreq_zipf
             FROM kana_forms kf;
 
         CREATE INDEX idx_wf_entry_id ON word_frequency(entry_id);
@@ -2011,22 +1968,21 @@ def materialize_word_frequency(conn):
 
 
 def materialize_surface_frequency(conn):
-    # Builds surface_frequency: written surface → the JPDB rank of THAT spelling. JPDB measures
+    # Builds surface_frequency: written surface → the frequency rank of THAT spelling. The list measures
     # each word twice — once as written in kanji, once as written in kana (the ㋕ rows) — and the
-    # segmenter needs the one matching the text it is looking at: する is rank 11 in kana while its
-    # kanji form 為る is rank 34586; 箱 is rank 1625 while kana はこ is 36099; がそ (画素 spelled in
-    # kana) has no rank at all because nobody writes it. import_jpdb keeps only the kanji-spelling
+    # segmenter needs the one matching the text it is looking at: する is rank 10 in kana while its
+    # kanji form 為る is rank 14848; 箱 is rank 1975 while kana はこ is 36205. import_frequency_ranks keeps only the kanji-spelling
     # rank (it lives on kanji_kana_links, which has no row for a kana-only spelling), so this table
     # is the only place the kana-spelling ranks land. Restricted to surfaces the dictionary
     # actually contains so it stays small. Owns its table (idempotent), like word_frequency.
-    if not JPDB_PATH.exists():
+    if not FREQUENCY_PATH.exists():
         raise RuntimeError(
-            f"JPDB frequency file not found at {JPDB_PATH} — surface_frequency is required by the "
+            f"Frequency list not found at {FREQUENCY_PATH} — surface_frequency is required by the "
             "segmenter's cost model; see data-manifest.json."
         )
 
     print("Materializing surface_frequency table...")
-    with open(JPDB_PATH, "r", encoding="utf-8") as f:
+    with open(FREQUENCY_PATH, "r", encoding="utf-8") as f:
         rows = json.load(f)
 
     best_rank_by_surface = {}
@@ -2062,12 +2018,12 @@ def materialize_surface_frequency(conn):
         DROP TABLE IF EXISTS surface_frequency;
         CREATE TABLE surface_frequency (
             surface TEXT PRIMARY KEY,
-            jpdb_rank INTEGER NOT NULL
+            frequency_rank INTEGER NOT NULL
         ) WITHOUT ROWID;
         """
     )
     conn.executemany(
-        "INSERT INTO surface_frequency (surface, jpdb_rank) VALUES (?, ?)",
+        "INSERT INTO surface_frequency (surface, frequency_rank) VALUES (?, ?)",
         ((surface, rank) for surface, rank in best_rank_by_surface.items() if surface in known_surfaces),
     )
     count = conn.execute("SELECT COUNT(*) FROM surface_frequency").fetchone()[0]
@@ -2077,7 +2033,7 @@ def materialize_surface_frequency(conn):
 def materialize_canonical_entry_ids(conn):
     # Materializes DictionaryStore.fetchCanonicalEntryIDMap's surface → canonical entry id
     # ranking (same selection priority as fetchMatchedEntries: functional/deictic POS first,
-    # then kana-only, then jpdb/wordfreq rank, then sense order, then entry id) as a plain
+    # then kana-only, then frequency-rank/wordfreq rank, then sense order, then entry id) as a plain
     # indexed table instead of recomputing it at every app startup. The ranking is a pure
     # function of the dictionary data — it never depends on anything at runtime — so there's
     # no reason to pay its cost (a window function over a multi-way join across all ~450k
@@ -2111,7 +2067,7 @@ def materialize_canonical_entry_ids(conn):
         ),
         m AS (
             SELECT s.surface, s.entry_id,
-                   MIN(wf.jpdb_rank) AS rank,
+                   MIN(wf.frequency_rank) AS rank,
                    MAX(wf.wordfreq_zipf) AS best_zipf,
                    EXISTS (SELECT 1 FROM kanji k WHERE k.entry_id = s.entry_id) AS has_kanji,
                    EXISTS (SELECT 1 FROM entry_functional_pos efp WHERE efp.entry_id = s.entry_id) AS is_functional,
@@ -2123,10 +2079,10 @@ def materialize_canonical_entry_ids(conn):
             LEFT JOIN senses sn ON sn.entry_id = s.entry_id
             GROUP BY s.surface, s.entry_id
         ),
-        -- Adds a group-wide "does ANY entry sharing this surface have a real JPDB rank" signal
+        -- Adds a group-wide "does ANY entry sharing this surface have a real frequency rank" signal
         -- (mirrors DictionaryStore.FrequencySQL.siblingRealRankTier). A kanji row's wordfreq_zipf
         -- is scored on the literal string, identically for every entry that writes it — it can't
-        -- tell 日-the-common-noun (ひ, jpdb_rank 223) apart from 日-the-colloquial-counter-suffix
+        -- tell 日-the-common-noun (ひ, frequency_rank 223) apart from 日-the-colloquial-counter-suffix
         -- (ち, no rank of its own), it's just repeating 日-the-character's overall corpus
         -- ubiquity. Without surface_best_rank below, that borrowed zipf fell into the pseudo-rank
         -- bucket table and numerically beat the noun's real rank.
@@ -2202,6 +2158,7 @@ def main():
 
     print("Building dictionary.sqlite...")
     print(f"JMdict SHA256: {sha256_of_file(JMDICT_PATH)}")
+    print(f"Frequency ranks: {FREQUENCY_PATH.name} ({sha256_of_file(FREQUENCY_PATH)})")
     if EXTRAS_PATH.exists():
         print(f"Extras SHA256: {sha256_of_file(EXTRAS_PATH)}")
     else:

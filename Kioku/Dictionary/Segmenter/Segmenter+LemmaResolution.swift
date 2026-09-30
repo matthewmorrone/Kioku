@@ -216,7 +216,7 @@ extension Segmenter {
 
             // Second deinflection pass for derivational bases. A lexicalized れる/られる form
             // (生まれる, 流される) is a complete dictionary verb, so the first pass halts there and
-            // never reaches its base (生む, 流す). But jpdb attaches frequency to the base, and the
+            // never reaches its base (生む, 流す). But the frequency list attaches frequency to the base, and the
             // base is a legitimate alternate lemma the user may want to see — so re-deinflect each
             // first-pass れる-form once more and add any trie-backed base as an ADDITIONAL candidate.
             // preferredLemmaScore still ranks the surface-closest lexicalized form first, so this

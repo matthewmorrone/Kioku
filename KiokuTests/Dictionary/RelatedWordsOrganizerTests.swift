@@ -7,7 +7,7 @@ final class RelatedWordsOrganizerTests: XCTestCase {
     private func entry(id: Int64, kanji: String, pos: String?) -> DictionaryEntry {
         DictionaryEntry(
             entryId: id,
-            jpdbRank: nil,
+            frequencyRank: nil,
             wordfreqZipf: nil,
             matchedSurface: kanji,
             kanjiForms: [KanjiForm(text: kanji, priority: nil, info: nil)],
@@ -66,7 +66,7 @@ final class RelatedWordsOrganizerTests: XCTestCase {
     // A pure-kana saved word has no skeleton, so nothing is treated as structural.
     func test_kanaOnlySaved_yieldsNoStructuralGroup() {
         let saved = DictionaryEntry(
-            entryId: 1, jpdbRank: nil, wordfreqZipf: nil, matchedSurface: "する",
+            entryId: 1, frequencyRank: nil, wordfreqZipf: nil, matchedSurface: "する",
             kanjiForms: [], kanaForms: [KanaForm(text: "する", priority: nil, info: nil, nokanji: false)],
             senses: [DictionaryEntrySense(senseID: 1, pos: "vs-i,vt", misc: nil, field: nil, dialect: nil, glosses: ["to do"])]
         )

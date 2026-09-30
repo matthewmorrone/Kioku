@@ -8,7 +8,7 @@ extension DictionaryStore {
 
     // Reads the surface → canonical entry id map from surface_canonical_entry, precomputed at
     // DB-build time by generate_db.py's materialize_canonical_entry_ids (same selection priority as
-    // fetchMatchedEntries: functional/deictic POS → kana-only → jpdb/wordfreq rank → sense order →
+    // fetchMatchedEntries: functional/deictic POS → kana-only → frequency-rank/wordfreq rank → sense order →
     // entry id — kept in exact lockstep, see that Python function's comment). The ranking is a pure
     // function of static dictionary data, so it is computed once at build time; running it here at
     // startup (a window function over a multi-way join across all ~450k surfaces) costs ~2.5-4s of
