@@ -46,7 +46,11 @@ extension DictionaryStore {
 
 
     // Builds the unified per-surface reading and frequency map from the materialized surface_readings table.
-    // Ordered by (surface ASC, has_direct_rank DESC, best_rank ASC, wordfreq_zipf DESC, reading ASC).
+    // Ordered by (surface ASC, has_direct_rank DESC, best_rank ASC, reading_order ASC, wordfreq_zipf DESC, reading ASC).
+    //
+    // reading_order (JMdict's listing order) breaks best_rank ties before wordfreq_zipf: Jiten ranks
+    // every reading of an entry the same (今日 = 93 for きょう and こんにち), and JMdict lists the
+    // common reading first.
     //
     // has_direct_rank comes first: best_rank is an entry-wide value shared by every reading of a
     // multi-reading entry (JPDB ranks one written form per entry) — a reading with no rank of its
@@ -72,7 +76,7 @@ extension DictionaryStore {
             let sql = """
             SELECT surface, reading, jpdb_rank, wordfreq_zipf
             FROM surface_readings
-            ORDER BY surface, has_direct_rank DESC, best_rank, wordfreq_zipf DESC, reading
+            ORDER BY surface, has_direct_rank DESC, best_rank, reading_order, wordfreq_zipf DESC, reading
             """
 
             var statement: OpaquePointer?

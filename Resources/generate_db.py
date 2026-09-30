@@ -1898,7 +1898,12 @@ def materialize_surface_readings(conn):
             -- non-NULL, entry-shared value) — see the ORDER BY below for why that distinction
             -- matters: 夜 defaulted to よ (inherited rank 287, same as よる's real rank 287, then
             -- won the wordfreq_zipf tiebreak on corpus noise) instead of よる.
-            has_direct_rank INTEGER NOT NULL DEFAULT 0
+            has_direct_rank INTEGER NOT NULL DEFAULT 0,
+            -- JMdict's own order for this reading (the smallest kana_forms.id behind the pair).
+            -- JMdict lists an entry's common reading first, so this breaks best_rank ties before
+            -- wordfreq_zipf does: Jiten gives every reading of an entry the same rank (今日 = 93
+            -- for きょう, こんにち, こんじつ, こんち), and wordfreq then picked こんにち.
+            reading_order INTEGER NOT NULL
         );
 
         WITH entry_rank AS (
@@ -1913,12 +1918,13 @@ def materialize_surface_readings(conn):
             WHERE kkl.jpdb_rank IS NOT NULL
             GROUP BY k.entry_id
         )
-        INSERT INTO surface_readings (surface, reading, best_rank, jpdb_rank, wordfreq_zipf, has_direct_rank)
+        INSERT INTO surface_readings (surface, reading, best_rank, jpdb_rank, wordfreq_zipf, has_direct_rank, reading_order)
         SELECT surface, reading,
                MIN(best_rank) AS best_rank,
                MIN(jpdb_rank) AS jpdb_rank,
                MAX(wordfreq_zipf) AS wordfreq_zipf,
-               MAX(has_direct_rank) AS has_direct_rank
+               MAX(has_direct_rank) AS has_direct_rank,
+               MIN(reading_order) AS reading_order
         FROM (
             -- Kanji form as surface, kana form as reading. Joins through kanji_kana_links (built
             -- from each reading's re_restr/appliesToKanji, see build_entry()) rather than raw
@@ -1943,7 +1949,8 @@ def materialize_surface_readings(conn):
                        AS best_rank,
                    COALESCE(kkl.jpdb_rank, er.rank) AS jpdb_rank,
                    kf.wordfreq_zipf AS wordfreq_zipf,
-                   CASE WHEN kkl.jpdb_rank IS NOT NULL THEN 1 ELSE 0 END AS has_direct_rank
+                   CASE WHEN kkl.jpdb_rank IS NOT NULL THEN 1 ELSE 0 END AS has_direct_rank,
+                   kf.id AS reading_order
             FROM kanji kj
             JOIN kanji_kana_links kkl ON kkl.kanji_id = kj.id
             JOIN kana_forms kf ON kf.id = kkl.kana_id
@@ -1965,7 +1972,8 @@ def materialize_surface_readings(conn):
                        AS best_rank,
                    er.rank AS jpdb_rank,
                    kf.wordfreq_zipf AS wordfreq_zipf,
-                   0 AS has_direct_rank
+                   0 AS has_direct_rank,
+                   kf.id AS reading_order
             FROM kana_forms kf
             LEFT JOIN entry_rank er ON er.entry_id = kf.entry_id
         )
@@ -1973,11 +1981,12 @@ def materialize_surface_readings(conn):
         -- has_direct_rank DESC comes FIRST: a reading with its own real jpdb_rank must never lose
         -- a tie to a sibling that merely inherited the same entry-wide best_rank (see the
         -- has_direct_rank column comment above — this is what fixes 夜 defaulting to よ). Then
-        -- wordfreq_zipf DESC breaks best_rank ties by actual per-reading usage before falling back
+        -- reading_order puts JMdict's first-listed reading ahead of a sibling with the same rank,
+        -- and wordfreq_zipf DESC breaks any remaining tie by per-reading usage before falling back
         -- to alphabetical — SQLite sorts NULL first in ASC / last in DESC, so a reading with no
         -- real frequency signal (e.g. ににん) correctly loses to one that has it (ふたり) instead
         -- of winning-by-coincidence on kana ordering. See the branch-1 comment above.
-        ORDER BY surface ASC, MAX(has_direct_rank) DESC, MIN(best_rank) ASC, MAX(wordfreq_zipf) DESC, reading ASC;
+        ORDER BY surface ASC, MAX(has_direct_rank) DESC, MIN(best_rank) ASC, MIN(reading_order) ASC, MAX(wordfreq_zipf) DESC, reading ASC;
 
         CREATE INDEX idx_surface_readings_surface ON surface_readings(surface);
         """
