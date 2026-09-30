@@ -36,8 +36,9 @@ nonisolated enum CachesCleaner {
     }
 
     // Launch-time sweep of state that is pure dead weight once the process has restarted:
-    //   - tmp/: URLSession download temp files (the Hub client copies them and never deletes
-    //     the original; nothing is in flight at launch, so everything here is stale)
+    //   - tmp/: URLSession download temp files left by earlier launches. Only entries last
+    //     modified before `launchedAt` go: the dictionary download starts at launch too, and its
+    //     temp file must survive a sweep that reaches tmp after it began
     //   - Library/Caches/huggingface + aufklarer: the Hub downloader's staging copies. The
     //     materialized weights live in Application Support and the downloader's skip check
     //     reads that copy (+ its .metadata sidecar), so the staging copy is never consulted
@@ -46,7 +47,7 @@ nonisolated enum CachesCleaner {
     //   - CoreML's compiled-model bundles, but only when the app build changed since the last
     //     launch (see sweepCompiledBundlesIfBuildChanged). Returns freed bytes.
     @discardableResult
-    static func sweepStaleDownloads() -> Int {
+    static func sweepStaleDownloads(launchedAt: Date) -> Int {
         let fm = FileManager.default
         var targets: [URL] = []
         if let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first {
@@ -59,9 +60,7 @@ nonisolated enum CachesCleaner {
             freed += totalRegularFileBytes(at: url)
             try? fm.removeItem(at: url)
         }
-        let tmp = fm.temporaryDirectory
-        freed += totalRegularFileBytes(at: tmp)
-        removeContents(of: tmp)
+        freed += removeEntries(in: fm.temporaryDirectory, modifiedBefore: launchedAt)
         freed += sweepCompiledBundlesIfBuildChanged()
         return freed
     }
@@ -104,6 +103,30 @@ nonisolated enum CachesCleaner {
             urls.append(stems)
         }
         return urls
+    }
+
+    // Deletes the top-level entries of `root` last modified before `cutoff`, returning the bytes
+    // freed. Entries whose date can't be read are kept rather than guessed at.
+    private static func removeEntries(in root: URL, modifiedBefore cutoff: Date) -> Int {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(
+            at: root, includingPropertiesForKeys: [.contentModificationDateKey], options: []
+        ) else {
+            return 0
+        }
+        var freed = 0
+        for url in entries {
+            guard let modified = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                  modified < cutoff else { continue }
+            let bytes = totalRegularFileBytes(at: url) + ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            do {
+                try fm.removeItem(at: url)
+                freed += bytes
+            } catch {
+                AppLog.error(.storage, "CachesCleaner: could not remove \(url.lastPathComponent) — \(error.localizedDescription)")
+            }
+        }
+        return freed
     }
 
     // Removes every top-level entry under `root`, leaving the directory itself in place.

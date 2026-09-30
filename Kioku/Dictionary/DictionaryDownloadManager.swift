@@ -11,6 +11,7 @@
 // URLSession.shared.download(from:delegate:) — that delegate is task-scoped and never receives
 // didWriteData, which silently reduces the banner to "0%" until the download finishes.
 
+import Compression
 import Foundation
 import Observation
 import CryptoKit
@@ -168,7 +169,11 @@ final class DictionaryDownloadManager {
         } catch {
             AppLog.error(.dictionaryDownload, "downloadIfNeeded: failed — \(error.localizedDescription)")
             progress = nil
-            errorMessage = error.localizedDescription
+            // A corrupt or truncated archive surfaces from the decoder as a bare FilterError,
+            // whose system description means nothing to a reader.
+            errorMessage = error is FilterError
+                ? "The downloaded dictionary was damaged. Tap Retry to download it again."
+                : error.localizedDescription
         }
     }
 

@@ -28,10 +28,13 @@ struct KiokuApp: App {
         KaraokeDebugLog.log("=== app launch ===")
         // Bring the vocal-stem cache back under VocalStemCache.maxBytes; store() keeps it there
         // after this. Off the main thread so the directory scan and deletes never delay launch.
+        // The launch time is captured here, before anything this process downloads can start,
+        // so the sweep leaves this launch's own in-flight downloads (the dictionary) alone.
+        let launchedAt = Date()
         Task.detached(priority: .utility) {
             AppLog.info(.storage, "[KiokuApp] launch-time VocalStemCache.enforceBudget starting")
             VocalStemCache.enforceBudget()
-            let freed = CachesCleaner.sweepStaleDownloads()
+            let freed = CachesCleaner.sweepStaleDownloads(launchedAt: launchedAt)
             AppLog.info(.storage, "[KiokuApp] launch-time stale-download sweep freed \(freed / 1_000_000) MB")
         }
     }
