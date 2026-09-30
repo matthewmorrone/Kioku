@@ -38,6 +38,9 @@ final class ReadDocumentState {
 
     var furiganaBySegmentLocation: [Int: String] = [:]
     var furiganaLengthBySegmentLocation: [Int: Int] = [:]
+    // The dictionary entry the user picked for an ambiguous segment (いった → 言う), keyed by the
+    // segment's UTF-16 start. Persisted on SegmentRange.chosenEntryID.
+    var chosenEntryIDBySegmentLocation: [Int: Int64] = [:]
     // Locations whose wide furigana entries came from the synthesis pass (per-character
     // concatenation, e.g. ものご for 物語 when the dict reading isn't yet loaded). Tracked
     // in-memory so a later recompute with a real dict-derived compound reading can replace

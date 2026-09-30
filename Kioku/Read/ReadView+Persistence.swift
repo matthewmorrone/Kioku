@@ -52,6 +52,7 @@ extension ReadView {
             segmentSelection.selectedBounds = nil
             document.furiganaBySegmentLocation = [:]
             document.furiganaLengthBySegmentLocation = [:]
+            document.chosenEntryIDBySegmentLocation = [:]
             segmentSelection.illegalMergeBoundaryLocation = nil
             llmCorrection.pendingLLMChangedLocations = []
             llmCorrection.pendingLLMChangedReadingLocations = []
@@ -135,6 +136,7 @@ extension ReadView {
             document.unknownSegmentLocations = []
             document.furiganaBySegmentLocation = [:]
             document.furiganaLengthBySegmentLocation = [:]
+            document.chosenEntryIDBySegmentLocation = [:]
             let deferredNoteID = noteToLoad.id
             let deferredContent = noteToLoad.content
             Task { @MainActor in
@@ -150,6 +152,7 @@ extension ReadView {
                 let restoredFurigana = furiganaFromSegmentRanges(loadedSegments)
                 document.furiganaBySegmentLocation = restoredFurigana.byLocation
                 document.furiganaLengthBySegmentLocation = restoredFurigana.lengthByLocation
+                document.chosenEntryIDBySegmentLocation = chosenEntryIDsFromSegmentRanges(loadedSegments)
                 // Backfill semantics preserve restored annotations while filling gaps; early-returns
                 // on kana-only edge sets so kana notes don't trigger a prompt.
                 scheduleFuriganaGeneration(for: document.text, edges: edges)
@@ -168,6 +171,7 @@ extension ReadView {
             document.unknownSegmentLocations = []
             document.furiganaBySegmentLocation = [:]
             document.furiganaLengthBySegmentLocation = [:]
+            document.chosenEntryIDBySegmentLocation = [:]
             // Defer the segmentation kickoff by one main-actor turn so SwiftUI can
             // commit the plain-text frame FIRST. The CoreText builder already draws
             // base text without segmentation (build() emits the full string before its

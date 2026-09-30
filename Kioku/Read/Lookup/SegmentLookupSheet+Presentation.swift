@@ -39,6 +39,7 @@ extension SegmentLookupSheet {
         let capturedSheetOpenWordDetail = self.sheetOpenWordDetail
         let capturedSheetWordComponentsProvider = self.sheetWordComponentsProvider
         let capturedSheetCompoundComponentsProvider = self.sheetCompoundComponentsProvider
+        let capturedSheetLookupCandidatesProvider = self.sheetLookupCandidatesProvider
         let capturedActiveReadingOverrideProvider = self.activeReadingOverrideProvider
         let capturedOnReadingReset = self.onReadingReset
         let capturedOnWillDismiss = self.onWillDismiss
@@ -63,6 +64,7 @@ extension SegmentLookupSheet {
             self.sheetOpenWordDetail = capturedSheetOpenWordDetail
             self.sheetWordComponentsProvider = capturedSheetWordComponentsProvider
             self.sheetCompoundComponentsProvider = capturedSheetCompoundComponentsProvider
+            self.sheetLookupCandidatesProvider = capturedSheetLookupCandidatesProvider
             self.activeReadingOverrideProvider = capturedActiveReadingOverrideProvider
             self.onSheetSelectPrevious = nil
             self.onSheetSelectNext = nil
@@ -223,6 +225,9 @@ extension SegmentLookupSheet {
         sheetWordComponentsProvider = nil
         sheetCompoundComponentsProvider = nil
         currentSheetCompoundComponents = []
+        sheetLookupCandidatesProvider = nil
+        currentSheetLookupCandidates = []
+        currentSheetLookupBaseLemmaInfo = nil
         // Note: onCompoundComponentTapped is intentionally NOT reset — it's installed once by
         // ReadView and represents how the app drills into a compound component, regardless of
         // which segment is currently presented.

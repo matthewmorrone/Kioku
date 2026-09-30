@@ -153,6 +153,13 @@ extension SegmentLookupSheet {
             subview.removeFromSuperview()
         }
 
+        // An ambiguous form nobody has picked a word for yet: the possibilities alone, no meaning.
+        if currentSheetLookupCandidates.count > 1, currentSheetDictionaryEntry == nil {
+            addLookupCandidateRows(to: middleContentStack, parent: parent)
+            middleContentStack.superview?.isHidden = false
+            return
+        }
+
         let visibleSenses = currentSheetDictionaryEntry?
             .senses(forReading: selectedReading, kanji: selectedKanji)
             .filter { $0.glosses.isEmpty == false } ?? []
@@ -176,6 +183,9 @@ extension SegmentLookupSheet {
         }
 
         let measuredContentWidth = sheetContentWidth()
+
+        // Every word an ambiguous form can be (いった → 言う / 行く / 要る), above the shown word's senses.
+        addLookupCandidateRows(to: middleContentStack, parent: parent)
 
         // Compact most-common-meanings list: JMdict orders senses by commonness, so the top
         // senses in array order are the word's dominant meanings. The primary sense renders

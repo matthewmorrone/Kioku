@@ -34,6 +34,9 @@ nonisolated final class Deinflector {
     // The helper word (DeinflectionRule.helper) of each rule that has one, keyed by helperKey.
     let helperByTransition: [String: String]
 
+    // Each rule's rulesOut, keyed by helperKey — what grammar a chain ending on that rule claims.
+    let rulesOutByTransition: [String: Set<String>]
+
     // Stores deinflection rules used by candidate generation.
     init(rules: [DeinflectionRule], trie: DictionaryTrie, nonIchidanRuVerbs: Set<String> = [], intermediateForms: Set<String> = []) {
         self.rules = rules.sorted { lhs, rhs in
@@ -46,6 +49,7 @@ nonisolated final class Deinflector {
         self.knownNonIchidanRuVerbs = nonIchidanRuVerbs
         self.intermediateForms = intermediateForms
         self.helperByTransition = Self.helperIndex(self.labeledRules, normalizingLabel: Self.normalizedRuleLabel)
+        self.rulesOutByTransition = Self.rulesOutIndex(self.labeledRules, normalizingLabel: Self.normalizedRuleLabel)
     }
 
     // Stores grouped deinflection rules while preserving group labels used for chain reporting.
@@ -68,6 +72,7 @@ nonisolated final class Deinflector {
         self.knownNonIchidanRuVerbs = nonIchidanRuVerbs
         self.intermediateForms = intermediateForms
         self.helperByTransition = Self.helperIndex(expandedLabeledRules, normalizingLabel: Self.normalizedRuleLabel)
+        self.rulesOutByTransition = Self.rulesOutIndex(expandedLabeledRules, normalizingLabel: Self.normalizedRuleLabel)
     }
 
     // The non-rule sibling keys alongside the rule groups (teForms, pastForms, …) in deinflection.json.

@@ -106,6 +106,17 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     // Provides tappable word components: (surface, first gloss) pairs.
     var sheetWordComponentsProvider: (() -> [(surface: String, gloss: String?)]?)?
     var currentSheetWordComponents: [(surface: String, gloss: String?)] = []
+    // Provides every dictionary word the current segment can be (いった → 言う / 行く / 要る), listed as
+    // tappable rows when there is more than one, plus the entry the user already picked for this
+    // segment, if any. See Lexicon.lookupCandidates.
+    var sheetLookupCandidatesProvider: (() -> (candidates: [LookupCandidate], chosenEntryID: Int64?))?
+    var currentSheetLookupCandidates: [LookupCandidate] = []
+    // The lemma line as the engine built it, kept while an ambiguous form has no pick yet so a pick
+    // can put its headword in place of the first part and keep any helper words after it.
+    var currentSheetLookupBaseLemmaInfo: (lemma: String, chain: [String])? = nil
+    // Records the user's pick for the current segment. Installed once by ReadView, like
+    // onCompoundComponentTapped, so it is never reset between segments.
+    var onLookupCandidateChosen: ((Int64) -> Void)?
     // Provides compound verb component lemmas: (lemma, first gloss) pairs.
     var sheetCompoundComponentsProvider: (() -> [(lemma: String, gloss: String?)]?)?
     var currentSheetCompoundComponents: [(lemma: String, gloss: String?)] = []
@@ -526,6 +537,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetOpenWordDetail: ((String?, DictionaryEntry?) -> Void)? = nil,
         sheetWordComponentsProvider: (() -> [(surface: String, gloss: String?)]?)? = nil,
         sheetCompoundComponentsProvider: (() -> [(lemma: String, gloss: String?)]?)? = nil,
+        sheetLookupCandidatesProvider: (() -> (candidates: [LookupCandidate], chosenEntryID: Int64?))? = nil,
         onWillDismiss: ((@escaping () -> Void) -> Void)? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
@@ -552,6 +564,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         self.sheetOpenWordDetail = sheetOpenWordDetail
         self.sheetWordComponentsProvider = sheetWordComponentsProvider
         self.sheetCompoundComponentsProvider = sheetCompoundComponentsProvider
+        self.sheetLookupCandidatesProvider = sheetLookupCandidatesProvider
         if let updatePresentedSheetSelection, hasActivePresentedSheetController {
             TapDiagnostics.mark("presentSheet: taking IN-PLACE update path")
             self.onDismiss = onDismiss

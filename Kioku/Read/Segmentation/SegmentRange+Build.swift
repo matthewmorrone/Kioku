@@ -10,7 +10,8 @@ extension SegmentRange {
         from edges: [LatticeEdge],
         in sourceText: String,
         furiganaByLocation: [Int: String] = [:],
-        furiganaLengthByLocation: [Int: Int] = [:]
+        furiganaLengthByLocation: [Int: Int] = [:],
+        chosenEntryIDByLocation: [Int: Int64] = [:]
     ) -> [SegmentRange] {
         edges.compactMap { edge in
             let nsRange = NSRange(edge.start..<edge.end, in: sourceText)
@@ -27,7 +28,11 @@ extension SegmentRange {
                 return FuriganaAnnotation(start: relativeStart, end: relativeStart + length, reading: reading)
             }.sorted { $0.start < $1.start }
 
-            return SegmentRange(surface: edge.surface, furigana: annotations.isEmpty ? nil : annotations)
+            return SegmentRange(
+                surface: edge.surface,
+                furigana: annotations.isEmpty ? nil : annotations,
+                chosenEntryID: chosenEntryIDByLocation[segStart]
+            )
         }
     }
 }

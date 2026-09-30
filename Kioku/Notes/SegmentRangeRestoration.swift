@@ -39,6 +39,19 @@ enum SegmentRangeRestoration {
         return filtered
     }
 
+    // The user's word picks from persisted segments, keyed by each segment's UTF-16 start.
+    static func chosenEntryIDsFromSegmentRanges(_ segments: [SegmentRange]) -> [Int: Int64] {
+        var byLocation: [Int: Int64] = [:]
+        var cursor = 0
+        for segment in segments {
+            if let chosenEntryID = segment.chosenEntryID {
+                byLocation[cursor] = chosenEntryID
+            }
+            cursor += segment.surface.utf16.count
+        }
+        return byLocation
+    }
+
     // Extracts absolute-offset furigana maps from persisted order-only segments by walking
     // the surface cursor. Annotations are stored segment-relative and rebased here.
     static func furiganaFromSegmentRanges(_ segments: [SegmentRange]) -> (byLocation: [Int: String], lengthByLocation: [Int: Int]) {

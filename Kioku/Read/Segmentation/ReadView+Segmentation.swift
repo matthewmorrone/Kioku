@@ -61,6 +61,34 @@ extension ReadView {
         rebuildAndPersistSegments()
     }
 
+    // The lemma of `entry` when it was picked from an ambiguous form's possibilities; nil otherwise.
+    func pickedLookupCandidateLemma(for entry: DictionaryEntry) -> String? {
+        let candidates = SegmentLookupSheet.shared.currentSheetLookupCandidates
+        guard candidates.count > 1 else { return nil }
+        return candidates.first { $0.entry.entryId == entry.entryId }?.lemma
+    }
+
+    // Saves the user's pick of which word an ambiguous segment is (いった → 言う) with the segment, and
+    // with every other occurrence of the same surface when changes apply globally, like a pinned
+    // reading.
+    func applyLookupCandidateChoice(entryID: Int64) {
+        guard let location = segmentSelection.selectedSegmentLocation else { return }
+        var locations = [location]
+        if shouldApplyChangesGlobally, let surface = currentSelectedSurface() {
+            for edge in document.segmentEdges where edge.surface == surface {
+                let edgeNSRange = NSRange(edge.start..<edge.end, in: document.text)
+                if edgeNSRange.location != NSNotFound, edgeNSRange.location != location {
+                    locations.append(edgeNSRange.location)
+                }
+            }
+        }
+        for target in locations {
+            document.chosenEntryIDBySegmentLocation[target] = entryID
+        }
+        document.hasManualSegmentationEdits = true
+        rebuildAndPersistSegments()
+    }
+
     // Removes the persisted reading for the currently selected segment and re-runs furigana
     // computation so the auto-derived default refills the gap. The transient blanking flag
     // is also set so the UI shows no ruby until the recompute finishes — without that, the
@@ -85,6 +113,7 @@ extension ReadView {
     // (otherwise the post-segmenter backfill leaves stale overrides in place).
     func resetSegmentationToComputed() {
         document.segments = nil
+        document.chosenEntryIDBySegmentLocation = [:]
         document.hasManualSegmentationEdits = false
         segmentSelection.illegalMergeBoundaryLocation = nil
         segmentSelection.illegalMergeFlashTask?.cancel()
@@ -285,6 +314,8 @@ extension ReadView {
 
     // Drops persisted segment overrides only when they are fully redundant with the current computed segmentation.
     func shouldDiscardPersistedSegmentOverride(overriddenEdges: [LatticeEdge], computedEdges: [LatticeEdge]) -> Bool {
+        // Word picks live only on the persisted segments; dropping them as "redundant" loses them.
+        guard document.chosenEntryIDBySegmentLocation.isEmpty else { return false }
         let computedSegmentRanges = buildSegmentRanges(from: computedEdges)
         let overriddenSegmentRanges = buildSegmentRanges(from: overriddenEdges)
         return overriddenSegmentRanges == computedSegmentRanges
@@ -566,7 +597,9 @@ extension ReadView {
     func toggleSegmentSaved() {
         guard let surface = currentSelectedSurface(),
               let entry = currentSegmentDictionaryEntry() else { return }
-        let lemma = segmenter.preferredLemma(for: surface)?
+        // A word picked from an ambiguous form is saved under its own lemma (いう for 言う), not the
+        // engine's default reading of the form (いる).
+        let lemma = (pickedLookupCandidateLemma(for: entry) ?? segmenter.preferredLemma(for: surface))?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let key = (lemma?.isEmpty == false ? lemma! : surface)
         wordsStore.toggle(
@@ -582,7 +615,9 @@ extension ReadView {
     // toggleSegmentSaved uses, factored out so the learned-state provider/setter below read
     // the identical entry rather than risking a second, slightly different resolution.
     private func currentSegmentDictionaryEntry() -> DictionaryEntry? {
-        SegmentLookupSheet.shared.currentSheetDictionaryEntry
+        // An ambiguous form with no pick has no word yet; guessing one would save the wrong word.
+        guard SegmentLookupSheet.shared.isAwaitingLookupCandidatePick == false else { return nil }
+        return SegmentLookupSheet.shared.currentSheetDictionaryEntry
             ?? resolvedDictionaryEntryForCurrentSelectedSegment()
     }
 
@@ -599,7 +634,9 @@ extension ReadView {
     func setCurrentSegmentLearnedState(_ state: LearnedState) {
         guard let surface = currentSelectedSurface(),
               let entry = currentSegmentDictionaryEntry() else { return }
-        let lemma = segmenter.preferredLemma(for: surface)?
+        // A word picked from an ambiguous form is saved under its own lemma (いう for 言う), not the
+        // engine's default reading of the form (いる).
+        let lemma = (pickedLookupCandidateLemma(for: entry) ?? segmenter.preferredLemma(for: surface))?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let key = (lemma?.isEmpty == false ? lemma! : surface)
         wordsStore.setLearnedState(

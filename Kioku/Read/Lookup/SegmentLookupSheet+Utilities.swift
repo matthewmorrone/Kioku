@@ -105,6 +105,7 @@ extension SegmentLookupSheet {
                 let lemmaInfoByReading = timed("lemmaInfoByReading") { self.sheetLemmaInfoByReadingProvider?() ?? [:] }
                 let dictionaryEntry = timed("dictionaryEntry") { self.sheetDictionaryEntryProvider?() }
                 let compoundComponents = timed("compoundComponents") { self.sheetCompoundComponentsProvider?() ?? [] }
+                let lookupCandidates = timed("lookupCandidates") { self.sheetLookupCandidatesProvider?() }
 
                 self.currentSheetUniqueReadings = readings
                 self.currentSheetSublatticeEdges = sublattice
@@ -119,6 +120,7 @@ extension SegmentLookupSheet {
                 self.currentSheetLexiconDebugInfo = ""
                 self.currentSheetWordComponents = []
                 self.currentSheetCompoundComponents = compoundComponents
+                self.adoptLookupCandidates(lookupCandidates)
 
                 let totalMs = (CFAbsoluteTimeGetCurrent() - overallStart) * 1000
                 TapDiagnostics.mark(String(format: "refresh: all providers done in %.1fms (gen=%d)", totalMs, generation))
@@ -145,6 +147,7 @@ extension SegmentLookupSheet {
         currentSheetLexiconDebugInfo = ""
         currentSheetWordComponents = []
         currentSheetCompoundComponents = sheetCompoundComponentsProvider?() ?? []
+        adoptLookupCandidates(sheetLookupCandidatesProvider?())
     }
 
     // Delivers and clears one-shot dismissal callback used by the read view to clear selection state.

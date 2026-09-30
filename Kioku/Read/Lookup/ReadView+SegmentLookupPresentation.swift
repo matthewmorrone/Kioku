@@ -29,6 +29,10 @@ extension ReadView {
             SegmentLookupSheet.shared.onCompoundComponentTapped = { lemma, gloss in
                 presentNestedLemmaLookup(lemma: lemma, gloss: gloss)
             }
+            // Picking one of an ambiguous form's words (いった → 言う) saves the pick with the segment.
+            SegmentLookupSheet.shared.onLookupCandidateChosen = { entryID in
+                applyLookupCandidateChoice(entryID: entryID)
+            }
 
             // Record where the view is and plan every scroll for this tap from there. The sheet's own
             // size isn't known until it has measured its new content. Opening a sheet: scroll right
@@ -233,8 +237,16 @@ extension ReadView {
                 sheetLearnedStateProvider: { currentSegmentLearnedState() },
                 sheetSetLearnedState: { setCurrentSegmentLearnedState($0) },
                 sheetOpenWordDetail: { shownReading, shownEntry in
+                    // An ambiguous form with no pick has no word to open.
+                    guard SegmentLookupSheet.shared.isAwaitingLookupCandidatePick == false else { return }
                     guard let surface = currentSelectedSurface(),
                           let entry = shownEntry ?? resolvedDictionaryEntryForCurrentSelectedSegment() else { return }
+                    // A picked word opens as itself (言う / いう), not as the form it was tapped in.
+                    let candidates = SegmentLookupSheet.shared.currentSheetLookupCandidates
+                    if candidates.count > 1, let picked = candidates.first(where: { $0.entry.entryId == entry.entryId }) {
+                        onOpenWordDetail?(entry.entryId, picked.headword, picked.reading, [])
+                        return
+                    }
                     let reading = shownReading ?? SegmentLookupSheet.shared.currentSheetUniqueReadings.first
                     let paths = LatticeEdge.validPaths(from: SegmentLookupSheet.shared.currentSheetSublatticeEdges)
                     onOpenWordDetail?(entry.entryId, surface, reading, paths)
@@ -242,6 +254,11 @@ extension ReadView {
                 // Deferred to Breakdown expansion (see sheetReadingsProvider comment).
                 sheetWordComponentsProvider: { nil },
                 sheetCompoundComponentsProvider: { nil },
+                sheetLookupCandidatesProvider: {
+                    guard let surface = currentSelectedSurface(), let lexicon else { return (candidates: [], chosenEntryID: nil) }
+                    let chosen = segmentSelection.selectedSegmentLocation.flatMap { document.chosenEntryIDBySegmentLocation[$0] }
+                    return (candidates: lexicon.lookupCandidates(surface: surface), chosenEntryID: chosen)
+                },
                 onWillDismiss: { completion in
                     restoreScrollAfterSheetDismissal(sourceView: sourceView, completion: completion)
                 },

@@ -54,3 +54,5 @@ Dictionary/CompoundVerbSplitter.swift
 Dictionary/Conjugation/VerbConjugator.swift
 Dictionary/Conjugation/ConjugationGroup.swift
 Dictionary/Deinflection/Deinflector+HelperWords.swift
+Dictionary/Deinflection/Deinflector+EndingGrammar.swift
+Dictionary/Deinflection/ConjugationClass.swift

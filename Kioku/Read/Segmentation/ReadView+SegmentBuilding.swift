@@ -66,6 +66,11 @@ extension ReadView {
         )
         document.furiganaBySegmentLocation = pruned.byLocation
         document.furiganaLengthBySegmentLocation = pruned.lengthByLocation
+        // A word pick belongs to the segment that starts where it was made; one whose segment no
+        // longer starts there is gone. (One whose segment changed length is ignored when it is no
+        // longer among that segment's possibilities.)
+        let edgeStarts = Set(segmentNSRangesAndSurfaces(for: edges, in: document.text).map(\.range.location))
+        document.chosenEntryIDBySegmentLocation = document.chosenEntryIDBySegmentLocation.filter { edgeStarts.contains($0.key) }
 
         if persistOverride {
             // Persist with the in-memory furigana embedded so the synchronous disk write
@@ -117,7 +122,8 @@ extension ReadView {
             from: edges,
             in: sourceText ?? document.text,
             furiganaByLocation: furiganaByLocation,
-            furiganaLengthByLocation: furiganaLengthByLocation
+            furiganaLengthByLocation: furiganaLengthByLocation,
+            chosenEntryIDByLocation: document.chosenEntryIDBySegmentLocation
         )
     }
 
@@ -348,5 +354,10 @@ extension ReadView {
     // to SegmentRangeRestoration — see normalizedSegmentRanges above for why.
     func furiganaFromSegmentRanges(_ segments: [SegmentRange]) -> (byLocation: [Int: String], lengthByLocation: [Int: Int]) {
         SegmentRangeRestoration.furiganaFromSegmentRanges(segments)
+    }
+
+    // The user's word picks from persisted segments, keyed by UTF-16 segment start.
+    func chosenEntryIDsFromSegmentRanges(_ segments: [SegmentRange]) -> [Int: Int64] {
+        SegmentRangeRestoration.chosenEntryIDsFromSegmentRanges(segments)
     }
 }

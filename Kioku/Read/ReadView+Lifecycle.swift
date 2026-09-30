@@ -145,9 +145,11 @@ extension ReadView {
                         let restored = furiganaFromSegmentRanges(reconciled)
                         document.furiganaBySegmentLocation = restored.byLocation
                         document.furiganaLengthBySegmentLocation = restored.lengthByLocation
+                        document.chosenEntryIDBySegmentLocation = chosenEntryIDsFromSegmentRanges(reconciled)
                     } else {
                         document.furiganaBySegmentLocation = [:]
                         document.furiganaLengthBySegmentLocation = [:]
+                        document.chosenEntryIDBySegmentLocation = [:]
                     }
                     scheduleCurrentNotePersistenceIfNeeded()
                     return
