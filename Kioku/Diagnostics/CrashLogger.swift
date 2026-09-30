@@ -62,6 +62,7 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
     func install() {
         let fileManager = FileManager.default
         try? fileManager.createDirectory(at: crashesDirectory, withIntermediateDirectories: true)
+        pruneCrashFiles()
 
         // install() is called from app launch on the main thread, so reading UIDevice
         // here is safe; handlers later read the snapshot from any thread.
@@ -290,6 +291,21 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
         )) ?? []
         return files.sorted { lhs, rhs in
             lhs.lastPathComponent > rhs.lastPathComponent
+        }
+    }
+
+    // Crash files kept on disk. Release builds hide the Crash Logs screen, so nobody clears them
+    // there; without a cap a crash loop would grow the folder forever.
+    private static let maxCrashFiles = 20
+
+    // Keeps the newest maxCrashFiles crash files and deletes the rest. Runs at every launch.
+    private func pruneCrashFiles() {
+        for file in listCrashFiles().dropFirst(Self.maxCrashFiles) {
+            do {
+                try FileManager.default.removeItem(at: file)
+            } catch {
+                AppLog.error(.storage, "CrashLogger: could not prune \(file.lastPathComponent) — \(error.localizedDescription)")
+            }
         }
     }
 

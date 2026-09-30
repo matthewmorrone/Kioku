@@ -18,7 +18,10 @@ let package = Package(
                 // updated (non-deprecated) CBLAS headers without ILP64's wider integer types,
                 // so no call sites need to change.
                 .unsafeFlags(["-Xcc", "-DACCELERATE_NEW_LAPACK"])
-            ]
+            ],
+            // ZipExtractor calls zlib's raw-inflate entry points directly; link it explicitly rather
+            // than relying on some other framework in the host app to pull libz in.
+            linkerSettings: [.linkedLibrary("z")]
         ),
         .testTarget(
             name: "LyricAlignmentTests",

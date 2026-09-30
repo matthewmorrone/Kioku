@@ -33,15 +33,18 @@ public enum MMSModelStore {
     }
 
     // Ensures MMSForcedAligner.mlmodelc is present, downloading + extracting on first miss.
-    // A sideloaded copy under <App Documents>/MMSForcedAligner.mlmodelc wins when present, so a
-    // locally converted model can be tried on the device without republishing.
+    // Debug builds only: a sideloaded copy under <App Documents>/MMSForcedAligner.mlmodelc wins
+    // when present, so a locally converted model can be tried on the device without republishing.
+    // Delete it once the experiment is over, or the device never exercises the real download.
     public static func ensureModel(onStage: (@Sendable (String) -> Void)? = nil) async throws -> URL {
+        #if DEBUG
         if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
             let sideloaded = docs.appendingPathComponent(modelDirName, isDirectory: true)
             if FileManager.default.fileExists(atPath: sideloaded.appendingPathComponent("model.mil").path) {
                 return sideloaded
             }
         }
+        #endif
         return try await CoreMLArchiveInstaller.shared.ensure(spec, onStage: onStage)
     }
 }

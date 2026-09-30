@@ -110,8 +110,9 @@ Store Connect will not ask.
 > 1. LOCAL-NETWORK BRIDGE (Settings → MCP Bridge, OFF by default): hosts an
 >    HTTP endpoint on the user's own Wi-Fi so automation tools the user runs
 >    can read/edit their notes. Bearer-token protected; token is generated on
->    device. Never reachable from the internet. This is why the app declares
->    NSLocalNetworkUsageDescription and NSBonjourServices.
+>    device. Never reachable from the internet, and only listening while Kioku
+>    is in the foreground. This is why the app declares
+>    NSLocalNetworkUsageDescription.
 >
 > 2. AI FEATURES (correction, song breakdowns; OFF until configured): run on
 >    Apple Intelligence, or on OpenAI / Anthropic with an API key the user

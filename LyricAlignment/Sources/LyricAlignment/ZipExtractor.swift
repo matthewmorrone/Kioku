@@ -9,11 +9,19 @@ import Foundation
 public enum ZipExtractor {
 
     // Allocation ceilings for untrusted archives. The downloaded model archives are
-    // ~100–400 MB uncompressed; anything past these limits is a corrupt or hostile
+    // ~280–650 MB uncompressed; anything past these limits is a corrupt or hostile
     // file, not a bigger model. Bounding both per-entry and total prevents a crafted
     // header from forcing multi-gigabyte allocations out of a tiny download.
     public static let maxEntryUncompressedSize = 1 << 30        // 1 GiB per entry
     public static let maxTotalUncompressedSize = 2 << 30        // 2 GiB per archive
+
+    // Extracts the ZIP archive at archiveURL into destinationURL. The archive is memory-mapped, so
+    // its pages are file-backed and don't count against the app's memory limit the way a 580 MB
+    // read into Data would; each entry is then written in bounded chunks (see writeEntry).
+    public static func extract(archiveAt archiveURL: URL, to destinationURL: URL) throws {
+        let zipData = try Data(contentsOf: archiveURL, options: .alwaysMapped)
+        try extract(zipData: zipData, to: destinationURL)
+    }
 
     // Extracts all entries from a ZIP archive into destinationURL.
     // Creates the destination directory and all subdirectories as needed.
@@ -21,7 +29,6 @@ public enum ZipExtractor {
     // destinationURL or the archive is rejected (zip-slip traversal).
     public static func extract(zipData: Data, to destinationURL: URL) throws {
         try FileManager.default.createDirectory(at: destinationURL, withIntermediateDirectories: true)
-        let containerPath = destinationURL.standardizedFileURL.path + "/"
 
         var totalUncompressed = 0
         var offset = 0
@@ -60,15 +67,17 @@ public enum ZipExtractor {
             let fileName = String(data: fileNameData, encoding: .utf8) ?? ""
 
             if !fileName.isEmpty {
-                guard fileName.hasPrefix("/") == false else {
+                // Zip-slip defense on the entry name itself: no absolute paths, backslashes or ".."
+                // segments. A lexical check, because comparing standardized URLs misfires on macOS,
+                // where standardizing strips "/private" from paths that exist but not from ones that
+                // don't yet.
+                let segments = fileName.split(separator: "/", omittingEmptySubsequences: false)
+                guard fileName.hasPrefix("/") == false,
+                      fileName.contains("\\") == false,
+                      segments.contains("..") == false else {
                     throw ZipError.unsafeEntryPath(fileName)
                 }
                 let dest = destinationURL.appendingPathComponent(fileName)
-                // Containment check on the standardized path defeats "../" segments
-                // and any other construction that escapes the destination directory.
-                guard dest.standardizedFileURL.path.hasPrefix(containerPath) else {
-                    throw ZipError.unsafeEntryPath(fileName)
-                }
 
                 totalUncompressed += Int(uncompressedSize)
                 guard Int(uncompressedSize) <= maxEntryUncompressedSize,
@@ -84,22 +93,84 @@ public enum ZipExtractor {
                         at: dest.deletingLastPathComponent(),
                         withIntermediateDirectories: true
                     )
-                    let payload = zipData[dataStart ..< dataEnd]
-                    let fileData: Data
-                    switch compressionMethod {
-                    case 0:  // STORED — copy bytes directly.
-                        fileData = Data(payload)
-                    case 8:  // DEFLATE — raw inflate via libz.
-                        fileData = try inflate(Data(payload), expectedSize: Int(uncompressedSize))
-                    default:
-                        throw ZipError.unsupportedMethod(compressionMethod)
-                    }
-                    try fileData.write(to: dest)
+                    try writeEntry(
+                        zipData[dataStart ..< dataEnd],
+                        method: compressionMethod,
+                        expectedSize: Int(uncompressedSize),
+                        to: dest
+                    )
                 }
             }
 
             offset = dataEnd
         }
+    }
+
+    // Writes one entry's bytes to dest, STORED entries copied and DEFLATE entries inflated, in
+    // chunks of at most chunkSize so peak memory stays a few MB no matter how large the entry is
+    // (the model weights are a single ~600 MB entry). Reads the payload in place: no copy of the
+    // compressed bytes is made.
+    private static func writeEntry(_ payload: Data, method: UInt16, expectedSize: Int, to dest: URL) throws {
+        guard method == 0 || method == 8 else { throw ZipError.unsupportedMethod(method) }
+        guard FileManager.default.createFile(atPath: dest.path, contents: nil) else {
+            throw ZipError.cannotCreateFile(dest.lastPathComponent)
+        }
+        let handle = try FileHandle(forWritingTo: dest)
+        defer { try? handle.close() }
+        let written: Int = try payload.withUnsafeBytes { input in
+            method == 0
+                ? try copyStored(input, to: handle)
+                : try inflateRaw(input, to: handle)
+        }
+        guard written == expectedSize else { throw ZipError.sizeMismatch(dest.lastPathComponent) }
+    }
+
+    private static let chunkSize = 4 << 20
+
+    // Copies a STORED entry straight from the (mapped) archive to the file, chunk by chunk.
+    private static func copyStored(_ input: UnsafeRawBufferPointer, to handle: FileHandle) throws -> Int {
+        var start = 0
+        while start < input.count {
+            let end = min(start + chunkSize, input.count)
+            try handle.write(contentsOf: Data(UnsafeRawBufferPointer(rebasing: input[start ..< end])))
+            start = end
+        }
+        return input.count
+    }
+
+    // Inflates a raw-DEFLATE entry into the file one output chunk at a time, returning the number
+    // of bytes produced so the caller can check it against the local header.
+    private static func inflateRaw(_ input: UnsafeRawBufferPointer, to handle: FileHandle) throws -> Int {
+        guard let inBase = input.baseAddress, input.isEmpty == false else { return 0 }
+        guard input.count <= Int(UInt32.max) else { throw ZipError.truncated }
+        var stream = ZStream()
+        // inflateInit2_ signature: (stream, windowBits, version_string, sizeof(z_stream))
+        // The version string is checked for major-version compatibility only.
+        let initStatus: Int32 = "1.2.11".withCString { ver in
+            _inflateInit2(&stream, RAW_DEFLATE, ver, Int32(MemoryLayout<ZStream>.size))
+        }
+        guard initStatus == Z_OK else { throw ZipError.zlibInitFailed(initStatus) }
+        defer { _ = _inflateEnd(&stream) }
+
+        stream.nextIn = inBase.assumingMemoryBound(to: UInt8.self)
+        stream.availIn = UInt32(input.count)
+        var buffer = [UInt8](repeating: 0, count: chunkSize)
+        var status = Z_OK
+        // Each pass fills at most one buffer; zlib reports Z_STREAM_END after the last byte.
+        while status == Z_OK {
+            let produced: Int = buffer.withUnsafeMutableBufferPointer { out in
+                stream.nextOut = out.baseAddress
+                stream.availOut = UInt32(out.count)
+                status = _inflate(&stream, Z_NO_FLUSH)
+                return out.count - Int(stream.availOut)
+            }
+            if produced > 0 {
+                try handle.write(contentsOf: Data(buffer[0 ..< produced]))
+            }
+            if status == Z_OK, produced == 0, stream.availIn == 0 { break }
+        }
+        guard status == Z_STREAM_END else { throw ZipError.inflateFailed(status) }
+        return Int(stream.totalOut)
     }
 }
 
@@ -137,7 +208,7 @@ private struct ZStream {
 // zlib return codes we care about.
 private let Z_OK: Int32 = 0
 private let Z_STREAM_END: Int32 = 1
-private let Z_FINISH: Int32 = 4
+private let Z_NO_FLUSH: Int32 = 0
 // windowBits = -MAX_WBITS = -15 → raw DEFLATE without zlib/gzip header.
 private let RAW_DEFLATE: Int32 = -15
 
@@ -158,43 +229,6 @@ private func _inflate(_ stream: UnsafeMutablePointer<ZStream>, _ flush: Int32) -
 @_silgen_name("inflateEnd")
 private func _inflateEnd(_ stream: UnsafeMutablePointer<ZStream>) -> Int32
 
-// Decompresses raw DEFLATE data. expectedSize comes from the ZIP local header.
-private func inflate(_ compressed: Data, expectedSize: Int) throws -> Data {
-    guard !compressed.isEmpty else { return Data() }
-
-    var output = Data(count: max(expectedSize, 1))
-    var stream = ZStream()
-
-    // inflateInit2_ signature: (stream, windowBits, version_string, sizeof(z_stream))
-    // The version string is checked for major-version compatibility only.
-    let initStatus: Int32 = "1.2.11".withCString { ver in
-        _inflateInit2(&stream, RAW_DEFLATE, ver, Int32(MemoryLayout<ZStream>.size))
-    }
-    guard initStatus == Z_OK else {
-        throw ZipError.zlibInitFailed(initStatus)
-    }
-    defer { _ = _inflateEnd(&stream) }
-
-    let outputCount = output.count
-    let status: Int32 = compressed.withUnsafeBytes { inBuf in
-        guard let inBase = inBuf.baseAddress else { return -99 as Int32 }
-        return output.withUnsafeMutableBytes { outBuf in
-            guard let outBase = outBuf.baseAddress else { return -99 as Int32 }
-            stream.nextIn = inBase.assumingMemoryBound(to: UInt8.self)
-            stream.availIn = UInt32(compressed.count)
-            stream.nextOut = outBase.assumingMemoryBound(to: UInt8.self)
-            stream.availOut = UInt32(outputCount)
-            return _inflate(&stream, Z_FINISH)
-        }
-    }
-
-    guard status == Z_STREAM_END else {
-        throw ZipError.inflateFailed(status)
-    }
-    output.count = Int(stream.totalOut)
-    return output
-}
-
 // MARK: – Helpers
 
 private enum ZipError: LocalizedError {
@@ -205,6 +239,8 @@ private enum ZipError: LocalizedError {
     case inflateFailed(Int32)
     case unsafeEntryPath(String)
     case entryTooLarge(String)
+    case cannotCreateFile(String)
+    case sizeMismatch(String)
 
     var errorDescription: String? {
         switch self {
@@ -215,6 +251,8 @@ private enum ZipError: LocalizedError {
         case .inflateFailed(let s): return "zlib inflate failed (status \(s))"
         case .unsafeEntryPath(let name): return "ZIP entry path escapes the destination: \(name)"
         case .entryTooLarge(let name): return "ZIP entry exceeds the allowed size: \(name)"
+        case .cannotCreateFile(let name): return "Could not create extracted file \(name)"
+        case .sizeMismatch(let name): return "Extracted size of \(name) does not match the archive header"
         }
     }
 }

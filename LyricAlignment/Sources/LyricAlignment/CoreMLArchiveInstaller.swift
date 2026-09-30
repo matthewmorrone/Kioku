@@ -81,8 +81,7 @@ actor CoreMLArchiveInstaller {
 
         onStage?("Extracting \(spec.stageNoun)…")
         let parent = try ModelStorage.directory(for: spec.modelId)
-        let zipData = try Data(contentsOf: tempURL)
-        try ZipExtractor.extract(zipData: zipData, to: parent)
+        try ZipExtractor.extract(archiveAt: tempURL, to: parent)
         guard fm.fileExists(atPath: probe.path) else {
             throw NSError(
                 domain: spec.errorDomain,

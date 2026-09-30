@@ -1,5 +1,8 @@
 import Foundation
 import AVFoundation
+import os
+
+private let diagnosticsLogger = Logger(subsystem: "LyricAlignment", category: "CTCForcedAligner")
 
 // On-device diagnostics for an alignment run, kept out of the algorithm file.
 extension CTCForcedAligner {
@@ -13,16 +16,18 @@ extension CTCForcedAligner {
         try? data.write(to: dir.appendingPathComponent(name))
     }
 
-    // Writes a timestamped breadcrumb + remaining memory budget to <Documents>/ctc-debug.log.
-    // Flushed on every call, so if the OS kills the app mid-run the LAST line names the stage
-    // that was running and the availMem trend shows whether memory was the cause. Best-effort;
-    // never throws. `reset:true` starts a fresh log for the run.
+    // Records a stage breadcrumb + remaining memory budget. Debug builds write it to
+    // <Documents>/ctc-debug.log, flushed on every call, so if the OS kills the app mid-run the LAST
+    // line names the stage that was running and the availMem trend shows whether memory was the
+    // cause. Release builds send it to the unified log only and never touch Documents.
+    // Best-effort; never throws. `reset:true` starts a fresh log for the run.
     static func breadcrumb(_ stage: String, reset: Bool = false) {
         #if os(iOS)
         let availMB = Int(os_proc_available_memory()) / (1024 * 1024)
         #else
         let availMB = -1
         #endif
+        #if DEBUG
         let line = "[\(Date())] \(stage) | availMem=\(availMB)MB\n"
         guard let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
               let data = line.data(using: .utf8) else { return }
@@ -34,5 +39,8 @@ extension CTCForcedAligner {
             _ = try? handle.seekToEnd()
             try? handle.write(contentsOf: data)
         }
+        #else
+        diagnosticsLogger.info("\(stage, privacy: .public) | availMem=\(availMB)MB")
+        #endif
     }
 }
