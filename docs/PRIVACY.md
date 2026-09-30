@@ -34,23 +34,17 @@ Kioku makes network requests only when you initiate them:
 - **URL import** fetches the web page whose address you enter.
 - **Optional subtitle search** (Jimaku) sends your search query to jimaku.cc
   using an API key you provide. Off by default.
-- **Optional local-network bridge** hosts a connection on your own Wi-Fi
-  network so tools you run can read and edit your notes. It is off by default,
-  protected by a token generated on your device, and never reachable from the
-  internet.
 
 ## Crash logs
 
-If the app crashes, a diagnostic record is written to the app's own Documents
-folder on your device. It is never transmitted anywhere. You can view and
-delete these records in Settings → Diagnostics, and "Reset All Data" erases
-them.
+If the app crashes, a diagnostic record is written to the app's own private
+storage on your device. It is never transmitted anywhere. Only the 20 most
+recent records are kept, and "Reset All Data" erases them.
 
 ## Permissions
 
 - **Camera** — only if you use OCR capture to create a note from a photo.
 - **Speech recognition** — only if you transcribe imported audio.
-- **Local network** — only if you enable the bridge.
 
 ## Children
 

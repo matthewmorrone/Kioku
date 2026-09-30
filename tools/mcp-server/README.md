@@ -15,7 +15,8 @@ can read and edit notes, segmentation, and furigana on a running phone or iPad.
 
 The MCP server is meant to live anywhere reachable by Claude — typically the
 same machine as the client, but a Raspberry Pi on the same Wi-Fi works equally
-well. The Kioku app must be foregrounded with **Settings → MCP Bridge** enabled.
+well. The Kioku app must be a **Debug build** (the bridge isn't in App Store builds),
+foregrounded, with **Settings → MCP Bridge** enabled.
 
 ## Tools exposed
 

@@ -72,7 +72,10 @@ extension SettingsView {
         }
         #endif
 
-        // Foreground-only bridge isn't useful enough yet to surface in Settings.
-        // BridgeSettingsSection(bridgeServer: bridgeServer)
+        // The MCP bridge only listens while Kioku is on screen (iOS suspends background sockets),
+        // so it ships in Debug builds only, as a development tool.
+        #if DEBUG
+        BridgeSettingsSection(bridgeServer: bridgeServer)
+        #endif
     }
 }

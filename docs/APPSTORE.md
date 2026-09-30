@@ -104,23 +104,16 @@ Store Connect will not ask.
 
 ## App Review notes (paste into "Notes" in the review information section)
 
-> Kioku is a fully offline Japanese dictionary/reader. Three features that may
+> Kioku is a fully offline Japanese dictionary/reader. Two features that may
 > need context:
 >
-> 1. LOCAL-NETWORK BRIDGE (Settings → MCP Bridge, OFF by default): hosts an
->    HTTP endpoint on the user's own Wi-Fi so automation tools the user runs
->    can read/edit their notes. Bearer-token protected; token is generated on
->    device. Never reachable from the internet, and only listening while Kioku
->    is in the foreground. This is why the app declares
->    NSLocalNetworkUsageDescription.
->
-> 2. AI FEATURES (correction, song breakdowns; OFF until configured): run on
+> 1. AI FEATURES (correction, song breakdowns; OFF until configured): run on
 >    Apple Intelligence, or on OpenAI / Anthropic with an API key the user
 >    supplies; the app sends only the text the user asks about. No account or
 >    sign-in is required to use the app (Guideline 5.1.1 — the features are
 >    optional and keys are user-provided).
 >
-> 3. SUBTITLE SEARCH (optional, requires the user's own jimaku.cc API key,
+> 2. SUBTITLE SEARCH (optional, requires the user's own jimaku.cc API key,
 >    unconfigured by default): searches a community subtitle index so users
 >    can study song lyrics and dialogue alongside audio they already possess.
 >    The app does not bundle, host, or distribute any copyrighted media.
