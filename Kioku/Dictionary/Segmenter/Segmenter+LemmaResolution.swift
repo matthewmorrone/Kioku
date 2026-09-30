@@ -49,8 +49,13 @@ extension Segmenter {
     // the gate entirely: they're script/notation equivalences, not conjugation guesses, so "does it
     // conjugate" isn't a meaningful filter for them — a common noun written in katakana must still
     // resolve regardless of its POS.
+    //
+    // The surface itself sorts last when it is outranked by a conjugation (see
+    // surfaceIsOutrankedByConjugation): ならして is 馴らし手 "tamer" only on paper; in text it is
+    // 鳴らす's て-form.
     func lemmaCandidates(for surface: String) -> [String] {
-        let (trusted, deinflected) = resolvedTrieLemmasBySource(for: surface)
+        let paths = deinflector?.deinflectionPaths(for: surface)
+        let (trusted, deinflected) = resolvedTrieLemmasBySource(for: surface, paths: paths)
         guard trusted.isEmpty == false || deinflected.isEmpty == false else { return [] }
 
         let gatedDeinflected = deinflected.filter { lemma in
@@ -61,8 +66,11 @@ extension Segmenter {
             return posBits.contains { PartOfSpeech.isVerb($0) || PartOfSpeech.isAdjective($0) }
         }
         let pool = trusted.union(gatedDeinflected)
+        let surfaceSortsLast = pool.contains(surface)
+            && surfaceIsOutrankedByConjugation(surface, candidates: gatedDeinflected, paths: paths ?? [:])
 
         return pool.sorted { lhs, rhs in
+            if surfaceSortsLast, lhs == surface || rhs == surface { return rhs == surface }
             let lhsScore = preferredLemmaScore(for: lhs, sourceSurface: surface)
             let rhsScore = preferredLemmaScore(for: rhs, sourceSurface: surface)
             if lhsScore != rhsScore {
@@ -408,6 +416,21 @@ extension Segmenter {
         score += commonPrefixCount * LemmaScoring.prefixMatchPerChar
 
         return score
+    }
+
+    // True when a surface that is itself a dictionary word reads, far more often, as a conjugation of
+    // a more frequent word: ゆこう is 柚柑 (a citrus) and ゆく's volitional, ならして is 馴らし手 and
+    // 鳴らす's て-form, and in running text the verb is what they are. Only a real conjugation counts —
+    // a chain of bare stem recoveries does not, because a stem that is also a noun (思い, 休み, 帰り)
+    // is that noun as often as it is the stem, so 思い never yields to 思う here.
+    func surfaceIsOutrankedByConjugation(_ surface: String, candidates: Set<String>, paths: DeinflectionPathMap) -> Bool {
+        let surfaceFrequency = frequencyScore(of: surface)
+        return candidates.contains { candidate in
+            guard candidate != surface, frequencyScore(of: candidate) > surfaceFrequency else { return false }
+            return (paths[candidate] ?? []).contains { path in
+                path.chain.contains { $0.contains("stem") == false }
+            }
+        }
     }
 
     // Returns the corpus score used only to break structurally equal lemma candidates.

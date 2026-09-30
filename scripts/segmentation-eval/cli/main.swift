@@ -5,6 +5,8 @@ import Foundation
 //   segcli lemmas < surfaces                     → what each surface resolves to, with each lemma's score (the audit's input)
 //   segcli oracle < gold.jsonl                   → per cut-through: is the gold parse in the lattice, and by how much does it lose
 //   segcli run < sentences                         → the shipped path (bundled table, shipped weight)
+//   segcli helpers < surfaces                    → "surface<TAB>lemma + helper…": the words deinflection folds into each surface
+//   segcli compounds < surfaces                  → "surface<TAB>base + auxiliary" for each surface the lookup sheet names as a compound verb
 // Repo root: four levels up from this file (scripts/segmentation-eval/cli/main.swift), unless KIOKU_CHECKOUT says otherwise.
 let root = ProcessInfo.processInfo.environment["KIOKU_CHECKOUT"]
     ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path
@@ -39,6 +41,29 @@ if mode == "lemmas" {
             "own=\(freq[line] ?? 0)",
             r.lemmas.sorted().map { "\($0)=\(freq[$0] ?? 0)" }.joined(separator: " ")
         )
+    }
+    exit(0)
+}
+
+if mode == "helpers" {
+    while let line = readLine() {
+        guard let lemma = segmenter.preferredLemma(for: line) else { print("\(line)\t-"); continue }
+        let helpers = deinflector.helperWords(from: deinflector.deinflectionPaths(for: line), targetLemma: lemma)
+        print("\(line)\t\(([lemma] + helpers).joined(separator: " + "))")
+    }
+    exit(0)
+}
+
+if mode == "compounds" {
+    let posTags: (String) -> [String] = { candidate in
+        let entries = (try? store.lookup(surface: candidate, mode: .kanjiAndKana)) ?? []
+        return entries.flatMap { $0.senses.compactMap(\.pos) }.flatMap { $0.components(separatedBy: ",") }
+    }
+    while let line = readLine() {
+        let edges = segmenter.longestMatchResult(for: line).latticeEdges
+        if let parts = CompoundVerbSplitter.parts(surface: line, edges: edges, segmenter: segmenter, posTags: posTags) {
+            print("\(line)\t\(parts.base) + \(parts.auxiliary)")
+        }
     }
     exit(0)
 }

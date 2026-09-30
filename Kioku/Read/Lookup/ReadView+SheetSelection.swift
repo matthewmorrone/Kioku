@@ -594,8 +594,11 @@ extension ReadView {
         return segmenter.splitCosts(of: range, in: line, candidates: candidates)
     }
 
-    // Returns the base lemma and inflection chain for the current selection when it is a conjugated/inflected form.
-    // Returns nil when the surface matches its own lemma (i.e. no inflection occurred).
+    // Returns the header's dictionary-form subtitle for the current selection, naming every word the
+    // segment holds: the lemma plus each helper word deinflection folded in (歩いてゆこう → 歩く + ゆく,
+    // 抱かれながら → 抱く + ながら), "base + auxiliary" for a compound verb in dictionary form
+    // (生きてゆく → 生きる + ゆく, 思い出す → 思う + 出す), otherwise the base lemma of an inflected form.
+    // Returns nil for a single word already in its dictionary form.
     func lemmaInfoForCurrentSelectedSegment() -> (lemma: String, chain: [String])? {
         guard let selectedBounds = segmentSelection.selectedBounds, let lexicon,
               selectedBounds.lowerBound < document.segmentEdges.count,
@@ -603,44 +606,44 @@ extension ReadView {
         let selectedEdges = Array(document.segmentEdges[selectedBounds])
         guard let start = selectedEdges.first?.start, let end = selectedEdges.last?.end else { return nil }
         let surface = String(document.text[start..<end])
-        let info = lexicon.inflectionInfo(surface: surface)
-        guard let info, info.lemma != surface else { return nil }
+        let inflected = lexicon.inflectionInfo(surface: surface).flatMap { $0.lemma == surface ? nil : $0 }
 
         // vs-noun+する compound verbs (キスして, ハグした, …): inflectionInfo already resolved
-        // `info.lemma` to the real noun entry (キス) since JMdict never writes out "Xする" as its
+        // the lemma to the real noun entry (キス) since JMdict never writes out "Xする" as its
         // own headword. Show both parts directly rather than routing through auxiliaryVerbSplit
         // below, which only matches a dictionary-form tail against a fixed auxiliary-verb set —
         // conjugated する tails (して/した/しない/…) would never literally match an entry there.
-        if let compoundPrefix = segmenter.suruCompoundPrefix(for: surface) {
-            return (lemma: "\(compoundPrefix) + する", chain: info.chain)
+        if let inflected, let compoundPrefix = segmenter.suruCompoundPrefix(for: surface) {
+            let helpers = lexicon.helperWords(surface: String(surface.dropFirst(compoundPrefix.count)), lemma: "する")
+            return (lemma: ([compoundPrefix, "する"] + helpers).joined(separator: " + "), chain: inflected.chain)
         }
 
-        // Compound verbs (さがしつづける = さがし-stem + auxiliary つづける) collapse to a single
-        // lattice edge via Deinflector's compoundVerbRecoveryForms — correct for lookup validity
-        // (the collapsed edge still resolves to the real dictionary entry さがす), but it discards
-        // the auxiliary for display. The sublattice still holds the natural two-token split
-        // alongside the collapsed edge; when DerivationAnalyzer confirms it as a compound verb,
-        // show both parts instead of just the bare base verb. auxiliaryVerbSplit returns raw
-        // surfaces (さがし, not さがす) — resolve each through preferredLemma so the base
-        // resolves to something baseResolver can actually find in the dictionary.
-        if let dictionaryStore,
-           let rawSplit = LatticeEdge.auxiliaryVerbSplit(
-               from: sublatticeEdgesForCurrentSelectedSegment(),
-               auxiliaries: DerivationAnalyzer.auxiliaryVerbs,
-               lemmaResolver: { segmenter.preferredLemma(for: $0, preferring: DerivationAnalyzer.auxiliaryVerbs) },
-               headValidator: auxiliaryHeadResolvesToVerb
-           ) {
-            let split = rawSplit.map { segmenter.preferredLemma(for: $0, preferring: DerivationAnalyzer.auxiliaryVerbs) ?? $0 }
-            let derived = DerivationAnalyzer.analyze(surface: surface, components: split, baseResolver: { candidate in
-                let entries = (try? dictionaryStore.lookup(surface: candidate, mode: .kanjiAndKana)) ?? []
-                return entries.flatMap { $0.senses.compactMap(\.pos) }.flatMap { $0.components(separatedBy: ",") }
-            })
-            if let parts = derived?.compoundVerbParts {
-                return (lemma: "\(parts.base) + \(parts.auxiliary)", chain: info.chain)
+        if let inflected {
+            let helpers = lexicon.helperWords(surface: surface, lemma: inflected.lemma)
+            if helpers.isEmpty == false {
+                return (lemma: ([inflected.lemma] + helpers).joined(separator: " + "), chain: inflected.chain)
             }
         }
 
-        return (lemma: info.lemma, chain: info.chain)
+        if let parts = compoundVerbPartsForCurrentSelectedSegment(surface: surface) {
+            return (lemma: "\(parts.base) + \(parts.auxiliary)", chain: inflected?.chain ?? [])
+        }
+
+        return inflected
+    }
+
+    // The selection's compound-verb parts, from its slice of the note's lattice. See CompoundVerbSplitter.
+    private func compoundVerbPartsForCurrentSelectedSegment(surface: String) -> DerivationAnalyzer.CompoundVerbParts? {
+        guard let dictionaryStore else { return nil }
+        return CompoundVerbSplitter.parts(
+            surface: surface,
+            edges: sublatticeEdgesForCurrentSelectedSegment(),
+            segmenter: segmenter,
+            posTags: { candidate in
+                let entries = (try? dictionaryStore.lookup(surface: candidate, mode: .kanjiAndKana)) ?? []
+                return entries.flatMap { $0.senses.compactMap(\.pos) }.flatMap { $0.components(separatedBy: ",") }
+            }
+        )
     }
 
     // Gates LatticeEdge.auxiliaryVerbSplit's head: an auxiliary only attaches to a verb, so a head

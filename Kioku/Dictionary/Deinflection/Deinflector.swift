@@ -31,6 +31,9 @@ nonisolated final class Deinflector {
     // the expression について as the word. Sourced from deinflection.json's "intermediateForms".
     private let intermediateForms: Set<String>
 
+    // The helper word (DeinflectionRule.helper) of each rule that has one, keyed by helperKey.
+    let helperByTransition: [String: String]
+
     // Stores deinflection rules used by candidate generation.
     init(rules: [DeinflectionRule], trie: DictionaryTrie, nonIchidanRuVerbs: Set<String> = [], intermediateForms: Set<String> = []) {
         self.rules = rules.sorted { lhs, rhs in
@@ -42,6 +45,7 @@ nonisolated final class Deinflector {
         self.trie = trie
         self.knownNonIchidanRuVerbs = nonIchidanRuVerbs
         self.intermediateForms = intermediateForms
+        self.helperByTransition = Self.helperIndex(self.labeledRules, normalizingLabel: Self.normalizedRuleLabel)
     }
 
     // Stores grouped deinflection rules while preserving group labels used for chain reporting.
@@ -63,6 +67,7 @@ nonisolated final class Deinflector {
         self.trie = trie
         self.knownNonIchidanRuVerbs = nonIchidanRuVerbs
         self.intermediateForms = intermediateForms
+        self.helperByTransition = Self.helperIndex(expandedLabeledRules, normalizingLabel: Self.normalizedRuleLabel)
     }
 
     // The non-rule sibling keys alongside the rule groups (teForms, pastForms, …) in deinflection.json.
@@ -264,7 +269,7 @@ nonisolated final class Deinflector {
                 if rule.rulesOut.contains("v1"), knownNonIchidanRuVerbs.contains(candidateSurface) {
                     continue
                 }
-                let chainItem = normalizedRuleLabel(labeledRule.label)
+                let chainItem = Self.normalizedRuleLabel(labeledRule.label)
 
                 for nextGrammar in rule.rulesOut {
                     let nextChain = item.chain + [chainItem]
@@ -531,7 +536,7 @@ nonisolated final class Deinflector {
     }
 
     // Normalizes one grouped-rule label from JSON key format to displayable inflection term.
-    private func normalizedRuleLabel(_ label: String) -> String {
+    static func normalizedRuleLabel(_ label: String) -> String {
         if label.hasSuffix("Forms") {
             return splitCamelCase(String(label.dropLast(5))).trimmingCharacters(in: .whitespacesAndNewlines)
         }
@@ -540,7 +545,7 @@ nonisolated final class Deinflector {
     }
 
     // Splits camel-cased tokens into lowercase space-delimited words for human-readable chain labels.
-    private func splitCamelCase(_ text: String) -> String {
+    private static func splitCamelCase(_ text: String) -> String {
         guard text.isEmpty == false else {
             return text
         }

@@ -226,6 +226,13 @@ nonisolated public final class Lexicon {
         return (lemma: best.lemma, chain: chain)
     }
 
+    // The helper words (ゆく, ながら, しまう, …) folded into `surface` on its chain to `lemma`, in reading
+    // order — named beside the lemma on the lookup sheet so segmentation merging them never hides them.
+    public func helperWords(surface: String, lemma: String) -> [String] {
+        let (_, pathsByLemma) = admittedLemmasAndPaths(for: surface)
+        return deinflector.helperWords(from: pathsByLemma, targetLemma: lemma)
+    }
+
     // Returns the kanaIn→kanaOut transition steps for the best deinflection path to the top lemma.
     public func inflectionTransitions(surface: String) -> [(label: String, kanaIn: String, kanaOut: String)]? {
         let (entries, pathsByLemma) = admittedLemmasAndPaths(for: surface)
