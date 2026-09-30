@@ -30,13 +30,16 @@ nonisolated enum StartupTimer {
         return handle
     }
 
-    // Writes one line to both stdout and the on-disk log.
+    // Writes one line to both stdout and the on-disk log. Debug builds only: release builds keep
+    // the call sites but never print or touch Caches, like KaraokeDebugLog.
     private static func emit(_ line: String) {
+        #if DEBUG
         print(line)
         guard let handle = openFileHandleIfNeeded(), let data = (line + "\n").data(using: .utf8) else {
             return
         }
         handle.write(data)
+        #endif
     }
 
     // Measures a synchronous block, logging elapsed ms since launch and the block's own duration.
