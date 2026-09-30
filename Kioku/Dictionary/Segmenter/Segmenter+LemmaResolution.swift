@@ -69,8 +69,30 @@ extension Segmenter {
         let surfaceSortsLast = pool.contains(surface)
             && surfaceIsOutrankedByConjugation(surface, candidates: gatedDeinflected, paths: paths ?? [:])
 
+        // Steps to a candidate reached only by conjugating the surface; nil for the surface itself and
+        // for script equivalents.
+        let conjugationSteps: (String) -> Int? = { lemma in
+            guard lemma != surface, trusted.contains(lemma) == false else { return nil }
+            return paths?[lemma]?.map(\.chain.count).min()
+        }
+
         return pool.sorted { lhs, rhs in
             if surfaceSortsLast, lhs == surface || rhs == surface { return rhs == surface }
+            // Two conjugations of the surface: each chain consumed every character, so a longer prefix
+            // shared with the surface is no evidence — an irregular rule rewrites its stem (きた → くる
+            // shares nothing, yet matched all of きた). The shorter chain wins (ねた is ねる's past,
+            // not a potential reading of ぬ), then the more frequent word (きた is 来る before 着る).
+            if let lhsSteps = conjugationSteps(lhs), let rhsSteps = conjugationSteps(rhs) {
+                let lhsScore = preferredLemmaScore(for: lhs, sourceSurface: surface, countingPrefix: false)
+                let rhsScore = preferredLemmaScore(for: rhs, sourceSurface: surface, countingPrefix: false)
+                if lhsScore != rhsScore { return lhsScore > rhsScore }
+                if lhsSteps != rhsSteps { return lhsSteps < rhsSteps }
+                let lhsFrequency = preferredLemmaFrequencyScore(for: lhs)
+                let rhsFrequency = preferredLemmaFrequencyScore(for: rhs)
+                if lhsFrequency != rhsFrequency { return lhsFrequency > rhsFrequency }
+                if lhs.count != rhs.count { return lhs.count < rhs.count }
+                return lhs < rhs
+            }
             let lhsScore = preferredLemmaScore(for: lhs, sourceSurface: surface)
             let rhsScore = preferredLemmaScore(for: rhs, sourceSurface: surface)
             if lhsScore != rhsScore {
@@ -386,7 +408,7 @@ extension Segmenter {
     // deinflection candidate cannot outrank a lemma that preserves more of the
     // source stem.
     // Internal (not private): compareEdgePriority, in Segmenter.swift, calls this directly.
-    func preferredLemmaScore(for lemma: String, sourceSurface: String) -> Int {
+    func preferredLemmaScore(for lemma: String, sourceSurface: String, countingPrefix: Bool = true) -> Int {
         var score = 0
 
         if lemma == sourceSurface {
@@ -412,8 +434,10 @@ extension Segmenter {
         // 忘る only 「忘」). 5 points per char yields ~10-point separation per
         // mora — enough to break ties without overpowering wordfreq or the
         // surface-equality bonus.
-        let commonPrefixCount = lemma.commonPrefix(with: sourceSurface).count
-        score += commonPrefixCount * LemmaScoring.prefixMatchPerChar
+        // lemmaCandidates leaves it out between two conjugations of the surface (countingPrefix).
+        if countingPrefix {
+            score += lemma.commonPrefix(with: sourceSurface).count * LemmaScoring.prefixMatchPerChar
+        }
 
         return score
     }
