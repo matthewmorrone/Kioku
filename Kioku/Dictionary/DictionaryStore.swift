@@ -117,7 +117,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
     // expansion (halfwidth katakana, iteration marks, kyujitai) happens in Swift via
     // lookupSurfaces; each candidate is then a hashtable hit on canonicalEntryIDMap, which
     // is populated once at app start. Selection priority is encoded in the map at build
-    // time (jpdb rank → sense order → entry id) so the resolved id matches what an
+    // time (frequency rank → sense order → entry id) so the resolved id matches what an
     // interactive lookup(surface:mode:) call would produce.
     public func lookupFirstEntryID(surface: String) -> Int64? {
         for candidate in lookupSurfaces(for: surface) {
@@ -168,7 +168,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
             let placeholders = Array(repeating: "?", count: unique.count).joined(separator: ",")
             let sql = """
             SELECT 'h' AS row_kind, e.id AS entry_id,
-                   MIN(wf.jpdb_rank) AS jpdb_rank, MAX(wf.wordfreq_zipf) AS wordfreq_zipf,
+                   MIN(wf.frequency_rank) AS frequency_rank, MAX(wf.wordfreq_zipf) AS wordfreq_zipf,
                    NULL AS text, NULL AS priority, NULL AS info, NULL AS nokanji,
                    NULL AS sense_id, NULL AS pos, NULL AS misc, NULL AS field, NULL AS dialect,
                    NULL AS gloss, NULL AS sort_a, NULL AS sort_b
@@ -220,7 +220,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
 
             // Mutable per-entry assembly state, keyed by entry_id.
             struct Assembly {
-                var jpdbRank: Int?
+                var frequencyRank: Int?
                 var wordfreqZipf: Double?
                 // Order-preserving but dedup'd via the seen sets.
                 var kanji: [KanjiForm] = []
@@ -248,7 +248,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
 
                 switch kind {
                 case "h":
-                    entry.jpdbRank = sqlite3_column_type(statement, 2) != SQLITE_NULL
+                    entry.frequencyRank = sqlite3_column_type(statement, 2) != SQLITE_NULL
                         ? Int(sqlite3_column_int(statement, 2)) : nil
                     entry.wordfreqZipf = sqlite3_column_type(statement, 3) != SQLITE_NULL
                         ? sqlite3_column_double(statement, 3) : nil
@@ -322,7 +322,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
                 let matchedSurface = a.kanji.first?.text ?? a.kana.first?.text ?? ""
                 result.append(DictionaryEntry(
                     entryId: entryID,
-                    jpdbRank: a.jpdbRank,
+                    frequencyRank: a.frequencyRank,
                     wordfreqZipf: a.wordfreqZipf,
                     matchedSurface: matchedSurface,
                     kanjiForms: a.kanji,
@@ -348,7 +348,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
 
             return DictionaryEntry(
                 entryId: header.entryID,
-                jpdbRank: header.jpdbRank,
+                frequencyRank: header.frequencyRank,
                 wordfreqZipf: header.wordfreqZipf,
                 matchedSurface: matchedSurface,
                 kanjiForms: kanjiForms,
@@ -365,12 +365,12 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
         }
 
         // Preserve the per-surface SQL ordering (which already encodes the kana-only-first
-        // tier and the zipf fallback for missing JPDB ranks). A previous version piped these
-        // through an unordered Dictionary and then re-sorted by jpdb_rank alone — silently
-        // discarding both tiers, so a kana surface like "も" would return 藻 (jpdb=26345)
-        // before the topic-particle entry (jpdb=nil → Int.max) despite the SQL ranking the
+        // tier and the zipf fallback for missing frequency ranks). A previous version piped these
+        // through an unordered Dictionary and then re-sorted by frequency_rank alone — silently
+        // discarding both tiers, so a kana surface like "も" would return 藻 (rank 35104)
+        // before the topic-particle entry (rank nil → Int.max) despite the SQL ranking the
         // particle first. We dedupe but keep first-seen order.
-        var matchedEntriesByID: [Int64: (jpdbRank: Int?, wordfreqZipf: Double?, matchedSurface: String)] = [:]
+        var matchedEntriesByID: [Int64: (frequencyRank: Int?, wordfreqZipf: Double?, matchedSurface: String)] = [:]
         var orderedEntryIDs: [Int64] = []
 
         for surface in surfaces {
@@ -378,7 +378,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
             for header in matchedEntries {
                 if matchedEntriesByID[header.entryID] == nil {
                     matchedEntriesByID[header.entryID] = (
-                        jpdbRank: header.jpdbRank,
+                        frequencyRank: header.frequencyRank,
                         wordfreqZipf: header.wordfreqZipf,
                         matchedSurface: surface
                     )
@@ -387,9 +387,9 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
             }
         }
 
-        let matchedEntries = orderedEntryIDs.compactMap { entryID -> (entryID: Int64, jpdbRank: Int?, wordfreqZipf: Double?, matchedSurface: String)? in
+        let matchedEntries = orderedEntryIDs.compactMap { entryID -> (entryID: Int64, frequencyRank: Int?, wordfreqZipf: Double?, matchedSurface: String)? in
             guard let value = matchedEntriesByID[entryID] else { return nil }
-            return (entryID: entryID, jpdbRank: value.jpdbRank, wordfreqZipf: value.wordfreqZipf, matchedSurface: value.matchedSurface)
+            return (entryID: entryID, frequencyRank: value.frequencyRank, wordfreqZipf: value.wordfreqZipf, matchedSurface: value.matchedSurface)
         }
 
         var results: [DictionaryEntry] = []
@@ -403,7 +403,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
             results.append(
                 DictionaryEntry(
                     entryId: header.entryID,
-                    jpdbRank: header.jpdbRank,
+                    frequencyRank: header.frequencyRank,
                     wordfreqZipf: header.wordfreqZipf,
                     matchedSurface: header.matchedSurface,
                     kanjiForms: kanjiForms,

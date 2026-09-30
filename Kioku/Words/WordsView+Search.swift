@@ -120,7 +120,7 @@ extension WordsView {
             }
 
             if let maxRank = searchFrequencyTier.maxRank {
-                guard let rank = entry.jpdbRank, rank <= maxRank else { return false }
+                guard let rank = entry.frequencyRank, rank <= maxRank else { return false }
             }
 
             if searchSelectedPartsOfSpeech.isEmpty == false {
@@ -447,23 +447,23 @@ extension WordsView {
                     // Within primary: EXACT surface/kana matches first (まさか must beat たまさか
                     // for query "masaka" — both are primary because たまさか contains まさか). Then
                     // by FREQUENCY, most-common first — an English query like "science" must put
-                    // 科学 (jpdb 5318) above the loanword サイエンス (unranked) and the abbreviation
-                    // ＳＦ (17413). entry_id is only the FINAL fallback, for the no-frequency-data
+                    // 科学 (rank 6360) above the loanword サイエンス (unranked) and the abbreviation
+                    // ＳＦ (15101). entry_id is only the FINAL fallback, for the no-frequency-data
                     // case the older comment described (ハロー vs 你好); it is a weak frequency
                     // proxy (older ≠ commoner: サイエンス is older than 科学 yet far rarer), so it
-                    // must not override the real signal. Uses the same jpdb+zipf blend as the
-                    // frequency badge, with jpdb rank as the sharper tiebreak when the blend ties
-                    // (科学 and サイエンス share a wordfreq Zipf but jpdb separates them).
+                    // must not override the real signal. Uses the same rank+zipf blend as the
+                    // frequency badge, with frequency rank as the sharper tiebreak when the blend ties
+                    // (科学 and サイエンス share a wordfreq Zipf but the rank separates them).
                     let exactNeedles = [needle, kanaNeedle].compactMap { $0 }
                     primary.sort { lhs, rhs in
                         let lhsExact = Self.isExactSurfaceMatch(lhs, needles: exactNeedles)
                         let rhsExact = Self.isExactSurfaceMatch(rhs, needles: exactNeedles)
                         if lhsExact != rhsExact { return lhsExact }
-                        let lhsScore = FrequencyData(jpdbRank: lhs.jpdbRank, wordfreqZipf: lhs.wordfreqZipf).normalizedScore ?? -1
-                        let rhsScore = FrequencyData(jpdbRank: rhs.jpdbRank, wordfreqZipf: rhs.wordfreqZipf).normalizedScore ?? -1
+                        let lhsScore = FrequencyData(frequencyRank: lhs.frequencyRank, wordfreqZipf: lhs.wordfreqZipf).normalizedScore ?? -1
+                        let rhsScore = FrequencyData(frequencyRank: rhs.frequencyRank, wordfreqZipf: rhs.wordfreqZipf).normalizedScore ?? -1
                         if lhsScore != rhsScore { return lhsScore > rhsScore }
-                        let lhsRank = lhs.jpdbRank ?? Int.max
-                        let rhsRank = rhs.jpdbRank ?? Int.max
+                        let lhsRank = lhs.frequencyRank ?? Int.max
+                        let rhsRank = rhs.frequencyRank ?? Int.max
                         if lhsRank != rhsRank { return lhsRank < rhsRank }
                         return lhs.entryId < rhs.entryId
                     }

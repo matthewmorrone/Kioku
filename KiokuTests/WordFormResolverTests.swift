@@ -34,7 +34,7 @@ final class WordFormResolverTests: XCTestCase {
     func testKanjiAndKanaOmitsNonEverydayKanji() throws {
         let entry = DictionaryEntry(
             entryId: -1,
-            jpdbRank: nil,
+            frequencyRank: nil,
             wordfreqZipf: nil,
             matchedSurface: "たゆたう",
             kanjiForms: [KanjiForm(text: "揺蕩う", priority: nil, info: "rK")],

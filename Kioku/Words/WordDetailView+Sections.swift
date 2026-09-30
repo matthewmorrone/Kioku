@@ -31,8 +31,8 @@ extension WordDetailView {
             return !(kanjiHopeless && allUK)
         }
         let sortedData = filteredData.sorted {
-            let a = FrequencyData(jpdbRank: $0.entry.jpdbRank, wordfreqZipf: $0.entry.wordfreqZipf).normalizedScore ?? -1
-            let b = FrequencyData(jpdbRank: $1.entry.jpdbRank, wordfreqZipf: $1.entry.wordfreqZipf).normalizedScore ?? -1
+            let a = FrequencyData(frequencyRank: $0.entry.frequencyRank, wordfreqZipf: $0.entry.wordfreqZipf).normalizedScore ?? -1
+            let b = FrequencyData(frequencyRank: $1.entry.frequencyRank, wordfreqZipf: $1.entry.wordfreqZipf).normalizedScore ?? -1
             return a > b
         }
         if sortedData.isEmpty == false {

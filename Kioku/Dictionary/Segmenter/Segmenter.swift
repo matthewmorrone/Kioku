@@ -19,7 +19,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     // Per-entry POS bitfields loaded from the dictionary; empty when built without metadata.
     var partOfSpeechByEntryID: [Int: UInt64]
     // Surface → unified frequency score (~0–7 Zipf-equivalent; higher = more common), derived from
-    // jpdb_rank (and wordfreq Zipf when present). Two consumers:
+    // frequency_rank (and wordfreq Zipf when present). Two consumers:
     //   • edgeCost — the core statistical node cost of the global path (rare words cost more).
     //   • preferredLemmaScore — frequency tiebreak between equally-script-matched lemma candidates.
     // Empty when the segmenter is built without the surface-reading map (e.g., test fixtures); in

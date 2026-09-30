@@ -15,7 +15,7 @@ struct LatticeEdge {
     // True when the surface resolves through the dictionary trie (including deinflection).
     var isDictionaryMatch: Bool = false
     // Unified frequency score (~0–7 Zipf-equivalent; higher = more common) for this surface/lemma,
-    // derived from jpdb_rank (and wordfreq Zipf when present) at lattice-build time. 0 means no
+    // derived from frequency_rank (and wordfreq Zipf when present) at lattice-build time. 0 means no
     // frequency data — treated as rare. This is the core statistical input to the global cost model.
     var frequencyScore: Double = 0
     // True when the surface ends in a known grammatical kana (た/だ/て/で/よ) and the surface

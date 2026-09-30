@@ -15,10 +15,10 @@ extension DictionaryStore {
         // Sort key for entries with no senses (COALESCE fallback for MIN(order_index)). INT_MAX.
         static let noSenseSort = "2147483647"
 
-        // Maps a wordfreq Zipf score (general-corpus log frequency) to a JPDB-comparable
+        // Maps a wordfreq Zipf score (general-corpus log frequency) to a rank-comparable
         // pseudo-rank. Zipf 7+ ≈ top-30 word, 6+ ≈ top-1k, etc.; bucket boundaries are
-        // deliberately wider than JPDB's so a high-confidence corpus signal beats a
-        // low-confidence JPDB ranking. `zipfExpr` is the SQL expression that yields the
+        // deliberately wider than the rank list's so a high-confidence corpus signal beats a
+        // low-confidence frequency ranking. `zipfExpr` is the SQL expression that yields the
         // Zipf score in the calling query (e.g. "MAX(wf.wordfreq_zipf)" or "best_zipf").
         static func zipfPseudoRank(_ zipfExpr: String) -> String {
             """
@@ -37,13 +37,13 @@ extension DictionaryStore {
             """
         }
 
-        // Effective rank used in ORDER BY: JPDB rank if present, else the wordfreq Zipf
-        // pseudo-rank, else the unranked sentinel. `jpdbExpr` is the SQL expression that
-        // yields the JPDB rank (e.g. "MIN(wf.jpdb_rank)" or "rank").
-        static func effectiveRank(jpdbExpr: String, zipfExpr: String) -> String {
+        // Effective rank used in ORDER BY: frequency rank if present, else the wordfreq Zipf
+        // pseudo-rank, else the unranked sentinel. `rankExpr` is the SQL expression that
+        // yields the frequency rank (e.g. "MIN(wf.frequency_rank)" or "rank").
+        static func effectiveRank(rankExpr: String, zipfExpr: String) -> String {
             """
             COALESCE(
-                \(jpdbExpr),
+                \(rankExpr),
                 \(zipfPseudoRank(zipfExpr)),
                 \(unrankedSort)
             )
@@ -51,22 +51,22 @@ extension DictionaryStore {
         }
 
         // Extra ORDER BY tier, evaluated BEFORE effectiveRank, that stops the zipf pseudo-rank
-        // from rescuing an entry past a SIBLING entry (same surface) that has a genuine JPDB
+        // from rescuing an entry past a SIBLING entry (same surface) that has a genuine frequency
         // rank. wordfreq_zipf on a kanji row is scored on the literal string, identically for
         // every entry that writes it — it was never picking whether a bare-kanji surface like
-        // 日 named the common noun (ひ, jpdb_rank 223) or a niche colloquial counter suffix
-        // (ち, no jpdb_rank of its own); it was just repeating 日-the-character's overall
+        // 日 named the common noun (ひ, frequency_rank 223) or a niche colloquial counter suffix
+        // (ち, no frequency_rank of its own); it was just repeating 日-the-character's overall
         // corpus ubiquity. Without this tier, that borrowed score fell into the zipf pseudo-rank
-        // bucket table below and numerically beat the noun's real rank. `jpdbExpr` is this
+        // bucket table below and numerically beat the noun's real rank. `rankExpr` is this
         // candidate's own rank; `surfaceHasRealRankExpr` is a group-wide signal (e.g. a window
         // function over all candidates for the surface) that's non-null when at least one
         // candidate in the group has a real rank. When NO candidate in the group has any real
-        // JPDB coverage, this tier is a no-op (everyone lands in tier 0) and effectiveRank's
+        // rank coverage, this tier is a no-op (everyone lands in tier 0) and effectiveRank's
         // zipf-beats-a-weak-rank behavior still applies exactly as before.
-        static func siblingRealRankTier(jpdbExpr: String, surfaceHasRealRankExpr: String) -> String {
+        static func siblingRealRankTier(rankExpr: String, surfaceHasRealRankExpr: String) -> String {
             """
             CASE
-                WHEN \(jpdbExpr) IS NOT NULL THEN 0
+                WHEN \(rankExpr) IS NOT NULL THEN 0
                 WHEN \(surfaceHasRealRankExpr) IS NOT NULL THEN 1
                 ELSE 0
             END

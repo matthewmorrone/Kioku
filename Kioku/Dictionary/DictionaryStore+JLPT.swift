@@ -59,7 +59,7 @@ extension DictionaryStore {
         jlptLevelMap = try fetchJLPTLevelMap()
     }
 
-    // Fetches entries at a JLPT level, ordered by JPDB frequency (most frequent first; unranked
+    // Fetches entries at a JLPT level, ordered by frequency rank (most frequent first; unranked
     // last), materialized for the Browse-by-level view. `limit` nil fetches every entry at the
     // level. Returns [] if the table is absent so the view can show its "no data" state.
     nonisolated func fetchEntriesByJLPT(level: Int, limit: Int? = nil) throws -> [DictionaryEntry] {
@@ -68,16 +68,16 @@ extension DictionaryStore {
         return try lookupEntries(entryIDs: entryIDs)
     }
 
-    // Returns entry ids at `level`, ordered by best (lowest) JPDB rank with unranked entries last.
+    // Returns entry ids at `level`, ordered by best (lowest) frequency rank with unranked entries last.
     nonisolated private func fetchEntryIDsByJLPT(level: Int, limit: Int?) throws -> [Int64] {
         try withSerializedDatabaseAccess {
             guard tableExists("entry_jlpt_level") else { return [] }
 
             var sql = """
-            SELECT ejl.entry_id, MIN(wf.jpdb_rank) AS best_rank
+            SELECT ejl.entry_id, MIN(wf.frequency_rank) AS best_rank
             FROM entry_jlpt_level ejl
             LEFT JOIN word_frequency wf
-                ON wf.entry_id = ejl.entry_id AND wf.jpdb_rank IS NOT NULL
+                ON wf.entry_id = ejl.entry_id AND wf.frequency_rank IS NOT NULL
             WHERE ejl.level = ?1
             GROUP BY ejl.entry_id
             ORDER BY (best_rank IS NULL), best_rank ASC, ejl.entry_id ASC

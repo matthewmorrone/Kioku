@@ -28,7 +28,7 @@ struct ReadView: View {
     let lexicon: Lexicon?
     let surfaceReadingData: SurfaceReadingDataMap
     let kanjiReadingFallback: KanjiReadingFallbackMap
-    // Per-entry-propagated JPDB rank per surface. Frequency fallback for lookup/split-editor pieces
+    // Per-entry-propagated frequency rank per surface. Frequency fallback for lookup/split-editor pieces
     // whose surface carries no rank in surface_readings (notably kana writings). See frequencyData(forSurface:).
     let frequencyRankBySurface: FrequencyRankMap
     let segmenterRevision: Int

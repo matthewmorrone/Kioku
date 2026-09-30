@@ -109,7 +109,8 @@ final class SegmentationQualityTests: XCTestCase {
         XCTAssertEqual(try segments(of: "視力障害があります"), ["視力障害", "が", "あります"])
     }
 
-    // がそ is the reading of 画素, which nobody writes in kana.
+    // がそ is the reading of 画素, which nobody writes in kana; it is not a common JMdict reading,
+    // so it pays the two-kana penalty even though the frequency list ranks it.
     func testDoesNotFuseGaSo() throws {
         XCTAssertEqual(try segments(of: "私たちがそこへ行く"), ["私たち", "が", "そこ", "へ", "行く"])
     }
@@ -251,7 +252,7 @@ final class SegmentationQualityTests: XCTestCase {
         XCTAssertEqual(try segments(of: "見てよ空"), ["見て", "よ", "空"])
     }
 
-    // A lone kana with no transition class of its own is priced below its JPDB rank
+    // A lone kana with no transition class of its own is priced below its frequency rank
     // (SegmenterScoring.loneKanaPenalty): ま|って beat 待って on a line of its own. Kana-written 間
     // must still stand alone, and full-width English must stay one word per run.
     func testLoneKanaDoesNotSplitATeForm() throws {

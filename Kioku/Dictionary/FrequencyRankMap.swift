@@ -1,11 +1,11 @@
 import Foundation
 
-// Surface → best JPDB rank (lower = more frequent), propagated PER ENTRY across every writing.
+// Surface → best frequency rank (lower = more frequent), propagated PER ENTRY across every writing.
 //
 // This is the same per-entry-propagated signal the segmenter consumes via
-// fetchFrequencyScoreBySurface(): JPDB ranks a single written form per entry (usually the kanji
+// fetchFrequencyScoreBySurface(): the frequency list ranks an entry's written forms (usually the kanji
 // headword), so a kana spelling or alternate writing has no rank of its own. The materialized
-// `surface_readings` table reflects that raw shape — its kana rows carry NULL jpdb_rank — which is
+// `surface_readings` table reflects that raw shape — its kana rows carry NULL frequency_rank — which is
 // why the split editor (which reads surface_readings) renders a bare "–" for common kana pieces
 // like こと / する / の even though they are extremely frequent. This map is the propagated fallback
 // those lookups consult so a piece still reports its entry's frequency.

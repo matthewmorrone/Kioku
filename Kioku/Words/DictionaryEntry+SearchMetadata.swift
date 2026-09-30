@@ -86,7 +86,7 @@ extension DictionaryEntry {
             return true
         }
 
-        if let jpdbRank, jpdbRank <= 20_000 {
+        if let frequencyRank, frequencyRank <= 20_000 {
             return true
         }
 

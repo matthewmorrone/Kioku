@@ -21,7 +21,7 @@ final class WordVariantsTests: XCTestCase {
     private func entry(kanji: [KanjiForm], kana: [KanaForm]) -> DictionaryEntry {
         DictionaryEntry(
             entryId: 1,
-            jpdbRank: nil,
+            frequencyRank: nil,
             wordfreqZipf: nil,
             matchedSurface: kanji.first?.text ?? kana.first?.text ?? "",
             kanjiForms: kanji,

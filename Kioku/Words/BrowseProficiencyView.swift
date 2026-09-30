@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Presents dictionary entries at a chosen JLPT proficiency level (N5–N1), ordered by JPDB
+// Presents dictionary entries at a chosen JLPT proficiency level (N5–N1), ordered by frequency rank
 // frequency within the level. Parallel to BrowseFrequencyView — owned by WordsView, presented as a
 // sheet from the overflow menu. Levels are unofficial estimates (Tanos / Jonathan Waller, CC BY).
 struct BrowseProficiencyView: View {

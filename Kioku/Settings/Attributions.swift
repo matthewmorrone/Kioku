@@ -49,10 +49,10 @@ nonisolated enum Attributions {
             sourceURL: "https://tatoeba.org"
         ),
         Dataset(
-            name: "JPDB Frequency (v2.2)",
-            description: "Word-frequency rankings for difficulty grading and ranking.",
-            license: "No license stated — ranks from jpdb.io's corpus, compiled by Kuuuube",
-            sourceURL: "https://github.com/Kuuuube/yomitan-dictionaries"
+            name: "Jiten Frequency List",
+            description: "Word-frequency rankings from anime, drama, film, novels and visual novels, for difficulty grading and ranking.",
+            license: "Jiten — CC BY-SA 4.0",
+            sourceURL: "https://jiten.moe"
         ),
         Dataset(
             name: "wordfreq",

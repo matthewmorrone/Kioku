@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Presents dictionary entries by JPDB frequency rank, loading the next page as the list scrolls
+// Presents dictionary entries by frequency rank, loading the next page as the list scrolls
 // to its end. Owned by WordsView; presented as a sheet from the overflow menu.
 struct BrowseFrequencyView: View {
     let dictionaryStore: DictionaryStore?

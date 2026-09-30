@@ -65,15 +65,16 @@ headwords by the JMdict maintainers. https://downloads.tatoeba.org/exports/jpn_i
   lines, so the score is a regression list, NOT a held-out measure; the other 281 lines are unscored.
   Never print whole lyric lines; the scorer prints only the differing fragments.
 
-## Numbers to beat (2026-09-25: table recounted; lone-kana penalty)
+## Numbers to beat (2026-09-30: Jiten frequency list, dictionary-v13)
 
 | Set | exact | cut-through | split |
 |---|---|---|---|
-| held2k | 88.72 | 0.40 | 2.97 |
-| fresh5k | 90.91 | 0.26 | 2.89 |
-| kana2k | 85.31 | 1.28 | 3.90 |
+| held2k | 88.93 | 0.39 (79) | 3.10 |
+| fresh5k (not re-run since 2026-09-25) | 90.91 | 0.26 | 2.89 |
+| kana2k | 85.65 | 1.23 (250) | 4.01 |
 | CI fixture (300; not re-run; PR #91) | 91.64 | 0.26 | 2.77 |
-| lyric lines reviewed | 37 / 38 | | |
+| lyric lines reviewed | 36 / 38 | | |
+| named cases | 60 / 62 | | |
 
 History: greedy + demotion list 80.0 / 3.41 (held2k) → Viterbi on surface ranks 86.55 / 0.91 (PR #83,
 tag `segmentation-viterbi-baseline-2026-09-19` + `dictionary-v9`) → fitted overhead + inflection-step
@@ -104,7 +105,20 @@ errors (もそう, ２|つもっている) — not shipped.
 classed function word nor a counter is rarely a word (ま: 1 gold token in 15,959 occurrences) but
 JPDB ranks kana ま at 896, so ま|って beat 待って on a line of its own. Pricing such kana as unranked
 broke kana-written 間 (すこしのま, ながいま; kana2k +5 cut-throughs). 1.5 is the smallest that keeps
-まって whole; 2.0 loses ながいま. Held-out: numbers above; lyrics 37/38.
+まって whole; 2.0 loses ながいま. Held-out: held2k 88.72 / 0.40, kana2k 85.31 / 1.28; lyrics 37/38.
+→ Jiten frequency list (2026-09-30, dictionary-v13), replacing JPDB, which has no licence. Same Yomitan
+layout, so the import is unchanged; three things had to change with it. (1) Jiten ranks words, not
+readings (72% of multi-reading words tie), so surface_readings breaks ties by JMdict reading order.
+(2) Jiten ranks kana strings nobody writes as a word (まお, いよ, がそ; 71k spellings JPDB left
+unranked), so a two-kana string pays loneKanaPenalty too unless JMdict marks it a common reading
+(priority tags, now imported from EDRDG's XML — jmdict-simplified only carries a boolean). Without
+the common exemption the penalty only worked between 0.29 and 0.40 (よみ and なる broke above it).
+(3) The rank offset and per-word overhead were re-swept on train2k (offset 6.8/7.2, overhead
+8.25/8.75): cut-through flat at 90–91 throughout, exact only trades split for merged — not changed.
+Against JPDB on the same code: held2k 79 vs 82 cut-throughs, kana2k 250 vs 237 (55 Jiten-only, 42
+JPDB-only: word-by-word rank disagreement on kana strings like では / ですが / してやる, no pattern).
+Named-case failures: そうです (Jiten splits そう|です, MeCab's convention) and がいよう|の|み (a real error:
+Jiten ranks のみ lower). Lyrics: 本当に kept whole (JMdict's adverb; convention), ならして as before.
 
 Known misses on lyrics: ならして after a bare noun — **lyrics drop particles, the transition table
 is counted from prose** (noun → verb costs +2.7 nats). The transition weight is irrelevant to the

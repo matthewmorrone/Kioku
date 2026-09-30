@@ -193,7 +193,7 @@ nonisolated struct FuriganaResolver {
         }
         // Furigana over kanji is conventionally hiragana. The readings list is ordered by
         // frequency rank, and that ordering can lead with a katakana variant (e.g. ウソ for 噓):
-        // when a katakana reading has no JPDB rank of its own it inherits the entry's headword
+        // when a katakana reading has no frequency rank of its own it inherits the entry's headword
         // rank in the generated DB, which can out-rank the form-specific hiragana reading. Pick
         // the highest-ranked non-katakana reading so the default ruby is hiragana, and only fall
         // back to the leading reading for words whose only reading is genuinely katakana (ateji

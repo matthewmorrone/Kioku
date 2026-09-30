@@ -2,7 +2,7 @@ import Foundation
 
 // Per-surface reading and frequency data, built once from the materialized surface_readings table.
 nonisolated struct SurfaceReadingData: Sendable {
-    // Readings ordered by JPDB rank (best first), capped at 8.
+    // Readings ordered by frequency rank (best first), capped at 8.
     let readings: [String]
     // Frequency metadata keyed by reading. Only populated for readings with at least one frequency signal.
     let frequencyByReading: [String: FrequencyData]

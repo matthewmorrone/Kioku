@@ -90,13 +90,5 @@
 				}
 			]
 		}
-	],
-	"frequencyOverrides": [
-		{
-			"kanji": "黄昏",
-			"kana": "こうこん",
-			"wordfreqZipf": null,
-			"reason": "wordfreq's ja corpus scores こうこん (5.01) above たそがれ (2.73), but たそがれ is the reading actually used; こうこん is a rare on'yomi. Clearing its zipf lets たそがれ win the tie-break."
-		}
 	]
 }

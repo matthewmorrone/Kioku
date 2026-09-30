@@ -186,31 +186,29 @@ extension WordsView {
     // Top dictionary hit for `surface`, or nil if the dictionary has no entry for it.
     //
     // Pulls the top 5 hits from the existing search ranking, then applies a sense-breadth
-    // tiebreak among entries whose JPDB rank is within ~5× of the best entry's rank
-    // (or all rank-less). This fixes cases where JPDB's anime/VN corpus elevates a narrow
-    // homograph above the broader canonical entry — e.g. 瞬く resolves to entry 172123
-    // (しばたたく, 1 sense "to blink repeatedly") because JPDB ranks it 8634 vs entry 31593
-    // (またたく, 2 senses "to twinkle / to blink") at 10603. They're close in rank but the
-    // broader entry is the one a learner expects to see first.
+    // tiebreak among entries whose frequency rank is within ~5× of the best entry's rank
+    // (or all rank-less). A media-corpus frequency list can rank a narrow, one-sense homograph
+    // slightly above the broader canonical entry; when the two are close in rank, the broader
+    // entry is the one a learner expects to see first.
     //
-    // Outside the tolerance band, JPDB rank wins as before — we don't want to override
+    // Outside the tolerance band, frequency rank wins as before — we don't want to override
     // cases where there's a clear frequency-based winner.
     private nonisolated static func dictionaryTop(store: DictionaryStore, surface: String) -> DictionaryEntry? {
         let hits = (try? store.searchEntries(term: surface, mode: .japanese, limit: 5)) ?? []
         guard let first = hits.first else { return nil }
-        // Cluster: hits whose JPDB rank is within the tolerance band of the top hit.
+        // Cluster: hits whose frequency rank is within the tolerance band of the top hit.
         // Rank-less entries cluster together (both nil); a rank-less hit doesn't cluster
         // with a ranked one because we have no scale to compare them.
         let tolerance = 5.0
         let cluster = hits.prefix(5).filter { entry in
-            switch (first.jpdbRank, entry.jpdbRank) {
+            switch (first.frequencyRank, entry.frequencyRank) {
             case (nil, nil): return true
             case let (.some(top), .some(other)): return Double(other) <= Double(top) * tolerance
             default: return false
             }
         }
         // Within the cluster, prefer the entry with the most senses (broader coverage).
-        // Stable on ties — preserves JPDB order among entries with equal sense counts.
+        // Stable on ties — preserves frequency order among entries with equal sense counts.
         return cluster.enumerated().max { lhs, rhs in
             if lhs.element.senses.count != rhs.element.senses.count {
                 return lhs.element.senses.count < rhs.element.senses.count

@@ -594,7 +594,7 @@ struct ContentView: View {
             AppLog.error(.dictionary, "Deinflector initialization failed: \(error)")
         }
 
-        // Per-ENTRY best JPDB rank, propagated to every spelling of the entry. Backs the lookup and
+        // Per-ENTRY best frequency rank, propagated to every spelling of the entry. Backs the lookup and
         // split-editor frequency display, where a kana split piece like こと / する should report its
         // word's rank instead of rendering a bare "–". NOT what the segmenter scores with: it reads
         // the rank of each surface as written, via Segmenter(…frequenciesFrom:) below.

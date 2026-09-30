@@ -28,9 +28,10 @@ nonisolated struct SegmenterScoring {
     // frequency of the surface AS WRITTEN (see DictionaryStore.fetchFrequencyScoreBySurface). That
     // single quantity does every job structural bonuses would otherwise need hand-tuning for: every
     // word pays at least a few nats, so fewer/longer words win without a length reward; a rare word
-    // costs more than a common one without a rarity penalty; and a kana string nobody writes as a
-    // word (がそ for 画素) is unranked and therefore expensive, so が + そこ beats がそ + こ without a
-    // denylist. Do not add per-surface or per-script special cases here — fix the frequency data.
+    // costs more than a common one without a rarity penalty. Short kana strings are the one
+    // exception: a frequency list ranks some that nobody writes as a word (がそ for 画素), so one-
+    // and two-kana strings that are not common JMdict readings pay loneKanaPenalty/twoKanaPenalty,
+    // which is what keeps が + そこ ahead of がそ + こ. Do not add per-surface special cases here.
 
     // frequencyScore is Zipf-like: log10 of occurrences per `zipfScaleExponent` decades of words,
     // so −ln P = (zipfScaleExponent − score) · ln 10. This is also the fixed overhead every word

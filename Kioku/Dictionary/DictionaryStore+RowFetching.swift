@@ -7,12 +7,12 @@ import SQLite3
 // line-count invariant. Methods are internal (not private) so the lookup methods in the
 // primary file can call them across the file boundary.
 extension DictionaryStore {
-    // Fetches entry headers with frequency data, ordered by JPDB rank then sense order.
+    // Fetches entry headers with frequency data, ordered by frequency rank then sense order.
     nonisolated func fetchMatchedEntries(
         surface: String,
         matchKana: Bool,
         matchKanji: Bool
-    ) throws -> [(entryID: Int64, jpdbRank: Int?, wordfreqZipf: Double?)] {
+    ) throws -> [(entryID: Int64, frequencyRank: Int?, wordfreqZipf: Double?)] {
         guard matchKana || matchKanji else {
             return []
         }
@@ -71,8 +71,8 @@ extension DictionaryStore {
         //    this tier they get buried under whatever kanji shares the reading (は would return 派 "group;
         //    faction", because wordfreq has no row for the particle so its zipf-based pseudo-rank collapses
         //    to the catch-all bucket).
-        // 3. Then the sibling real-rank tier (FrequencySQL.siblingRealRankTier), then effective rank (JPDB
-        //    rank, or a zipf-derived pseudo-rank for entries that lack JPDB data), then sense order and
+        // 3. Then the sibling real-rank tier (FrequencySQL.siblingRealRankTier), then effective rank (frequency
+        //    rank, or a zipf-derived pseudo-rank for unranked entries), then sense order and
         //    entry id.
         //
         // For matchKanji-only the WHERE clause already excludes kana-only entries, and for
@@ -96,7 +96,7 @@ extension DictionaryStore {
         let sql = """
         WITH candidates AS (
             SELECT e.id AS entry_id,
-                   MIN(wf.jpdb_rank) AS best_jpdb,
+                   MIN(wf.frequency_rank) AS best_frequency_rank,
                    MAX(wf.wordfreq_zipf) AS best_zipf,
                    EXISTS (SELECT 1 FROM kanji k WHERE k.entry_id = e.id) AS has_kanji,
                    COALESCE(MIN(s.order_index), \(FrequencySQL.noSenseSort)) AS min_sense
@@ -106,10 +106,10 @@ extension DictionaryStore {
             WHERE \(whereClause)
             GROUP BY e.id
         )
-        SELECT entry_id, best_jpdb, best_zipf, has_kanji, min_sense,
+        SELECT entry_id, best_frequency_rank, best_zipf, has_kanji, min_sense,
                -- Window over the whole candidate set (all entries matching this one surface) so
-               -- the sibling-rank tier below can see whether ANY of them has a real JPDB rank.
-               MIN(best_jpdb) OVER () AS surface_best_jpdb
+               -- the sibling-rank tier below can see whether ANY of them has a real frequency rank.
+               MIN(best_frequency_rank) OVER () AS surface_best_rank
         FROM candidates
         ORDER BY
             \(posBoostTier)
@@ -119,16 +119,16 @@ extension DictionaryStore {
             -- anyway). For matchKanji-only the WHERE clause already excludes kana-only.
             CASE WHEN has_kanji THEN 1 ELSE 0 END ASC,
             -- Tier 3: don't let a zipf pseudo-rank rescue a candidate past a sibling (same
-            -- surface) that has a genuine JPDB rank — see siblingRealRankTier's doc comment.
-            \(FrequencySQL.siblingRealRankTier(jpdbExpr: "best_jpdb", surfaceHasRealRankExpr: "surface_best_jpdb")) ASC,
-            -- Tier 4: effective rank — JPDB rank if present, else a pseudo-rank derived
+            -- surface) that has a genuine frequency rank — see siblingRealRankTier's doc comment.
+            \(FrequencySQL.siblingRealRankTier(rankExpr: "best_frequency_rank", surfaceHasRealRankExpr: "surface_best_rank")) ASC,
+            -- Tier 4: effective rank — frequency rank if present, else a pseudo-rank derived
             -- from the wordfreq Zipf score (general-corpus log frequency). Applied
-            -- uniformly so a non-JPDB-ranked common word (e.g. a kanji entry JPDB didn't
-            -- catalog) can still outrank an obscure JPDB-ranked homophone instead of
+            -- uniformly so a non-frequency-ranked common word (e.g. a kanji entry the rank list
+            -- lacks) can still outrank an obscure frequency-ranked homophone instead of
             -- crashing to 9999999. Zipf 7+ ≈ top-30 word, 6+ ≈ top-1k, etc.; bucket
-            -- boundaries are deliberately wider than JPDB's so a high-confidence corpus
-            -- signal beats a low-confidence JPDB ranking.
-            \(FrequencySQL.effectiveRank(jpdbExpr: "best_jpdb", zipfExpr: "best_zipf")) ASC,
+            -- boundaries are deliberately wider than the rank list's so a high-confidence corpus
+            -- signal beats a low-confidence frequency ranking.
+            \(FrequencySQL.effectiveRank(rankExpr: "best_frequency_rank", zipfExpr: "best_zipf")) ASC,
             min_sense ASC,
             entry_id ASC
         """
@@ -139,18 +139,18 @@ extension DictionaryStore {
         try prepare(sql: sql, statement: &statement)
         try bindText(surface, index: 1, statement: statement)
 
-        var items: [(entryID: Int64, jpdbRank: Int?, wordfreqZipf: Double?)] = []
+        var items: [(entryID: Int64, frequencyRank: Int?, wordfreqZipf: Double?)] = []
 
         var stepCode = sqlite3_step(statement)
         while stepCode == SQLITE_ROW {
             let entryID = sqlite3_column_int64(statement, 0)
-            let jpdbRank = sqlite3_column_type(statement, 1) != SQLITE_NULL
+            let frequencyRank = sqlite3_column_type(statement, 1) != SQLITE_NULL
                 ? Int(sqlite3_column_int(statement, 1))
                 : nil
             let wordfreqZipf = sqlite3_column_type(statement, 2) != SQLITE_NULL
                 ? sqlite3_column_double(statement, 2)
                 : nil
-            items.append((entryID: entryID, jpdbRank: jpdbRank, wordfreqZipf: wordfreqZipf))
+            items.append((entryID: entryID, frequencyRank: frequencyRank, wordfreqZipf: wordfreqZipf))
 
             stepCode = sqlite3_step(statement)
         }
@@ -163,9 +163,9 @@ extension DictionaryStore {
     }
 
     // Fetches one entry header by ID so callers can rebuild full entry payloads deterministically.
-    nonisolated func fetchEntryHeader(entryID: Int64) throws -> (entryID: Int64, jpdbRank: Int?, wordfreqZipf: Double?)? {
+    nonisolated func fetchEntryHeader(entryID: Int64) throws -> (entryID: Int64, frequencyRank: Int?, wordfreqZipf: Double?)? {
         let sql = """
-        SELECT e.id, MIN(wf.jpdb_rank), MAX(wf.wordfreq_zipf)
+        SELECT e.id, MIN(wf.frequency_rank), MAX(wf.wordfreq_zipf)
         FROM entries e
         LEFT JOIN word_frequency wf ON wf.entry_id = e.id
         WHERE e.id = ?1
@@ -189,7 +189,7 @@ extension DictionaryStore {
         }
 
         let resolvedEntryID = sqlite3_column_int64(statement, 0)
-        let jpdbRank = sqlite3_column_type(statement, 1) != SQLITE_NULL
+        let frequencyRank = sqlite3_column_type(statement, 1) != SQLITE_NULL
             ? Int(sqlite3_column_int(statement, 1))
             : nil
         let wordfreqZipf = sqlite3_column_type(statement, 2) != SQLITE_NULL
@@ -201,7 +201,7 @@ extension DictionaryStore {
             throw DictionarySQLiteError.step(message: errorMessage())
         }
 
-        return (entryID: resolvedEntryID, jpdbRank: jpdbRank, wordfreqZipf: wordfreqZipf)
+        return (entryID: resolvedEntryID, frequencyRank: frequencyRank, wordfreqZipf: wordfreqZipf)
     }
 
     // Fetches ordered kanji forms with priority and ke_inf info tags for one entry.

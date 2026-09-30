@@ -14,7 +14,7 @@ final class AttributionsTests: XCTestCase {
             "JMdict (English)",
             "KANJIDIC2",
             "Tatoeba Sentence Pairs",
-            "JPDB Frequency (v2.2)",
+            "Jiten Frequency List",
             "wordfreq",
             "UniDic Pitch Accent",
             "RADKFILE2 / KRADFILE2",
