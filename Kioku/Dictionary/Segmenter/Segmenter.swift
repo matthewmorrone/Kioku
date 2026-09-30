@@ -237,17 +237,18 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     // Frequency, step count and POS of whichever reading of the surface is cheaper.
                     let reading = pricedReading(of: surface, lemmas: lemmas, inflectionSteps: inflectionSteps)
                     edge.frequencyScore = reading.score
-                    // A lone kana that is neither a function word with a transition class of its own
-                    // (か, と, よ…) nor a counter (つ) is rarely a word in running text, however JPDB
-                    // ranks it: ま is one gold token in 15,959 occurrences. Without this, ま|って beat
-                    // 待って on a line of its own. See SegmenterScoring.loneKanaPenalty.
-                    if surface.count == 1, ScriptClassifier.isPureKana(surface),
+                    // A one- or two-kana string that is neither a function word with a transition
+                    // class of its own (か, と, よ…) nor a counter (つ) is rarely a word in running
+                    // text, however the frequency list ranks it: ま is one gold token in 15,959
+                    // occurrences, and Jiten ranks まお and いよ as kana spellings. Without this,
+                    // ま|って beat 待って on a line of its own. See SegmenterScoring.loneKanaPenalty.
+                    if surface.count <= 2, ScriptClassifier.isPureKana(surface),
                        let lexical = transitionTable?.lexical, lexical.contains(surface) == false,
                        PartOfSpeech.isCounter(edge.partOfSpeech) == false,
                        edge.frequencyScore > 0 {
                         edge.frequencyScore = max(
                             SegmenterScoring.unrankedDictionaryScore,
-                            edge.frequencyScore - SegmenterScoring.loneKanaPenalty
+                            edge.frequencyScore - (surface.count == 1 ? SegmenterScoring.loneKanaPenalty : SegmenterScoring.twoKanaPenalty)
                         )
                     }
                     edge.inflectionSteps = reading.inflectionSteps
