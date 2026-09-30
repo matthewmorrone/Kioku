@@ -184,7 +184,7 @@ nonisolated enum CSVImport {
         var kanaIndex: Int?
         var meaningIndex: Int?
         var noteIndex: Int?
-        // Curriculum grouping columns (e.g. Resources/human-japanese.csv's chapter/volume) — read
+        // Curriculum grouping columns (e.g. a textbook's chapter/volume) — read
         // by CSVImportItem.chapterGroupKey when the "By chapter" list mode is active.
         var chapterIndex: Int?
         var volumeIndex: Int?

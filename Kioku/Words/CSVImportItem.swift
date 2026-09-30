@@ -13,7 +13,7 @@ nonisolated struct CSVImportItem: Identifiable, Hashable {
     var providedKana: String?
     var providedMeaning: String?
     var providedNote: String?
-    // Curriculum grouping columns (e.g. a textbook's chapter/volume, like Resources/human-japanese.csv)
+    // Curriculum grouping columns (e.g. a textbook's chapter/volume)
     // — used only when the "By chapter" list mode routes each row to its own auto-created list.
     var providedChapter: String?
     var providedVolume: String?

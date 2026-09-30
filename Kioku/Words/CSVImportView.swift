@@ -8,7 +8,7 @@ enum CSVImportListMode: Hashable {
     case new
     // Routes each row to its own auto-created/reused list named after CSVImportItem.chapterGroupKey
     // (e.g. "Vol 1 Ch 7") instead of one uniform list for every row — for CSVs with chapter/volume
-    // columns, like Resources/human-japanese.csv. Rows with no chapter info get no list, same as .none.
+    // columns (a textbook's chapter/volume). Rows with no chapter info get no list, same as .none.
     case byChapter
 }
 
