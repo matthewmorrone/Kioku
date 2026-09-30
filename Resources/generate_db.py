@@ -30,7 +30,14 @@ MANIFEST_PATH = RESOURCES_DIR / "data-manifest.json"
 SOURCE_CACHE_DIR = Path(os.environ.get("KIOKU_SOURCE_CACHE") or Path.home() / "Projects" / "kioku-source-cache")
 JMDICT_PATH = RESOURCES_DIR / "jmdict-eng-3.6.2.json"
 EXTRAS_PATH = RESOURCES_DIR / "extras.json"
-JPDB_PATH = RESOURCES_DIR / "jpdb-frequency-kana-2.2.json"
+# The rank list import_jpdb and materialize_surface_frequency read. Both lists share the Yomitan
+# term_meta_bank "freq" layout, so either feeds the same code; --frequency-source jiten swaps in
+# Jiten's CC BY-SA list for the licence experiment without touching the default build.
+FREQUENCY_SOURCE_PATHS = {
+    "jpdb": RESOURCES_DIR / "jpdb-frequency-kana-2.2.json",
+    "jiten": RESOURCES_DIR / "jiten-frequency-global.json",
+}
+JPDB_PATH = FREQUENCY_SOURCE_PATHS["jpdb"]
 KANJIDIC2_PATH = RESOURCES_DIR / "kanjidic2-all.json"
 RADKFILE_PATH = RESOURCES_DIR / "radkfile2.utf8"
 KRADFILE_PATH = RESOURCES_DIR / "kradfile2.utf8"
@@ -2180,14 +2187,16 @@ def materialize_canonical_entry_ids(conn):
 
 
 def main():
-    global OUTPUT_DB, OFFLINE
+    global OUTPUT_DB, OFFLINE, JPDB_PATH
     parser = argparse.ArgumentParser(description="Builds dictionary.sqlite from the upstream sources in data-manifest.json.")
     parser.add_argument("--output", type=Path, help="write the database here instead of Resources/dictionary.sqlite")
     parser.add_argument("--offline", action="store_true", help="never download; fail if a source archive is missing")
     parser.add_argument("--sources-only", action="store_true", help="fetch and verify every source, then exit")
     parser.add_argument("--emit-derived", type=Path, metavar="DIR", help="write the derived TSVs (pitch-accent, sentence-pairs, jlpt-vocab) to DIR, then exit")
+    parser.add_argument("--frequency-source", choices=sorted(FREQUENCY_SOURCE_PATHS), default="jpdb", help="which rank list fills jpdb_rank and surface_frequency")
     args = parser.parse_args()
     OFFLINE = args.offline
+    JPDB_PATH = FREQUENCY_SOURCE_PATHS[args.frequency_source]
     if args.output:
         OUTPUT_DB = args.output.resolve()
 
@@ -2202,6 +2211,7 @@ def main():
 
     print("Building dictionary.sqlite...")
     print(f"JMdict SHA256: {sha256_of_file(JMDICT_PATH)}")
+    print(f"Frequency ranks: {JPDB_PATH.name} ({sha256_of_file(JPDB_PATH)})")
     if EXTRAS_PATH.exists():
         print(f"Extras SHA256: {sha256_of_file(EXTRAS_PATH)}")
     else:

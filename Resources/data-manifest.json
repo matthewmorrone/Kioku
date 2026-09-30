@@ -56,6 +56,27 @@
       "feedsDictionary": true
     },
     {
+      "name": "jiten-frequency-global",
+      "description": "Jiten's global word-frequency ranks over ~16.5k anime, drama, film, novel and visual-novel titles, in the same Yomitan term_meta_bank layout as the JPDB list (kanji+reading ranks, plus kana-spelling ranks marked ㋕). Experimental alternative to jpdb-frequency-kana, selected with generate_db.py --frequency-source jiten; the default build still reads JPDB.",
+      "license": "CC BY-SA 4.0 (Jiten, jiten.moe), commercial use permitted",
+      "type": "frequency-dictionary",
+      "path": "Resources/jiten-frequency-global.json",
+      "required": false,
+      "derived": false,
+      "url": "https://api.jiten.moe/api/frequency-list/download?downloadType=yomitan",
+      "sha256": "71d3098dbd0c3e991996e8cfa4326f55b07768750bf59774a6fa3939be0ed946",
+      "provenance": "Jiten global frequency list, Yomitan export (index.json revision \"Jiten 26-09-27\", downloaded 2026-09-29). The endpoint serves the current list, so a re-download will not match the pinned archive hash; refreshing it is a deliberate re-pin. generate_db.py extracts term_meta_bank_1.json to Resources/jiten-frequency-global.json.",
+      "fetch": {
+        "url": "https://api.jiten.moe/api/frequency-list/download?downloadType=yomitan",
+        "format": "zip",
+        "member": "term_meta_bank_1.json",
+        "cacheName": "jiten-freq-global-2026-09-27.zip",
+        "archiveSha256": "3ebfb307389efd8f98ab6362c18f76adb8ad7274e93305b3d9f3ea92cb22aee2"
+      },
+      "materialize": true,
+      "feedsDictionary": true
+    },
+    {
       "name": "wordfreq",
       "description": "Python package giving a Zipf frequency for any Japanese string. It is the only frequency source covering words usually written in kana (この, する, こと), which JPDB's kana ranks miss; without it those everyday words rank as Rare, so the build hard-fails rather than ship that silently.",
       "license": "Apache-2.0 (code) and CC BY-SA 4.0 (data); the NOTICE requires crediting Robyn Speer by that name",

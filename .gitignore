@@ -8,6 +8,7 @@ Resources/dictionary.sqlite.zst
 Resources/dictionary.sqlite.zst.part-*
 Resources/jmdict-eng-3.6.2.json
 Resources/jpdb-frequency-kana-2.2.json
+Resources/jiten-frequency-global.json
 Resources/ggml-tiny.bin
 Resources/handwriting-ja.model
 Resources/kanjidic2-all.json
