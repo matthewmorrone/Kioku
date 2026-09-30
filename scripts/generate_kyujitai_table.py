@@ -19,8 +19,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "Resources" / "data-manifest.json"
 KANJIDIC2 = ROOT / "Resources" / "kanjidic2-all.json"
-# Shared with Resources/generate_db.py: outside the checkout so it survives disposable worktrees.
-CACHE = Path(os.environ.get("KIOKU_SOURCE_CACHE") or Path.home() / "Projects" / "kioku-source-cache")
+# Shared with Resources/generate_db.py: the main checkout's Resources/source-cache, which every worktree uses.
+sys.path.insert(0, str(ROOT / "Resources"))
+from generate_db import SOURCE_CACHE_DIR as CACHE  # noqa: E402
 OUTPUT = ROOT / "Kioku" / "Dictionary" / "KyujitaiTable.swift"
 
 # Legitimate variant spellings of common kanji that OpenCC's table lacks as keys. Each maps to the
