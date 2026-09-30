@@ -47,7 +47,7 @@ struct ContentView: View {
     // Audio file picked by the Notes tab's Import Audio, handed to ReadView to transcribe.
     @State private var pendingReadAudioImportURL: URL?
     // Note that ReadView should start playing (lyrics view open) once it's the active note — set
-    // by the "Play Kioku" Siri action, cleared by ReadView when consumed.
+    // by the "Sing with Kioku" Siri action, cleared by ReadView when consumed.
     @State private var pendingReadAutoplayNoteID: UUID?
     @StateObject private var clipboardCoordinator = ClipboardLookupCoordinator()
     @Environment(\.scenePhase) private var scenePhase
@@ -202,7 +202,7 @@ struct ContentView: View {
             pendingReadScrollTarget = target
             readNoteNavigation.pendingTarget = nil
         }
-        // "Play Kioku" (PlayRandomNoteIntent) while the app is already running.
+        // "Sing with Kioku" (PlayRandomNoteIntent) while the app is already running.
         .onChange(of: readNoteNavigation.isRandomPlaybackRequested) { _, _ in
             playRandomAudioNoteIfRequested()
         }

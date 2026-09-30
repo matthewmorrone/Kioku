@@ -411,7 +411,7 @@ extension ReadView {
         }
     }
 
-    // Starts the "Play Kioku" note from the top with the lyrics view open, once that note is the
+    // Starts the "Sing with Kioku" note from the top with the lyrics view open, once that note is the
     // one loaded (its audio attachment is loaded in the same pass as activeNoteID). Waits on
     // activeNoteID for the same ordering reason as jumpToPendingScrollSurfaceIfReady.
     func startPendingAutoplayIfReady() {
