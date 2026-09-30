@@ -615,17 +615,22 @@ final class SegmenterIntegrationTests: XCTestCase {
         }
     }
 
-    // いく / ゆく after a て-form is its own word: no deinflection rule folds it into the verb before it,
-    // so the path search picks 飛び込んで | ゆく itself — including after a katakana noun + する.
-    func testIkuAfterTeFormIsItsOwnWord() throws {
-        let segmenter = try sharedResources().segmenter
+    // いく / ゆく after a て-form is folded into the verb before it (飛び込んでゆく is one word), and the
+    // deinflection chain names it as a helper so the lookup sheet shows 飛び込む + ゆく rather than
+    // hiding it — including after a katakana noun + する.
+    func testIkuAfterTeFormIsFoldedAndNamed() throws {
+        let resources = try sharedResources()
+        let segmenter = resources.segmenter
         let cases: [(String, [String])] = [
-            ("顔を上げて飛び込んでゆくの", ["顔を上げて", "飛び込んで", "ゆく", "の"]),
-            ("自信持ってクリアしてゆくの", ["自信", "持って", "クリアして", "ゆく", "の"]),
+            ("顔を上げて飛び込んでゆくの", ["顔を上げて", "飛び込んでゆく", "の"]),
+            ("自信持ってクリアしてゆくの", ["自信", "持って", "クリアしてゆく", "の"]),
         ]
         for (text, expected) in cases {
             XCTAssertEqual(segmenter.longestMatchEdges(for: text).map(\.surface), expected, text)
         }
+        let deinflector = resources.deinflector
+        XCTAssertEqual(deinflector.helperWords(from: deinflector.deinflectionPaths(for: "飛び込んでゆく"), targetLemma: "飛び込む"), ["ゆく"])
+        XCTAssertEqual(deinflector.helperWords(from: deinflector.deinflectionPaths(for: "抱かれながら"), targetLemma: "抱く"), ["ながら"])
     }
 
     // A kana adverb that takes と (JMdict adv-to, or a mimetic adverb) written with its と looks up as

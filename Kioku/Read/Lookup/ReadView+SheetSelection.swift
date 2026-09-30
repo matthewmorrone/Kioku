@@ -594,10 +594,11 @@ extension ReadView {
         return segmenter.splitCosts(of: range, in: line, candidates: candidates)
     }
 
-    // Returns the header's dictionary-form subtitle for the current selection: "base + auxiliary" for
-    // a compound verb (生きてゆく → 生きる + ゆく, 思い出す → 思う + 出す, さがしつづけた → さがす + つづける),
-    // whether or not it is conjugated, otherwise the base lemma when the surface is an inflected form.
-    // Returns nil for an uncompounded word already in its dictionary form.
+    // Returns the header's dictionary-form subtitle for the current selection, naming every word the
+    // segment holds: the lemma plus each helper word deinflection folded in (歩いてゆこう → 歩く + ゆく,
+    // 抱かれながら → 抱く + ながら), "base + auxiliary" for a compound verb in dictionary form
+    // (生きてゆく → 生きる + ゆく, 思い出す → 思う + 出す), otherwise the base lemma of an inflected form.
+    // Returns nil for a single word already in its dictionary form.
     func lemmaInfoForCurrentSelectedSegment() -> (lemma: String, chain: [String])? {
         guard let selectedBounds = segmentSelection.selectedBounds, let lexicon,
               selectedBounds.lowerBound < document.segmentEdges.count,
@@ -613,7 +614,15 @@ extension ReadView {
         // below, which only matches a dictionary-form tail against a fixed auxiliary-verb set —
         // conjugated する tails (して/した/しない/…) would never literally match an entry there.
         if let inflected, let compoundPrefix = segmenter.suruCompoundPrefix(for: surface) {
-            return (lemma: "\(compoundPrefix) + する", chain: inflected.chain)
+            let helpers = lexicon.helperWords(surface: String(surface.dropFirst(compoundPrefix.count)), lemma: "する")
+            return (lemma: ([compoundPrefix, "する"] + helpers).joined(separator: " + "), chain: inflected.chain)
+        }
+
+        if let inflected {
+            let helpers = lexicon.helperWords(surface: surface, lemma: inflected.lemma)
+            if helpers.isEmpty == false {
+                return (lemma: ([inflected.lemma] + helpers).joined(separator: " + "), chain: inflected.chain)
+            }
         }
 
         if let parts = compoundVerbPartsForCurrentSelectedSegment(surface: surface) {
