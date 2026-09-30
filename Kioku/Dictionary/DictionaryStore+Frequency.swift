@@ -4,10 +4,10 @@ import SQLite3
 // Frequency query surface — builds the unified surface reading map used by segmentation, furigana, and frequency display.
 extension DictionaryStore {
 
-    // Fetches the top N dictionary entries by JPDB frequency rank, materialized for browse-view display.
+    // Fetches one page of dictionary entries by JPDB frequency rank, materialized for browse-view display.
     // Entries with multiple readings collapse to their best-ranked reading (MIN(jpdb_rank)).
-    nonisolated func fetchTopFrequencyEntries(limit: Int) throws -> [DictionaryEntry] {
-        let entryIDs = try fetchTopFrequencyEntryIDs(limit: limit)
+    nonisolated func fetchTopFrequencyEntries(limit: Int, offset: Int = 0) throws -> [DictionaryEntry] {
+        let entryIDs = try fetchTopFrequencyEntryIDs(limit: limit, offset: offset)
         var entries: [DictionaryEntry] = []
         entries.reserveCapacity(entryIDs.count)
         for entryID in entryIDs {
@@ -18,16 +18,17 @@ extension DictionaryStore {
         return entries
     }
 
-    // Returns entry ids ordered by ascending JPDB rank, capped at `limit`.
-    nonisolated private func fetchTopFrequencyEntryIDs(limit: Int) throws -> [Int64] {
+    // Returns entry ids ordered by ascending JPDB rank, `limit` rows starting at `offset`.
+    // entry_id breaks rank ties so consecutive pages never overlap or skip.
+    nonisolated private func fetchTopFrequencyEntryIDs(limit: Int, offset: Int) throws -> [Int64] {
         try withSerializedDatabaseAccess {
             let sql = """
             SELECT entry_id, MIN(jpdb_rank) AS best_rank
             FROM word_frequency
             WHERE jpdb_rank IS NOT NULL
             GROUP BY entry_id
-            ORDER BY best_rank ASC
-            LIMIT ?1
+            ORDER BY best_rank ASC, entry_id ASC
+            LIMIT ?1 OFFSET ?2
             """
 
             var statement: OpaquePointer?
@@ -35,6 +36,7 @@ extension DictionaryStore {
 
             try prepare(sql: sql, statement: &statement)
             try bindInt64(Int64(limit), index: 1, statement: statement)
+            try bindInt64(Int64(offset), index: 2, statement: statement)
 
             return try stepRows(statement: statement) { stmt in
                 Int64(sqlite3_column_int64(stmt, 0))

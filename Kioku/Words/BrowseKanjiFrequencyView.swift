@@ -1,8 +1,8 @@
 import SwiftUI
 
-// Presents the top KANJIDIC2 kanji by Mainichi-newspaper frequency rank, paged
-// by user-selected bucket size. Owned by WordsView; presented as a sheet from
-// the overflow menu's "Browse Kanji by Frequency" entry. Mirrors
+// Presents KANJIDIC2 kanji by Mainichi-newspaper frequency rank, loading the
+// next page as the list scrolls to its end. Owned by WordsView; presented as a
+// sheet from the overflow menu's "Browse Kanji" entry. Mirrors
 // BrowseFrequencyView for words but renders kanji tiles instead of word rows
 // and routes taps to KanjiDetailView via `onSelectKanji`.
 struct BrowseKanjiFrequencyView: View {
@@ -16,37 +16,20 @@ struct BrowseKanjiFrequencyView: View {
     // dismissing the kanji detail returns the user to the browse list rather
     // than collapsing the whole sheet stack back to the Words tab.
     @State private var presentedKanjiInfo: KanjiInfo? = nil
-    @AppStorage("browseKanjiFrequency.limit") private var limit: Int = 500
+    @State private var isLoadingPage = false
+    @State private var hasMore = true
     @Environment(\.dismiss) private var dismiss
 
-    private let availableLimits = [100, 250, 500, 1000, 2500]
+    private let pageSize = 100
 
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("Top \(limit) Kanji")
+                .navigationTitle("Browse Kanji")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Close") { dismiss() }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            ForEach(availableLimits, id: \.self) { value in
-                                Button {
-                                    limit = value
-                                    Task { await load() }
-                                } label: {
-                                    if value == limit {
-                                        Label("Top \(value)", systemImage: "checkmark")
-                                    } else {
-                                        Text("Top \(value)")
-                                    }
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "line.3.horizontal.decrease.circle")
-                        }
                     }
                 }
                 .sheet(item: $presentedKanjiInfo) { info in
@@ -55,7 +38,7 @@ struct BrowseKanjiFrequencyView: View {
                         .presentationDragIndicator(.visible)
                 }
         }
-        .task { await load() }
+        .task { await loadNextPage() }
     }
 
     // Loading spinner, empty state, or the ranked kanji list with #rank prefixes.
@@ -86,6 +69,14 @@ struct BrowseKanjiFrequencyView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .onAppear {
+                        if index == kanji.count - 1 { Task { await loadNextPage() } }
+                    }
+                }
+                if hasMore {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .listRowSeparator(.hidden)
                 }
             }
             .listStyle(.plain)
@@ -161,15 +152,20 @@ struct BrowseKanjiFrequencyView: View {
             )
     }
 
-    // Loads the top-N kanji off the main actor and swaps them in once ready.
-    private func load() async {
-        isLoading = true
-        let currentLimit = limit
+    // Appends the next page of ranked kanji, fetched off the main actor. Called on appear and
+    // whenever the last loaded row scrolls into view; the in-flight flag keeps pages from doubling up.
+    private func loadNextPage() async {
+        guard hasMore, isLoadingPage == false else { return }
+        isLoadingPage = true
+        let offset = kanji.count
+        let limit = pageSize
         let store = dictionaryStore
-        let loaded: [KanjiInfo] = await Task.detached(priority: .userInitiated) {
-            (try? store?.fetchTopFrequencyKanji(limit: currentLimit)) ?? []
+        let page: [KanjiInfo] = await Task.detached(priority: .userInitiated) {
+            (try? store?.fetchTopFrequencyKanji(limit: limit, offset: offset)) ?? []
         }.value
-        kanji = loaded
+        kanji.append(contentsOf: page)
+        hasMore = page.count == limit
+        isLoadingPage = false
         isLoading = false
     }
 }

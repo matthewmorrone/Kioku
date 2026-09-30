@@ -1,7 +1,7 @@
 import SwiftUI
 
-// Presents the top dictionary entries by JPDB frequency rank, paged by user-selected bucket size.
-// Owned by WordsView; presented as a sheet from the toolbar.
+// Presents dictionary entries by JPDB frequency rank, loading the next page as the list scrolls
+// to its end. Owned by WordsView; presented as a sheet from the overflow menu.
 struct BrowseFrequencyView: View {
     let dictionaryStore: DictionaryStore?
     let isSaved: (Int64) -> Bool
@@ -11,41 +11,24 @@ struct BrowseFrequencyView: View {
     @EnvironmentObject private var wordsStore: WordsStore
     @State private var entries: [DictionaryEntry] = []
     @State private var isLoading = true
-    @AppStorage("browseFrequency.limit") private var limit: Int = 1000
+    @State private var isLoadingPage = false
+    @State private var hasMore = true
     @Environment(\.dismiss) private var dismiss
 
-    private let availableLimits = [100, 500, 1000, 2500, 5000]
+    private let pageSize = 100
 
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("Top \(limit)")
+                .navigationTitle("Browse Words")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Close") { dismiss() }
                     }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            ForEach(availableLimits, id: \.self) { value in
-                                Button {
-                                    limit = value
-                                    Task { await load() }
-                                } label: {
-                                    if value == limit {
-                                        Label("Top \(value)", systemImage: "checkmark")
-                                    } else {
-                                        Text("Top \(value)")
-                                    }
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "line.3.horizontal.decrease.circle")
-                        }
-                    }
                 }
         }
-        .task { await load() }
+        .task { await loadNextPage() }
     }
 
     // Either a loading spinner or the ranked list with #rank prefixes.
@@ -87,21 +70,34 @@ struct BrowseFrequencyView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .onAppear {
+                        if index == entries.count - 1 { Task { await loadNextPage() } }
+                    }
+                }
+                if hasMore {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .listRowSeparator(.hidden)
                 }
             }
             .listStyle(.plain)
         }
     }
 
-    // Loads the top-N entries off the main actor and swaps them in once ready.
-    private func load() async {
-        isLoading = true
-        let currentLimit = limit
+    // Appends the next page of ranked entries, fetched off the main actor. Called on appear and
+    // whenever the last loaded row scrolls into view; the in-flight flag keeps pages from doubling up.
+    private func loadNextPage() async {
+        guard hasMore, isLoadingPage == false else { return }
+        isLoadingPage = true
+        let offset = entries.count
+        let limit = pageSize
         let store = dictionaryStore
-        let loaded: [DictionaryEntry] = await Task.detached(priority: .userInitiated) {
-            (try? store?.fetchTopFrequencyEntries(limit: currentLimit)) ?? []
+        let page: [DictionaryEntry] = await Task.detached(priority: .userInitiated) {
+            (try? store?.fetchTopFrequencyEntries(limit: limit, offset: offset)) ?? []
         }.value
-        entries = loaded
+        entries.append(contentsOf: page)
+        hasMore = page.count == limit
+        isLoadingPage = false
         isLoading = false
     }
 }

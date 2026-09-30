@@ -593,23 +593,24 @@ extension DictionaryStore {
     }
 
     // Returns the most-frequent kanji from KANJIDIC2 (by Mainichi-newspaper
-    // frequency rank, 1 = most common) as fully-hydrated KanjiInfo records up
-    // to `limit`. Used by Browse Kanji by Frequency. Returns at most the
+    // frequency rank, 1 = most common) as fully-hydrated KanjiInfo records, one
+    // page of `limit` starting at `offset`. Used by Browse Kanji by Frequency. Returns at most the
     // ~2500 kanji that ship with a Mainichi rank — kanji with no rank are
     // excluded entirely since "most frequent" only makes sense for those.
-    nonisolated func fetchTopFrequencyKanji(limit: Int) throws -> [KanjiInfo] {
+    nonisolated func fetchTopFrequencyKanji(limit: Int, offset: Int = 0) throws -> [KanjiInfo] {
         let literals = try withSerializedDatabaseAccess { () -> [String] in
             let sql = """
             SELECT literal
             FROM kanji_characters
             WHERE freq_mainichi IS NOT NULL
-            ORDER BY freq_mainichi ASC
-            LIMIT ?1
+            ORDER BY freq_mainichi ASC, literal ASC
+            LIMIT ?1 OFFSET ?2
             """
             var statement: OpaquePointer?
             defer { sqlite3_finalize(statement) }
             try prepare(sql: sql, statement: &statement)
             sqlite3_bind_int(statement, 1, Int32(limit))
+            sqlite3_bind_int(statement, 2, Int32(offset))
             return try stepRows(statement: statement) { stmt -> String? in
                 sqlite3_column_text(stmt, 0).map { String(cString: $0) }
             }
