@@ -19,6 +19,35 @@ PIN_SOURCE="$ROOT_DIR/Kioku/Dictionary/DictionaryDownloadManager.swift"
 REPO="matthewmorrone/Kioku"
 ARCHIVE="$ROOT_DIR/Resources/dictionary.sqlite.xz"
 
+NOTES="$ROOT_DIR/Resources/dictionary-release-notes.md"
+
+# Writes the release notes: the checksum pin, the database's license (a compilation of CC BY-SA
+# sources is CC BY-SA 4.0 as a whole), every source that feeds it with its license (read from
+# data-manifest.json so the credits can't drift from the build), and UniDic's BSD notice, which
+# BSD-3-Clause requires to accompany binary redistribution.
+write_notes() {
+  python3 - "$ROOT_DIR/Resources/data-manifest.json" "$EXPECTED_SHA256" > "$NOTES" <<'PY'
+import json, sys
+manifest = json.load(open(sys.argv[1], encoding="utf-8"))
+print(f"sha256 (uncompressed dictionary.sqlite): {sys.argv[2]}")
+print()
+print("dictionary.sqlite.xz is the same database, xz-compressed; it is what the Kioku app downloads.")
+print()
+print("## License")
+print()
+print("This database is a compilation that adapts the CC BY-SA sources below, so it is distributed "
+      "under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Each source keeps its own license:")
+print()
+for r in manifest["resources"]:
+    if r.get("feedsDictionary") and not r.get("derived"):
+        print(f"- **{r['name']}**: {r.get('license', 'license not recorded')}")
+print()
+print("UniDic data is used under its BSD-3-Clause option:")
+print()
+PY
+  sed 's/^/    /' "$ROOT_DIR/Kioku/Settings/Licenses/UniDic-BSD.txt" >> "$NOTES"
+}
+
 # Writes dictionary.sqlite.xz beside the sqlite and proves it round-trips to the pinned bytes before
 # anything is uploaded. xz -6 is the preset Apple's Compression framework decodes as `.lzma`.
 build_archive() {
@@ -89,8 +118,11 @@ import json
 data = json.loads('''$EXISTING_JSON''')
 print('yes' if any(a['name'] == 'dictionary.sqlite.xz' for a in data['assets']) else 'no')
 ")
+  # Notes are regenerated on every run so an existing release picks up credit corrections.
+  write_notes
+  gh release edit "$RELEASE_TAG" --repo "$REPO" --notes-file "$NOTES"
   if [[ "$HAS_ARCHIVE" == "yes" ]]; then
-    echo "✓ Release $RELEASE_TAG already exists with both assets and a matching digest — nothing to publish."
+    echo "✓ Release $RELEASE_TAG already exists with both assets and a matching digest — notes refreshed."
     exit 0
   fi
   build_archive
@@ -127,9 +159,10 @@ if [[ -n "$MISSING_EXTRAS" ]]; then
 fi
 
 build_archive
+write_notes
 echo "→ Publishing $RELEASE_TAG ($ACTUAL_SHA256)"
 gh release create "$RELEASE_TAG" "$SQLITE" "$ARCHIVE" \
   --repo "$REPO" \
   --title "$RELEASE_TAG" \
-  --notes "sha256: $EXPECTED_SHA256"
+  --notes-file "$NOTES"
 echo "✓ Published $RELEASE_TAG."

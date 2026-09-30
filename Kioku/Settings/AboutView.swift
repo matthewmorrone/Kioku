@@ -19,7 +19,8 @@ struct AboutView: View {
                         title: dataset.name,
                         subtitle: dataset.description,
                         license: dataset.license,
-                        urlString: dataset.sourceURL
+                        urlString: dataset.sourceURL,
+                        licenseTextFile: dataset.licenseTextFile
                     )
                 }
             }
@@ -65,13 +66,14 @@ struct AboutView: View {
 }
 
 // One attribution row: bold title, subtitle, optional license line, tappable
-// source link. Used uniformly for datasets and libraries so the rendered list
-// stays consistent.
+// source link, and a "License text" link when the license's full text ships in the app.
+// Used uniformly for datasets and libraries so the rendered list stays consistent.
 private struct AttributionRow: View {
     let title: String
     let subtitle: String
     let license: String?
     let urlString: String
+    var licenseTextFile: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -91,6 +93,14 @@ private struct AttributionRow: View {
                         .font(.caption.monospaced())
                         .lineLimit(1)
                         .truncationMode(.middle)
+                }
+            }
+            if let licenseTextFile {
+                NavigationLink {
+                    LicenseTextView(resourceName: licenseTextFile)
+                } label: {
+                    Text("License text")
+                        .font(.caption)
                 }
             }
         }

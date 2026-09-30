@@ -16,6 +16,9 @@ nonisolated enum Attributions {
         let description: String
         let license: String
         let sourceURL: String
+        // Bundled .txt (name without extension, under Kioku/Settings/Licenses) holding the full
+        // license text, for licenses that require the text itself to ship with the app.
+        var licenseTextFile: String? = nil
     }
 
     // One third-party Swift library linked via SPM.
@@ -63,8 +66,9 @@ nonisolated enum Attributions {
         Dataset(
             name: "UniDic Pitch Accent",
             description: "Mora-level pitch-accent annotations derived from UniDic's kana-accent lexicon.",
-            license: "The UniDic Consortium — BSD, GPL or LGPL (your choice)",
-            sourceURL: "https://clrd.ninjal.ac.jp/unidic/"
+            license: "The UniDic Consortium — used under BSD-3-Clause (also offered under GPL or LGPL)",
+            sourceURL: "https://clrd.ninjal.ac.jp/unidic/",
+            licenseTextFile: "UniDic-BSD"
         ),
         Dataset(
             name: "RADKFILE2 / KRADFILE2",
@@ -82,7 +86,8 @@ nonisolated enum Attributions {
             name: "Tegaki-Zinnia (Japanese)",
             description: "Handwriting recognition model used for kanji handwriting input.",
             license: "Tegaki project — LGPL 2.1",
-            sourceURL: "https://github.com/tegaki/tegaki"
+            sourceURL: "https://github.com/tegaki/tegaki",
+            licenseTextFile: "LGPL-2.1"
         ),
         Dataset(
             name: "JLPT Vocabulary Lists",

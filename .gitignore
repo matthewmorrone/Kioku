@@ -5,6 +5,7 @@ __pycache__
 # .xz is the app's download, written by scripts/publish_dictionary_release.sh.
 Resources/dictionary.sqlite
 Resources/dictionary.sqlite.xz
+Resources/dictionary-release-notes.md
 Resources/jmdict-eng-3.6.2.json
 Resources/jiten-frequency-global.json
 Resources/ggml-tiny.bin
