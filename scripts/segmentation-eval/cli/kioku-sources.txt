@@ -49,3 +49,7 @@ Dictionary/DictionaryStore+FrequencyRanking.swift
 Dictionary/PartOfSpeechDetail.swift
 Dictionary/Segmenter/TransitionClass.swift
 Dictionary/Segmenter/SegmenterTransitionTable.swift
+Dictionary/DerivationAnalyzer.swift
+Dictionary/CompoundVerbSplitter.swift
+Dictionary/Conjugation/VerbConjugator.swift
+Dictionary/Conjugation/ConjugationGroup.swift

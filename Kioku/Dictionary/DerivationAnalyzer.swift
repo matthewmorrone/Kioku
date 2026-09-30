@@ -255,7 +255,7 @@ nonisolated enum DerivationAnalyzer {
     // verb and the leading part is itself verbal; nil otherwise. Also builds a 3-chip strip
     // (base + auxiliary lemmas and glosses) so the WordDetail header can render a plain gloss
     // line ("to search for + continue ~ing (auxiliary)") instead of the summary sentence.
-    private static func compoundVerb(components: [String], baseResolver: BaseResolver, glossResolver: GlossResolver?) -> Result? {
+    static func compoundVerb(components: [String], baseResolver: BaseResolver, glossResolver: GlossResolver?) -> Result? {
         guard components.count >= 2, let auxiliary = components.last,
               auxiliaryVerbs.contains(auxiliary) else { return nil }
         let base = components.dropLast().joined()
