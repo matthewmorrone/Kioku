@@ -30,6 +30,13 @@ nonisolated public struct DictionaryEntry: Equatable, Sendable {
         self.senses = senses
     }
 
+    // True when any written or kana form carries a JMdict priority tag (ichi1, news1, spec1, gai1,
+    // nfXX) — the dictionary's own mark that a word is in common use. 消す has one; the literary
+    // 消する, which 消して also conjugates, has none.
+    public var hasPriorityForm: Bool {
+        kanjiForms.contains { $0.priority?.isEmpty == false } || kanaForms.contains { $0.priority?.isEmpty == false }
+    }
+
     // Picks the first sense whose JMdict stagk/stagr restrictions are compatible with the given
     // reading and kanji form. See senses(forReading:kanji:) for the matching rules.
     public func sense(forReading reading: String?, kanji: String? = nil) -> DictionaryEntrySense? {

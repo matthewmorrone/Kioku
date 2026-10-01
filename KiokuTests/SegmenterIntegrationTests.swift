@@ -702,6 +702,24 @@ final class SegmenterIntegrationTests: XCTestCase {
         XCTAssertEqual(InflectionFormNames.describe(info.chain), "progressive")
     }
 
+    // 消して conjugates both 消す and the literary サ変 消する, but only 消す carries a JMdict priority tag,
+    // so the sheet shows it straight away; いった (言う, 行く, 要る) and きた (来る, 着る, 北) are several
+    // common words at once and stay unpicked until the user chooses.
+    func testPreferredLookupCandidatePicksTheOnlyCommonWord() throws {
+        let resources = try sharedResources()
+        let lexicon = Lexicon(
+            dictionaryStore: resources.dictionaryStore,
+            segmenter: resources.segmenter,
+            deinflector: resources.deinflector,
+            surfaceReadingData: [:]
+        )
+        let keshite = lexicon.lookupCandidates(surface: "消して")
+        XCTAssertTrue(keshite.contains { $0.headword == "消する" }, "消して lists 消する as a possibility")
+        XCTAssertEqual(Lexicon.preferredLookupCandidate(among: keshite)?.headword, "消す")
+        XCTAssertNil(Lexicon.preferredLookupCandidate(among: lexicon.lookupCandidates(surface: "いった")))
+        XCTAssertNil(Lexicon.preferredLookupCandidate(among: lexicon.lookupCandidates(surface: "きた")))
+    }
+
     // キス is tagged "n,vs" in JMdict — a suru-noun with no written "キスする" headword (the vs tag
     // alone is meant to signal "attach する"). Regression for the buildLattice exception that
     // admits katakana-noun+conjugated-する spans across the hiragana/katakana boundary, and for

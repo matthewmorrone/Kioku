@@ -47,4 +47,14 @@ nonisolated extension Lexicon {
         others.sort { ($0.entry.frequencyRank ?? Int.max) < ($1.entry.frequencyRank ?? Int.max) }
         return Array((leaders + others).prefix(Self.maxLookupCandidates))
     }
+
+    // The candidate to show before the user picks, or nil when the form is genuinely ambiguous.
+    // Only a word the dictionary marks as in common use can be preselected, and only when it is the
+    // only such one: 消して → 消す over the literary 消する, while いった (言う, 行く, 要る) and きた
+    // (来る, 着る, 北) stay unpicked. Frequency ratios don't decide it — 着た is an ordinary reading of
+    // きた even though 来る ranks far higher.
+    static func preferredLookupCandidate(among candidates: [LookupCandidate]) -> LookupCandidate? {
+        let common = candidates.filter { $0.entry.hasPriorityForm }
+        return common.count == 1 ? common[0] : nil
+    }
 }
