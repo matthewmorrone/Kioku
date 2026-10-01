@@ -23,7 +23,8 @@ Kioku makes network requests only when you initiate them:
   from the project's GitHub releases. After that, dictionary and reading
   features work fully offline.
 - **Model downloads** (for lyric alignment and vocal isolation) fetch model
-  files from Hugging Face the first time you align a song. These requests
+  files from the project's GitHub releases and from Hugging Face the first time
+  you align a song. These requests
   carry no personal data. Audio transcription uses Apple's on-device speech
   recognition.
 - **Optional AI features** (correction, song breakdowns, word explanations)
