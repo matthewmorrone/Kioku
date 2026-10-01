@@ -227,7 +227,55 @@ extension DictionaryStore {
                     scoreBySurface[String(cString: textPointer)] = score
                 }
             }
+            try addEntryFallbackScoresForUnlistedKana(into: &scoreBySurface)
             return scoreBySurface
+        }
+    }
+
+    // Zipf units taken off an entry's best score when it stands in for a kana spelling the
+    // frequency list never ranked. Unlisted means "rarely written this way", so it must stay below
+    // what the entry's own ranked spellings score; set from the segmentation eval (see
+    // scripts/segmentation-eval/README.md).
+    nonisolated static let unlistedKanaScoreDiscount = 1.0
+
+    // Kana spellings that `surface_frequency` never ranked (かきかえ — the list only ranks 書き換え)
+    // would otherwise price as unranked dictionary words, i.e. rarer than any ranked word, and lose
+    // to a split that inherits a ranked lemma's frequency through deinflection (か|きかえ, via
+    // きかえる). Such a spelling gets its entry's best score, discounted, instead. Listed surfaces
+    // keep their as-written score, so the はこ-vs-箱 orthography distinction is untouched. Nouns
+    // only: on kana2k, kana spellings of expressions and adverbs (しつがわるい, よこに) took the
+    // fallback and swallowed their neighbours, while the noun cases (こくない, どうはい) all improved.
+    nonisolated private func addEntryFallbackScoresForUnlistedKana(into scoreBySurface: inout [String: Double]) throws {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        try prepare(sql: """
+            WITH entry_rank AS (
+                SELECT entry_id, MIN(frequency_rank) AS rank
+                FROM word_frequency WHERE frequency_rank IS NOT NULL GROUP BY entry_id
+            )
+            SELECT kf.text, MIN(er.rank)
+            FROM kana_forms kf JOIN entry_rank er ON er.entry_id = kf.entry_id
+            WHERE EXISTS (
+                SELECT 1 FROM senses s
+                WHERE s.entry_id = kf.entry_id AND ',' || s.pos || ',' GLOB '*,n,*'
+            )
+            GROUP BY kf.text
+            """, statement: &statement)
+        var stepCode = sqlite3_step(statement)
+        while stepCode == SQLITE_ROW {
+            if let textPointer = sqlite3_column_text(statement, 0) {
+                let surface = String(cString: textPointer)
+                let rank = Int(sqlite3_column_int(statement, 1))
+                if scoreBySurface[surface] == nil,
+                   let score = FrequencyData(frequencyRank: rank, wordfreqZipf: nil).normalizedScore {
+                    let discounted = score - Self.unlistedKanaScoreDiscount
+                    if discounted > 0 { scoreBySurface[surface] = discounted }
+                }
+            }
+            stepCode = sqlite3_step(statement)
+        }
+        guard stepCode == SQLITE_DONE else {
+            throw DictionarySQLiteError.step(message: errorMessage())
         }
     }
 
