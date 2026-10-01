@@ -11,6 +11,10 @@ extension Segmenter {
     // normalizes it. resolvedTrieLemmasBySource refuses that recovery to surfaces that are already words.
     static let ichidanStemLabel = "ichidan stem"
 
+    // Chain label of deinflection.json's "nounSuffixForms" group (私たち → 私). Folding a plural suffix
+    // off a noun is not a conjugation, so surfaceIsOutrankedByConjugation does not count it.
+    static let nounSuffixLabel = "noun suffix"
+
     // Checks whether a surface string exists directly in the dictionary trie without deinflection.
     func containsSurface(_ surface: String) -> Bool {
         matchedTrieLemmas(for: surface).isEmpty == false
@@ -446,13 +450,14 @@ extension Segmenter {
     // a more frequent word: ゆこう is 柚柑 (a citrus) and ゆく's volitional, ならして is 馴らし手 and
     // 鳴らす's て-form, and in running text the verb is what they are. Only a real conjugation counts —
     // a chain of bare stem recoveries does not, because a stem that is also a noun (思い, 休み, 帰り)
-    // is that noun as often as it is the stem, so 思い never yields to 思う here.
+    // is that noun as often as it is the stem, so 思い never yields to 思う here. Nor does a noun
+    // suffix: 私たち is its own word, not 私 (whose わたくし reading would then be painted over it).
     func surfaceIsOutrankedByConjugation(_ surface: String, candidates: Set<String>, paths: DeinflectionPathMap) -> Bool {
         let surfaceFrequency = frequencyScore(of: surface)
         return candidates.contains { candidate in
             guard candidate != surface, frequencyScore(of: candidate) > surfaceFrequency else { return false }
             return (paths[candidate] ?? []).contains { path in
-                path.chain.contains { $0.contains("stem") == false }
+                path.chain.contains { $0.contains("stem") == false && $0 != Self.nounSuffixLabel }
             }
         }
     }
@@ -463,10 +468,14 @@ extension Segmenter {
         frequencyScore(of: lemma)
     }
 
-    // Frequency score of a spelling, 0 when it has none; old-form kanji score as their modern form.
+    // Frequency score of a spelling, 0 when it has none. A spelling with old-form kanji scores as the
+    // better of itself and its modern form: the frequency list ranks rare old spellings on their own
+    // (電氣, 學校), and that rank, not the word's, would otherwise decide how old-form text segments.
     // Internal (not private): the particle-cluster split, in Segmenter.swift, calls this too.
     func frequencyScore(of surface: String) -> Double {
-        KyujitaiNormalizer.firstHit(for: surface) { frequencyScoreBySurface[$0] } ?? 0
+        let asWritten = frequencyScoreBySurface[surface] ?? 0
+        guard let modern = KyujitaiNormalizer.normalize(surface) else { return asWritten }
+        return max(asWritten, frequencyScoreBySurface[modern] ?? 0)
     }
 
     // Tunable structural weights for preferredLemmaScore. Grouped like SegmenterScoring's
