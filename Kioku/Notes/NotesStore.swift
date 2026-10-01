@@ -135,12 +135,14 @@ final class NotesStore: ObservableObject {
     }
 
     // Clears stored segmentation and reading overrides so the segmenter recomputes from scratch on next load.
+    // Also drops the user-edited marker, which otherwise re-enables the Read tab's reset button.
     func resetNote(id: UUID) {
         guard let index = notes.firstIndex(where: { $0.id == id }) else {
             return
         }
 
         notes[index].segments = nil
+        notes[index].segmentsAreUserEdited = nil
         notes[index].modifiedAt = Date()
     }
 

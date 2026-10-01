@@ -116,6 +116,18 @@ final class NotesStoreTests: XCTestCase {
         XCTAssertEqual(reader.notes.first?.title, "New")
     }
 
+    // resetNote clears the user-edited marker along with the segments, so the reset note doesn't
+    // reopen with the Read tab's reset button still enabled.
+    func testResetNoteClearsUserEditedMarker() {
+        let store = NotesStore(fileManager: fileManager)
+        store.addNote(Note(title: "Edited", content: "猫", segments: [], segmentsAreUserEdited: true))
+        let target = store.notes.first!
+
+        store.resetNote(id: target.id)
+        XCTAssertNil(store.note(withID: target.id)?.segments)
+        XCTAssertEqual(store.note(withID: target.id)?.hasUserEditedSegments, false)
+    }
+
     // duplicateNote inserts a copy at the top with the same content but a fresh UUID.
     func testDuplicateNoteCreatesNewIdentifierWithSameContent() {
         let store = NotesStore(fileManager: fileManager)
