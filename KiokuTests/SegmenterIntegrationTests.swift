@@ -156,14 +156,13 @@ final class SegmenterIntegrationTests: XCTestCase {
         XCTAssertFalse(entries.isEmpty)
     }
 
-    // preferredLemma("ゆこう") resolves to "ゆこう" itself, not "ゆく" — the surface coincidentally
-    // has its own unrelated real dictionary entry, and preferredLemma's surface-equality preference
-    // ranks that self-match first (same failure shape as the どこかに/Turkey bug in
-    // testShichauLemmatizesToSuru's neighborhood). preferredLemma(for:preferring:) must look past
-    // that and find "ゆく" among the other candidates.
+    // ゆこう has its own unrelated dictionary entry (柚柑, a citrus), but as ゆく's volitional it is the
+    // verb: surfaceIsOutrankedByConjugation sorts the self-match after the more frequent ゆく, so
+    // preferredLemma resolves to ゆく, and preferredLemma(for:preferring:) finds it among the
+    // candidates too.
     func testPreferredLemmaPreferringAuxiliaryFindsYukuOverSelfMatch() throws {
         let resources = try sharedResources()
-        XCTAssertEqual(resources.segmenter.preferredLemma(for: "ゆこう"), "ゆこう")
+        XCTAssertEqual(resources.segmenter.preferredLemma(for: "ゆこう"), "ゆく")
         XCTAssertEqual(
             resources.segmenter.preferredLemma(for: "ゆこう", preferring: DerivationAnalyzer.auxiliaryVerbs),
             "ゆく"

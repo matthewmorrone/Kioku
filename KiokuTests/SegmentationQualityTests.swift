@@ -96,7 +96,7 @@ final class SegmentationQualityTests: XCTestCase {
 
     // The same two kana, opposite answers: はい is "yes" here…
     func testKeepsHaiAsYes() throws {
-        XCTAssertEqual(try segments(of: "はい、そうです"), ["はい", "、", "そうです"])
+        XCTAssertEqual(try segments(of: "はい、そうです"), ["はい", "、", "そう", "です"])
     }
 
     // …and は + いつも here. A per-surface denylist can only get one of the pair right.

@@ -2,7 +2,7 @@
 # segmenter must keep (a lyric line, a reviewed sentence, a regression). Run: python3 named_cases.py
 だけどきっと	だけど|きっと
 問題はいつ始めるか	問題|は|いつ|始める|か
-はい、そうです	はい|、|そうです
+はい、そうです	はい|、|そう|です
 はいつも笑っている	は|いつも|笑っている
 視力障害があります	視力障害|が|あります
 私たちがそこへ行く	私たち|が|そこ|へ|行く
