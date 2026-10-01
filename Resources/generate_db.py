@@ -96,8 +96,11 @@ def sha256_of_file(path: Path) -> str:
 # with internet access can rebuild dictionary.sqlite end to end.
 # ---------------------------------------------------------------------------------------------
 
-# When true (--offline), missing archives are an error instead of being downloaded.
+# When true (--offline), missing archives are an error instead of being downloaded, and rolling
+# sources are read as last fetched.
 OFFLINE = False
+# Rolling sources already fetched fresh during this run, so a second use doesn't download again.
+_REFRESHED_ROLLING = set()
 
 
 # Loads the manifest and indexes its resources by name.
@@ -118,13 +121,18 @@ def _download(url, dest):
     part.replace(dest)
 
 
-# Returns the cached archive for a manifest entry, downloading it when absent or when its
-# pinned archiveSha256 no longer matches. Rolling upstreams (Tatoeba) pin no hash and are
-# reused as cached; delete SOURCE_CACHE_DIR to refresh them.
+# Returns the archive for a manifest entry. Versioned sources (fixed release URLs) are kept in
+# SOURCE_CACHE_DIR and downloaded only when absent or when their pinned archiveSha256 no longer
+# matches. Rolling sources (Tatoeba, EDRDG's JMdict XML, Jiten) are served only as the current
+# upstream edition, so they pin no hash and are fetched fresh once per run; nothing in the cache is
+# irreplaceable, and deleting SOURCE_CACHE_DIR is always safe.
 def fetch_archive(entry):
     fetch = entry["fetch"]
     archive = SOURCE_CACHE_DIR / fetch["cacheName"]
     pinned = fetch.get("archiveSha256")
+    if entry.get("rolling") and not OFFLINE and entry["name"] not in _REFRESHED_ROLLING:
+        archive.unlink(missing_ok=True)
+        _REFRESHED_ROLLING.add(entry["name"])
     if archive.exists() and pinned and sha256_of_file(archive) != pinned:
         print(f"  Cached {archive.name} does not match its pinned hash — re-downloading")
         archive.unlink()
@@ -162,6 +170,8 @@ def materialize_source(entry):
     dest = PROJECT_ROOT / entry["path"]
     pinned = entry.get("sha256")
     if dest.exists() and pinned and sha256_of_file(dest) == pinned:
+        return
+    if dest.exists() and entry.get("rolling") and OFFLINE:
         return
     archive = fetch_archive(entry)
     fetch = entry["fetch"]

@@ -31,14 +31,14 @@
       "derived": false,
       "url": "http://ftp.edrdg.org/pub/Nihongo/JMdict_e.gz",
       "sha256": null,
-      "provenance": "JMdict_e.gz as served on 2026-09-30 (header \"JMdict created: 2026-09-30\"). EDRDG rebuilds it daily, so a re-download will not match the pinned hash; refreshing it is a deliberate re-pin. It is newer than the jmdict-eng JSON release, so a few forms added or renamed since then carry no tags.",
+      "provenance": "EDRDG rebuilds JMdict_e.gz daily and keeps no old editions, so it is fetched fresh from upstream on every dictionary rebuild and no hash is pinned. dictionary-v13 was built from the 2026-09-30 edition. It can be newer than the jmdict-eng JSON release, so a few forms added or renamed since then carry no tags.",
       "fetch": {
         "url": "http://ftp.edrdg.org/pub/Nihongo/JMdict_e.gz",
         "format": "gz",
-        "cacheName": "JMdict_e-2026-09-30.gz",
-        "archiveSha256": "749f303d713157be1a4d873011aa32698ef6c633ee503d5cd3fb9f865ec82634"
+        "cacheName": "JMdict_e.gz"
       },
-      "feedsDictionary": true
+      "feedsDictionary": true,
+      "rolling": true
     },
     {
       "name": "extras",
@@ -62,17 +62,17 @@
       "required": true,
       "derived": false,
       "url": "https://api.jiten.moe/api/frequency-list/download?downloadType=yomitan",
-      "sha256": "71d3098dbd0c3e991996e8cfa4326f55b07768750bf59774a6fa3939be0ed946",
-      "provenance": "Jiten global frequency list, Yomitan export (index.json revision \"Jiten 26-09-27\", downloaded 2026-09-29). The endpoint serves the current list, so a re-download will not match the pinned archive hash; refreshing it is a deliberate re-pin. generate_db.py extracts term_meta_bank_1.json to Resources/jiten-frequency-global.json.",
+      "sha256": null,
+      "provenance": "Jiten global frequency list, Yomitan export. The endpoint serves only the current list, so it is fetched fresh from upstream on every dictionary rebuild and no hash is pinned. dictionary-v13 was built from revision \"Jiten 26-09-27\". generate_db.py extracts term_meta_bank_1.json to Resources/jiten-frequency-global.json.",
       "fetch": {
         "url": "https://api.jiten.moe/api/frequency-list/download?downloadType=yomitan",
         "format": "zip",
         "member": "term_meta_bank_1.json",
-        "cacheName": "jiten-freq-global-2026-09-27.zip",
-        "archiveSha256": "3ebfb307389efd8f98ab6362c18f76adb8ad7274e93305b3d9f3ea92cb22aee2"
+        "cacheName": "jiten-freq-global.zip"
       },
       "materialize": true,
-      "feedsDictionary": true
+      "feedsDictionary": true,
+      "rolling": true
     },
     {
       "name": "wordfreq",
