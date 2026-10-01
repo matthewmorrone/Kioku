@@ -64,6 +64,9 @@ struct SongLineCard: View {
     let onJumpToLine: (Int) -> Void
 
     @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
+    // Width the Japanese row has to fit into, measured so long lines shrink instead of wrapping
+    // (see SongLineFitSize). Zero until first laid out, which draws at the full size.
+    @State private var originalLineWidth: CGFloat = 0
 
     // For each field, prefer the line's own value; fall back to the referenced line's
     // when this line is a reference and the field is empty. This is the load-bearing piece
@@ -275,7 +278,12 @@ struct SongLineCard: View {
                 .accessibilityHint(explanationsAccessibilityHint)
         } else {
             Text(line.original)
-                .font(.system(size: 28, weight: .medium))
+                .font(.system(size: SongLineFitSize.size(
+                    for: line.original,
+                    baseSize: 28,
+                    availableWidth: originalLineWidth - 8,
+                    font: { UIFont.systemFont(ofSize: $0, weight: .medium) }
+                ), weight: .medium))
                 .lineSpacing(4)
                 .multilineTextAlignment(.leading)
                 // Matches the CoreText renderer's content inset (top/bottom 8, left/right 4)
@@ -285,6 +293,7 @@ struct SongLineCard: View {
                 // rendered via the renderer.
                 .padding(EdgeInsets(top: 8, leading: 4, bottom: 8, trailing: 4))
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { originalLineWidth = $0 }
                 .background(speakingBackground(isSpeaking(.sentence)))
                 .contentShape(Rectangle())
                 .onTapGesture { onToggleExpansion() }
@@ -316,7 +325,14 @@ struct SongLineCard: View {
             isFuriganaVisible: true,
             isVisualEnhancementsEnabled: true,
             isColorAlternationEnabled: false,
-            textSize: .constant(28),
+            textSize: .constant(Double(SongLineFitSize.size(
+                for: line.original,
+                baseSize: 28,
+                availableWidth: originalLineWidth - 8,
+                font: { ReadingFont.body(size: $0) },
+                segmentationRanges: cache.segmentationRanges,
+                furiganaBySegmentLocation: cache.furiganaBySegmentLocation
+            ))),
             lineSpacing: 4,
             kerning: 0,
             furiganaGap: furiganaGap,
@@ -337,6 +353,7 @@ struct SongLineCard: View {
             isScrollEnabled: false
         )
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { originalLineWidth = $0 }
     }
 
     // Estimates which of the Read tab's segmented words (`segmentationRanges`, from the same
