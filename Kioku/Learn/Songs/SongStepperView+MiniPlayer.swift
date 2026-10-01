@@ -197,14 +197,18 @@ extension SongStepperView {
         }
         switch currentPlaybackStep {
         case .intro:
-            if loadedIntroOutroURL != nil, introOutroPlayback.currentTimeMs > 0 {
-                introOutroPlayback.play()
+            if loadedIntroOutroURL != nil, introOutroPlayback.currentTimeMs > 0,
+               let firstStartMs, introOutroPlayback.currentTimeMs < firstStartMs {
+                introOutroPlayback.playRange(startMs: introOutroPlayback.currentTimeMs, endMs: firstStartMs)
             } else {
                 playIntro()
             }
         case .outro:
             if loadedIntroOutroURL != nil, introOutroPlayback.currentTimeMs > 0 {
-                introOutroPlayback.play()
+                introOutroPlayback.playRange(
+                    startMs: introOutroPlayback.currentTimeMs,
+                    endMs: Int(introOutroPlayback.duration * 1000)
+                )
             } else {
                 playOutro()
             }
@@ -261,6 +265,47 @@ extension SongStepperView {
     }
 
     // MARK: - Intro / outro
+
+    // Where the first matched line starts in the song; nil without audio or matched lines.
+    var firstStartMs: Int? {
+        guard listenSourceAudioURL != nil else { return nil }
+        return lineRangesByIndex.values.map({ $0.startMs }).min()
+    }
+
+    // Whether the song has an intro before the first line to play.
+    var hasIntro: Bool {
+        (firstStartMs ?? 0) > 0
+    }
+
+    // The intro or outro reached its end. The intro runs on into the first line (unless lines
+    // pause at their end); the outro is the end of the song, so it hands off to "continue to the
+    // next note".
+    func finishIntroOutroPlayback() {
+        switch currentPlaybackStep {
+        case .intro:
+            guard pauseAfterEachLine == false, let first = displayItems.first?.line else { return }
+            isListening = true
+            configureLiveListen()
+            liveListen.play(fromLine: first.index)
+        case .outro:
+            onFinishedPlaying?(note)
+        case .line:
+            break
+        }
+    }
+
+    // The last line finished playing straight through: the song's outro follows when there is
+    // one, otherwise the song is over.
+    func finishLinesPlayback() {
+        guard let sourceURL = listenSourceAudioURL,
+              let lastEndMs = lineRangesByIndex.values.map({ $0.endMs }).max(),
+              let durationMs = AudioFileDuration.seconds(of: sourceURL).map({ Int($0 * 1000) }),
+              lastEndMs < durationMs else {
+            onFinishedPlaying?(note)
+            return
+        }
+        playOutro()
+    }
 
     // Plays the song's own audio from its very start (or a previously-saved position within
     // that span — see SongPlaybackProgress.lastIntroOutroPositionMs) up to the first matched

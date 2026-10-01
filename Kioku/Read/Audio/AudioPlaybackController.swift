@@ -24,6 +24,9 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // by SongStepperView to know when a full listen-along track — not just one line's clip —
     // has finished, for the "continue to the next note" setting.
     var onDidFinishPlayingNaturally: (() -> Void)? = nil
+    // Fired when a `playRange` call reaches its `endMs` and auto-pauses (not on an explicit
+    // pause or seek). Lets the breakdown chain its intro into the first line.
+    var onDidFinishRange: (() -> Void)? = nil
 
     private var player: AVAudioPlayer?
     var cues: [SubtitleCue] = []
@@ -299,6 +302,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
                 self.stopAtMs = nil
                 self.stopWorkItem = nil
                 self.pause()
+                self.onDidFinishRange?()
             }
         }
         stopWorkItem = item
@@ -374,8 +378,11 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         if player.isPlaying == false && isPlaying {
             isPlaying = false
             stopTimer()
+            // A playRange ending at the file's end must not also fire its range-end callback.
+            cancelStopWorkItem()
+            stopAtMs = nil
             activeCueIndex = nil
-                onDidFinishPlayingNaturally?()
+            onDidFinishPlayingNaturally?()
             return
         }
 
@@ -385,6 +392,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         if let stopAt = stopAtMs, currentTimeMs >= stopAt {
             stopAtMs = nil
             pause()
+            onDidFinishRange?()
         }
     }
 

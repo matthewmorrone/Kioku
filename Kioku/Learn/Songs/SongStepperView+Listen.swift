@@ -39,9 +39,14 @@ extension SongStepperView {
         liveListen.sentenceProgress
     }
 
-    // Toolbar headphones: play the whole script in sequence, resuming from wherever it last
+    // Toolbar headphones: play the whole song in sequence — the song's own intro first when
+    // starting from the top, then every line, then the outro — resuming from wherever it last
     // stopped.
     func playAllListen() {
+        if liveListen.currentSegment == nil, hasIntro {
+            playIntro()
+            return
+        }
         isListening = true
         configureLiveListen()
         liveListen.play()

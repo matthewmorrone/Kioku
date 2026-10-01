@@ -323,9 +323,9 @@ struct SongStepperView: View {
             // Reassigned on every appearance (harmless — same closure, same `liveListen`
             // instance for this view's lifetime) so "continue to the next note" fires only
             // once the whole script finishes on its own, never on a per-line stop.
-            liveListen.onDidFinishPlayingNaturally = { [note, onFinishedPlaying] in
-                onFinishedPlaying?(note)
-            }
+            liveListen.onDidFinishPlayingNaturally = { finishLinesPlayback() }
+            introOutroPlayback.onDidFinishRange = { finishIntroOutroPlayback() }
+            introOutroPlayback.onDidFinishPlayingNaturally = { finishIntroOutroPlayback() }
             currentPlaybackStep = SongPlaybackProgress.lastStep(forNoteID: note.id) ?? .intro
             // Speculative: hands the controller its script now, before any tap, so its
             // one-time setup (opening the note's audio file, resolving voices) finishes in the
