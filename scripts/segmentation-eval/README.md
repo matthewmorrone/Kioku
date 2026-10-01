@@ -76,7 +76,7 @@ headwords by the JMdict maintainers. https://downloads.tatoeba.org/exports/jpn_i
 | kana2k | 85.65 | 1.23 (250) | 4.01 |
 | CI fixture (300; not re-run; PR #91) | 91.64 | 0.26 | 2.77 |
 | lyric lines reviewed | 36 / 38 | | |
-| named cases | 61 / 62 | | |
+| named cases | 62 / 63 | | |
 
 History: greedy + demotion list 80.0 / 3.41 (held2k) → Viterbi on surface ranks 86.55 / 0.91 (PR #83,
 tag `segmentation-viterbi-baseline-2026-09-19` + `dictionary-v9`) → fitted overhead + inflection-step
