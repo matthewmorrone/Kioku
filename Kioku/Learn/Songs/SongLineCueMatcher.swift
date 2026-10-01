@@ -8,10 +8,11 @@ import Foundation
 // the song) so a chorus repeating "サヨナラ" matches its successive occurrences instead of all
 // snapping to the first cue.
 //
-// Matching is whitespace-normalized equality. SRT lyric files in practice contain the
-// same characters as the breakdown's line.original (the LLM is fed the verbatim note
-// text), so equality after whitespace strip is enough for the common case. Lines that
-// don't match any cue simply don't get a playback range — the UI hides their play button.
+// Matching is whitespace-normalized equality, falling back to containment: a line with no equal
+// cue ahead of the cursor takes the next cue whose text contains it. The fallback covers lines the
+// LLM shortened on the user's instruction (a breakdown note like "ignore everything in
+// parentheses" drops "(セーラースマイル)" from line.original while the cue keeps it). Lines that
+// match no cue either way don't get a playback range — the UI hides their play button.
 enum SongLineCueMatcher {
 
     // Returns line.index → (startMs, endMs) for lines whose text matches a single cue, each
@@ -24,13 +25,39 @@ enum SongLineCueMatcher {
         cues: [SubtitleCue]
     ) -> [Int: (startMs: Int, endMs: Int)] {
         let matches = matchedCueIndices(lines: lines, cues: cues)
+        let originalByIndex = Dictionary(lines.map { ($0.index, $0.original) }, uniquingKeysWith: { first, _ in first })
         var result: [Int: (startMs: Int, endMs: Int)] = [:]
         for (position, match) in matches.enumerated() {
             let cue = cues[match.cueIndex]
             let nextCue = position + 1 < matches.count ? cues[matches[position + 1].cueIndex] : nil
-            result[match.lineIndex] = tightenedRange(for: cue, nextCue: nextCue)
+            let range = tightenedRange(for: cue, nextCue: nextCue)
+            result[match.lineIndex] = narrowed(range, toLine: originalByIndex[match.lineIndex] ?? "", in: cue)
         }
         return result
+    }
+
+    // Narrows a cue's range to the stretch of the cue the line's own text covers, so a line
+    // matched by containment doesn't play what the LLM left out of it (a dropped
+    // "(セーラースマイル)" backing vocal): from the onset of the line's first character to the
+    // onset of the first character after it. A line equal to its cue, a cue without
+    // checkpoints, or a line not found verbatim in the cue text keeps `range` unchanged.
+    private static func narrowed(
+        _ range: (startMs: Int, endMs: Int),
+        toLine original: String,
+        in cue: SubtitleCue
+    ) -> (startMs: Int, endMs: Int) {
+        let lineText = original.trimmingCharacters(in: .whitespacesAndNewlines)
+        let found = (cue.text as NSString).range(of: lineText)
+        guard lineText.isEmpty == false, found.location != NSNotFound, cue.checkpoints.isEmpty == false else {
+            return range
+        }
+        let checkpoints = cue.checkpoints.sorted { $0.charOffsetInCue < $1.charOffsetInCue }
+        let lineEnd = found.location + found.length
+        let startOnset = checkpoints.last(where: { $0.charOffsetInCue <= found.location })?.timeMs ?? range.startMs
+        let endOnset = checkpoints.first(where: { $0.charOffsetInCue >= lineEnd })?.timeMs ?? range.endMs
+        let startMs = max(range.startMs, startOnset)
+        let endMs = min(range.endMs, endOnset)
+        return endMs > startMs ? (startMs, endMs) : range
     }
 
     // Returns line.index → the cue that line matched, for cutting per-word snippets out of the
@@ -50,26 +77,26 @@ enum SongLineCueMatcher {
     // Walks lines and cues in parallel, pairing each line to the next cue (from a
     // forward-only cursor) whose text matches. Split out of computeRanges so the tightening
     // pass below can see each match's NEXT match too (needed for the trailing-edge bound).
+    // An equal cue anywhere ahead wins over a containing one, so the looser fallback can't pull
+    // a short line onto an earlier, longer cue that merely includes it.
     private static func matchedCueIndices(
         lines: [SongLine],
         cues: [SubtitleCue]
     ) -> [(lineIndex: Int, cueIndex: Int)] {
         var matches: [(lineIndex: Int, cueIndex: Int)] = []
         var cursor = 0
+        let normCues = cues.map { normalize($0.text) }
 
         for line in lines {
             let normLine = normalize(line.original)
-            guard normLine.isEmpty == false else { continue }
+            guard normLine.isEmpty == false, cursor < normCues.count else { continue }
 
-            var i = cursor
-            while i < cues.count {
-                let normCue = normalize(cues[i].text)
-                if normCue.isEmpty == false && normCue == normLine {
-                    matches.append((lineIndex: line.index, cueIndex: i))
-                    cursor = i + 1
-                    break
-                }
-                i += 1
+            let remaining = cursor..<normCues.count
+            let match = remaining.first { normCues[$0] == normLine }
+                ?? remaining.first { normCues[$0].contains(normLine) }
+            if let match {
+                matches.append((lineIndex: line.index, cueIndex: match))
+                cursor = match + 1
             }
         }
 
