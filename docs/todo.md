@@ -78,7 +78,7 @@ written so a new session can pick it up cold.
 
 ## Release
 Not ready to submit yet (2026-09-30). Two checks to run once the release commit is settled
-(after the MMS replacement and any other pre-release work land); docs/RELEASE.md is the full gate.
+(the HuBERT aligner replaced MMS on 2026-09-30, cc0b3fc); docs/RELEASE.md is the full gate.
 - [ ] **Measure a Release build.** No Release build has been made since the size and licensing work
       of 2026-09-28–30. Run `scripts/distribute.sh --no-upload` from a clean `main` (archives the
       Release configuration and exports the .ipa without uploading; it's a full rebuild, so ask

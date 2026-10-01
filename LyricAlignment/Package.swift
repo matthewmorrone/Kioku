@@ -1,7 +1,7 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
-// No package dependencies: alignment (MMS), vocal isolation (HTDemucs) and VAD all run on CoreML /
+// No package dependencies: alignment (HuBERT phonemes), vocal isolation (HTDemucs) and VAD all run on CoreML /
 // Accelerate from this target's own sources.
 let package = Package(
     name: "LyricAlignment",

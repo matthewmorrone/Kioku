@@ -51,8 +51,8 @@ tests land (todo: "UI automation tests for the core loop"), this is done by hand
 ## 6. TestFlight
 - [ ] TestFlight smoke test on an **iOS 18.x** device if available — automated
       testing ran on the iOS 26.5 simulator; 18.0 is the deployment floor.
-- [ ] Verify first-run downloads complete: the dictionary (GitHub release), and the MMS aligner
-      and HTDemucs vocal isolator (Hugging Face) when a song is first aligned.
+- [ ] Verify first-run downloads complete: the dictionary and the HuBERT phoneme aligner (GitHub
+      releases), and the HTDemucs vocal isolator (Hugging Face) when a song is first aligned.
 
 ## 7. Submit
 - [ ] Paste metadata from APPSTORE.md (description, keywords, privacy/age/export answers, review notes).

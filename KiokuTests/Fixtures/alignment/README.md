@@ -69,7 +69,7 @@ failure mode this test is guarding against.
 
 ## Running the tests
 
-The whole quality suite is slow (vocal isolation + the MMS aligner on each song). It runs on
+The whole quality suite is slow (vocal isolation + the aligner model on each song). It runs on
 the phone, not the simulator; `scripts/alignment-replay` reproduces the aligner on the Mac in
 about a second per song.
 

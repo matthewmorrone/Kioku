@@ -7,7 +7,7 @@ fill, energy-VAD pin, wordless-intro rule, Viterbi, line timings, repeated-line 
 `LyricAlignment/Sources`, so a replay is the shipped code. Verified line-for-line against the
 phone's saved cues on four songs (2026-09-25).
 
-What it does not cover: vocal isolation and the MMS model itself run only on the phone (or, for the
+What it does not cover: vocal isolation and the aligner model itself run only on the phone (or, for the
 model, through `stem_emissions.py`). A replay starts from the phone's emission dumps.
 
 ## Quick start
@@ -39,15 +39,12 @@ window from `~/Projects/alignment/consensus/<title>.disputed.txt` (override with
 
 ## Testing an audio change
 
-`stem_emissions.py` runs the phone's CoreML model over any 16 kHz mono audio with the app's
-windowing. Copy the model off the phone once:
+`stem_emissions.py` runs the app's CoreML aligner over any 16 kHz mono audio with the app's
+windowing. Fetch the model the app downloads (the release `HubertPhonemeModelStore` pins) once:
 
 ```bash
-mkdir -p work/MMSForcedAligner.mlmodelc && for f in analytics/coremldata.bin coremldata.bin metadata.json model.mil weights/weight.bin; do
-  mkdir -p "work/MMSForcedAligner.mlmodelc/$(dirname $f)"
-  xcrun devicectl device copy from --device <id> --domain-type appDataContainer --domain-identifier matthewmorrone.Kioku \
-    --source "Documents/MMSForcedAligner.mlmodelc/$f" --destination "work/MMSForcedAligner.mlmodelc/$f"
-done
+curl -fL -o work/aligner.zip https://github.com/matthewmorrone/Kioku/releases/download/aligner-hubert-v1/HubertPhonemeAligner.mlmodelc.zip
+unzip -q -d work work/aligner.zip   # → work/HubertPhonemeAligner.mlmodelc
 ```
 
 Then decode the variant audio to 16 kHz (`ffmpeg -i x.m4a -ac 1 -ar 16000 -f f32le x.f32`), run

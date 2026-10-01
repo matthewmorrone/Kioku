@@ -10,7 +10,7 @@ What we actually link.
 
 ### LyricAlignment (local) ✅
 - **Location:** `LyricAlignment/` (sibling SPM package)
-- **Why installed:** Lyric alignment (HTDemucs vocal isolation + MMS forced alignment, both CoreML); produces the timed cues the read screen consumes. No package dependencies of its own.
+- **Why installed:** Lyric alignment (HTDemucs vocal isolation + HuBERT phoneme CTC alignment, both CoreML); produces the timed cues the read screen consumes. No package dependencies of its own.
 
 ### MeCab — dictionary build only, not in the app
 - **Where:** `Resources/generate_db.py`, at dictionary build time. `mecab-python3` + `ipadic` (requirements.txt) back wordfreq's Japanese tokenizer, which supplies `wordfreq_zipf`; the Homebrew `mecab` CLI with `mecab-ipadic` splits expression headwords for `entry_decomposition` (the word screen's おとな + に + なる breakdown).
