@@ -100,7 +100,8 @@ enum CTCAlignmentCore {
         let durationSec = Double(vocalMono.count) / 44_100
         let timed = lineTimings(
             lines: lines, romanization: romanization, spanTokenRanges: spanTokenRanges,
-            tokenSpans: spans, onsetOf: { onsets[$0] }, frameSec: matrix.frameSec, durationSec: durationSec
+            tokenSpans: spans, onsetOf: { onsets[$0] }, frameSec: matrix.frameSec, durationSec: durationSec,
+            regions: regions
         )
         let spread = RepeatedLineSpreader.spread(lines: timed.lines, lineTokens: timed.lineTokens, regions: regions, durationSec: durationSec)
         let moved = zip(timed.lines, spread.lines).filter { $0.start != $1.start }.count
@@ -156,10 +157,14 @@ enum CTCAlignmentCore {
     // onset of its first placed token and ends at its last; the end is bridged to the
     // next line's start when the gap is short (a held final vowel plus a breath — CTC leaves
     // the token as soon as the phone is recognizable, so its own end lands well before the
-    // singer stops), while a longer gap stays open for a ♪ marker.
+    // singer stops), while a longer gap stays open for a ♪ marker. A line never ends past the
+    // sung region it starts in: CTC can park a line's last token after a silence (セーラースター
+    // ソング's final の lands in the outro, 6 s after the singing stops), and the line would
+    // otherwise stretch across that silence.
     private static func lineTimings(
         lines: [String], romanization: [[RomanizedSpan]], spanTokenRanges: [[Range<Int>]],
-        tokenSpans: [(start: Int, end: Int)], onsetOf: (Int) -> Int, frameSec: Double, durationSec: Double
+        tokenSpans: [(start: Int, end: Int)], onsetOf: (Int) -> Int, frameSec: Double, durationSec: Double,
+        regions: [(start: Double, end: Double)]
     ) -> (lines: [AlignedLine], lineTokens: [[AlignedToken]]) {
         let sustainedVowelGap = 4.0
         let bridgeMargin = 0.05
@@ -194,7 +199,8 @@ enum CTCAlignmentCore {
             let ctcEnd = lineEnd[i]! + perceptualOffset
             let gapAfter = nextBound - ctcEnd
             let extendedEnd = (gapAfter > 0 && gapAfter <= sustainedVowelGap) ? nextBound - bridgeMargin : ctcEnd
-            let end = max(start + 0.3, min(extendedEnd, nextBound, start + 9.0))
+            let regionEnd = regions.first { $0.start <= start && start < $0.end }?.end ?? nextBound
+            let end = max(start + 0.3, min(extendedEnd, nextBound, regionEnd))
             result.append(AlignedLine(text: lines[i], start: start, end: end))
 
             var tokens: [AlignedToken] = []
