@@ -76,7 +76,7 @@ headwords by the JMdict maintainers. https://downloads.tatoeba.org/exports/jpn_i
 | kana2k | 85.65 | 1.23 (250) | 4.01 |
 | CI fixture (300; not re-run; PR #91) | 91.64 | 0.26 | 2.77 |
 | lyric lines reviewed | 36 / 38 | | |
-| named cases | 60 / 62 | | |
+| named cases | 61 / 62 | | |
 
 History: greedy + demotion list 80.0 / 3.41 (held2k) → Viterbi on surface ranks 86.55 / 0.91 (PR #83,
 tag `segmentation-viterbi-baseline-2026-09-19` + `dictionary-v9`) → fitted overhead + inflection-step
@@ -119,8 +119,11 @@ the common exemption the penalty only worked between 0.29 and 0.40 (よみ and �
 8.25/8.75): cut-through flat at 90–91 throughout, exact only trades split for merged — not changed.
 Against JPDB on the same code: held2k 79 vs 82 cut-throughs, kana2k 250 vs 237 (55 Jiten-only, 42
 JPDB-only: word-by-word rank disagreement on kana strings like では / ですが / してやる, no pattern).
-Named-case failures: そうです (Jiten splits そう|です, MeCab's convention) and がいよう|の|み (a real error:
-Jiten ranks のみ lower). Lyrics: 本当に kept whole (JMdict's adverb; convention), ならして as before.
+Named-case failure: がいよう|の|み, a real error. Jiten ranks kana み (#6244, JPDB left it unranked), and み
+escapes the lone-kana penalty through its JMdict counter entry. Limiting that exemption to kana after a
+numeral fixes 外用|のみ|に but costs kana2k (こ for 子 loses it: 250 → 253 cut-throughs with particles exempt),
+and the line then flips to がい|よ|うのみにしよう because Jiten ranks kana がいよう at #348,063 — not shipped.
+そう|です is the kept convention (MeCab's; the user prefers the split), not a failure. Lyrics: 本当に kept whole (JMdict's adverb; convention), ならして as before.
 
 Known misses on lyrics: ならして after a bare noun — **lyrics drop particles, the transition table
 is counted from prose** (noun → verb costs +2.7 nats). The transition weight is irrelevant to the
