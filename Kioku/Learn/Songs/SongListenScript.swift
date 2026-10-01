@@ -2,8 +2,8 @@ import Foundation
 
 // Turns a SongBreakdown into a flat, ordered list of things to play/say: for each line, the
 // sung audio clip (when a matched time range is available), then the Japanese original, then
-// the English gist, then each word — its sung snippet (or reading), its English definition,
-// and its reading again — before moving to the next line. This is the "script" that SongLiveListenController plays
+// the English gist, then each word — its sung snippet, its synthesized Japanese reading, then
+// its English definition — before moving to the next line. This is the "script" that SongLiveListenController plays
 // through live, one step at a time; the language tag on each SongListenSegment is what drives
 // the Japanese/English voice switching ("code switching") during synthesis, and the leading
 // `.clip` step (when present) is what lets the listener hear the line sung before its
@@ -60,10 +60,10 @@ nonisolated enum SongListenScript {
                 steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .translation, text: ttsFriendlyText(gist), language: .english)))
             }
 
-            // Each word: heard `wordRepeatCount` times (the singer's own snippet when the line's
-            // alignment brackets it, else the synthesized reading), then its definition, then the
-            // synthesized reading once more so the word is the last thing heard before moving on.
-            // `searchFrom` walks the cue text forward so a word sung twice maps in order.
+            // Each word: the singer's own snippet (when the line's alignment brackets it), then the
+            // synthesized Japanese reading, then the English definition. `wordRepeatCount` repeats
+            // the snippet, or the reading when there's no snippet. `searchFrom` walks the cue text
+            // forward so a word sung twice maps in order.
             var searchFrom = 0
             for word in effectiveWords(for: line, linesByIndex: linesByIndex) {
                 let surface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -76,14 +76,14 @@ nonisolated enum SongListenScript {
                     spokenText: spokenReading(original: surface, romaji: word.sungRomaji)
                 )
 
-                var leading = SongListenStep.speech(spoken)
                 if let cue = lineCues[line.index], let lineEndMs = lineRanges[line.index]?.endMs,
                    let located = SongWordClipLocator.locate(surface, in: cue, lineEndMs: lineEndMs, searchFrom: searchFrom) {
-                    leading = .wordClip(lineIndex: line.index, surface: surface, startMs: located.startMs, endMs: located.endMs)
+                    let clip = SongListenStep.wordClip(lineIndex: line.index, surface: surface, startMs: located.startMs, endMs: located.endMs)
+                    steps.append(contentsOf: Array(repeating: clip, count: max(1, wordRepeatCount)))
+                    steps.append(.speech(spoken))
                     searchFrom = located.nextSearchFrom
-                }
-                for _ in 0..<max(1, wordRepeatCount) {
-                    steps.append(leading)
+                } else {
+                    steps.append(contentsOf: Array(repeating: .speech(spoken), count: max(1, wordRepeatCount)))
                 }
 
                 // `text` is the displayed definition, which SongLineCard matches to tint the row;
@@ -98,7 +98,6 @@ nonisolated enum SongListenScript {
                         spokenText: ttsFriendlyText(definition)
                     )))
                 }
-                steps.append(.speech(spoken))
             }
 
             // Previously omitted entirely — the pattern-bank note (displayed by

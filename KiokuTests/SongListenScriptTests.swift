@@ -101,8 +101,8 @@ final class SongListenScriptTests: XCTestCase {
             if case .speech(let s) = step, s.kind == .wordSurface { return s }
             return nil
         }
-        // Once before the definition and once after it.
-        XCTAssertEqual(wordSurfaceSteps.count, 2)
+        // Once, before the definition.
+        XCTAssertEqual(wordSurfaceSteps.count, 1)
         for step in wordSurfaceSteps {
             XCTAssertEqual(step.text, "命")
             XCTAssertEqual(step.spokenText, "いのち")
@@ -121,27 +121,28 @@ final class SongListenScriptTests: XCTestCase {
         }
     }
 
-    // Without alignment each word is: reading, definition, reading again.
-    func testWordIsReadThenDefinedThenReadAgain() {
+    // Without alignment each word is: reading, then definition.
+    func testWordIsReadThenDefined() {
         let bd = breakdown(lines: [line(words: [
             SongWord(surface: "夕凪", sungRomaji: "", definition: "evening calm"),
         ])])
-        XCTAssertEqual(wordStepKinds(SongListenScript.build(from: bd)), ["say:夕凪", "def:evening calm", "say:夕凪"])
+        XCTAssertEqual(wordStepKinds(SongListenScript.build(from: bd)), ["say:夕凪", "def:evening calm"])
     }
 
-    // The repeat option repeats what leads the word, not the closing reading.
+    // Without a snippet, the repeat option repeats the reading.
     func testWordRepeatCountRepeatsTheLeadingUtterance() {
         let bd = breakdown(lines: [line(words: [
             SongWord(surface: "夕凪", sungRomaji: "", definition: "evening calm"),
         ])])
         XCTAssertEqual(
             wordStepKinds(SongListenScript.build(from: bd, wordRepeatCount: 3)),
-            ["say:夕凪", "say:夕凪", "say:夕凪", "def:evening calm", "say:夕凪"]
+            ["say:夕凪", "say:夕凪", "say:夕凪", "def:evening calm"]
         )
     }
 
-    // With the line's cue aligned, the word leads with the singer's own snippet, cut from its
-    // checkpoint onset to the next checkpoint's onset.
+    // With the line's cue aligned, the word is the singer's own snippet (repeated), then the
+    // Japanese reading, then the English, the snippet cut from its checkpoint onset to the next
+    // checkpoint's onset.
     func testAlignedWordLeadsWithItsSungSnippet() {
         let bd = breakdown(lines: [line(original: "夕凪の時間", words: [
             SongWord(surface: "時間", sungRomaji: "", definition: "time"),
@@ -157,7 +158,7 @@ final class SongListenScriptTests: XCTestCase {
             lineCues: [1: cue],
             wordRepeatCount: 2
         )
-        XCTAssertEqual(wordStepKinds(steps), ["clip:時間", "clip:時間", "def:time", "say:時間"])
+        XCTAssertEqual(wordStepKinds(steps), ["clip:時間", "clip:時間", "say:時間", "def:time"])
         guard let clip = steps.first(where: { if case .wordClip = $0 { return true } else { return false } }),
               case .wordClip(_, _, let startMs, let endMs) = clip else {
             return XCTFail("expected a word clip")
