@@ -2,6 +2,7 @@ import XCTest
 @testable import Kioku
 
 // Covers how the user's optional per-song note is folded into the breakdown request.
+@MainActor
 final class SongBreakdownPromptTests: XCTestCase {
     // A blank note must leave the user turn as the bare lyrics so existing requests are unchanged.
     func testBlankNoteSendsLyricsOnly() {
