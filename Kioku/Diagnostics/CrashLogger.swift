@@ -1,5 +1,6 @@
 import Foundation
 import MetricKit
+import os
 import UIKit
 
 // Captures crashes from every channel iOS exposes and persists them as JSON in the app's
@@ -37,6 +38,10 @@ private struct CrashLoggerHangItem: Sendable {
     let hangDuration: Double
     let callStackTreeJSON: String
 }
+
+// Its own os.Logger rather than AppLog: the crash paths (a signal handler among them) must log
+// regardless of the per-feature Settings toggles AppLog consults.
+private nonisolated let crashLog = Logger(subsystem: "matthewmorrone.Kioku", category: "crash")
 
 nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unchecked Sendable {
 
@@ -76,7 +81,7 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
         // clear accumulated dumps. No-op on normal launches.
         if ProcessInfo.processInfo.arguments.contains("-clearCrashes") {
             clearCrashFiles()
-            print("==== CrashLogger: cleared prior crash records on launch (-clearCrashes) ====")
+            crashLog.info("cleared prior crash records on launch (-clearCrashes)")
         }
 
         // Dump any prior crashes to the console so they're visible if Xcode is attached and
@@ -257,8 +262,8 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
         }
     }
 
-    // Dump all persisted crash records to the console at startup. Visible in Xcode console
-    // when attached, and in the device log stream (Console.app) when not.
+    // Logs every persisted crash record at startup: visible in the Xcode console when attached,
+    // and in the device log stream (Console.app, category "crash") when not.
     private func surfacePreviousCrashes() {
         guard let files = try? FileManager.default.contentsOfDirectory(
             at: crashesDirectory,
@@ -271,16 +276,16 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
         }
 
         guard sorted.isEmpty == false else { return }
-        print("==== CrashLogger: \(sorted.count) prior crash record(s) on disk ====")
+        crashLog.info("\(sorted.count, privacy: .public) prior crash record(s) on disk")
         for file in sorted {
             guard let data = try? Data(contentsOf: file),
                   let json = try? JSONSerialization.jsonObject(with: data),
                   let pretty = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
             else { continue }
-            print("---- \(file.lastPathComponent) ----")
-            if let str = String(data: pretty, encoding: .utf8) { print(str) }
+            if let str = String(data: pretty, encoding: .utf8) {
+                crashLog.info("\(file.lastPathComponent, privacy: .public):\n\(str, privacy: .public)")
+            }
         }
-        print("==== CrashLogger: end of prior crashes ====")
     }
 
     // Returns persisted crash files sorted newest-first, for Settings UI display.
@@ -332,16 +337,16 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
             withJSONObject: entry,
             options: [.prettyPrinted, .sortedKeys]
         ) else {
-            print("[CrashLogger] could not serialize crash entry for prefix=\(prefix)")
+            crashLog.error("could not serialize crash entry for prefix=\(prefix, privacy: .public)")
             return
         }
         // Surface persistence failures to the device log so a "lost" crash doesn't simply
-        // vanish. If we reached this path from a signal handler the print itself carries the
+        // vanish. If we reached this path from a signal handler the log call itself carries the
         // same async-signal-safety risk the write() already accepts (see file header).
         do {
             try data.write(to: url, options: .atomic)
         } catch {
-            print("[CrashLogger] failed to persist \(prefix) crash to \(url.lastPathComponent): \(error.localizedDescription)")
+            crashLog.error("failed to persist \(prefix, privacy: .public) crash to \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
     }
 
