@@ -191,7 +191,7 @@ final class SongBreakdownStore: ObservableObject {
     // `providerLabel` is supplied by the caller so the loading view can show "via Claude"
     // / "via OpenAI" / "stub mode" using the same lookup it would have used inline. It is
     // a UI-only label and has no effect on dispatch.
-    func startGeneration(forNoteID id: UUID, lyrics: String, providerLabel: String) {
+    func startGeneration(forNoteID id: UUID, lyrics: String, userNote: String = "", providerLabel: String) {
         if generationTasksByNoteID[id] != nil { return }
         generationStateByNoteID[id] = .running(startedAt: Date(), providerLabel: providerLabel, partialLines: [])
         let task = Task { @MainActor [weak self] in
@@ -200,6 +200,7 @@ final class SongBreakdownStore: ObservableObject {
                 let breakdown = try await self.service.generate(
                     noteID: id,
                     lyrics: lyrics,
+                    userNote: userNote,
                     onPartialLines: self.makePartialLinesHandler(forNoteID: id)
                 )
                 try Task.checkCancellation()
@@ -218,9 +219,15 @@ final class SongBreakdownStore: ObservableObject {
     }
 
     // Generates a note's breakdown with the plain breakdown request. Segmentation corrections
-    // are a separate, on-demand request from the Read tab (LLMCorrectionClient).
+    // are a separate, on-demand request from the Read tab (LLMCorrectionClient). The user's saved
+    // per-song note (SongBreakdownUserNote) travels with the request.
     func startBreakdown(forNote note: Note, providerLabel: String) {
-        startGeneration(forNoteID: note.id, lyrics: note.content, providerLabel: providerLabel)
+        startGeneration(
+            forNoteID: note.id,
+            lyrics: note.content,
+            userNote: SongBreakdownUserNote.note(forNoteID: note.id),
+            providerLabel: providerLabel
+        )
     }
 
     // Lines parsed so far from an in-flight stream, or empty when the note isn't generating.

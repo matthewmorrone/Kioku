@@ -72,11 +72,31 @@ enum SongBreakdownPrompt {
     // Returns the prompt with the lyrics block substituted. Falls back to appending the lyrics
     // if the marker is missing (defensive — shouldn't happen with the literal above, but the
     // template lives in one place and prevents silently shipping a prompt without lyrics).
-    static func instantiated(withLyrics lyrics: String) -> String {
+    static func instantiated(withLyrics lyrics: String, userNote: String = "") -> String {
+        let body = userTurn(lyrics: lyrics, userNote: userNote)
         if template.contains(lyricsMarker) {
-            return template.replacingOccurrences(of: lyricsMarker, with: lyrics)
+            return template.replacingOccurrences(of: lyricsMarker, with: body)
         }
-        return template + "\n\n" + lyrics
+        return template + "\n\n" + body
+    }
+
+    // The per-song part of the request: the lyrics, followed by the user's optional note for
+    // this song (e.g. "ignore everything in parentheses"). The note rides after the lyrics in
+    // the uncached user turn so the static system prompt stays byte-identical and cacheable,
+    // and it is labelled as overriding the rules above so the model honours it over defaults
+    // like rule 7's "skip nothing".
+    static func userTurn(lyrics: String, userNote: String) -> String {
+        let note = userNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard note.isEmpty == false else { return lyrics }
+        return lyrics + """
+
+
+            ## Additional instructions for this song
+
+            Follow these instructions from me. Where they conflict with the rules above, these take priority.
+
+            \(note)
+            """
     }
 
     // The static instruction portion of the template — everything up to and including the

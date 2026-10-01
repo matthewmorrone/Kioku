@@ -54,6 +54,8 @@ struct SongStepperView: View {
     @State var expandedByLineIndex: Set<Int> = []
     @State private var isRegenerateConfirmationPresented: Bool = false
     @State private var isCancelConfirmationPresented: Bool = false
+    // Editable copy of the user's per-song LLM note (SongBreakdownUserNote), saved on generate.
+    @State private var userNoteDraft: String = ""
     // Listen-along state shared with SongStepperView+Listen (internal for that reason).
     // True once this view has engaged listen-along (played anything); drives teardown.
     @State var isListening: Bool = false
@@ -269,11 +271,11 @@ struct SongStepperView: View {
         .onChange(of: currentPlaybackStep) { _, newStep in
             SongPlaybackProgress.recordStep(newStep, forNoteID: note.id)
         }
-        .confirmationDialog(
+        .alert(
             "Regenerate this breakdown?",
-            isPresented: $isRegenerateConfirmationPresented,
-            titleVisibility: .visible
+            isPresented: $isRegenerateConfirmationPresented
         ) {
+            TextField("Note for the LLM (optional)", text: $userNoteDraft)
             Button("Regenerate", role: .destructive) {
                 startGeneration()
             }
@@ -315,6 +317,7 @@ struct SongStepperView: View {
         // Covers first appearance with an already-cached breakdown — onChange above only fires
         // on a *transition*, not on the initial value.
         .onAppear {
+            userNoteDraft = SongBreakdownUserNote.note(forNoteID: note.id)
             noteFuriganaRestoration = Self.restoreNoteFurigana(from: note)
             refreshLineDerivedState(for: displayItems)
             // Reassigned on every appearance (harmless — same closure, same `liveListen`
@@ -456,6 +459,10 @@ struct SongStepperView: View {
                 .font(.footnote)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.tertiary)
+            TextField("Note for the LLM (optional), e.g. ignore text in parentheses", text: $userNoteDraft, axis: .vertical)
+                .lineLimit(1...4)
+                .textFieldStyle(.roundedBorder)
+                .disabled(isRunning)
             Button {
                 startGeneration()
             } label: {
@@ -691,8 +698,10 @@ struct SongStepperView: View {
     // Triggers a generation call via the store. The store owns the Task, so dismissing
     // this sheet does NOT cancel the work — the user can leave, come back, and find the
     // cards still filling in or the result already cached. The existing breakdown is left
-    // in place until the new one lands, so a cancelled or failed run loses nothing.
+    // in place until the new one lands, so a cancelled or failed run loses nothing. The note
+    // draft is saved first so the store sends it and later regenerates reuse it.
     private func startGeneration() {
+        SongBreakdownUserNote.setNote(userNoteDraft, forNoteID: note.id)
         songBreakdownStore.clearGenerationError(forNoteID: note.id)
         songBreakdownStore.startBreakdown(forNote: note, providerLabel: SongBreakdownStore.loadingProviderLabel())
     }
