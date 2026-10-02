@@ -265,10 +265,10 @@ never leave the app in mixed old/new state.
 
 ---
 
-## Secrets & Untrusted Input (`KeychainStore`, `ZipExtractor`, `BridgeHTTPParser`)
+## Secrets & Untrusted Input (`KeychainStore`, `ZipExtractor`)
 
-1. **No secrets in UserDefaults**: API keys (OpenAI/Claude, Jimaku) and the
-   bridge bearer token live in the Keychain. Legacy plaintext values migrate
+1. **No secrets in UserDefaults**: API keys (OpenAI/Claude, Jimaku) live in
+   the Keychain. Legacy plaintext values migrate
    on first read and the UserDefaults copy is deleted.
    - *Rationale*: the defaults plist is unencrypted on disk and lands in
      unencrypted device backups.
@@ -288,14 +288,6 @@ never leave the app in mixed old/new state.
    - *Rationale*: `resolve/main` lets a future repo compromise change the bytes
      shipped installs receive.
    - *Status*: ✅ (by construction; URL built from the pinned constant).
-
-4. **Bridge resource bounds**: the LAN bridge caps header blocks (16 KiB),
-   bodies (1 MiB), concurrent connections (16), and per-connection lifetime
-   (15 s), and rejects unauthenticated requests as soon as headers complete.
-   - *Rationale*: an open LAN port must not let a peer hold unbounded memory
-     or buffer bodies for unauthenticated requests.
-   - *Status*: ⚠️ (parser caps pinned by `BridgeHTTPParserTests`; connection
-     limits enforced in `KiokuBridgeServer` but not integration-tested).
 
 ---
 

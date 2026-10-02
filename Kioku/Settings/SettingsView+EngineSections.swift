@@ -71,11 +71,5 @@ extension SettingsView {
             Text("Debug Overlays")
         }
         #endif
-
-        // The MCP bridge only listens while Kioku is on screen (iOS suspends background sockets),
-        // so it ships in Debug builds only, as a development tool.
-        #if DEBUG
-        BridgeSettingsSection(bridgeServer: bridgeServer)
-        #endif
     }
 }

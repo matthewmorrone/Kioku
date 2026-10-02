@@ -1,14 +1,14 @@
 import Foundation
 import Security
 
-// Minimal Keychain-backed string storage for app secrets (API keys, bridge token).
+// Minimal Keychain-backed string storage for app secrets (API keys).
 // Secrets must not live in UserDefaults: its plist is unencrypted on disk and is
 // captured by unencrypted device backups. Items are stored as generic passwords
 // scoped to this app, accessible after first unlock so background features
-// (bridge, scheduled work) can still read them.
+// (scheduled work) can still read them.
 //
-// `nonisolated` because secret readers include free-standing actors (JimakuProvider)
-// and the bridge server; the Security framework calls themselves are thread-safe.
+// `nonisolated` because secret readers include free-standing actors (JimakuProvider);
+// the Security framework calls themselves are thread-safe.
 nonisolated enum KeychainStore {
     private static let service = "app.kioku.secrets"
 

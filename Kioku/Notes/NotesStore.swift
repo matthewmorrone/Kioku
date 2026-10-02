@@ -307,8 +307,8 @@ final class NotesStore: ObservableObject {
     // Inserts or updates one note in memory so editing does not re-read the full store.
     // `segmentsAreUserEdited` uses preserve-on-nil semantics: pass an explicit Bool to set the
     // marker (read editor / import), or leave it nil to keep the existing value on update (and
-    // default to false on insert). This stops callers that don't care about the marker — bridge
-    // routes, transcription — from clobbering a note's user-edited status.
+    // default to false on insert). This stops callers that don't care about the marker — such as
+    // transcription — from clobbering a note's user-edited status.
     func upsertNote(id: UUID?, title: String, content: String, segments: [SegmentRange]?, segmentsAreUserEdited: Bool? = nil) -> UUID {
         let now = Date()
         if let id, let index = notes.firstIndex(where: { $0.id == id }) {

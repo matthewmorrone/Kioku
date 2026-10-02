@@ -7,8 +7,6 @@ import UserNotifications
 // day, data transfer, dictionary, developer tools and storage. Footer prose is intentionally omitted — rows stand alone.
 struct SettingsView: View {
     let dictionaryStore: DictionaryStore?
-    // Hosts the on-demand local-network MCP listener whose UI lives in BridgeSettingsSection.
-    @ObservedObject var bridgeServer: KiokuBridgeServer
 
     // Not private: SettingsView+BackupSection.swift's export/import functions read these directly.
     @EnvironmentObject var notesStore: NotesStore

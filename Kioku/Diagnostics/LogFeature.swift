@@ -8,7 +8,6 @@ import Foundation
 // inventing another bespoke log file.
 enum LogFeature: String, CaseIterable, Identifiable {
     case llmCorrection
-    case bridgeServer
     case dictionaryDownload
     case transcription
     case notesImport
@@ -28,7 +27,6 @@ enum LogFeature: String, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .llmCorrection: return "LLM Correction"
-        case .bridgeServer: return "Bridge Server"
         case .dictionaryDownload: return "Dictionary Download"
         case .transcription: return "Transcription"
         case .notesImport: return "Notes Import (OCR / URL / Bulk)"
@@ -49,7 +47,6 @@ enum LogFeature: String, CaseIterable, Identifiable {
     var detail: String {
         switch self {
         case .llmCorrection: return "System/user prompts, raw provider responses, parse and salvage steps."
-        case .bridgeServer: return "Incoming HTTP requests/responses on the local-network bridge."
         case .dictionaryDownload: return "Dictionary archive fetch, decompression, and install progress."
         case .transcription: return "Speech model downloads and on-device transcription/alignment runs."
         case .notesImport: return "OCR capture, URL text import, and bulk import runs."
