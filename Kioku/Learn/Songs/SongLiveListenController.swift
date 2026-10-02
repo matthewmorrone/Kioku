@@ -76,6 +76,13 @@ final class SongLiveListenController: NSObject, ObservableObject {
     override init() {
         super.init()
         synthesizer.delegate = self
+        NotificationCenter.default.addObserver(self, selector: #selector(otherPlayerStarted(_:)), name: ExclusivePlayback.didStart, object: nil)
+    }
+
+    // Pauses when another of the app's players starts (ExclusivePlayback): one sound at a time.
+    @objc private func otherPlayerStarted(_ notification: Notification) {
+        guard notification.object as AnyObject? !== self else { return }
+        pause()
     }
 
     // Loads a new script. A no-op when it's the same script and source already loaded, so a SwiftUI
@@ -544,6 +551,8 @@ final class SongLiveListenController: NSObject, ObservableObject {
         } catch {
             lastError = error.localizedDescription
         }
+        // Starting narration silences whatever else was playing (the intro/outro, a Read song).
+        if lastError == nil { ExclusivePlayback.claim(self) }
     }
 
     // Releases the audio session so other apps can resume audio once this controller is done
