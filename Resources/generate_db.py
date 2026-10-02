@@ -11,6 +11,8 @@ import sqlite3
 import subprocess
 import tempfile
 import hashlib
+import platform
+from datetime import datetime, timezone
 import bisect
 import tarfile
 import urllib.request
@@ -113,8 +115,15 @@ def load_manifest():
         return {entry["name"]: entry for entry in json.load(f)["resources"]}
 
 
-# Downloads url to dest via a temp file and rename, so an interrupted run never leaves a
-# truncated archive that a later run would trust.
+# What this run fetched, recorded so the built database can say exactly which upstream bytes it
+# came from (build_sources; see record_build_provenance). Keyed by archive file name, then by
+# manifest entry (radkfile2 and kradfile2 share one archive).
+_FETCHED_ARCHIVES = {}
+SOURCES_USED = {}
+
+
+# Downloads url to dest via a temp file and rename, and returns what the server said about it
+# (final URL after redirects, Last-Modified, ETag) for the provenance record.
 def _download(url, dest):
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_name(dest.name + ".part")
@@ -122,7 +131,28 @@ def _download(url, dest):
     print(f"  Downloading {url}")
     with urllib.request.urlopen(request, timeout=120) as response, open(part, "wb") as out:
         shutil.copyfileobj(response, out, 1 << 20)
+        headers = {"final_url": response.geturl(), "last_modified": response.headers.get("Last-Modified"),
+                   "etag": response.headers.get("ETag")}
     part.replace(dest)
+    return headers
+
+
+# The upstream's own edition stamp inside an archive, where it has one: the "JMdict created" date
+# in EDRDG's XML header, or the revision in a Yomitan dictionary's index.json (Jiten).
+def _upstream_version(fetch, archive):
+    try:
+        if fetch["format"] == "gz":
+            with gzip.open(archive, "rt", encoding="utf-8", errors="replace") as f:
+                match = re.search(r"JMdict created: ([0-9-]+)", f.read(1 << 16))
+                return f"JMdict created {match.group(1)}" if match else None
+        if fetch["format"] == "zip":
+            with zipfile.ZipFile(archive) as z:
+                if "index.json" in z.namelist():
+                    index = json.loads(z.read("index.json"))
+                    return index.get("revision") or index.get("title")
+    except (OSError, ValueError, zipfile.BadZipFile) as error:
+        return f"unreadable ({error})"
+    return None
 
 
 # Returns the run's copy of a manifest entry's archive, downloading it on first use. Sources on
@@ -133,11 +163,16 @@ def fetch_archive(entry):
     archive = WORK_DIR / "archives" / fetch["cacheName"]
     pinned = fetch.get("archiveSha256")
     if not archive.exists():
-        _download(fetch["url"], archive)
-        if pinned and sha256_of_file(archive) != pinned:
-            raise RuntimeError(
-                f"{entry['name']}: downloaded archive hash {sha256_of_file(archive)} != pinned {pinned}"
-            )
+        headers = _download(fetch["url"], archive)
+        digest = sha256_of_file(archive)
+        if pinned and digest != pinned:
+            raise RuntimeError(f"{entry['name']}: downloaded archive hash {digest} != pinned {pinned}")
+        _FETCHED_ARCHIVES[archive.name] = dict(
+            headers, url=fetch["url"], fetched_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            bytes=archive.stat().st_size, sha256=digest, pinned=bool(pinned),
+            upstream_version=_upstream_version(fetch, archive),
+        )
+    SOURCES_USED.setdefault(entry["name"], dict(_FETCHED_ARCHIVES[archive.name], archive=archive.name))
     return archive
 
 
@@ -173,6 +208,7 @@ def materialize_source(entry):
             out.write(source.read().decode("euc_jp").encode("utf-8"))
         else:
             shutil.copyfileobj(source, out, 1 << 20)
+    SOURCES_USED[entry["name"]].update(extracted_file=dest.name, extracted_sha256=sha256_of_file(dest))
     if pinned and sha256_of_file(dest) != pinned:
         raise RuntimeError(f"{entry['name']}: extracted {dest.name} hash {sha256_of_file(dest)} != pinned {pinned}")
 
@@ -1820,11 +1856,66 @@ def build_database():
     with phase("Materializing canonical entry id lookup table..."):
         materialize_canonical_entry_ids(conn)
 
+    with phase("Recording build provenance..."):
+        record_build_provenance(conn)
+
     with phase("Finalizing (commit, ANALYZE, optimize)..."):
         conn.commit()
         conn.execute("ANALYZE")
         conn.execute("PRAGMA optimize")
         conn.close()
+
+
+# Writes exactly what this build used into the database itself, so the record travels with every
+# published copy: build_sources has one row per upstream source (URL, final URL, fetch time, the
+# upstream's own edition stamp, Last-Modified/ETag, size and sha256 of the downloaded archive and of
+# any file extracted from it); build_info has the repo commit, whether the tree was dirty, the
+# hashes of the local files it reads and the versions of the tools that shape the output.
+def record_build_provenance(conn):
+    conn.execute("""
+        CREATE TABLE build_sources (
+            name TEXT PRIMARY KEY, url TEXT NOT NULL, final_url TEXT, fetched_at TEXT NOT NULL,
+            upstream_version TEXT, last_modified TEXT, etag TEXT, archive TEXT NOT NULL,
+            bytes INTEGER NOT NULL, sha256 TEXT NOT NULL, pinned INTEGER NOT NULL,
+            extracted_file TEXT, extracted_sha256 TEXT
+        )""")
+    for name, r in sorted(SOURCES_USED.items()):
+        conn.execute(
+            "INSERT INTO build_sources VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (name, r["url"], r.get("final_url"), r["fetched_at"], r.get("upstream_version"), r.get("last_modified"),
+             r.get("etag"), r["archive"], r["bytes"], r["sha256"], int(r["pinned"]), r.get("extracted_file"),
+             r.get("extracted_sha256")),
+        )
+    conn.execute("CREATE TABLE build_info (key TEXT PRIMARY KEY, value TEXT)")
+    for key, value in build_info().items():
+        conn.execute("INSERT INTO build_info VALUES (?, ?)", (key, value))
+
+
+# The non-download inputs of this build: the commit, uncommitted changes, the local files the
+# generator reads (extras.json, the manifest, ScriptClassifier.swift's kana ranges, itself) and the tool versions (wordfreq ranks and MeCab splits both land in the database).
+def build_info():
+    def run(*cmd):
+        try:
+            return subprocess.run(cmd, capture_output=True, text=True, check=True, cwd=PROJECT_ROOT).stdout.strip()
+        except (OSError, subprocess.CalledProcessError) as error:
+            return f"unavailable ({error})"
+    try:
+        import wordfreq
+        wordfreq_version = getattr(wordfreq, "__version__", None) or run(sys.executable, "-m", "pip", "show", "wordfreq").split("Version: ")[-1].split()[0]
+    except ImportError:
+        wordfreq_version = "not installed"
+    info = {
+        "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "git_commit": run("git", "rev-parse", "HEAD"),
+        "git_dirty_files": run("git", "status", "--porcelain") or "none",
+        "python": platform.python_version(),
+        "wordfreq": wordfreq_version,
+        "mecab": run("mecab", "--version"),
+    }
+    for local in (EXTRAS_PATH, MANIFEST_PATH, SCRIPT_CLASSIFIER_SWIFT_PATH, Path(__file__).resolve()):
+        if local.exists():
+            info[f"sha256 {local.relative_to(PROJECT_ROOT)}"] = sha256_of_file(local)
+    return info
 
 
 # The two materialization passes below are split into standalone functions as a single source
@@ -2187,6 +2278,9 @@ def build(start):
         print("Extras SHA256: (missing; no supplemental entries loaded)")
 
     build_database()
+    print("Sources used:")
+    for name, r in sorted(SOURCES_USED.items()):
+        print(f"  {name}: {r.get('upstream_version') or r.get('last_modified') or '-'}  sha256 {r['sha256'][:16]}…  ({r['fetched_at']})")
 
     total = time.time() - start
     print_phase_summary(total)

@@ -5,9 +5,9 @@
 # (downloaded by the app, a quarter of the size; expectedSHA256 pins the
 # uncompressed bytes, which the app checks after unpacking). Run this locally after regenerating the
 # dictionary (Resources/generate_db.py) and bumping releaseTag/expectedSHA256
-# to a new tag — never in CI: generate_db.py's upstream inputs (JMDict,
-# KANJIDIC, Jiten frequency data, etc.) are gitignored, so only whichever
-# machine actually ran the generator has the correct bytes to publish.
+# to a new tag. Publish the exact file you checked: a rebuild fetches upstream
+# afresh and can differ, and the database records which upstream bytes it was
+# built from (build_sources / build_info), which the release notes list.
 #
 # Requires: `gh` CLI authenticated with a token that can create releases on
 # this repo (`gh auth status` to check).
@@ -23,11 +23,12 @@ NOTES="$ROOT_DIR/Resources/dictionary-release-notes.md"
 
 # Writes the release notes: the checksum pin, the database's license (a compilation of CC BY-SA
 # sources is CC BY-SA 4.0 as a whole), every source that feeds it with its license (read from
-# data-manifest.json so the credits can't drift from the build), and UniDic's BSD notice, which
-# BSD-3-Clause requires to accompany binary redistribution.
+# data-manifest.json so the credits can't drift from the build), exactly which upstream bytes and
+# tools it was built from (the database's build_sources / build_info tables), and UniDic's BSD
+# notice, which BSD-3-Clause requires to accompany binary redistribution.
 write_notes() {
-  python3 - "$ROOT_DIR/Resources/data-manifest.json" "$EXPECTED_SHA256" > "$NOTES" <<'PY'
-import json, sys
+  python3 - "$ROOT_DIR/Resources/data-manifest.json" "$EXPECTED_SHA256" "$SQLITE" > "$NOTES" <<'PY'
+import json, sqlite3, sys
 manifest = json.load(open(sys.argv[1], encoding="utf-8"))
 print(f"sha256 (uncompressed dictionary.sqlite): {sys.argv[2]}")
 print()
@@ -42,6 +43,20 @@ for r in manifest["resources"]:
     if r.get("feedsDictionary") and not r.get("derived"):
         print(f"- **{r['name']}**: {r.get('license', 'license not recorded')}")
 print()
+db = sqlite3.connect(f"file:{sys.argv[3]}?mode=ro", uri=True)
+tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+if "build_sources" in tables:
+    print("## Sources used")
+    print()
+    print("| Source | Upstream edition | Fetched (UTC) | sha256 | Pinned |")
+    print("|---|---|---|---|---|")
+    for name, version, modified, fetched, digest, pinned in db.execute(
+            "SELECT name, upstream_version, last_modified, fetched_at, sha256, pinned FROM build_sources ORDER BY name"):
+        print(f"| {name} | {version or modified or '-'} | {fetched} | `{digest}` | {'yes' if pinned else 'no'} |")
+    print()
+    print("Built with: " + ", ".join(f"{k} {v}" for k, v in db.execute(
+        "SELECT key, value FROM build_info WHERE key IN ('git_commit', 'python', 'wordfreq', 'mecab', 'built_at') ORDER BY key")))
+    print()
 print("UniDic data is used under its BSD-3-Clause option:")
 print()
 PY
