@@ -57,6 +57,13 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         super.init()
         configureAudioSession()
         configureRemoteCommandCenter()
+        NotificationCenter.default.addObserver(self, selector: #selector(otherPlayerStarted(_:)), name: ExclusivePlayback.didStart, object: nil)
+    }
+
+    // Pauses when another of the app's players starts (ExclusivePlayback): one sound at a time.
+    @objc private func otherPlayerStarted(_ notification: Notification) {
+        guard notification.object as AnyObject? !== self, isPlaying else { return }
+        pause()
     }
 
     // Wires the lock-screen / Control Center transport buttons to this controller. Registered
@@ -217,6 +224,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         } catch {
             AppLog.error(.audioPlayback, "[AudioPlaybackController] play setActive(true) failed: \(error.localizedDescription)")
         }
+        ExclusivePlayback.claim(self)
         player.play()
         isPlaying = true
         startTimer()
@@ -233,6 +241,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         } catch {
             AppLog.error(.audioPlayback, "[AudioPlaybackController] playFromStart setActive(true) failed: \(error.localizedDescription)")
         }
+        ExclusivePlayback.claim(self)
         player.currentTime = 0
         currentTimeMs = 0
         player.play()
