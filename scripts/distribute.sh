@@ -108,7 +108,10 @@ PLISTEOF
 
 echo "==> Exporting + signing (uses your Xcode account session, not the API key)…"
 rm -rf "$EXPORT_DIR"
-xcodebuild -exportArchive \
+# The export copies the app with /usr/bin/rsync (Apple's openrsync), which launches its other half
+# as whatever `rsync` comes first on PATH. A Homebrew rsync there rejects openrsync's
+# --extended-attributes and the export fails with "Copy failed", so put /usr/bin first.
+PATH="/usr/bin:$PATH" xcodebuild -exportArchive \
   -archivePath "$ARCHIVE" \
   -exportPath "$EXPORT_DIR" \
   -exportOptionsPlist "$PLIST" \
