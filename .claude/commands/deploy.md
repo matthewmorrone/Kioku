@@ -22,12 +22,17 @@ Steps to perform — run them in order, stopping if any fails. If `$ARGUMENTS` c
    xcodebuild -scheme Kioku -configuration Debug -destination 'platform=iOS,id=00008150-00140DC10123C01C' -derivedDataPath ~/Library/Caches/kioku-build build
    ```
 
-2. **Install the app on the device.** This replaces any prior install of the same bundle ID.
+2. **Drop the test bundle from the built app.** A test build embeds `KiokuTests.xctest` (with the 367 MB test `dictionary.sqlite`) in the app's `PlugIns`, and a later plain `build` leaves it there, so every install would copy ~430 MB the app never uses. Tests rebuild it when they run.
+   ```bash
+   rm -rf ~/Library/Caches/kioku-build/"Build/Products/Debug-iphoneos/Kioku Reader.app/PlugIns/KiokuTests.xctest"*
+   ```
+
+3. **Install the app on the device.** This replaces any prior install of the same bundle ID.
    ```bash
    xcrun devicectl device install app --device 00008150-00140DC10123C01C ~/Library/Caches/kioku-build/"Build/Products/Debug-iphoneos/Kioku Reader.app"
    ```
 
-3. **Terminate any running Kioku process.** Install replaces the bundle on disk but doesn't kill the running app, so the next launch would just foreground the old process and reuse stale in-memory state (e.g. the dictionary trie built once at startup). Safe no-op when Kioku isn't running.
+4. **Terminate any running Kioku process.** Install replaces the bundle on disk but doesn't kill the running app, so the next launch would just foreground the old process and reuse stale in-memory state (e.g. the dictionary trie built once at startup). Safe no-op when Kioku isn't running.
    ```bash
    PID=$(xcrun devicectl device info processes --device 00008150-00140DC10123C01C 2>&1 | grep -i "Kioku" | head -1 | awk '{print $1}')
    if [ -n "$PID" ]; then
@@ -36,7 +41,7 @@ Steps to perform — run them in order, stopping if any fails. If `$ARGUMENTS` c
    fi
    ```
 
-4. **Launch the app.** Skip this step if `$ARGUMENTS` contains `--no-launch`.
+5. **Launch the app.** Skip this step if `$ARGUMENTS` contains `--no-launch`.
    ```bash
    xcrun devicectl device process launch --device 00008150-00140DC10123C01C matthewmorrone.Kioku
    ```
