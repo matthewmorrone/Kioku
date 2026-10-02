@@ -4,16 +4,16 @@ import XCTest
 // Covers how the user's optional per-song note is folded into the breakdown request.
 @MainActor
 final class SongBreakdownPromptTests: XCTestCase {
-    // A blank note must leave the user turn as the bare lyrics so existing requests are unchanged.
+    // A blank note leaves the user turn as just the lyrics section.
     func testBlankNoteSendsLyricsOnly() {
-        XCTAssertEqual(SongBreakdownPrompt.userTurn(lyrics: "歌詞", userNote: "  \n"), "歌詞")
+        XCTAssertEqual(SongBreakdownPrompt.userTurn(lyrics: "歌詞", userNote: "  \n"), "## Lyrics\n\n歌詞")
     }
 
-    // A note is appended after the lyrics under its own header so the model sees it as guidance.
-    func testNoteIsAppendedAfterLyrics() {
+    // A note comes before the lyrics under the header rule 12 names, so the model reads it first.
+    func testNoteComesBeforeLyrics() {
         let turn = SongBreakdownPrompt.userTurn(lyrics: "歌詞", userNote: "ignore parentheses")
-        XCTAssertTrue(turn.hasPrefix("歌詞\n\n## Additional instructions for this song"))
-        XCTAssertTrue(turn.hasSuffix("ignore parentheses"))
+        XCTAssertEqual(turn, "## Instructions for this song\n\nignore parentheses\n\n## Lyrics\n\n歌詞")
+        XCTAssertTrue(SongBreakdownPrompt.staticInstructions().contains("\"Instructions for this song\""))
     }
 
     // The combined OpenAI prompt carries the note in place of the lyrics marker.

@@ -45,7 +45,7 @@ enum SongBreakdownPrompt {
            - Use double vowels (ou, ee, aa), never macrons. Show two vowels whenever two morae are written (映画 = eiga, 東京 = toukyou).
            - Use *wo* for を, *zu* for ず, *ji* for じ (not *o*, *du*, *zi*).
 
-        3. **Loanwords**: Identify the source language (usually French or English in J-pop) and original meaning. Do not over-defend their thematic importance — if a loanword is purely aesthetic and doesn't grammatically integrate, say so plainly.
+        3. **Loanwords**: Identify the source language (usually French or English in J-pop) and original meaning. Do not over-defend their thematic importance — if a loanword is purely aesthetic and doesn't grammatically integrate, say so plainly. Rule 12 overrides this.
 
         4. **Repeated lines**: After the first full breakdown of a chorus line, on a later occurrence that is character-for-character identical, just note "= line N". On a later occurrence that differs by exactly one swapped word/phrase, note "Parallel to line N with substitution: X → Y" and explain only what changed. If more than one element differs (e.g. two lines share the same grammatical skeleton but swap out a color loanword, a noun, and a verb), it is not covered by this shorthand — give it a normal full breakdown; you may still call out the structural echo in the optional pattern-bank note. Never use "= line N" or "Parallel to line N" shorthand as the text of an individual vocabulary word's definition — every word bullet must contain a real definition, even when the word itself is a repeat.
 
@@ -53,17 +53,17 @@ enum SongBreakdownPrompt {
 
         6. **No extra commentary**: No intros, no outros, no "here's the song!" or "enjoy!" — just the breakdown. End when the song ends.
 
-        7. **Skip nothing**: Cover every line in order, including short interjections or vocalizations (mark them as such, e.g. Vocal exclamation).
+        7. **Skip nothing**: Cover every line in order, including short interjections or vocalizations (mark them as such, e.g. Vocal exclamation) — unless rule 12 says to leave a line out.
 
         8. **Tone**: Direct, concise, occasionally dry. No filler praise. Correctness over politeness — call out wrong common interpretations. Don't manufacture interpretation for a word that doesn't need it — a plain, self-explanatory word (今夜 tonight, パレード parade, and per rule 5, most single nouns and verbs even when they sound evocative) gets a plain, short definition and stops there; save evocative or interpretive language for words that actually meet one of rule 5's three exceptions. If you notice a bullet's definition is followed by a sentence explaining what the word "suggests" or "implies" or "can imply," delete that sentence before emitting the line — this pattern is the single most common way this rule gets violated.
 
-        9. **Mixed-language lines**: The text is not always pure Japanese. A line may be English (or another language) with Japanese words or phrases embedded in it, or Japanese with English embedded. These lines are NEVER skipped, merged into a neighbour, or trimmed to just their Japanese. Emit each one as a normal `**Line N: …**` entry whose header carries the full original line verbatim, non-Japanese text included. The romaji line covers only the Japanese portions (leave non-Japanese text exactly as written in place). Give one word bullet per Japanese word or phrase — even when a single word is the only Japanese in the line — and a gist for the whole line. A line with no Japanese at all still gets its header and a one-line gist (rule 7); note it as such rather than omitting it.
+        9. **Mixed-language lines**: The text is not always pure Japanese. A line may be English (or another language) with Japanese words or phrases embedded in it, or Japanese with English embedded. These lines are NEVER skipped, merged into a neighbour, or trimmed to just their Japanese. Emit each one as a normal `**Line N: …**` entry whose header carries the full original line verbatim, non-Japanese text included. The romaji line covers only the Japanese portions (leave non-Japanese text exactly as written in place). Give one word bullet per Japanese word or phrase — even when a single word is the only Japanese in the line — and a gist for the whole line. A line with no Japanese at all still gets its header and a one-line gist (rule 7); note it as such rather than omitting it. Rule 12 overrides this.
 
         10. **Spoken-friendly phrasing**: word definitions, the gist, and the pattern-bank note are read aloud by a narration feature, not just displayed on screen — write them the way you'd say them out loud. Spell out alternatives with "or" rather than slashing them together ("spinning or weaving", not "spinning/weaving"), avoid stacking parentheticals inside a single definition, and prefer short declarative sentences over dense noun-phrase strings. This doesn't relax rule 5's depth — it's about phrasing, not content.
 
         11. **Verb/adjective form tags**: every inflected verb or adjective gets a short bracketed grammar tag right after its romaji — the conjugated form, not a restatement of the definition (e.g. 食べた → [past], 食べて → [te-form], 食べられる → [potential] or [passive] as the sentence requires, 食べさせられた → [causative-passive], 食べない → [negative], 食べれば → [conditional]). Stack tags with a comma when more than one applies (e.g. [causative, negative]). A word already in dictionary/plain form, a noun, or a particle gets no tag at all — don't write [dictionary form] or [plain form].
 
-        ## Lyrics
+        12. **Instructions for this song**: when the request includes an "Instructions for this song" section, follow it over every rule above. If it says to ignore lines, words, or kinds of words, leave them out entirely: no entry for an ignored line, no bullet for an ignored word. Keep numbering lines by their position in the source, so an ignored line leaves a gap in the numbering rather than shifting the lines after it.
 
         \(lyricsMarker)
 
@@ -80,30 +80,27 @@ enum SongBreakdownPrompt {
         return template + "\n\n" + body
     }
 
-    // The per-song part of the request: the lyrics, followed by the user's optional note for
-    // this song (e.g. "ignore everything in parentheses"). The note rides after the lyrics in
-    // the uncached user turn so the static system prompt stays byte-identical and cacheable,
-    // and it is labelled as overriding the rules above so the model honours it over defaults
-    // like rule 7's "skip nothing".
+    // The per-song part of the request: the user's optional note for this song (e.g. "ignore
+    // everything in parentheses"), then the lyrics. The note rides in the uncached user turn so
+    // the static system prompt stays byte-identical and cacheable. It comes before the lyrics so
+    // the model reads it before working through them, under the header rule 12 names.
     static func userTurn(lyrics: String, userNote: String) -> String {
+        let lyricsSection = "## Lyrics\n\n" + lyrics
         let note = userNote.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard note.isEmpty == false else { return lyrics }
-        return lyrics + """
-
-
-            ## Additional instructions for this song
-
-            Follow these instructions from me. Where they conflict with the rules above, these take priority.
+        guard note.isEmpty == false else { return lyricsSection }
+        return """
+            ## Instructions for this song
 
             \(note)
+
+            \(lyricsSection)
             """
     }
 
-    // The static instruction portion of the template — everything up to and including the
-    // "## Lyrics" header, with the per-song lyrics marker stripped. Used as a cacheable system
-    // prompt for the Claude path so the large static instructions bill at ~0.1x on repeat calls;
-    // the lyrics travel separately in the user turn. The OpenAI path keeps using the combined
-    // `instantiated(withLyrics:)` form unchanged.
+    // The static instruction portion of the template — everything before the per-song marker.
+    // Used as a cacheable system prompt for the Claude path so the large static instructions
+    // bill at ~0.1x on repeat calls; the lyrics travel separately in the user turn. The OpenAI
+    // path keeps using the combined `instantiated(withLyrics:)` form unchanged.
     static func staticInstructions() -> String {
         if let range = template.range(of: lyricsMarker) {
             return String(template[..<range.lowerBound])
