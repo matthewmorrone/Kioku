@@ -19,17 +19,16 @@ fi
 chmod +x .githooks/pre-commit .githooks/pre-push \
          scripts/validate_invariants.sh scripts/hook_check_invariants.sh
 
-# 3. Fetch the dictionary (downloaded from its pinned GitHub Release) and
-#    decompress the committed handwriting-model archive, if the raw files are
-#    missing or stale.
+# 3. Decompress the committed handwriting-model archive, which the app bundles. The dictionary
+#    isn't fetched here: the app downloads its own at runtime, and the test target and the
+#    segmentation eval fetch Resources/dictionary.sqlite (scripts/ensure_dictionary.sh) when
+#    they need it.
 echo
-bash scripts/ensure_dictionary.sh
 bash scripts/ensure_handwriting_model.sh
 
-# 3b. Provision the Python venv the dictionary builder uses. The Xcode build phase runs
-#     Resources/generate_db.py with ./.venv/bin/python3 when it exists, and generate_db.py
-#     now HARD-FAILS without wordfreq (the only frequency source for kana-usually words like
-#     その — see requirements.txt). Installing it here means a rebuild after editing a data
+# 3b. Provision the Python venv the dictionary builder (Resources/generate_db.py, run by hand to
+#     make a new dictionary release) uses. generate_db.py HARD-FAILS without wordfreq (the only
+#     frequency source for kana-usually words like その — see requirements.txt). Installing it here means a rebuild after editing a data
 #     input can't silently ship the degraded, all-"Rare" frequency data.
 echo
 if [[ ! -x .venv/bin/python3 ]]; then

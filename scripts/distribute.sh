@@ -59,7 +59,6 @@ BRANCH="$(git branch --show-current)"
 [ -z "$(git status --porcelain)" ] || { echo "Working tree not clean." >&2; exit 1; }
 git fetch -q origin main
 [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || { echo "main is not at origin/main — pull or push first." >&2; exit 1; }
-bash scripts/ensure_dictionary.sh
 bash scripts/ensure_handwriting_model.sh
 bash scripts/validate_invariants.sh
 

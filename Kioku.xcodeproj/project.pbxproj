@@ -247,7 +247,6 @@
 				E3070AE42F4DFDB6005FD323 /* Sources */,
 				E3070AE52F4DFDB6005FD323 /* Frameworks */,
 				F5A9C1D92F90000100ABCDEF /* Validate Invariants */,
-				F5A9C1DB2F90000300ABCDEF /* Rebuild Dictionary SQLite */,
 				E3070AE62F4DFDB6005FD323 /* Resources */,
 				C0FFEE00000000000000000D /* Embed Foundation Extensions */,
 			);
@@ -275,6 +274,7 @@
 			buildPhases = (
 				E3070AF12F4DFDB8005FD323 /* Sources */,
 				E3070AF22F4DFDB8005FD323 /* Frameworks */,
+				F5A9C1DB2F90000300ABCDEF /* Fetch Pinned Dictionary */,
 				E3070AF32F4DFDB8005FD323 /* Resources */,
 			);
 			buildRules = (
@@ -430,7 +430,7 @@
 			shellPath = /bin/sh;
 			shellScript = "if [ \"$CONFIGURATION\" = \"Debug\" ]; then\n  \"$SRCROOT/scripts/validate_invariants.sh\"\nfi\n";
 		};
-		F5A9C1DB2F90000300ABCDEF /* Rebuild Dictionary SQLite */ = {
+		F5A9C1DB2F90000300ABCDEF /* Fetch Pinned Dictionary */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -438,14 +438,10 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
-				$SRCROOT/Resources/generate_db.py,
-				$SRCROOT/Resources/extras.json,
-				"$SRCROOT/Resources/jmdict-eng-3.6.2.json",
-				"$SRCROOT/Resources/kanjidic2-all.json",
-				"$SRCROOT/Resources/pitch-accent.tsv",
-				"$SRCROOT/Resources/sentence-pairs.tsv",
+				$SRCROOT/scripts/ensure_dictionary.sh,
+				$SRCROOT/Kioku/Dictionary/DictionaryDownloadManager.swift,
 			);
-			name = "Rebuild Dictionary SQLite";
+			name = "Fetch Pinned Dictionary";
 			outputFileListPaths = (
 			);
 			outputPaths = (
@@ -453,7 +449,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "bash \"$SRCROOT/scripts/ensure_dictionary.sh\" || { echo \"error: ensure_dictionary.sh failed (could not download dictionary from its pinned GitHub Release)\" >&2; exit 1; }\nSQLITE=\"$SRCROOT/Resources/dictionary.sqlite\"\nif [ -f \"$SQLITE\" ]; then\n  STALE=0\n  for INPUT in \"$SRCROOT/Resources/generate_db.py\" \"$SRCROOT/Resources/extras.json\" \"$SRCROOT/Resources/jmdict-eng-3.6.2.json\" \"$SRCROOT/Resources/kanjidic2-all.json\" \"$SRCROOT/Resources/pitch-accent.tsv\" \"$SRCROOT/Resources/sentence-pairs.tsv\"; do\n    if [ -f \"$INPUT\" ] && [ \"$INPUT\" -nt \"$SQLITE\" ]; then\n      STALE=1\n      break\n    fi\n  done\n  if [ \"$STALE\" = \"0\" ]; then\n    echo \"dictionary.sqlite is current; skipping rebuild (delete it to force regeneration)\"\n    exit 0\n  fi\nfi\nif [ ! -f \"$SRCROOT/Resources/jmdict-eng-3.6.2.json\" ]; then\n  echo \"warning: Skipping dictionary rebuild; missing Resources/jmdict-eng-3.6.2.json\"\n  exit 0\nfi\nif [ -f \"$SRCROOT/.venv/bin/python3\" ]; then\n  PYTHON=\"$SRCROOT/.venv/bin/python3\"\nelif [ -f /opt/homebrew/bin/python3 ]; then\n  PYTHON=/opt/homebrew/bin/python3\nelse\n  PYTHON=/usr/bin/python3\nfi\n\"$PYTHON\" \"$SRCROOT/Resources/generate_db.py\"\n";
+			shellScript = "# The test bundle carries Resources/dictionary.sqlite; fetch the pinned release when it is missing\n# or doesn't match the pin. Never regenerates: rebuilding the dictionary is a deliberate\n# Resources/generate_db.py run. The app itself downloads its dictionary at runtime.\nbash \"$SRCROOT/scripts/ensure_dictionary.sh\" || { echo \"error: ensure_dictionary.sh failed (could not download dictionary from its pinned GitHub Release)\" >&2; exit 1; }\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
