@@ -62,6 +62,9 @@ struct SongLineCard: View {
     // the ScrollViewReader's proxy and the full items array needed to resolve a line index to
     // a scroll target) so this card stays a pure renderer.
     let onJumpToLine: (Int) -> Void
+    // The words to show when "Repeat Earlier Words" is off (already-covered ones removed, see
+    // SongCoveredWords); nil shows the line's full list.
+    var wordsOverride: [SongWord]? = nil
 
     @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
     // Width the Japanese row has to fit into, measured so long lines shrink instead of wrapping
@@ -82,6 +85,7 @@ struct SongLineCard: View {
         return nil
     }
     private var effectiveWords: [SongWord] {
+        if let wordsOverride { return wordsOverride }
         let words: [SongWord]
         if line.words.isEmpty == false {
             words = line.words

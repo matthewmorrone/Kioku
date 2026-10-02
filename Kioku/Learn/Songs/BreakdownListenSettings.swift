@@ -9,8 +9,12 @@ nonisolated enum BreakdownListenSettings {
     // How many times each word is heard (sung snippet, or synthesized when there is none)
     // before its definition.
     static let wordRepeatCountKey = "breakdown.listen.wordRepeatCount"
+    // Whether a word already covered earlier in the song is shown and spoken again on later
+    // lines (SongCoveredWords); applies to the cards as well as listen-along.
+    static let repeatEarlierWordsKey = "breakdown.repeatEarlierWords"
 
     static let defaultPauseAfterLine = false
     static let defaultWordRepeatCount = 1
+    static let defaultRepeatEarlierWords = true
     static let wordRepeatChoices = [1, 2, 3]
 }

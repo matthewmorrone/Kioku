@@ -67,6 +67,7 @@ struct SongStepperView: View {
     // Listen-along options from the toolbar's options menu (see BreakdownListenSettings).
     @AppStorage(BreakdownListenSettings.pauseAfterLineKey) var pauseAfterEachLine = BreakdownListenSettings.defaultPauseAfterLine
     @AppStorage(BreakdownListenSettings.wordRepeatCountKey) var wordRepeatCount = BreakdownListenSettings.defaultWordRepeatCount
+    @AppStorage(BreakdownListenSettings.repeatEarlierWordsKey) var repeatEarlierWords = BreakdownListenSettings.defaultRepeatEarlierWords
     // Plays the breakdown's script live (sung clips + TTS narration), one step at a time —
     // see SongLiveListenController. Owned by this view, not the environment: it has no
     // cross-session position of its own to persist, so a fresh sheet gets a fresh controller
@@ -525,6 +526,9 @@ struct SongStepperView: View {
                 Label("Repeat Each Word", systemImage: "repeat")
             }
             .pickerStyle(.menu)
+            Toggle(isOn: $repeatEarlierWords) {
+                Label("Repeat Earlier Words", systemImage: "text.badge.checkmark")
+            }
             Divider()
             Button {
                 isRegenerateConfirmationPresented = true
@@ -536,6 +540,7 @@ struct SongStepperView: View {
         }
         .accessibilityLabel("Options")
         .onChange(of: wordRepeatCount) { _, _ in configureLiveListen() }
+        .onChange(of: repeatEarlierWords) { _, _ in configureLiveListen() }
         .onChange(of: pauseAfterEachLine) { _, pause in liveListen.pauseAfterEachLine = pause }
     }
 
@@ -578,6 +583,7 @@ struct SongStepperView: View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: true) {
                 LazyVStack(spacing: 14) {
+                    let uncoveredWords = uncoveredWordsByLine(for: items.map(\.line))
                     ForEach(items) { item in
                         SongLineCard(
                             line: item.line,
@@ -604,7 +610,8 @@ struct SongStepperView: View {
                                 withAnimation(.easeInOut(duration: 0.3)) {
                                     proxy.scrollTo(target.id, anchor: .center)
                                 }
-                            }
+                            },
+                            wordsOverride: uncoveredWords.map { $0[item.line.index] ?? [] }
                         )
                         .id(item.id)
                     }

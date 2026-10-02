@@ -192,4 +192,28 @@ final class SongListenScriptTests: XCTestCase {
         }
         XCTAssertEqual(sentence.spokenText, "I said 愛してる to her")
     }
+
+    // "Repeat Earlier Words" off: a word already defined on an earlier line isn't spoken again,
+    // but the line itself still plays — here line 2's only word is a repeat, and line 2 still
+    // gets its sentence and gist.
+    func testRepeatEarlierWordsOffSkipsCoveredWordsButKeepsTheLine() {
+        let bd = breakdown(lines: [
+            line(index: 1, original: "夕凪の時間", words: [SongWord(surface: "夕凪", sungRomaji: "", definition: "evening calm")], gist: "The evening calm."),
+            line(index: 2, original: "夕凪", words: [SongWord(surface: "夕凪", sungRomaji: "", definition: "evening calm")], gist: "Evening calm again."),
+        ])
+        func spoken(_ steps: [SongListenStep]) -> [String] {
+            steps.compactMap { step -> String? in
+                guard case .speech(let s) = step else { return nil }
+                return "\(s.lineIndex):\(s.kind):\(s.text)"
+            }
+        }
+        let all = spoken(SongListenScript.build(from: bd))
+        let firstOnly = spoken(SongListenScript.build(from: bd, repeatEarlierWords: false))
+        XCTAssertTrue(all.contains("2:wordSurface:夕凪"))
+        XCTAssertFalse(firstOnly.contains("2:wordSurface:夕凪"))
+        XCTAssertTrue(firstOnly.contains("1:wordSurface:夕凪"))
+        XCTAssertTrue(firstOnly.contains("2:sentence:夕凪"))
+        XCTAssertTrue(firstOnly.contains("2:translation:Evening calm again."))
+    }
+
 }

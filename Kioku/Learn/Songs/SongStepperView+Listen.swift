@@ -106,11 +106,23 @@ extension SongStepperView {
             from: breakdown,
             lineRanges: ranges,
             lineCues: lineCues,
-            wordRepeatCount: wordRepeatCount
+            wordRepeatCount: wordRepeatCount,
+            repeatEarlierWords: repeatEarlierWords
         )
         let originalByIndex = Dictionary(breakdown.lines.map { ($0.index, $0.original) }, uniquingKeysWith: { first, _ in first })
         liveListen.pauseAfterEachLine = pauseAfterEachLine
         liveListen.configure(steps: steps, sourceAudioURL: listenSourceAudioURL, originalByLineIndex: originalByIndex)
+    }
+
+    // With "Repeat Earlier Words" off, each shown line's words minus those covered earlier in the
+    // song (SongCoveredWords) for the cards — from the lines on screen, which during a stream are
+    // the ones parsed so far. Nil when the option is on, so cards show their full lists.
+    func uncoveredWordsByLine(for lines: [SongLine]) -> [Int: [SongWord]]? {
+        guard repeatEarlierWords == false else { return nil }
+        let linesByIndex = Dictionary(lines.map { ($0.index, $0) }, uniquingKeysWith: { first, _ in first })
+        return SongCoveredWords.uncoveredWords(in: lines) {
+            SongListenScript.effectiveWords(for: $0, linesByIndex: linesByIndex)
+        }
     }
 
     // The clip ranges to actually splice in — none without an audio file.
