@@ -9,6 +9,7 @@ import re
 import shutil
 import sqlite3
 import subprocess
+import tempfile
 import hashlib
 import bisect
 import tarfile
@@ -26,32 +27,20 @@ RESOURCES_DIR = PROJECT_ROOT / "Resources"
 MANIFEST_PATH = RESOURCES_DIR / "data-manifest.json"
 
 
-def main_checkout_root() -> Path:
-    """The main checkout (the parent of git's shared .git), even when run from a worktree, so every
-    worktree reads the one source cache instead of fetching its own; this checkout if git can't say."""
-    try:
-        common = subprocess.run(["git", "-C", str(PROJECT_ROOT), "rev-parse", "--path-format=absolute", "--git-common-dir"],
-                                capture_output=True, text=True, check=True).stdout.strip()
-        return Path(common).parent
-    except (OSError, subprocess.CalledProcessError) as error:
-        print(f"note: using this checkout for the source cache ({error})", file=sys.stderr)
-        return PROJECT_ROOT
-
-
-# Downloaded upstream archives (~330 MB) live in the MAIN checkout's gitignored Resources/source-cache,
-# fetched once per machine and shared by every worktree. KIOKU_SOURCE_CACHE overrides the location.
-# Derivation inputs that are huge once extracted (UniDic lex.csv, Tatoeba links.csv) are streamed
-# straight out of these archives.
-SOURCE_CACHE_DIR = Path(os.environ.get("KIOKU_SOURCE_CACHE") or main_checkout_root() / "Resources" / "source-cache")
-JMDICT_PATH = RESOURCES_DIR / "jmdict-eng-3.6.2.json"
+# Every upstream input is fetched into a temporary work folder for the length of one run and deleted
+# with it: nothing is cached and no copy of upstream data stays on disk (see open_work_dir). The
+# *_PATH inputs below are pointed into that folder when it is opened. Derivation inputs that are huge
+# once extracted (UniDic lex.csv, Tatoeba links.csv) are streamed straight out of their archives.
+WORK_DIR = None
+JMDICT_PATH = None
 EXTRAS_PATH = RESOURCES_DIR / "extras.json"
 # Jiten's global frequency list (Yomitan term_meta_bank "freq" layout), read by import_frequency_ranks
 # and materialize_surface_frequency.
-FREQUENCY_PATH = RESOURCES_DIR / "jiten-frequency-global.json"
-KANJIDIC2_PATH = RESOURCES_DIR / "kanjidic2-all.json"
-RADKFILE_PATH = RESOURCES_DIR / "radkfile2.utf8"
-KRADFILE_PATH = RESOURCES_DIR / "kradfile2.utf8"
-KANJIVG_PATH = RESOURCES_DIR / "kanjivg.xml"
+FREQUENCY_PATH = None
+KANJIDIC2_PATH = None
+RADKFILE_PATH = None
+KRADFILE_PATH = None
+KANJIVG_PATH = None
 OUTPUT_DB = RESOURCES_DIR / "dictionary.sqlite"
 
 # Sort key written for surfaces with no frequency signal, so unranked rows sort last.
@@ -89,18 +78,33 @@ def sha256_of_file(path: Path) -> str:
 # Upstream sources
 #
 # Resources/data-manifest.json is the single source of truth for every upstream input. An entry
-# with a "fetch" spec is downloaded (into SOURCE_CACHE_DIR) and, when marked "materialize", unpacked
-# to its "path" under Resources/ for the importers below. Three inputs used to be hand-built TSVs
+# with a "fetch" spec is downloaded into the run's work folder and, when marked "materialize",
+# unpacked there under its fetch "extractAs" name for the importers below. Three inputs used to be hand-built TSVs
 # (pitch-accent, sentence-pairs, jlpt-vocab) whose generating scripts were lost; they are now
 # derived in-process from the raw upstream archives by the derive_* functions, so a clean checkout
 # with internet access can rebuild dictionary.sqlite end to end.
 # ---------------------------------------------------------------------------------------------
 
-# When true (--offline), missing archives are an error instead of being downloaded, and rolling
-# sources are read as last fetched.
-OFFLINE = False
-# Rolling sources already fetched fresh during this run, so a second use doesn't download again.
-_REFRESHED_ROLLING = set()
+# Creates the run's work folder and points the input paths into it. Every source is downloaded
+# fresh into it; close_work_dir deletes it, so a run leaves nothing behind but its output.
+def open_work_dir():
+    global WORK_DIR, JMDICT_PATH, FREQUENCY_PATH, KANJIDIC2_PATH, RADKFILE_PATH, KRADFILE_PATH, KANJIVG_PATH
+    WORK_DIR = Path(tempfile.mkdtemp(prefix="kioku-dictionary-sources-"))
+    JMDICT_PATH = WORK_DIR / "jmdict-eng-3.6.2.json"
+    FREQUENCY_PATH = WORK_DIR / "jiten-frequency-global.json"
+    KANJIDIC2_PATH = WORK_DIR / "kanjidic2-all.json"
+    RADKFILE_PATH = WORK_DIR / "radkfile2.utf8"
+    KRADFILE_PATH = WORK_DIR / "kradfile2.utf8"
+    KANJIVG_PATH = WORK_DIR / "kanjivg.xml"
+    return WORK_DIR
+
+
+# Deletes the run's work folder and every source in it, whether the run succeeded or not.
+def close_work_dir():
+    global WORK_DIR
+    if WORK_DIR is not None:
+        shutil.rmtree(WORK_DIR, ignore_errors=True)
+        WORK_DIR = None
 
 
 # Loads the manifest and indexes its resources by name.
@@ -121,24 +125,14 @@ def _download(url, dest):
     part.replace(dest)
 
 
-# Returns the archive for a manifest entry. Versioned sources (fixed release URLs) are kept in
-# SOURCE_CACHE_DIR and downloaded only when absent or when their pinned archiveSha256 no longer
-# matches. Rolling sources (Tatoeba, EDRDG's JMdict XML, Jiten) are served only as the current
-# upstream edition, so they pin no hash and are fetched fresh once per run; nothing in the cache is
-# irreplaceable, and deleting SOURCE_CACHE_DIR is always safe.
+# Returns the run's copy of a manifest entry's archive, downloading it on first use. Sources on
+# fixed release URLs pin archiveSha256 and fail loudly if upstream changes the bytes; sources whose
+# URL serves only the current edition (EDRDG's JMdict XML, Jiten, Tatoeba) pin nothing.
 def fetch_archive(entry):
     fetch = entry["fetch"]
-    archive = SOURCE_CACHE_DIR / fetch["cacheName"]
+    archive = WORK_DIR / "archives" / fetch["cacheName"]
     pinned = fetch.get("archiveSha256")
-    if entry.get("rolling") and not OFFLINE and entry["name"] not in _REFRESHED_ROLLING:
-        archive.unlink(missing_ok=True)
-        _REFRESHED_ROLLING.add(entry["name"])
-    if archive.exists() and pinned and sha256_of_file(archive) != pinned:
-        print(f"  Cached {archive.name} does not match its pinned hash — re-downloading")
-        archive.unlink()
     if not archive.exists():
-        if OFFLINE:
-            raise RuntimeError(f"--offline: {archive} is missing (needed for {entry['name']})")
         _download(fetch["url"], archive)
         if pinned and sha256_of_file(archive) != pinned:
             raise RuntimeError(
@@ -167,15 +161,13 @@ def open_source_member(fetch, archive):
 # Writes a direct-input file (one the importers read from Resources/) from its archive, applying
 # the entry's optional character-set transform, then verifies it against the pinned sha256.
 def materialize_source(entry):
-    dest = PROJECT_ROOT / entry["path"]
+    dest = WORK_DIR / entry["fetch"]["extractAs"]
     pinned = entry.get("sha256")
-    if dest.exists() and pinned and sha256_of_file(dest) == pinned:
-        return
-    if dest.exists() and entry.get("rolling") and OFFLINE:
+    if dest.exists():
         return
     archive = fetch_archive(entry)
     fetch = entry["fetch"]
-    print(f"  Extracting {entry['name']} -> {dest.relative_to(PROJECT_ROOT)}")
+    print(f"  Extracting {entry['name']} -> {dest.name}")
     with open_source_member(fetch, archive) as source, open(dest, "wb") as out:
         if fetch.get("transform") == "eucjp-to-utf8":
             out.write(source.read().decode("euc_jp").encode("utf-8"))
@@ -203,7 +195,6 @@ def check_build_tools():
 # Downloads and unpacks every manifest source that carries a fetch spec, so a broken address or a
 # hash mismatch surfaces immediately rather than partway through the build.
 def ensure_sources():
-    SOURCE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     for entry in load_manifest().values():
         if "fetch" not in entry:
             continue
@@ -2160,26 +2151,33 @@ def materialize_canonical_entry_ids(conn):
 
 
 def main():
-    global OUTPUT_DB, OFFLINE
+    global OUTPUT_DB
     parser = argparse.ArgumentParser(description="Builds dictionary.sqlite from the upstream sources in data-manifest.json.")
     parser.add_argument("--output", type=Path, help="write the database here instead of Resources/dictionary.sqlite")
-    parser.add_argument("--offline", action="store_true", help="never download; fail if a source archive is missing")
     parser.add_argument("--sources-only", action="store_true", help="fetch and verify every source, then exit")
     parser.add_argument("--emit-derived", type=Path, metavar="DIR", help="write the derived TSVs (pitch-accent, sentence-pairs, jlpt-vocab) to DIR, then exit")
     args = parser.parse_args()
-    OFFLINE = args.offline
     if args.output:
         OUTPUT_DB = args.output.resolve()
 
     start = time.time()
-    ensure_sources()
-    if args.sources_only:
-        return
-    if args.emit_derived:
-        emit_derived_files(args.emit_derived)
-        return
-    check_build_tools()
+    if not (args.sources_only or args.emit_derived):
+        check_build_tools()
+    open_work_dir()
+    try:
+        ensure_sources()
+        if args.sources_only:
+            return
+        if args.emit_derived:
+            emit_derived_files(args.emit_derived)
+            return
+        build(start)
+    finally:
+        close_work_dir()
 
+
+# Builds the database from the sources ensure_sources fetched into the work folder.
+def build(start):
     print("Building dictionary.sqlite...")
     print(f"JMdict SHA256: {sha256_of_file(JMDICT_PATH)}")
     print(f"Frequency ranks: {FREQUENCY_PATH.name} ({sha256_of_file(FREQUENCY_PATH)})")

@@ -4,19 +4,12 @@ __pycache__
 # for why: a committed archive grew the repo by ~150MB on every rebuild). The
 # .xz is the app's download, written by scripts/publish_dictionary_release.sh.
 Resources/dictionary.sqlite
-Resources/source-cache/
 Resources/dictionary.sqlite.xz
 Resources/dictionary-release-notes.md
-Resources/jmdict-eng-3.6.2.json
-Resources/jiten-frequency-global.json
-Resources/ggml-tiny.bin
+# Decompressed from the committed .zst by scripts/ensure_handwriting_model.sh.
 Resources/handwriting-ja.model
-Resources/kanjidic2-all.json
-Resources/pitch-accent.tsv
-Resources/sentence-pairs.tsv
-Resources/radkfile2.utf8
-Resources/kradfile2.utf8
-Resources/kanjivg.xml
+# generate_db.py's upstream sources live in a temporary folder for one run and are deleted with it.
+__pycache__/
 .swiftpm/checkouts
 .remember
 .build/

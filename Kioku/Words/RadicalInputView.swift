@@ -82,11 +82,7 @@ struct RadicalInputView: View {
             ProgressView().controlSize(.large)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if allRadicals.isEmpty {
-            ContentUnavailableView(
-                "Radical data unavailable",
-                systemImage: "square.grid.3x3",
-                description: Text("Add RADKFILE2 and KRADFILE2 to Resources/ and rebuild the dictionary. See data-manifest.json for download instructions.")
-            )
+            ContentUnavailableView("Radical data unavailable", systemImage: "square.grid.3x3")
         } else {
             VStack(spacing: 0) {
                 // Reserve a fixed slot for the result strip so populating the kanji-results and

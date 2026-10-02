@@ -1,11 +1,12 @@
-# Joins Tatoeba indices to repo sentences; writes held-out/train sentence files + gold spans (json lines).
+# Joins Tatoeba indices to the dictionary's Japanese sentences (sentence_pairs in the pinned
+# Resources/dictionary.sqlite, fetched if missing); writes held-out/train sentence files + gold spans (json lines).
 import re, sys, json
-import os
+import os, sqlite3, subprocess
 S=sys.argv[1]
-sent={}
-for line in open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"Resources","sentence-pairs.tsv"),encoding="utf-8-sig"):
-    p=line.rstrip("\n").split("\t")
-    if len(p)>=2: sent[p[0]]=p[1]
+ROOT=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+subprocess.run(["bash",os.path.join(ROOT,"scripts","ensure_dictionary.sh")],check=True)
+db=sqlite3.connect(f"file:{os.path.join(ROOT,'Resources','dictionary.sqlite')}?mode=ro",uri=True)
+sent={str(ja_id):japanese for ja_id,japanese in db.execute("SELECT DISTINCT ja_id, japanese FROM sentence_pairs")}
 tok=re.compile(r'^(?P<head>[^\(\[\{~|]+)(?:\|\d+)?(?:\((?P<read>[^)]*)\))?(?:\[(?P<sense>\d+)\])?(?:\{(?P<surf>[^}]*)\})?(?P<ok>~)?$')
 out={"held":open(f"{S}/held.jsonl","w"),"train":open(f"{S}/train.jsonl","w")}
 txt={"held":open(f"{S}/held.txt","w"),"train":open(f"{S}/train.txt","w")}

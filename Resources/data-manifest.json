@@ -5,7 +5,7 @@
       "description": "The JMdict Japanese-English dictionary, as scriptin's JSON rebuild of the EDRDG XML. Every headword, reading, sense and gloss the app shows comes from here — it is the spine the rest of these resources annotate.",
       "license": "CC BY-SA 4.0 (Electronic Dictionary Research and Development Group); JSON conversion by scriptin/jmdict-simplified, also CC BY-SA 4.0",
       "type": "jmdict",
-      "path": "Resources/jmdict-eng-3.6.2.json",
+      "path": null,
       "required": true,
       "derived": false,
       "url": "https://github.com/scriptin/jmdict-simplified/releases/download/3.6.2%2B20260223124729/jmdict-eng-3.6.2%2B20260223124729.json.zip",
@@ -16,7 +16,8 @@
         "format": "zip",
         "member": "jmdict-eng-3.6.2.json",
         "cacheName": "jmdict-eng-3.6.2+20260223124729.json.zip",
-        "archiveSha256": "69b8abdb05286a31dd48baf240099901708035c224e947f6b47e6853eb927477"
+        "archiveSha256": "69b8abdb05286a31dd48baf240099901708035c224e947f6b47e6853eb927477",
+        "extractAs": "jmdict-eng-3.6.2.json"
       },
       "materialize": true,
       "feedsDictionary": true
@@ -37,8 +38,7 @@
         "format": "gz",
         "cacheName": "JMdict_e.gz"
       },
-      "feedsDictionary": true,
-      "rolling": true
+      "feedsDictionary": true
     },
     {
       "name": "extras",
@@ -58,21 +58,21 @@
       "description": "Word-frequency ranks from Jiten's corpus of ~16.5k anime, drama, film, novel and visual-novel titles, in Yomitan term_meta_bank layout: a rank for each word as written in kanji, plus a rank for its kana spelling (marked ㋕). Drives the Common/Rare tier badge, search and browse order, and the segmenter's per-spelling word cost. Jiten ranks words, not readings, so homograph readings tie and JMdict's reading order breaks the tie.",
       "license": "CC BY-SA 4.0 (Jiten, jiten.moe), commercial use permitted",
       "type": "frequency-dictionary",
-      "path": "Resources/jiten-frequency-global.json",
+      "path": null,
       "required": true,
       "derived": false,
       "url": "https://api.jiten.moe/api/frequency-list/download?downloadType=yomitan",
       "sha256": null,
-      "provenance": "Jiten global frequency list, Yomitan export. The endpoint serves only the current list, so it is fetched fresh from upstream on every dictionary rebuild and no hash is pinned. dictionary-v13 was built from revision \"Jiten 26-09-27\". generate_db.py extracts term_meta_bank_1.json to Resources/jiten-frequency-global.json.",
+      "provenance": "Jiten global frequency list, Yomitan export. The endpoint serves only the current list, so it is fetched fresh from upstream on every dictionary rebuild and no hash is pinned. dictionary-v13 was built from revision \"Jiten 26-09-27\". generate_db.py extracts term_meta_bank_1.json as jiten-frequency-global.json in the run\\'s work folder.",
       "fetch": {
         "url": "https://api.jiten.moe/api/frequency-list/download?downloadType=yomitan",
         "format": "zip",
         "member": "term_meta_bank_1.json",
-        "cacheName": "jiten-freq-global.zip"
+        "cacheName": "jiten-freq-global.zip",
+        "extractAs": "jiten-frequency-global.json"
       },
       "materialize": true,
-      "feedsDictionary": true,
-      "rolling": true
+      "feedsDictionary": true
     },
     {
       "name": "wordfreq",
@@ -92,18 +92,19 @@
       "description": "Per-character kanji data: readings, meanings, stroke counts, grade and JLPT level. Backs the Kanji breakdown on a word's detail screen and the standalone kanji browser.",
       "license": "CC BY-SA 4.0 (Electronic Dictionary Research and Development Group)",
       "type": "kanjidic2",
-      "path": "Resources/kanjidic2-all.json",
+      "path": null,
       "required": false,
       "derived": false,
       "url": "https://github.com/scriptin/jmdict-simplified/releases/download/3.6.2%2B20260223124729/kanjidic2-all-3.6.2%2B20260223124729.json.zip",
       "sha256": "1299acdd557604747bf875c2a5eb1ea309b1c3a36bf88b31c9ed0b4e8c338290",
-      "provenance": "scriptin/jmdict-simplified kanjidic2-all release asset; generate_db.py downloads the zip and extracts kanjidic2-all-3.6.2.json to Resources/kanjidic2-all.json",
+      "provenance": "scriptin/jmdict-simplified kanjidic2-all release asset; generate_db.py downloads the zip and extracts kanjidic2-all-3.6.2.json as kanjidic2-all.json in the run\\'s work folder",
       "fetch": {
         "url": "https://github.com/scriptin/jmdict-simplified/releases/download/3.6.2%2B20260223124729/kanjidic2-all-3.6.2%2B20260223124729.json.zip",
         "format": "zip",
         "member": "kanjidic2-all-3.6.2.json",
         "cacheName": "kanjidic2-all-3.6.2+20260223124729.json.zip",
-        "archiveSha256": "2d73c4da2ea8b93ada8d014cd587189fa13f4a824675517395208e3f8937873d"
+        "archiveSha256": "2d73c4da2ea8b93ada8d014cd587189fa13f4a824675517395208e3f8937873d",
+        "extractAs": "kanjidic2-all.json"
       },
       "materialize": true,
       "feedsDictionary": true
@@ -137,7 +138,6 @@
       "url": null,
       "sha256": null,
       "provenance": "Derived in-process by generate_db.py from the Tatoeba exports: every link between a Japanese and an English sentence, sorted by (ja_id, en_id); tab-split, never CSV-unquoted. Tatoeba re-exports weekly, so the output (and its hash) changes over time — no hash pinned. Replaces the hand-built 2026-01-20 TSV, whose script was lost and which had corrupted ~2,100 English sentences that begin with a quotation mark.",
-      "rolling": true,
       "derivedFrom": [
         "tatoeba-jpn-sentences",
         "tatoeba-eng-sentences",
@@ -169,19 +169,20 @@
       "description": "Radical-to-kanji index: which characters contain a given radical. Powers radical lookup, the way to find a kanji you can neither read nor type.",
       "license": "CC BY-SA 4.0 (Electronic Dictionary Research and Development Group)",
       "type": "radical-decomposition",
-      "path": "Resources/radkfile2.utf8",
+      "path": null,
       "required": false,
       "derived": false,
       "url": "http://ftp.edrdg.org/pub/Nihongo/kradzip.zip",
       "sha256": "24943341b629e3ee6deda867b8c2e0c9da81e174bb2a4f625e59fc6e46ad3de0",
-      "provenance": "EDRDG RADKFILE2 (extended radical set). License: CC BY-SA 4.0 (Electronic Dictionary Research and Development Group). generate_db.py downloads kradzip.zip, extracts the radkfile2 member (a zip member, EUC-JP) and converts it to UTF-8 as Resources/radkfile2.utf8",
+      "provenance": "EDRDG RADKFILE2 (extended radical set). License: CC BY-SA 4.0 (Electronic Dictionary Research and Development Group). generate_db.py downloads kradzip.zip, extracts the radkfile2 member (a zip member, EUC-JP) and converts it to UTF-8 as radkfile2.utf8 in the run\\'s work folder",
       "fetch": {
         "url": "http://ftp.edrdg.org/pub/Nihongo/kradzip.zip",
         "format": "zip",
         "member": "radkfile2",
         "transform": "eucjp-to-utf8",
         "cacheName": "kradzip.zip",
-        "archiveSha256": "e2df44c07ed557fe9867709a051f1f134cd33c750598112d85ba56eb86fc3c8c"
+        "archiveSha256": "e2df44c07ed557fe9867709a051f1f134cd33c750598112d85ba56eb86fc3c8c",
+        "extractAs": "radkfile2.utf8"
       },
       "materialize": true,
       "feedsDictionary": true
@@ -191,19 +192,20 @@
       "description": "The inverse index, kanji to its component radicals. Shows what a character is built from, and narrows the radical picker as components are chosen.",
       "license": "CC BY-SA 4.0 (Electronic Dictionary Research and Development Group)",
       "type": "radical-decomposition",
-      "path": "Resources/kradfile2.utf8",
+      "path": null,
       "required": false,
       "derived": false,
       "url": "http://ftp.edrdg.org/pub/Nihongo/kradzip.zip",
       "sha256": "236f5e9be004bb812e0acc1ce1c08a44f15787a9d5b0a7836924806038b8ce8c",
-      "provenance": "EDRDG KRADFILE2 (extended radical set). License: CC BY-SA 4.0 (Electronic Dictionary Research and Development Group). generate_db.py downloads kradzip.zip, extracts the kradfile2 member (a zip member, EUC-JP) and converts it to UTF-8 as Resources/kradfile2.utf8",
+      "provenance": "EDRDG KRADFILE2 (extended radical set). License: CC BY-SA 4.0 (Electronic Dictionary Research and Development Group). generate_db.py downloads kradzip.zip, extracts the kradfile2 member (a zip member, EUC-JP) and converts it to UTF-8 as kradfile2.utf8 in the run\\'s work folder",
       "fetch": {
         "url": "http://ftp.edrdg.org/pub/Nihongo/kradzip.zip",
         "format": "zip",
         "member": "kradfile2",
         "transform": "eucjp-to-utf8",
         "cacheName": "kradzip.zip",
-        "archiveSha256": "e2df44c07ed557fe9867709a051f1f134cd33c750598112d85ba56eb86fc3c8c"
+        "archiveSha256": "e2df44c07ed557fe9867709a051f1f134cd33c750598112d85ba56eb86fc3c8c",
+        "extractAs": "kradfile2.utf8"
       },
       "materialize": true,
       "feedsDictionary": true
@@ -226,17 +228,18 @@
       "description": "Per-character stroke paths in drawing order. Drives the animated stroke-order diagrams, and is the only source here that knows how a character is written rather than what it means.",
       "license": "CC BY-SA 3.0 (Ulrich Apel / KanjiVG)",
       "type": "stroke-data",
-      "path": "Resources/kanjivg.xml",
+      "path": null,
       "required": false,
       "derived": false,
       "url": "https://github.com/KanjiVG/kanjivg/releases/download/r20250816/kanjivg-20250816.xml.gz",
       "sha256": "97f316c265eee227cac44af1baf1227f16c707a367038c6b3d72afc864dd8010",
-      "provenance": "KanjiVG (Kanji Vector Graphics) by Ulrich Apel et al., release r20250816 single-file XML (kanjivg-20250816.xml.gz). License: CC BY-SA 3.0. generate_db.py downloads the gzip and decompresses it to Resources/kanjivg.xml. (An earlier version of this entry pointed at the r20220427 -main.zip, which holds per-character SVGs, not the XML the builder reads.)",
+      "provenance": "KanjiVG (Kanji Vector Graphics) by Ulrich Apel et al., release r20250816 single-file XML (kanjivg-20250816.xml.gz). License: CC BY-SA 3.0. generate_db.py downloads the gzip and decompresses it as kanjivg.xml in the run\\'s work folder. (An earlier version of this entry pointed at the r20220427 -main.zip, which holds per-character SVGs, not the XML the builder reads.)",
       "fetch": {
         "url": "https://github.com/KanjiVG/kanjivg/releases/download/r20250816/kanjivg-20250816.xml.gz",
         "format": "gz",
         "cacheName": "kanjivg-20250816.xml.gz",
-        "archiveSha256": "b36579789775ea912d5e98356bf243f54fb953fa3b58a16c2d6995f252e2a3e2"
+        "archiveSha256": "b36579789775ea912d5e98356bf243f54fb953fa3b58a16c2d6995f252e2a3e2",
+        "extractAs": "kanjivg.xml"
       },
       "materialize": true,
       "feedsDictionary": true
@@ -251,7 +254,7 @@
       "derived": true,
       "url": "https://github.com/matthewmorrone/Kioku/releases/download/dictionary-v13/dictionary.sqlite",
       "sha256": "66ea2389aeb4349809f7804571d46e4b0d3c491a22956c585a4a9052ab212deb",
-      "provenance": "Generated by generate_db.py from every manifest entry with feedsDictionary=true (see the top-level \"regeneration\" and \"tools\" blocks). Neither bundled into Kioku.app nor committed to git: the local Resources/dictionary.sqlite is downloaded from the release url above by scripts/ensure_dictionary.sh (for tests, CI, and generate_db.py's own staleness check), and at runtime DictionaryDownloadManager fetches that same asset into Application Support on first launch, verified against the sha256 above. To republish after a rebuild with meaningfully different content: run generate_db.py, bump the tag, recompute the sha256 both here and in DictionaryDownloadManager.releaseTag/expectedSHA256, then run scripts/publish_dictionary_release.sh locally. There is no CI automation for this — generate_db.py's upstream inputs are gitignored and exist only on whichever machine ran the generator.",
+      "provenance": "Generated by generate_db.py from every manifest entry with feedsDictionary=true (see the top-level \"regeneration\" and \"tools\" blocks). Neither bundled into Kioku.app nor committed to git: the local Resources/dictionary.sqlite is downloaded from the release url above by scripts/ensure_dictionary.sh (for tests, CI and the segmentation eval), and at runtime DictionaryDownloadManager fetches that same asset into Application Support on first launch, verified against the sha256 above. To republish after a rebuild with meaningfully different content: run generate_db.py, bump the tag, recompute the sha256 both here and in DictionaryDownloadManager.releaseTag/expectedSHA256, then run scripts/publish_dictionary_release.sh locally. There is no CI automation for this — generate_db.py fetches every upstream input into a temporary folder per run and deletes it afterwards, so any machine with internet access can rebuild.",
       "feedsDictionary": false
     },
     {
@@ -299,7 +302,6 @@
       "path": null,
       "required": false,
       "derived": false,
-      "rolling": true,
       "url": "https://downloads.tatoeba.org/exports/per_language/jpn/jpn_sentences.tsv.bz2",
       "sha256": null,
       "fetch": {
@@ -318,7 +320,6 @@
       "path": null,
       "required": false,
       "derived": false,
-      "rolling": true,
       "url": "https://downloads.tatoeba.org/exports/per_language/eng/eng_sentences.tsv.bz2",
       "sha256": null,
       "fetch": {
@@ -337,7 +338,6 @@
       "path": null,
       "required": false,
       "derived": false,
-      "rolling": true,
       "url": "https://downloads.tatoeba.org/exports/links.tar.bz2",
       "sha256": null,
       "fetch": {
@@ -357,7 +357,6 @@
       "path": null,
       "required": false,
       "derived": false,
-      "rolling": true,
       "url": "https://downloads.tatoeba.org/exports/jpn_indices.tar.bz2",
       "sha256": null,
       "provenance": "Tatoeba export, re-exported weekly, so no hash is pinned. License: CC BY 2.0 FR. scripts/segmentation-eval/prep.py joins it to Resources/sentence-pairs.tsv and splits it by sentence id (odd → held-out, even → train). The held-out sets are checked in under scripts/segmentation-eval/data/; the 73k-sentence training half is not — rebuild it with prep.py.",
@@ -453,12 +452,11 @@
     ],
     "options": {
       "--output PATH": "write the database elsewhere (default Resources/dictionary.sqlite)",
-      "--offline": "never download; fail if a cached archive is missing",
       "--sources-only": "fetch and verify every source, then exit",
       "--emit-derived DIR": "write the derived TSVs (whose sha256 values are recorded here) to DIR, then exit"
     },
-    "cache": "Resources/source-cache in the MAIN checkout (gitignored); worktrees resolve the main checkout through git and share it; override with KIOKU_SOURCE_CACHE",
-    "reproducibility": "Direct inputs and the pitch-accent / jlpt-vocab derivations are byte-verified against the sha256 values recorded here. Tatoeba entries are marked rolling, so sentence_pairs content tracks Tatoeba's current export; everything else in the database is deterministic from the pinned inputs.",
+    "cache": "none: generate_db.py downloads every source into a temporary folder for the run and deletes it afterwards; nothing upstream is kept on disk",
+    "reproducibility": "Sources on fixed release URLs, and the pitch-accent / jlpt-vocab derivations, are byte-verified against the sha256 values recorded here. EDRDG's JMdict XML (priority tags), Jiten's frequency list and Tatoeba serve only their current edition, so they pin no hash and a rebuild picks up that day's data; the published dictionary release is the fixed artifact the app pins.",
     "publishing": "After a rebuild changes the database, bump the release tag, recompute the dictionary sha256 here and in DictionaryDownloadManager.swift, and run scripts/publish_dictionary_release.sh."
   }
 }

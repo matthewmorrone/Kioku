@@ -4,24 +4,19 @@
 #
 # Source: OpenCC's JPShinjitaiCharacters.txt (Apache-2.0), pinned by commit and SHA-256 in
 # Resources/data-manifest.json under "opencc-jp-shinjitai". It lists, per modern character, the old
-# forms that map to it. KANJIDIC2 (Resources/kanjidic2-all.json, fetched by
-# `python3 Resources/generate_db.py --sources-only`) breaks ties when one old form maps to several
-# modern ones: the Jouyou kanji (grades 1-8) wins, then Jinmeiyou (9-10), then file order.
+# forms that map to it. KANJIDIC2 breaks ties when one old form maps to several modern ones: the
+# Jouyou kanji (grades 1-8) wins, then Jinmeiyou (9-10), then file order. Both are fetched from
+# upstream into generate_db.py's temporary work folder for the run and deleted afterwards.
 #
 # Usage: python3 scripts/generate_kyujitai_table.py
-import hashlib
 import json
-import os
 import sys
-import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "Resources" / "data-manifest.json"
-KANJIDIC2 = ROOT / "Resources" / "kanjidic2-all.json"
-# Shared with Resources/generate_db.py: the main checkout's Resources/source-cache, which every worktree uses.
 sys.path.insert(0, str(ROOT / "Resources"))
-from generate_db import SOURCE_CACHE_DIR as CACHE  # noqa: E402
+import generate_db  # noqa: E402
 OUTPUT = ROOT / "Kioku" / "Dictionary" / "KyujitaiTable.swift"
 
 # Legitimate variant spellings of common kanji that OpenCC's table lacks as keys. Each maps to the
@@ -29,19 +24,12 @@ OUTPUT = ROOT / "Kioku" / "Dictionary" / "KyujitaiTable.swift"
 SUPPLEMENTAL_PAIRS = {"鬪": "闘", "舖": "舗", "嶌": "島", "嶋": "島"}
 
 
-# Downloads the pinned OpenCC table into the source cache when absent and verifies its SHA-256.
+# Downloads the pinned OpenCC table into the run's work folder; generate_db.fetch_archive verifies
+# its SHA-256 against the manifest.
 def fetch_opencc_table():
-    entry = next(e for e in json.load(open(MANIFEST, encoding="utf-8"))["resources"] if e["name"] == "opencc-jp-shinjitai")
-    fetch = entry["fetch"]
-    path = CACHE / fetch["cacheName"]
-    if not path.exists():
-        CACHE.mkdir(parents=True, exist_ok=True)
-        request = urllib.request.Request(fetch["url"], headers={"User-Agent": "Kioku-table-generator"})
-        path.write_bytes(urllib.request.urlopen(request, timeout=60).read())
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    if digest != fetch["archiveSha256"]:
-        sys.exit(f"{path.name}: sha256 {digest} != pinned {fetch['archiveSha256']}")
-    return path, fetch["url"], digest
+    entry = generate_db.load_manifest()["opencc-jp-shinjitai"]
+    path = generate_db.fetch_archive(entry)
+    return path, entry["fetch"]["url"], entry["fetch"]["archiveSha256"]
 
 
 # Ranks a candidate modern form for tie-breaking: 0 for Jouyou kanji, 1 for Jinmeiyou, 2 otherwise.
@@ -56,9 +44,8 @@ def rank_by_grade(grades, character):
 
 # Builds the old -> new mapping from the OpenCC table, resolving one-to-many cases by KANJIDIC2 grade.
 def build_mapping(opencc_path):
-    if not KANJIDIC2.exists():
-        sys.exit("Resources/kanjidic2-all.json is missing — run: python3 Resources/generate_db.py --sources-only")
-    characters = json.load(open(KANJIDIC2, encoding="utf-8"))["characters"]
+    generate_db.materialize_source(generate_db.load_manifest()["kanjidic2-all"])
+    characters = json.load(open(generate_db.KANJIDIC2_PATH, encoding="utf-8"))["characters"]
     grades = {c["literal"]: (c.get("misc") or {}).get("grade") for c in characters}
 
     candidates = {}
@@ -108,8 +95,12 @@ nonisolated enum KyujitaiTable {{
 
 # Entry point: fetch, resolve, write.
 def main():
-    path, url, digest = fetch_opencc_table()
-    mapping = build_mapping(path)
+    generate_db.open_work_dir()
+    try:
+        path, url, digest = fetch_opencc_table()
+        mapping = build_mapping(path)
+    finally:
+        generate_db.close_work_dir()
     write_swift(mapping, url, digest)
     print(f"Wrote {len(mapping)} pairs -> {OUTPUT.relative_to(ROOT)}")
 
