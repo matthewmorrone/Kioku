@@ -59,12 +59,15 @@ headwords by the JMdict maintainers. https://downloads.tatoeba.org/exports/jpn_i
   kept): a stress test for kana-heavy text. It cannot be regenerated from a script — keep it.
 - `data/train2k` — first 2,000 training sentences; fit knobs here, confirm on held-out.
 - `data/known.txt` — hand-picked problem lines; check for regressions.
-- The full training half (`train.jsonl`, 73k sentences, 22 MB) is not checked in. Rebuild it with
-  `prep.py <dir containing jpn_indices.csv>` (odd sentence ids → held-out, even → train); the
-  transition-table counts use it **minus its first 2,000 lines**.
+- The full training half (`train.jsonl`, 73k sentences, 22 MB) is not checked in and no copy is kept.
+  Rebuild it with `prep.py <dir>` after downloading Tatoeba's current `jpn_indices.csv` into `<dir>`
+  (https://downloads.tatoeba.org/exports/jpn_indices.tar.bz2; odd sentence ids → held-out, even →
+  train); the transition-table counts use it **minus its first 2,000 lines**.
 - `lyrics/gold-reviewed.json` — the 38 lyric lines (of 319, from the alignment-fixture songs) where a cut
   of ours fell inside a MeCab word; the user corrected 6. The segmenter was then fixed against these
   lines, so the score is a regression list, NOT a held-out measure; the other 281 lines are unscored.
+- `lyrics/review-corrected-2026-09-20.txt` — the user's review of all 319 lines (cuts as ` | `),
+  including the 281 they left as correct; the source the 38 gold lines were taken from.
   Never print whole lyric lines; the scorer prints only the differing fragments.
 
 ## Numbers to beat (2026-09-30: Jiten frequency list, dictionary-v13)
