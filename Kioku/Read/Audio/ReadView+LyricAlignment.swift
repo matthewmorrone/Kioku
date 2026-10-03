@@ -169,7 +169,7 @@ extension ReadView {
                 durationMs: durationMs,
                 cancellationCheck: { [token = subtitleImport.alignmentCancellationToken] in token.isCancelled },
                 // The stage string already carries its own per-phase percent
-                // ("Isolating vocals… 73%", "Aligning text… 45%"), so each phase shows
+                // ("Isolating vocals… 73%", "Aligning… 45%"), so each phase shows
                 // a true 0–100% of itself rather than a fudged combined bar.
                 onStage: { [self] stage in
                     Task { @MainActor in lyricAlignment.progressMessage = stage }

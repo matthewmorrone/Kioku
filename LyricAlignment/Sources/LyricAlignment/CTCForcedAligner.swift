@@ -102,13 +102,13 @@ public struct CTCForcedAligner {
         Self.breadcrumb("aligner model loaded")
         if cancellationCheck?() == true { throw CancellationError() }
 
-        onStage?("Aligning text…")
+        onStage?("Aligning…")
         let audio16k = try CTCEmissions.resample(vocalMono, from: 44_100)
         let matrix = try CTCEmissions.logProbs(
             model: model, audio: audio16k, cancellationCheck: cancellationCheck,
             onProgress: { frac in
                 onProgress?(0.45 + 0.25 * frac)
-                onStage?("Aligning text… \(Int((50 * frac).rounded()))%")
+                onStage?("Aligning… \(Int((50 * frac).rounded()))%")
             }
         )
         Self.breadcrumb("emissions \(matrix.frames) frames × \(CTCEmissions.classes)")
@@ -120,7 +120,7 @@ public struct CTCForcedAligner {
             model: model, audio: try CTCEmissions.resample(mixMono, from: 44_100), cancellationCheck: cancellationCheck,
             onProgress: { frac in
                 onProgress?(0.70 + 0.20 * frac)
-                onStage?("Aligning text… \(50 + Int((50 * frac).rounded()))%")
+                onStage?("Aligning… \(50 + Int((50 * frac).rounded()))%")
             }
         )
         #if DEBUG
