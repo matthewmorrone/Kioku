@@ -7,6 +7,7 @@ import Foundation
 //   segcli run < sentences                         → the shipped path (bundled table, shipped weight)
 //   segcli helpers < surfaces                    → "surface<TAB>lemma + helper…": the words deinflection folds into each surface
 //   segcli compounds < surfaces                  → "surface<TAB>base + auxiliary" for each surface the lookup sheet names as a compound verb
+//   segcli furigana < sentences                  → per sentence, a JSON list of [utf16Location, utf16Length, reading]: the Read view's furigana for dictionary words
 // Repo root: four levels up from this file (scripts/segmentation-eval/cli/main.swift), unless KIOKU_CHECKOUT says otherwise.
 let root = ProcessInfo.processInfo.environment["KIOKU_CHECKOUT"]
     ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path
@@ -172,6 +173,19 @@ if mode == "oracle" {
         func show(_ path: [LatticeEdge]) -> String { path.map { "\($0.surface):\(String(format: "%.2f", $0.frequencyScore)):\($0.inflectionSteps)" }.joined(separator: " ") }
         let culpritText = culprits.map { "\($0.surface):\(String(format: "%.2f", $0.frequencyScore)):\($0.inflectionSteps):\($0.isDictionaryMatch ? 1 : 0)" }.joined(separator: " ")
         print([String(lineNumber), margin, culpritText, show(chosen), show(constrained), missing.joined(separator: " ")].joined(separator: "\t"))
+    }
+    exit(0)
+}
+
+if mode == "furigana" {
+    let readingData = SurfaceReadingDataMap(try store.fetchSurfaceReadingData())
+    // Without the per-kanji fallback map (it needs the app's enrichment layer): that only paints
+    // words the dictionary doesn't know, never a dictionary word's reading.
+    let resolver = FuriganaResolver(segmenter: segmenter)
+    while let line = readLine() {
+        let furigana = resolver.build(for: line, edges: segmenter.longestMatchEdges(for: line), surfaceReadingData: readingData)
+        let rows: [[Any]] = furigana.byLocation.keys.sorted().map { [$0, furigana.lengthByLocation[$0] ?? 0, furigana.byLocation[$0] ?? ""] }
+        print(String(data: try JSONSerialization.data(withJSONObject: rows), encoding: .utf8)!)
     }
     exit(0)
 }
