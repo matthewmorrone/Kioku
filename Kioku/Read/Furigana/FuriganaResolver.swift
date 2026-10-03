@@ -265,10 +265,11 @@ nonisolated struct FuriganaResolver {
         // わたくし against 私たち). Iterating candidates — not just the top reading — lets a lower-
         // ranked but okurigana-compatible reading win when the leading one doesn't fit.
         if runs.count == 1 {
-            for candidate in FuriganaResolver.candidateReadingsForSegment(
+            let candidates = FuriganaResolver.candidateReadingsForSegment(
                 furiganaLemmaReference,
                 surfaceReadingData: surfaceReadingData
-            ) {
+            )
+            for candidate in candidates {
                 if let lemmaCoreReading = firstKanjiRunReading(in: furiganaLemmaReference, using: candidate) {
                     return [
                         (
@@ -305,6 +306,22 @@ nonisolated struct FuriganaResolver {
                 let runSurface = String(Array(segmentSurface)[run.start..<run.end])
                 let runReading = projectedReadings[index]
                 if runReading.isEmpty || runReading == runSurface {
+                    continue
+                }
+                annotations.append((reading: runReading, localStartOffset: run.start, localLength: run.end - run.start))
+            }
+        }
+
+        // A multi-run word that couldn't be read whole (a compound verb like 憤り出しました, whose
+        // lemma 憤り出す isn't a headword): read each kanji run together with the kana after it as a
+        // word of its own — 憤り (いきどおり), 出しました (→ 出す, だす) — and crop to the run. Reading
+        // the bare kanji instead would leave 憤 blank and give 出 its standalone で.
+        if annotations.isEmpty, runs.count > 1 {
+            let characters = Array(segmentSurface)
+            for (index, run) in runs.enumerated() {
+                let pieceEnd = index + 1 < runs.count ? runs[index + 1].start : characters.count
+                let piece = String(characters[run.start..<pieceEnd])
+                guard let runReading = pieceRunReading(piece, surfaceReadingData: surfaceReadingData), runReading != String(characters[run.start..<run.end]) else {
                     continue
                 }
                 annotations.append((reading: runReading, localStartOffset: run.start, localLength: run.end - run.start))
@@ -364,6 +381,22 @@ nonisolated struct FuriganaResolver {
         }
 
         return annotations
+    }
+
+    // The reading of a piece's leading kanji run, reading the piece (one kanji run plus the kana
+    // after it) as a word: its own reading when the dictionary lists the piece, else its lemma's
+    // (出しました → 出す). Nil when neither reading lines up with the piece's okurigana.
+    private func pieceRunReading(_ piece: String, surfaceReadingData: SurfaceReadingDataMap) -> String? {
+        if let reading = FuriganaResolver.readingForSegment(piece, surfaceReadingData: surfaceReadingData),
+           let cropped = firstKanjiRunReading(in: piece, using: reading) {
+            return cropped
+        }
+        // The lemma's okurigana is uninflected (出す, not 出しました), so the crop runs on the lemma.
+        guard let lemma = segmenter.preferredLemma(for: piece), lemma != piece,
+              let lemmaReading = FuriganaResolver.readingForSegment(lemma, surfaceReadingData: surfaceReadingData) else {
+            return nil
+        }
+        return firstKanjiRunReading(in: lemma, using: lemmaReading)
     }
 
     // Recovers a script-preserving lemma so kanji segments still receive furigana when edge
