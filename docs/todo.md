@@ -72,14 +72,6 @@ written so a new session can pick it up cold.
       They run on the phone or in CI; this Mac has no simulator runtime.
 
 ## Release
-Not ready to submit yet (2026-09-30). Two checks to run once the release commit is settled
-(the HuBERT aligner replaced MMS on 2026-09-30, cc0b3fc); docs/RELEASE.md is the full gate.
-- [ ] **Measure a Release build.** No Release build has been made since the size and licensing work
-      of 2026-09-28–30. Run `scripts/distribute.sh --no-upload` from a clean `main` (archives the
-      Release configuration and exports the .ipa without uploading; it's a full rebuild, so ask
-      before starting). Report the app bundle size (the Debug bundle is 72 MB, of which 45 MB is
-      unoptimized code and 25 MB the handwriting model) and confirm the export signs.
 - [ ] **Run CI Tests on the release commit.** tests.yml is manual-only: start it from the Actions
       tab (or `gh workflow run tests.yml --ref main`) on the exact commit being submitted, and wait
-      for it with `gh run watch --exit-status` in the background. New since the last full run:
-      `DictionaryArchiveExtractorTests` (xz round-trip + truncated archive).
+      for it with `gh run watch --exit-status` in the background.
