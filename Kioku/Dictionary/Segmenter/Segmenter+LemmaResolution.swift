@@ -7,11 +7,11 @@ import Foundation
 // is the "given a surface, what does it mean" half. `isValidatedSuruNounPrefix` and
 // `suruCompoundEdge` are internal (not private) because buildLattice calls them directly.
 extension Segmenter {
-    // Chain label of deinflection.json's "ichidanStemForms" group (食べ → 食べる), as the deinflector
+    // Chain label of the deinflection rules' "ichidanStemForms" group (食べ → 食べる), as the deinflector
     // normalizes it. resolvedTrieLemmasBySource refuses that recovery to surfaces that are already words.
     static let ichidanStemLabel = "ichidan stem"
 
-    // Chain label of deinflection.json's "nounSuffixForms" group (私たち → 私). Folding a plural suffix
+    // Chain label of the deinflection rules' "nounSuffixForms" group (私たち → 私). Folding a plural suffix
     // off a noun is not a conjugation, so surfaceIsOutrankedByConjugation does not count it.
     static let nounSuffixLabel = "noun suffix"
 

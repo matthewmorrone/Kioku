@@ -11,7 +11,6 @@
 		C0FFEE000000000000000011 /* WordOfTheDayMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */; };
 		C0FFEE000000000000000012 /* WordOfTheDayMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */; };
 		E32B0CE32F57BC070020F5C2 /* data-manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDE2F57BC070020F5C2 /* data-manifest.json */; };
-		E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE82F57BC070020F5C2 /* deinflection.json */; };
 		E3D1C7002F4DFDB8005FDA11 /* dictionary.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */; };
 		E3FBBF9B303F516D009664F4 /* SwiftDagre in Frameworks */ = {isa = PBXBuildFile; productRef = DA6ADE0022FC000040000002 /* SwiftDagre */; };
 		E4WKA00012FA0000200000001 /* LyricAlignment in Frameworks */ = {isa = PBXBuildFile; productRef = E4WKA00022FA0000200000002 /* LyricAlignment */; };
@@ -66,7 +65,6 @@
 		E32B0CDE2F57BC070020F5C2 /* data-manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = data-manifest.json; sourceTree = "<group>"; };
 		E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = dictionary.sqlite; sourceTree = "<group>"; };
 		E32B0CE02F57BC070020F5C2 /* generate_db.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = generate_db.py; sourceTree = "<group>"; };
-		E32B0CE82F57BC070020F5C2 /* deinflection.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = deinflection.json; sourceTree = "<group>"; };
 		E32D09B42F638C1600788CAE /* Kioku.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Kioku.xcodeproj; sourceTree = "<group>"; };
 		E32D0BBB2F668D7400788CAE /* Kioku.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Kioku.xcodeproj; sourceTree = "<group>"; };
 		Z1NN1A1022FB0000200000002 /* handwriting-ja.model */ = {isa = PBXFileReference; lastKnownFileType = file; path = "handwriting-ja.model"; sourceTree = "<group>"; };
@@ -184,7 +182,6 @@
 			isa = PBXGroup;
 			children = (
 				E32B0CDE2F57BC070020F5C2 /* data-manifest.json */,
-				E32B0CE82F57BC070020F5C2 /* deinflection.json */,
 				E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */,
 				E32B0CE02F57BC070020F5C2 /* generate_db.py */,
 				Z1NN1A1022FB0000200000002 /* handwriting-ja.model */,
@@ -388,7 +385,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				E32B0CE32F57BC070020F5C2 /* data-manifest.json in Resources */,
-				E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */,
 				Z1NN1A1012FB0000200000001 /* handwriting-ja.model in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

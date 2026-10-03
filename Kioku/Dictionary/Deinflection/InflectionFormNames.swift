@@ -4,7 +4,7 @@ import Foundation
 // grammatical form, for display beside the dictionary lemma in the lookup header. Internal
 // stem-recovery steps are omitted — they are mechanical backtracking, not user-facing forms.
 //
-// Keys are NOT the raw deinflection.json group names ("teForms", "negativePastForms") — the
+// Keys are NOT the raw deinflection rule group names ("teForms", "negativePastForms") — the
 // deinflector normalizes each rule's group label before it ever reaches here
 // (Deinflector.normalizedRuleLabel: strips the "Forms" suffix, then splits camelCase into lowercase
 // space-separated words — "negativePastForms" -> "negative past"). A table keyed by the raw names

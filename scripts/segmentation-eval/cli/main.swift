@@ -16,7 +16,7 @@ try store.populateSurfacePOSBitsMap()
 let trie = DictionaryTrie()
 let surfaceData = try store.fetchSurfaceData()
 for record in surfaceData.surfaceRecords { trie.insert(record) }
-let deinflector = try Deinflector(jsonFileURL: URL(fileURLWithPath: "\(root)/Resources/deinflection.json"), trie: trie)
+let deinflector = Deinflector(ruleSet: try store.fetchDeinflectionRuleSet(), trie: trie)
 let segmenter = Segmenter(
     trie: trie,
     deinflector: deinflector,

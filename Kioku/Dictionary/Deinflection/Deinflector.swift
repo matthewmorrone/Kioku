@@ -14,7 +14,7 @@ nonisolated final class Deinflector {
     // "exception" list: their て-form takes the small-っ godan pattern — 知って, not 知て —
     // so they never legitimately match a rule whose rulesOut claims ["v1"]). Consulted by
     // deinflectionPaths to reject false-ichidan candidates a generic v1 rule would otherwise
-    // admit. Sourced from deinflection.json's "nonIchidanRuVerbs" key (see loadNonIchidanRuVerbs)
+    // admit. Sourced from the dictionary's deinflection_lists (nonIchidanRuVerbs)
     // rather than hard-coded here, per the Deinflection Contract — Deinflector may only load
     // rules, traverse the rule graph, and admit candidates, not embed word-specific exceptions.
     //
@@ -28,7 +28,7 @@ nonisolated final class Deinflector {
     // Grammar states that are a step inside a chain, not a dictionary form: a rule whose rulesOut
     // names one (てく → て, rulesOut ["te"]) says "this is a て-form", so the surface it leaves is
     // traversed further but is never a lemma candidate — otherwise についてく → について would admit
-    // the expression について as the word. Sourced from deinflection.json's "intermediateForms".
+    // the expression について as the word. Sourced from the dictionary's deinflection_lists (intermediateForms).
     private let intermediateForms: Set<String>
 
     // The helper word (DeinflectionRule.helper) of each rule that has one, keyed by helperKey.
@@ -75,123 +75,14 @@ nonisolated final class Deinflector {
         self.rulesOutByTransition = Self.rulesOutIndex(expandedLabeledRules, normalizingLabel: Self.normalizedRuleLabel)
     }
 
-    // The non-rule sibling keys alongside the rule groups (teForms, pastForms, …) in deinflection.json.
-    private static let nonIchidanRuVerbsKey = "nonIchidanRuVerbs"
-    private static let intermediateFormsKey = "intermediateForms"
-    // What the file was generated from (scripts/deinflection/regenerate.sh): source checksums, not rules.
-    private static let buildKey = "build"
-
-    // Loads grouped rules from JSON data while preserving rule-group labels. Strips the non-rule
-    // "nonIchidanRuVerbs" / "intermediateForms" / "build" keys first so the rest decodes as pure rule groups.
-    static func loadGroupedRules(from data: Data) throws -> [String: [DeinflectionRule]] {
-        guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return try JSONDecoder().decode([String: [DeinflectionRule]].self, from: data)
-        }
-        object.removeValue(forKey: nonIchidanRuVerbsKey)
-        object.removeValue(forKey: intermediateFormsKey)
-        object.removeValue(forKey: buildKey)
-        let rulesData = try JSONSerialization.data(withJSONObject: object)
-        return try JSONDecoder().decode([String: [DeinflectionRule]].self, from: rulesData)
-    }
-
-    // Loads the data-driven denylist of godan verbs that look ichidan (see knownNonIchidanRuVerbs)
-    // from deinflection.json's top-level "nonIchidanRuVerbs" array.
-    static func loadNonIchidanRuVerbs(from data: Data) throws -> Set<String> {
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let verbs = object[nonIchidanRuVerbsKey] as? [String] else {
-            return []
-        }
-        return Set(verbs)
-    }
-
-    // Loads the grammar states that are never a lemma (see intermediateForms) from deinflection.json's
-    // top-level "intermediateForms" array.
-    static func loadIntermediateForms(from data: Data) throws -> Set<String> {
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let forms = object[intermediateFormsKey] as? [String] else {
-            return []
-        }
-        return Set(forms)
-    }
-
-    // Loads grouped rules from JSON data and flattens them into a linear rule list.
-    static func loadRules(from data: Data) throws -> [DeinflectionRule] {
-        let groupedRules = try loadGroupedRules(from: data)
-        return groupedRules.values.flatMap { groupRules in
-            groupRules
-        }
-    }
-
-    // Loads grouped rules from a JSON file URL while preserving group labels.
-    static func loadGroupedRules(from fileURL: URL) throws -> [String: [DeinflectionRule]] {
-        let data = try Data(contentsOf: fileURL)
-        return try loadGroupedRules(from: data)
-    }
-
-    // Loads grouped rules from a JSON file URL and flattens them into a linear rule list.
-    static func loadRules(from fileURL: URL) throws -> [DeinflectionRule] {
-        let data = try Data(contentsOf: fileURL)
-        return try loadRules(from: data)
-    }
-
-    // Loads grouped rules from a JSON file in the provided app bundle.
-    static func loadRules(
-        bundle: Bundle = .main,
-        resourceName: String = "deinflection",
-        fileExtension: String = "json"
-    ) throws -> [DeinflectionRule] {
-        guard let fileURL = bundle.url(forResource: resourceName, withExtension: fileExtension) else {
-            throw NSError(
-                domain: "Deinflector",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Missing deinflection rules file: \(resourceName).\(fileExtension)"]
-            )
-        }
-
-        return try loadRules(from: fileURL)
-    }
-
-    // Loads grouped rules from a JSON file in the provided app bundle while preserving labels.
-    static func loadGroupedRules(
-        bundle: Bundle = .main,
-        resourceName: String = "deinflection",
-        fileExtension: String = "json"
-    ) throws -> [String: [DeinflectionRule]] {
-        guard let fileURL = bundle.url(forResource: resourceName, withExtension: fileExtension) else {
-            throw NSError(
-                domain: "Deinflector",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Missing deinflection rules file: \(resourceName).\(fileExtension)"]
-            )
-        }
-
-        return try loadGroupedRules(from: fileURL)
-    }
-
-    // Builds a deinflector directly from a grouped-rule JSON file.
-    convenience init(jsonFileURL: URL, trie: DictionaryTrie) throws {
-        let data = try Data(contentsOf: jsonFileURL)
-        let groupedRules = try Self.loadGroupedRules(from: data)
-        let nonIchidanRuVerbs = try Self.loadNonIchidanRuVerbs(from: data)
-        let intermediateForms = try Self.loadIntermediateForms(from: data)
-        self.init(groupedRules: groupedRules, trie: trie, nonIchidanRuVerbs: nonIchidanRuVerbs, intermediateForms: intermediateForms)
-    }
-
-    // Builds a deinflector from grouped-rule JSON in the app bundle.
-    convenience init(
-        trie: DictionaryTrie,
-        bundle: Bundle = .main,
-        resourceName: String = "deinflection",
-        fileExtension: String = "json"
-    ) throws {
-        guard let fileURL = bundle.url(forResource: resourceName, withExtension: fileExtension) else {
-            throw NSError(
-                domain: "Deinflector",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Missing deinflection rules file: \(resourceName).\(fileExtension)"]
-            )
-        }
-        try self.init(jsonFileURL: fileURL, trie: trie)
+    // Builds a deinflector from the rules the dictionary carries (DictionaryStore.fetchDeinflectionRuleSet).
+    convenience init(ruleSet: DeinflectionRuleSet, trie: DictionaryTrie) {
+        self.init(
+            groupedRules: ruleSet.groupedRules,
+            trie: trie,
+            nonIchidanRuVerbs: ruleSet.nonIchidanRuVerbs,
+            intermediateForms: ruleSet.intermediateForms
+        )
     }
 
     // Returns ordered labeled rules so callers can perform inflection inversion without reloading rule resources.

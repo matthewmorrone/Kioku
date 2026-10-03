@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Generates Resources/deinflection.json from the grammar table and UniDic's conjugation data.
+"""Generates the deinflection rules from the grammar table and UniDic's conjugation data.
+
+Resources/generate_db.py calls build_rules() and writes the result into the dictionary
+(deinflection_rules, deinflection_lists), where the app loads it. Run on its own, this script prints
+the same rules as JSON, one per line, for reviewing a change to the grammar or the extras.
 
 Two inputs:
   - Resources/deinflection-grammar.json: which form of a word each auxiliary, particle or helper
@@ -18,7 +22,7 @@ Then the rules of Resources/deinflection-extras.json (exceptions, not grammar: �
 the honorific い-stems …) are added as written, rules that differ only in the steps they accept or in
 the helper they name are merged, and a "build" record notes the checksums of everything used.
 
-    python3 generate_rules.py <lex.csv> [--grammar G] [--extras E] [--unidic-sha SHA] > deinflection.json
+    python3 generate_rules.py <lex.csv> [--grammar G] [--extras E] [--unidic-sha SHA] > rules.json
 """
 import collections
 import csv
@@ -93,12 +97,13 @@ def common_prefix(a, b):
     return n
 
 
-def read_unidic(lex, aux_words):
-    """Endings per (cType, cForm), the last stem kana of empty-ending forms, and auxiliaries' forms."""
+def read_unidic(lex_lines, aux_words):
+    """Endings per (cType, cForm), the last stem kana of empty-ending forms, and auxiliaries' forms,
+    from UniDic lex.csv's lines (an open file or any iterable of text lines)."""
     endings = collections.defaultdict(collections.Counter)
     stem_last_kana = collections.defaultdict(collections.Counter)
     aux_forms = collections.defaultdict(set)
-    for row in csv.reader(open(lex, encoding='utf-8')):
+    for row in csv.reader(lex_lines):
         if len(row) <= LEX_KANA_BASE:
             continue
         pos1, ctype, cform = row[LEX_POS1], row[LEX_CTYPE], row[LEX_CFORM]
@@ -198,8 +203,15 @@ def merged(groups):
 
 def main():
     lex = sys.argv[1]
-    grammar_path = option('--grammar', GRAMMAR_DEFAULT)
-    extras_path = option('--extras', EXTRAS_DEFAULT)
+    with open(lex, encoding='utf-8') as lex_lines:
+        out = build_rules(lex_lines, option('--grammar', GRAMMAR_DEFAULT), option('--extras', EXTRAS_DEFAULT),
+                          option('--unidic-sha', None) or sha256(lex))
+    sys.stdout.write(one_rule_per_line(out))
+
+
+def build_rules(lex_lines, grammar_path, extras_path, unidic_sha):
+    """The deinflection rules in deinflection.json's structure: rule groups, nonIchidanRuVerbs,
+    intermediateForms and the build record. Shared by this script and Resources/generate_db.py."""
     grammar = json.load(open(grammar_path, encoding='utf-8'))
     aux_words = grammar['auxiliaryConjugations']['words']
     aux_grammar = {aux: row['grammar'] for aux, row in aux_words.items()}
@@ -207,7 +219,7 @@ def main():
     standalone_group = grammar['standaloneForms']['forms']
     standalone = set(standalone_group)
 
-    endings, stem_last_kana, aux_forms = read_unidic(lex, set(aux_grammar))
+    endings, stem_last_kana, aux_forms = read_unidic(lex_lines, set(aux_grammar))
 
     forms = collections.defaultdict(list)  # cType → [(cForm, ending, base ending)]
     for (ctype, cform), counter in endings.items():
@@ -305,11 +317,11 @@ def main():
     out['intermediateForms'] = grammar['intermediateForms']
     out['build'] = {
         'generator': 'scripts/deinflection/generate_rules.py',
-        'unidic': {'member': 'unidic-mecab_kana-accent-2.1.2_src/lex.csv', 'sha256': option('--unidic-sha', sha256(lex))},
+        'unidic': {'member': 'unidic-mecab_kana-accent-2.1.2_src/lex.csv', 'sha256': unidic_sha},
         'grammar': {'file': 'Resources/deinflection-grammar.json', 'sha256': sha256(grammar_path)},
         'extras': {'file': 'Resources/deinflection-extras.json', 'sha256': sha256(extras_path)},
     }
-    sys.stdout.write(one_rule_per_line(out))
+    return out
 
 
 if __name__ == '__main__':

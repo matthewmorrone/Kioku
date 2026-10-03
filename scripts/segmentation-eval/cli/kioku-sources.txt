@@ -60,3 +60,5 @@ Read/Furigana/FuriganaResolver.swift
 Read/Furigana/FuriganaAttributedString.swift
 Dictionary/KanjiReadingFallbackMap.swift
 Settings/TypographySettings.swift
+Dictionary/Deinflection/DeinflectionRuleSet.swift
+Dictionary/DictionaryStore+Deinflection.swift

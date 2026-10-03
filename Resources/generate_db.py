@@ -36,6 +36,11 @@ MANIFEST_PATH = RESOURCES_DIR / "data-manifest.json"
 WORK_DIR = None
 JMDICT_PATH = None
 EXTRAS_PATH = RESOURCES_DIR / "extras.json"
+# The deinflection rules are generated from UniDic (the same archive as pitch accent), this grammar
+# table and these hand-added exceptions; see scripts/deinflection/generate_rules.py.
+DEINFLECTION_GRAMMAR_PATH = RESOURCES_DIR / "deinflection-grammar.json"
+DEINFLECTION_EXTRAS_PATH = RESOURCES_DIR / "deinflection-extras.json"
+DEINFLECTION_GENERATOR_PATH = PROJECT_ROOT / "scripts" / "deinflection" / "generate_rules.py"
 # Jiten's global frequency list (Yomitan term_meta_bank "freq" layout), read by import_frequency_ranks
 # and materialize_surface_frequency.
 FREQUENCY_PATH = None
@@ -1243,6 +1248,43 @@ def import_pitch_accent(conn):
     print(f"  Done: {count} pitch accent entries imported")
 
 
+# Generates the deinflection rules from UniDic's conjugation data (the archive pitch accent already
+# uses), the grammar table and the hand-added exceptions, into deinflection_rules (one row per rule,
+# grouped as the lookup sheet captions them) and deinflection_lists (the godan verbs that look
+# ichidan, and the steps that are never a dictionary form). The app's Deinflector loads both.
+def import_deinflection_rules(conn):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("generate_rules", DEINFLECTION_GENERATOR_PATH)
+    generate_rules = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(generate_rules)
+    entry = load_manifest()["unidic-kana-accent-src"]
+    archive = fetch_archive(entry)
+    with open_source_member(entry["fetch"], archive) as raw:
+        lex_lines = io.TextIOWrapper(raw, encoding="utf-8", newline="")
+        rules = generate_rules.build_rules(lex_lines, DEINFLECTION_GRAMMAR_PATH, DEINFLECTION_EXTRAS_PATH, entry["sha256"])
+    conn.execute("""
+        CREATE TABLE deinflection_rules (
+            id INTEGER PRIMARY KEY, rule_group TEXT NOT NULL, kana_in TEXT NOT NULL, kana_out TEXT NOT NULL,
+            rules_in TEXT NOT NULL, rules_out TEXT NOT NULL, helper TEXT, source TEXT
+        )""")
+    conn.execute("CREATE TABLE deinflection_lists (list TEXT NOT NULL, value TEXT NOT NULL)")
+    count = 0
+    for group, value in rules.items():
+        if group == "build" or not (isinstance(value, list) and value and isinstance(value[0], dict)):
+            continue
+        for rule in value:
+            count += 1
+            conn.execute(
+                "INSERT INTO deinflection_rules VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (count, group, rule["kanaIn"], rule["kanaOut"], ",".join(rule["rulesIn"]), ",".join(rule["rulesOut"]),
+                 rule.get("helper"), rule.get("source")),
+            )
+    for name in ("nonIchidanRuVerbs", "intermediateForms"):
+        for value in rules[name]:
+            conn.execute("INSERT INTO deinflection_lists VALUES (?, ?)", (name, value))
+    print(f"  Done: {count} deinflection rules")
+
+
 def import_sentence_pairs(conn):
     # Populates sentence_pairs from Japanese-English pairs derived out of Tatoeba's exports
     # (derive_sentence_pairs_rows): ja_id, japanese, en_id, english.
@@ -1820,6 +1862,9 @@ def build_database():
     with phase("Importing pitch accent data..."):
         import_pitch_accent(conn)
 
+    with phase("Generating deinflection rules..."):
+        import_deinflection_rules(conn)
+
     with phase("Importing sentence pairs..."):
         import_sentence_pairs(conn)
 
@@ -1892,7 +1937,9 @@ def record_build_provenance(conn):
 
 
 # The non-download inputs of this build: the commit, uncommitted changes, the local files the
-# generator reads (extras.json, the manifest, ScriptClassifier.swift's kana ranges, itself) and the tool versions (wordfreq ranks and MeCab splits both land in the database).
+# generator reads (extras.json, the manifest, ScriptClassifier.swift's kana ranges, the deinflection
+# grammar, exceptions and generator, itself) and the tool versions (wordfreq ranks and MeCab splits
+# both land in the database).
 def build_info():
     def run(*cmd):
         try:
@@ -1912,7 +1959,8 @@ def build_info():
         "wordfreq": wordfreq_version,
         "mecab": run("mecab", "--version"),
     }
-    for local in (EXTRAS_PATH, MANIFEST_PATH, SCRIPT_CLASSIFIER_SWIFT_PATH, Path(__file__).resolve()):
+    for local in (EXTRAS_PATH, MANIFEST_PATH, SCRIPT_CLASSIFIER_SWIFT_PATH, DEINFLECTION_GRAMMAR_PATH,
+                  DEINFLECTION_EXTRAS_PATH, DEINFLECTION_GENERATOR_PATH, Path(__file__).resolve()):
         if local.exists():
             info[f"sha256 {local.relative_to(PROJECT_ROOT)}"] = sha256_of_file(local)
     return info

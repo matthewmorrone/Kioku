@@ -684,7 +684,7 @@ final class SegmenterIntegrationTests: XCTestCase {
 
     // InflectionFormNames must be keyed by NORMALIZED chain labels: Deinflector.normalizedRuleLabel
     // strips "Forms" and splits camelCase before a chain ever leaves the deinflector, so a table
-    // keyed by the raw deinflection.json group names ("teForms", "progressiveForms") misses every
+    // keyed by the raw deinflection rule group names ("teForms", "progressiveForms") misses every
     // describe(_:) lookup silently and no word shows a grammatical-form caption. 見てる (見る's casual
     // progressive contraction) is a real example: its chain is ["progressive"], not
     // ["progressiveForms"].

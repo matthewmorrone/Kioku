@@ -608,14 +608,12 @@ struct ContentView: View {
             AppLog.error(.dictionary, "DictionaryStore initialization failed: \(error)")
         }
 
+        // The rules ship inside the dictionary (generated into it from UniDic and the grammar table).
         do {
-            deinflector = try StartupTimer.measure("Deinflector.init") {
-                try Deinflector(
-                    trie: trie,
-                    bundle: .main,
-                    resourceName: "deinflection",
-                    fileExtension: "json"
-                )
+            if let ruleSet = try dictionaryStore?.fetchDeinflectionRuleSet() {
+                deinflector = StartupTimer.measure("Deinflector.init") {
+                    Deinflector(ruleSet: ruleSet, trie: trie)
+                }
             }
         } catch {
             AppLog.error(.dictionary, "Deinflector initialization failed: \(error)")

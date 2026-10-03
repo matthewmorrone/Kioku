@@ -5,7 +5,7 @@ import XCTest
 //
 // Chain labels here are the NORMALIZED form InflectionFormNames.describe(_:) actually
 // keys on (see that file's header comment) — Deinflector.normalizedRuleLabel strips the raw
-// deinflection.json group name's "Forms" suffix and splits camelCase into lowercase
+// deinflection rule group name's "Forms" suffix and splits camelCase into lowercase
 // space-separated words ("negativePastForms" -> "negative past") before this table ever sees it.
 final class InflectionFormNamesTests: XCTestCase {
     // A single known form maps to its display name.

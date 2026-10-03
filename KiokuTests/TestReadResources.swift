@@ -56,7 +56,7 @@ final class TestReadResources {
             trie.insert(record)
         }
 
-        let deinflector = try Deinflector(jsonFileURL: Self.deinflectionRulesURL(), trie: trie)
+        let deinflector = Deinflector(ruleSet: try dictionaryStore.fetchDeinflectionRuleSet(), trie: trie)
 
         self.dictionaryStore = dictionaryStore
         self.trie = trie
@@ -87,17 +87,9 @@ final class TestReadResources {
         try resolveResourceURL(fileName: "dictionary.sqlite")
     }
 
-    // Resolves the checked-in deinflection rules file used by the real app pipeline.
-    private static func deinflectionRulesURL() throws -> URL {
-        try resolveResourceURL(fileName: "deinflection.json")
-    }
-
-    // Loads grouped deinflection rules using the same resource resolution path as the shared test harness.
-    // Goes through Deinflector.loadGroupedRules so the non-rule "nonIchidanRuVerbs" sibling key
-    // in deinflection.json is stripped the same way production loading strips it.
+    // Loads the grouped deinflection rules from the test dictionary, where the app reads them too.
     static func groupedDeinflectionRules() throws -> [String: [DeinflectionRule]] {
-        let rulesData = try Data(contentsOf: resolveResourceURL(fileName: "deinflection.json"))
-        return try Deinflector.loadGroupedRules(from: rulesData)
+        try DictionaryStore(databaseURL: dictionaryDatabaseURL()).fetchDeinflectionRuleSet().groupedRules
     }
 
     // Resolves a test resource from repository checkout paths or built bundle resources.
