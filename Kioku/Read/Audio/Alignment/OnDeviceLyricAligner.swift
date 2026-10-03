@@ -16,7 +16,7 @@ enum OnDeviceLyricAligner {
     static func alignDetailed(
         audioURL: URL,
         lyrics: String,
-        romanize: (String) -> [RomanizedSpan],
+        romanize: @escaping @Sendable (String) -> [RomanizedSpan],
         cancellationCheck: (@Sendable () -> Bool)? = nil,
         onStage: (@Sendable (String) -> Void)? = nil,
         onSegment: (@Sendable ([AlignedLine]) -> Void)? = nil
@@ -35,7 +35,12 @@ enum OnDeviceLyricAligner {
         }
 
         AppLog.info(.audioAlignment, "force-aligning \(lines.count) line(s) via CTC")
-        let input = AlignmentInput(audioURL: audioURL, lines: lines, romanization: lines.map(romanize))
+        // Romanizing segments every line (Viterbi + furigana), which takes long enough on a long
+        // note to hold up the lyrics view that just opened, so it runs off the main thread.
+        let romanization = await Task.detached(priority: .userInitiated) {
+            StartupTimer.measure("alignment romanize (\(lines.count) lines)") { lines.map(romanize) }
+        }.value
+        let input = AlignmentInput(audioURL: audioURL, lines: lines, romanization: romanization)
 
         #if canImport(UIKit)
         let bg = BackgroundTaskHolder.begin("kioku.lyric-alignment")

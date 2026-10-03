@@ -145,6 +145,9 @@ extension ReadView {
                     subtitleImport.isShowingLyricMediaPicker = true
                 } else {
                     audioPlayback.isShowingLyricsView.toggle()
+                    // How long the main thread stays busy after the tap, i.e. how late the view shows.
+                    StartupTimer.mark("lyrics toggle tapped (showing=\(audioPlayback.isShowingLyricsView))")
+                    DispatchQueue.main.async { StartupTimer.mark("lyrics toggle: main thread free") }
                 }
             }
             .accessibilityLabel(audioPlayback.isShowingLyricsView ? "Hide Lyrics" : "Show Lyrics")

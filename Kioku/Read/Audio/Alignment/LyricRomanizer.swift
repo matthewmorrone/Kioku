@@ -8,7 +8,8 @@
 import Foundation
 import LyricAlignment
 
-struct LyricRomanizer {
+// Nonisolated and Sendable so the aligner can romanize a whole note off the main thread.
+nonisolated struct LyricRomanizer: Sendable {
     let segmenter: any TextSegmenting
     let surfaceReadingData: SurfaceReadingDataMap
     let kanjiReadingFallback: KanjiReadingFallbackMap

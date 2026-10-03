@@ -14,7 +14,7 @@ enum WholeSongAlignment {
     static func cues(
         audioURL: URL,
         lyrics: String,
-        romanize: (String) -> [RomanizedSpan],
+        romanize: @escaping @Sendable (String) -> [RomanizedSpan],
         durationMs knownDurationMs: Int? = nil,
         cancellationCheck: (@Sendable () -> Bool)? = nil,
         onStage: (@Sendable (String) -> Void)? = nil
