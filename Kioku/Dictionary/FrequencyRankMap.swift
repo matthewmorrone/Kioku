@@ -38,6 +38,6 @@ nonisolated final class FrequencyRankMap: Equatable {
 
     // Per-surface access; old-form kanji fall back to the modern spelling the table is keyed by.
     subscript(surface: String) -> Int? {
-        KyujitaiNormalizer.firstHit(for: surface) { data[$0] }
+        SpellingNormalizer.firstHit(for: surface) { data[$0] }
     }
 }

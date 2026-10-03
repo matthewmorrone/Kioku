@@ -442,7 +442,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
 
         // Append shinjitai-normalized form as a final fallback so classical text
         // written in kyujitai resolves to JMdict entries that only list the modern form.
-        if let normalized = KyujitaiNormalizer.normalize(trimmedSurface),
+        if let normalized = SpellingNormalizer.normalize(trimmedSurface),
            orderedSurfaces.contains(normalized) == false {
             orderedSurfaces.append(normalized)
         }

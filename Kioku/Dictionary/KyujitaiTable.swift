@@ -3,7 +3,7 @@
 // SHA-256: 12cec7250b873ef52b36d8f92218d4f92c0aaf5d8cd7c58fe42d9785bdcdc43a
 // Re-run the script after changing the "opencc-jp-shinjitai" entry in Resources/data-manifest.json.
 
-// Old-form kanji paired with the modern form each normalizes to, for KyujitaiNormalizer.
+// Old-form kanji paired with the modern form each normalizes to, for SpellingNormalizer.
 nonisolated enum KyujitaiTable {
     // 412 pairs stored flat: each pair is the old-form character immediately followed by
     // its modern form, so the string reads old, new, old, new, ...; line breaks are ignored.

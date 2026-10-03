@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Generates Kioku/Dictionary/KyujitaiTable.swift: the old-form (kyujitai / variant) kanji to
-# modern-form (shinjitai) table that KyujitaiNormalizer applies in the trie and in dictionary lookup.
+# modern-form (shinjitai) table that SpellingNormalizer applies in the trie and in dictionary lookup.
 #
 # Source: OpenCC's JPShinjitaiCharacters.txt (Apache-2.0), pinned by commit and SHA-256 in
 # Resources/data-manifest.json under "opencc-jp-shinjitai". It lists, per modern character, the old
@@ -80,7 +80,7 @@ def write_swift(mapping, source_url, source_sha):
 // SHA-256: {source_sha}
 // Re-run the script after changing the "opencc-jp-shinjitai" entry in Resources/data-manifest.json.
 
-// Old-form kanji paired with the modern form each normalizes to, for KyujitaiNormalizer.
+// Old-form kanji paired with the modern form each normalizes to, for SpellingNormalizer.
 nonisolated enum KyujitaiTable {{
     // {len(mapping)} pairs stored flat: each pair is the old-form character immediately followed by
     // its modern form, so the string reads old, new, old, new, ...; line breaks are ignored.

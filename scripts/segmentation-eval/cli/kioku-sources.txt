@@ -20,7 +20,7 @@ Dictionary/KanaData.swift
 Dictionary/KanaForm.swift
 Dictionary/KanaNormalizer.swift
 Dictionary/KanjiForm.swift
-Dictionary/KyujitaiNormalizer.swift
+Dictionary/SpellingNormalizer.swift
 Dictionary/KyujitaiTable.swift
 Dictionary/Lattice/Lattice.swift
 Dictionary/Lattice/LatticeEdge.swift
@@ -56,3 +56,7 @@ Dictionary/Conjugation/ConjugationGroup.swift
 Dictionary/Deinflection/Deinflector+HelperWords.swift
 Dictionary/Deinflection/Deinflector+EndingGrammar.swift
 Dictionary/Deinflection/ConjugationClass.swift
+Read/Furigana/FuriganaResolver.swift
+Read/Furigana/FuriganaAttributedString.swift
+Dictionary/KanjiReadingFallbackMap.swift
+Settings/TypographySettings.swift

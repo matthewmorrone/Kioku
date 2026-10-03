@@ -36,7 +36,7 @@ nonisolated final class KanjiReadingFallbackMap: Equatable, @unchecked Sendable 
     // Per-character access; an old-form kanji (氣) falls back to its modern form's reading (気).
     subscript(kanji: Character) -> String? {
         if let direct = data[kanji] { return direct }
-        guard let modern = KyujitaiNormalizer.normalize(kanji) else { return nil }
+        guard let modern = SpellingNormalizer.normalize(kanji) else { return nil }
         return data[modern]
     }
 }

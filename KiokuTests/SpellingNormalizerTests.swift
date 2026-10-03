@@ -1,10 +1,11 @@
 import XCTest
 @testable import Kioku
 
-// Verifies old-form kanji (kyujitai and variant spellings) are modernized by KyujitaiNormalizer and,
-// more importantly, that DictionaryTrie uses it: text written in an older orthography must match
-// dictionary entries indexed in the modern form, with ranges and surfaces still in the text as written.
-final class KyujitaiNormalizerTests: XCTestCase {
+// Verifies old-form kanji (kyujitai and variant spellings) are modernized by SpellingNormalizer, and
+// katakana standing in for hiragana inside a word with kanji is read as hiragana, and, more
+// importantly, that DictionaryTrie uses it: text written that way must match dictionary entries
+// indexed in the standard form, with ranges and surfaces still in the text as written.
+final class SpellingNormalizerTests: XCTestCase {
 
     // Reads the generated table back as (old, new) scalar pairs so property tests cover every entry.
     private func tablePairs() -> [(old: Unicode.Scalar, new: Unicode.Scalar)] {
@@ -29,6 +30,9 @@ final class KyujitaiNormalizerTests: XCTestCase {
         trie.insert("電氣", entryIDs: [31], partOfSpeech: 8)
         trie.insert("國", entryIDs: [40], partOfSpeech: 16)
         trie.insert("の", entryIDs: [50], partOfSpeech: 32)
+        trie.insert("高慢ちき", entryIDs: [60], partOfSpeech: 64)
+        trie.insert("か", entryIDs: [70], partOfSpeech: 128)
+        trie.insert("すき", entryIDs: [80], partOfSpeech: 256)
         return trie
     }
 
@@ -40,25 +44,25 @@ final class KyujitaiNormalizerTests: XCTestCase {
 
     // Verifies the two forms from the reported note normalize, and modern text is reported as unchanged.
     func testNormalizeModernizesOldFormsAndLeavesModernTextAlone() {
-        XCTAssertEqual(KyujitaiNormalizer.normalize("痛みが殘るよ"), "痛みが残るよ")
-        XCTAssertEqual(KyujitaiNormalizer.normalize("氣づいた"), "気づいた")
-        XCTAssertNil(KyujitaiNormalizer.normalize("痛みが残るよ"))
-        XCTAssertNil(KyujitaiNormalizer.normalize("ひらがなとカタカナ"))
+        XCTAssertEqual(SpellingNormalizer.normalize("痛みが殘るよ"), "痛みが残るよ")
+        XCTAssertEqual(SpellingNormalizer.normalize("氣づいた"), "気づいた")
+        XCTAssertNil(SpellingNormalizer.normalize("痛みが残るよ"))
+        XCTAssertNil(SpellingNormalizer.normalize("ひらがなとカタカナ"))
     }
 
     // Verifies old forms that map to several modern characters resolve to the Jouyou kanji, not the rarer variant.
     func testAmbiguousOldFormsResolveToTheJouyouKanji() {
-        XCTAssertEqual(KyujitaiNormalizer.normalize("鹽"), "塩")
-        XCTAssertEqual(KyujitaiNormalizer.normalize("莊"), "荘")
-        XCTAssertEqual(KyujitaiNormalizer.normalize("畫"), "画")
-        XCTAssertEqual(KyujitaiNormalizer.normalize("驅"), "駆")
+        XCTAssertEqual(SpellingNormalizer.normalize("鹽"), "塩")
+        XCTAssertEqual(SpellingNormalizer.normalize("莊"), "荘")
+        XCTAssertEqual(SpellingNormalizer.normalize("畫"), "画")
+        XCTAssertEqual(SpellingNormalizer.normalize("驅"), "駆")
     }
 
     // Regression: 賠 is its own character, not an old form of 陪; an earlier hand-typed table mapped it,
     // which would have turned 賠償 into 陪償.
     func testDistinctCharactersAreNotTreatedAsOldForms() {
-        XCTAssertNil(KyujitaiNormalizer.normalize("賠償"))
-        XCTAssertNil(KyujitaiNormalizer.normalize("陪審"))
+        XCTAssertNil(SpellingNormalizer.normalize("賠償"))
+        XCTAssertNil(SpellingNormalizer.normalize("陪審"))
     }
 
     // Property: modernizing is idempotent and never changes length, so a second pass is a no-op and
@@ -68,18 +72,18 @@ final class KyujitaiNormalizerTests: XCTestCase {
         XCTAssertGreaterThan(pairs.count, 300)
         for pair in pairs {
             let old = String(Character(pair.old))
-            let modern = KyujitaiNormalizer.normalize(old)
+            let modern = SpellingNormalizer.normalize(old)
             XCTAssertEqual(modern, String(Character(pair.new)), "\(old) should modernize to \(Character(pair.new))")
             XCTAssertEqual(modern?.utf16.count, old.utf16.count, "\(old) changes UTF-16 length")
-            XCTAssertNil(modern.flatMap { KyujitaiNormalizer.normalize($0) }, "\(old) needs two passes")
+            XCTAssertNil(modern.flatMap { SpellingNormalizer.normalize($0) }, "\(old) needs two passes")
         }
     }
 
     // Verifies a kanji carrying a variation selector (two scalars) is left alone rather than half-converted.
     func testCharacterWithCombiningScalarIsNotConverted() {
         let withSelector = Character("氣\u{FE00}")
-        XCTAssertNil(KyujitaiNormalizer.normalize(withSelector))
-        XCTAssertEqual(KyujitaiNormalizer.normalize(Character("氣")), "気")
+        XCTAssertNil(SpellingNormalizer.normalize(withSelector))
+        XCTAssertEqual(SpellingNormalizer.normalize(Character("氣")), "気")
     }
 
     // Verifies the trie matches old-form spellings of modern-indexed words through every lookup path.
@@ -134,5 +138,22 @@ final class KyujitaiNormalizerTests: XCTestCase {
         XCTAssertEqual(matches(trie, in: "のの"), ["の"])
         XCTAssertTrue(matches(trie, in: "あいう").isEmpty)
         XCTAssertEqual(matches(trie, in: "残る"), ["残る"])
+    }
+
+    // Katakana inside a word with kanji reads as hiragana: 高慢チキ is the dictionary's 高慢ちき.
+    func testKatakanaInsideAWordWithKanjiMatchesTheHiraganaEntry() {
+        XCTAssertEqual(SpellingNormalizer.normalize("高慢チキ"), "高慢ちき")
+        let trie = makeTrie()
+        XCTAssertEqual(trie.hitMeta(for: "高慢チキ")?.entryIDs, [60])
+        XCTAssertEqual(matches(trie, in: "高慢チキな面"), ["高慢チキ"])
+    }
+
+    // Katakana with no kanji in the word stays katakana: a loanword must never match a hiragana word.
+    func testKatakanaWithoutKanjiNeverMatchesHiragana() {
+        XCTAssertNil(SpellingNormalizer.normalize("カタカナ"))
+        let trie = makeTrie()
+        XCTAssertFalse(trie.contains("カ"))
+        XCTAssertFalse(trie.contains("スキ"))
+        XCTAssertTrue(matches(trie, in: "スキ").isEmpty)
     }
 }

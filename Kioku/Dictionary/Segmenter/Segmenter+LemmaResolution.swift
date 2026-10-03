@@ -474,7 +474,7 @@ extension Segmenter {
     // Internal (not private): the particle-cluster split, in Segmenter.swift, calls this too.
     func frequencyScore(of surface: String) -> Double {
         let asWritten = frequencyScoreBySurface[surface] ?? 0
-        guard let modern = KyujitaiNormalizer.normalize(surface) else { return asWritten }
+        guard let modern = SpellingNormalizer.normalize(surface) else { return asWritten }
         return max(asWritten, frequencyScoreBySurface[modern] ?? 0)
     }
 

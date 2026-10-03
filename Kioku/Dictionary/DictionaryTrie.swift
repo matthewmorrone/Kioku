@@ -80,7 +80,7 @@ nonisolated public final class DictionaryTrie {
     }
 
     // Returns whether the surface exists as a terminal trie path, either exactly as written or after
-    // modernizing its old-form kanji (see KyujitaiNormalizer).
+    // modernizing its old-form kanji (see SpellingNormalizer).
     public func contains(_ surface: String) -> Bool {
         let nodes = terminalNodes(for: surface)
         return nodes.literal != nil || nodes.modern != nil
@@ -98,14 +98,18 @@ nonisolated public final class DictionaryTrie {
         return (cursor.literalTerminal, cursor.modernTerminal)
     }
 
-    // The single place old-form kanji meet the trie: a walk position on two parallel paths, the
-    // characters as written (literal) and with each old-form kanji replaced by its modern form
-    // (modern). The modern path only exists once an old-form kanji has been seen, so ordinary text
-    // costs one path, and every walker shares this one stepping rule.
+    // The single place alternate spellings meet the trie: a walk position on two parallel paths, the
+    // characters as written (literal) and with each old-form kanji modernized and each katakana
+    // turned into hiragana (modern; see SpellingNormalizer). The modern path only exists once such a
+    // character has been seen, so most text costs one path, and every walker shares this one
+    // stepping rule. A modern-path hit counts only when the word has a kanji, so katakana alone
+    // (a loanword) never matches a hiragana word.
     private struct SpellingCursor {
         private var literal: Node?
         private var modern: Node?
         private var diverged = false
+        private var literalHasKanji = false
+        private var modernHasKanji = false
 
         // Starts both paths at the trie root.
         init(root: Node) {
@@ -115,12 +119,16 @@ nonisolated public final class DictionaryTrie {
         // Moves both paths over one character. Returns false, leaving the cursor where it was,
         // when neither path continues.
         mutating func advance(over character: Character) -> Bool {
-            let mapped = KyujitaiNormalizer.normalize(character)
+            let mapped = SpellingNormalizer.alternate(character)
             let modernStart = (mapped != nil && diverged == false) ? literal : modern
             let nextLiteral = literal?.children[character]
             let nextModern = (diverged || mapped != nil) ? modernStart?.children[mapped ?? character] : nil
             guard nextLiteral != nil || nextModern != nil else { return false }
+            let isKanji = SpellingNormalizer.isKanji(character)
+            if mapped != nil && diverged == false { modernHasKanji = literalHasKanji }
             if mapped != nil { diverged = true }
+            literalHasKanji = literalHasKanji || isKanji
+            modernHasKanji = modernHasKanji || isKanji
             literal = nextLiteral
             modern = nextModern
             return true
@@ -129,8 +137,8 @@ nonisolated public final class DictionaryTrie {
         // The literal path's node when it ends a dictionary surface here.
         var literalTerminal: Node? { literal?.isTerminal == true ? literal : nil }
 
-        // The modern path's node when it ends a dictionary surface here.
-        var modernTerminal: Node? { diverged && modern?.isTerminal == true ? modern : nil }
+        // The modern path's node when it ends a dictionary surface here, in a word with a kanji.
+        var modernTerminal: Node? { diverged && modernHasKanji && modern?.isTerminal == true ? modern : nil }
 
         // Whether either spelling ends a dictionary surface here.
         var isTerminal: Bool { literalTerminal != nil || modernTerminal != nil }
