@@ -158,6 +158,9 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             var keptMatches = 0
             // Whether any edge longer than one character starts here; see the fallback below.
             var keptMultiCharacterMatch = false
+            // Where this position's edges begin in `edges`, so the katakana-run check below can see
+            // whether a dictionary edge already spans the whole run.
+            let positionEdgesStart = edges.count
 
             if let numberEdge = numberRunEdge(in: text, startingAt: index) {
                 edges.append(numberEdge)
@@ -209,6 +212,17 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     }
                 }
 
+                // Inside a longer katakana run, a katakana piece the dictionary doesn't spell in katakana
+                // resolves only by being read as hiragana or deinflected (ウエ as 上, ツ as つ, カステ as
+                // a verb form). Such pieces are what cut unknown loanwords apart (ウエ|ファース, ミン|ツ,
+                // カステ|イラ), so they pay katakanaPieceReadAsHiraganaPenalty and usually lose to the
+                // run's whole-run edge, while Japanese written in katakana for effect (ナカナイ|ヨ) still
+                // reads as words. Katakana words in katakana compounds (コーヒー|カップ) are spelled that
+                // way and pay nothing.
+                let isKatakanaPieceReadAsHiragana = trie.contains(surface) == false
+                    && ScriptClassifier.isPureKatakana(surface)
+                    && isInsideLongerKatakanaRun(surfaceRange, in: text)
+
                 var (lemmas, inflectionSteps) = resolvedTrieLemmasWithInflectionSteps(for: surface)
 
                 // Second exception: a word that is itself WRITTEN across the two scripts — ウソつき,
@@ -246,6 +260,12 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     // Frequency, step count and POS of whichever reading of the surface is cheaper.
                     let reading = pricedReading(of: surface, lemmas: lemmas, inflectionSteps: inflectionSteps)
                     edge.frequencyScore = reading.score
+                    if isKatakanaPieceReadAsHiragana {
+                        edge.frequencyScore = max(
+                            SegmenterScoring.unrankedDictionaryScore,
+                            edge.frequencyScore - SegmenterScoring.katakanaPieceReadAsHiraganaPenalty
+                        )
+                    }
                     // A one- or two-kana string that is neither a function word with a transition
                     // class of its own (か, と, よ…) nor a counter (つ) is rarely a word in running
                     // text, however the frequency list ranks it: ま is one gold token in 15,959
@@ -284,16 +304,18 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             // Ensures every character position has at least one outgoing edge.
             // Single-character fallback so the greedy walk lands on every position,
             // allowing dictionary words that start mid-unknown-run to be reached.
-            // A katakana run whose first kana is also a one-character entry (リ of リュミエール, シ of
-            // シェノン) still gets its whole-run edge, or an unknown loanword could only come out as
-            // that kana plus the rest; the path search weighs the two on cost.
+            // A katakana run still gets its whole-run edge when no dictionary edge spans it, even if
+            // shorter words start here: リ of リュミエール, or カステ (read as a verb form) of カステイラ.
+            // Otherwise an unknown loanword could only come out as known pieces plus the rest; the
+            // path search weighs the whole run against the pieces on cost.
             let isKatakanaRunStart = ScriptClassifier.isPureKatakana(String(text[index]))
-            if keptMatches == 0 || (keptMultiCharacterMatch == false && isKatakanaRunStart) {
-                let fallbackRange = unknownFallbackRange(
-                    in: text,
-                    startingAt: index,
-                    breakingAtStandaloneKana: usesStandaloneKanaList
-                )
+            let fallbackRange = unknownFallbackRange(
+                in: text,
+                startingAt: index,
+                breakingAtStandaloneKana: usesStandaloneKanaList
+            )
+            let runIsSpannedByAnEdge = edges[positionEdgesStart...].contains { $0.end == fallbackRange.upperBound }
+            if keptMatches == 0 || (isKatakanaRunStart && runIsSpannedByAnEdge == false) {
                 var fallbackEdge = LatticeEdge(
                     start: fallbackRange.lowerBound,
                     end: fallbackRange.upperBound,
@@ -590,6 +612,20 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         }
 
         return lhsDerivedLemma > rhsDerivedLemma
+    }
+
+    // Whether the katakana run around `range` reaches past it on either side, i.e. the span is a
+    // piece of a longer katakana word rather than the whole word. ・ separates katakana words, so it
+    // doesn't extend a run.
+    private func isInsideLongerKatakanaRun(_ range: Range<String.Index>, in text: String) -> Bool {
+        // A katakana letter or ー, but not the ・ word separator.
+        func isKatakanaLetter(_ character: Character) -> Bool {
+            character != "・" && ScriptClassifier.isPureKatakana(String(character))
+        }
+        if range.lowerBound > text.startIndex, isKatakanaLetter(text[text.index(before: range.lowerBound)]) {
+            return true
+        }
+        return range.upperBound < text.endIndex && isKatakanaLetter(text[range.upperBound])
     }
 
     // Determines how far an unknown segment should extend by grouping contiguous same-script runs.

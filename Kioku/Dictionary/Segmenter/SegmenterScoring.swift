@@ -60,6 +60,12 @@ nonisolated struct SegmenterScoring {
     // Jiten list: 1.5 is better on kana2k (85.65 / 250 cut-throughs vs 85.48 / 253).
     static let twoKanaPenalty = 1.5
 
+    // Charged to a katakana piece of a longer katakana run that the dictionary doesn't spell in
+    // katakana (Segmenter.isInsideLongerKatakanaRun): ウエ read as 上 inside ウエファース. Set so
+    // such pieces lose to the run's whole-run edge unless they make a strong reading together
+    // (ナカナイ|ヨ, 泣かない + よ written in katakana).
+    static let katakanaPieceReadAsHiraganaPenalty = 1.5
+
     // Unknown (non-dictionary) text: a flat word cost plus a steep per-character cost, in nats, so
     // stranding a fragment is always worse than any parse that covers it with real words.
     static let unknownBaseNats = 12.0
