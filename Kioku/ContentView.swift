@@ -223,6 +223,8 @@ struct ContentView: View {
         }
         // Probe the pasteboard whenever the app becomes active; reads only the change counter.
         .onChange(of: scenePhase) { _, newPhase in
+            // Marks suspensions so a long gap in the timing log reads as time spent in the background.
+            StartupTimer.mark("scenePhase → \(newPhase)")
             guard newPhase == .active else { return }
             clipboardCoordinator.checkClipboard()
         }

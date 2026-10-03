@@ -139,7 +139,9 @@ final class DictionaryDownloadManager {
             try? directoryURL.setResourceValues(excludedFromBackup)
 
             AppLog.info(.dictionaryDownload, "downloadIfNeeded: starting from \(Self.remoteURL)")
+            StartupTimer.mark("dictionary download started (\(Self.releaseTag))")
             let tempURL = try await downloadToTemporaryFile()
+            StartupTimer.mark("dictionary download finished")
             AppLog.debug(.dictionaryDownload, "downloadIfNeeded: temp file at \(tempURL.path)")
             defer { try? FileManager.default.removeItem(at: tempURL) }
 
@@ -150,7 +152,9 @@ final class DictionaryDownloadManager {
             let stagingURL = Self.directory.appendingPathComponent("dictionary.sqlite.unpacking")
             defer { try? FileManager.default.removeItem(at: stagingURL) }
             let digest = try await Task.detached(priority: .userInitiated) {
-                try DictionaryArchiveExtractor.extract(archiveAt: tempURL, to: stagingURL)
+                try StartupTimer.measure("dictionary unpack + checksum") {
+                    try DictionaryArchiveExtractor.extract(archiveAt: tempURL, to: stagingURL)
+                }
             }.value
             guard digest == Self.expectedSHA256 else {
                 AppLog.error(.dictionaryDownload, "downloadIfNeeded: checksum mismatch — expected \(Self.expectedSHA256), got \(digest)")
@@ -164,6 +168,7 @@ final class DictionaryDownloadManager {
             try Self.releaseTag.write(to: Self.installedReleaseMarkerURL, atomically: true, encoding: .utf8)
             AppLog.info(.dictionaryDownload, "downloadIfNeeded: installed to \(Self.installedDatabaseURL.path)")
 
+            StartupTimer.mark("dictionary installed")
             progress = nil
             isInstalled = true
         } catch {
