@@ -132,9 +132,11 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     lex = args[0]
     grammar = json.load(open(args[1] if len(args) > 1 else GRAMMAR_DEFAULT, encoding='utf-8'))
-    aux_grammar = grammar['auxiliaryConjugations']['words']
+    aux_words = grammar['auxiliaryConjugations']['words']
+    aux_grammar = {aux: row['grammar'] for aux, row in aux_words.items()}
     voiced = grammar['voicing']['voiced']
-    standalone = set(grammar['standaloneForms'])
+    standalone_group = grammar['standaloneForms']['forms']
+    standalone = set(standalone_group)
 
     endings, stem_last_kana, aux_forms = read_unidic(lex, set(aux_grammar))
 
@@ -166,7 +168,7 @@ def main():
             unidic = f'UniDic {ctype} {cform}'
             is_voiced = ending.endswith('ん') or (ctype == '五段-ガ行' and cform == '連用形-イ音便')
             if cform in standalone and ending and word_grammar != 'masu':
-                add('standalone', ending, base_ending, [word_grammar], [word_grammar], unidic)
+                add(standalone_group[cform], ending, base_ending, [word_grammar], [word_grammar], unidic)
             for row in grammar['attachments']:
                 if word_grammar not in row['after']:
                     continue
@@ -174,22 +176,22 @@ def main():
                     continue
                 attached = voiced.get(row['attach'], row['attach']) if is_voiced and row['attach'] in voiced else row['attach']
                 rules_in = [row['gives']] if row['gives'] else [word_grammar]
-                add('attach:' + row['attach'], ending + attached, base_ending, rules_in, [word_grammar],
+                add(row['group'], ending + attached, base_ending, rules_in, [word_grammar],
                     f"{unidic} + {row['attach']} (attachments)", row.get('helper'))
             if word_grammar in grammar['stemCompounds']['after'] and cform == '連用形-一般':
                 for word in grammar['stemCompounds']['words']:
                     for spelling in word['spellings']:
                         rules_in = [word['gives']] if word['gives'] else [word_grammar]
-                        add('stemCompound:' + word['spellings'][0], ending + spelling, base_ending, rules_in,
+                        add(word['group'], ending + spelling, base_ending, rules_in,
                             [word_grammar], f'{unidic} + {spelling} (stemCompounds)', spelling)
             if word_grammar in ('v5', 'v1', 'vk', 'vs') and cform in euphonic:
                 te = voiced['て'] if is_voiced else 'て'
                 for helper in grammar['teHelpers']['words']:
-                    add('te+' + helper['word'], ending + te + helper['word'], base_ending, [helper['gives']],
+                    add(helper['group'], ending + te + helper['word'], base_ending, [helper['gives']],
                         [word_grammar], f"{unidic} + {te}{helper['word']} (teHelpers)", helper['word'])
                 for contraction in grammar['teHelpers']['contractions']:
                     form = contraction['voiced'] if is_voiced else contraction['plain']
-                    add('contraction:' + contraction['plain'], ending + form, base_ending, [contraction['gives']],
+                    add(contraction['group'], ending + form, base_ending, [contraction['gives']],
                         [word_grammar], f'{unidic} + {form} (teHelpers.contractions)', contraction['helper'])
 
     # Ichidan stems (食べ, 続け) end in the stem itself, an empty ending a rule can't match on: such a
@@ -200,16 +202,17 @@ def main():
             v1_stem_kana.update(counter)
     for kana, count in v1_stem_kana.items():
         if count >= MIN_STEM_KANA_WORDS:
-            add('standalone', kana, kana + 'る', ['v1'], ['v1'], 'UniDic 一段 連用形-一般 (bare stem, by its last kana)')
+            add(grammar['standaloneForms']['ichidanStemGroup'], kana, kana + 'る', ['v1'], ['v1'],
+                'UniDic 一段 連用形-一般 (bare stem, by its last kana)')
 
     # The auxiliaries' own forms: ました → ます (masu), なかった → ない (adj-i, through the adj-i rules).
     for aux, aux_word_grammar in aux_grammar.items():
         for surface, cform in sorted(aux_forms[aux]):
             if surface != aux and cform in standalone:
-                add('aux:' + aux, surface, aux, [aux_word_grammar], [aux_word_grammar], f'UniDic 助動詞 {aux} {cform}')
+                add(aux_words[aux]['group'], surface, aux, [aux_word_grammar], [aux_word_grammar], f'UniDic 助動詞 {aux} {cform}')
 
     for row in grammar['fixedSequences']:
-        add('fixed', row['kanaIn'], row['kanaOut'], row['rulesIn'], row['rulesOut'], f"fixedSequences: {row['note']}")
+        add(row['group'], row['kanaIn'], row['kanaOut'], row['rulesIn'], row['rulesOut'], f"fixedSequences: {row['note']}")
 
     omitted = {(o['kanaIn'], o['kanaOut'], tuple(o['rulesOut'])) for o in grammar['omitted']}
     out = collections.defaultdict(list)

@@ -1,98 +1,138 @@
 {
-  "about": "The grammar deinflection.json is generated from (scripts/deinflection/generate_rules.py), with UniDic's conjugation data supplying every ending. Hand-reviewed: each row is a textbook fact or a recorded decision. Grammar names are the ones deinflection.json uses: v5, v1, vk, vs, adj-i for dictionary forms; te, ta, nu, masu for steps inside a chain.",
-
+  "about": "The grammar deinflection.json is generated from (scripts/deinflection/generate_rules.py), with UniDic's conjugation data supplying every ending. Hand-reviewed: each row is a textbook fact or a recorded decision. Grammar names are the ones deinflection.json uses: v5, v1, vk, vs, adj-i for dictionary forms; te, ta, nu, masu for steps inside a chain. Every row names the group its rules go in: the group name is what the lookup sheet captions a form with (InflectionFormNames) and what the segmenter recognises stem recovery and the noun suffix by.",
   "attachments": [
-    {"attach": "ない", "gives": "adj-i", "after": ["v5", "v1", "vk"], "form": "未然形-一般"},
-    {"attach": "ない", "gives": "adj-i", "after": ["vs"], "form": "未然形-一般"},
-    {"attach": "ない", "gives": "adj-i", "after": ["adj-i"], "form": "連用形-一般"},
-    {"attach": "ぬ", "gives": "nu", "after": ["v5", "v1", "vk", "masu"], "form": "未然形-一般"},
-    {"attach": "ず", "gives": "nu", "after": ["v5", "v1", "vk"], "form": "未然形-一般"},
-    {"attach": "ず", "gives": "nu", "after": ["vs"], "form": "未然形-セ"},
-    {"attach": "ぬ", "gives": "nu", "after": ["vs"], "form": "未然形-セ"},
-    {"attach": "れる", "gives": "v1", "after": ["v5"], "form": "未然形-一般"},
-    {"attach": "れる", "gives": "v1", "after": ["vs"], "form": "未然形-サ"},
-    {"attach": "られる", "gives": "v1", "after": ["v1", "vk"], "form": "未然形-一般"},
-    {"attach": "せる", "gives": "v1", "after": ["v5"], "form": "未然形-一般"},
-    {"attach": "せる", "gives": "v1", "after": ["vs"], "form": "未然形-サ"},
-    {"attach": "させる", "gives": "v1", "after": ["v1", "vk"], "form": "未然形-一般"},
-    {"attach": "る", "gives": "v1", "after": ["v5"], "form": "仮定形-一般", "note": "godan potential (書ける): UniDic lists these as verbs of their own"},
-    {"attach": "ます", "gives": "masu", "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般"},
-    {"attach": "たい", "gives": "adj-i", "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般"},
-    {"attach": "ながら", "gives": null, "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般"},
-    {"attach": "なさい", "gives": null, "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般"},
-    {"attach": "た", "gives": "ta", "after": ["v5", "v1", "vk", "vs", "masu"], "form": "euphonic"},
-    {"attach": "て", "gives": "te", "after": ["v5", "v1", "vk", "vs", "masu"], "form": "euphonic"},
-    {"attach": "たり", "gives": null, "after": ["v5", "v1", "vk", "vs"], "form": "euphonic"},
-    {"attach": "た", "gives": "ta", "after": ["adj-i"], "form": "連用形-促音便"},
-    {"attach": "たり", "gives": null, "after": ["adj-i"], "form": "連用形-促音便"},
-    {"attach": "て", "gives": "te", "after": ["adj-i"], "form": "連用形-一般"},
-    {"attach": "する", "gives": "vs", "after": ["adj-i"], "form": "連用形-一般", "helper": "する"},
-    {"attach": "ば", "gives": null, "after": ["v5", "v1", "vk", "vs", "adj-i"], "form": "仮定形-一般"},
-    {"attach": "さ", "gives": null, "after": ["adj-i"], "form": "語幹-一般"},
-    {"attach": "げ", "gives": null, "after": ["adj-i"], "form": "語幹-一般"},
-    {"attach": "そう", "gives": null, "after": ["adj-i"], "form": "語幹-一般", "helper": "そう"},
-    {"attach": "すぎる", "gives": "v1", "after": ["adj-i"], "form": "語幹-一般", "helper": "すぎる"}
+    {"attach": "ない", "gives": "adj-i", "after": ["v5", "v1", "vk"], "form": "未然形-一般", "group": "negativeForms"},
+    {"attach": "ない", "gives": "adj-i", "after": ["vs"], "form": "未然形-一般", "group": "negativeForms"},
+    {"attach": "ない", "gives": "adj-i", "after": ["adj-i"], "form": "連用形-一般", "group": "negativeForms"},
+    {"attach": "ぬ", "gives": "nu", "after": ["v5", "v1", "vk", "masu"], "form": "未然形-一般", "group": "literaryNegativeForms"},
+    {"attach": "ず", "gives": "nu", "after": ["v5", "v1", "vk"], "form": "未然形-一般", "group": "literaryNegativeForms"},
+    {"attach": "ず", "gives": "nu", "after": ["vs"], "form": "未然形-セ", "group": "literaryNegativeForms"},
+    {"attach": "ぬ", "gives": "nu", "after": ["vs"], "form": "未然形-セ", "group": "literaryNegativeForms"},
+    {"attach": "れる", "gives": "v1", "after": ["v5"], "form": "未然形-一般", "group": "passivePotentialForms"},
+    {"attach": "れる", "gives": "v1", "after": ["vs"], "form": "未然形-サ", "group": "passivePotentialForms"},
+    {"attach": "られる", "gives": "v1", "after": ["v1", "vk"], "form": "未然形-一般", "group": "passivePotentialForms"},
+    {"attach": "せる", "gives": "v1", "after": ["v5"], "form": "未然形-一般", "group": "auxiliaryForms"},
+    {"attach": "せる", "gives": "v1", "after": ["vs"], "form": "未然形-サ", "group": "auxiliaryForms"},
+    {"attach": "させる", "gives": "v1", "after": ["v1", "vk"], "form": "未然形-一般", "group": "auxiliaryForms"},
+    {
+      "attach": "る",
+      "gives": "v1",
+      "after": ["v5"],
+      "form": "仮定形-一般",
+      "note": "godan potential (書ける): UniDic lists these as verbs of their own",
+      "group": "potentialForms"
+    },
+    {"attach": "ます", "gives": "masu", "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般", "group": "politeForms"},
+    {"attach": "たい", "gives": "adj-i", "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般", "group": "desireForms"},
+    {"attach": "ながら", "gives": null, "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般", "group": "auxiliaryForms"},
+    {"attach": "なさい", "gives": null, "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般", "group": "imperativeForms"},
+    {"attach": "た", "gives": "ta", "after": ["v5", "v1", "vk", "vs", "masu"], "form": "euphonic", "group": "pastForms"},
+    {"attach": "て", "gives": "te", "after": ["v5", "v1", "vk", "vs", "masu"], "form": "euphonic", "group": "teForms"},
+    {"attach": "たり", "gives": null, "after": ["v5", "v1", "vk", "vs"], "form": "euphonic", "group": "representativeForms"},
+    {"attach": "た", "gives": "ta", "after": ["adj-i"], "form": "連用形-促音便", "group": "pastForms"},
+    {"attach": "たり", "gives": null, "after": ["adj-i"], "form": "連用形-促音便", "group": "representativeForms"},
+    {"attach": "て", "gives": "te", "after": ["adj-i"], "form": "連用形-一般", "group": "teForms"},
+    {"attach": "する", "gives": "vs", "after": ["adj-i"], "form": "連用形-一般", "helper": "する", "group": "adjectiveForms"},
+    {"attach": "ば", "gives": null, "after": ["v5", "v1", "vk", "vs", "adj-i"], "form": "仮定形-一般", "group": "conditionalForms"},
+    {"attach": "さ", "gives": null, "after": ["adj-i"], "form": "語幹-一般", "group": "adjectiveForms"},
+    {"attach": "げ", "gives": null, "after": ["adj-i"], "form": "語幹-一般", "group": "adjectiveForms"},
+    {"attach": "そう", "gives": null, "after": ["adj-i"], "form": "語幹-一般", "helper": "そう", "group": "adjectiveForms"},
+    {"attach": "すぎる", "gives": "v1", "after": ["adj-i"], "form": "語幹-一般", "helper": "すぎる", "group": "adjectiveForms"}
   ],
-
   "voicing": {
     "about": "た/て/たり after ん, and after a ガ行 イ音便 (泳いだ), are voiced.",
     "voiced": {"た": "だ", "て": "で", "たり": "だり"}
   },
-
   "stemCompounds": {
     "about": "Verbs and auxiliaries joined to a verb's 連用形 (読みつづける, 食べすぎる, 書きやすい), folded into one segment with the second part named as the helper.",
     "after": ["v5", "v1", "vk", "vs"],
     "words": [
-      {"spellings": ["つづける", "続ける"], "gives": "v1"},
-      {"spellings": ["はじめる", "始める"], "gives": "v1"},
-      {"spellings": ["おわる", "終わる"], "gives": "v5"},
-      {"spellings": ["だす", "出す"], "gives": "v5"},
-      {"spellings": ["すぎる", "過ぎる"], "gives": "v1"},
-      {"spellings": ["なおす", "直す"], "gives": "v5"},
-      {"spellings": ["きる", "切る"], "gives": "v5"},
-      {"spellings": ["かける", "掛ける"], "gives": "v1"},
-      {"spellings": ["やすい"], "gives": "adj-i"},
-      {"spellings": ["にくい"], "gives": "adj-i"},
-      {"spellings": ["そう"], "gives": null}
+      {"spellings": ["つづける", "続ける"], "gives": "v1", "group": "compoundVerbRecoveryForms"},
+      {"spellings": ["はじめる", "始める"], "gives": "v1", "group": "compoundVerbRecoveryForms"},
+      {"spellings": ["おわる", "終わる"], "gives": "v5", "group": "compoundVerbRecoveryForms"},
+      {"spellings": ["だす", "出す"], "gives": "v5", "group": "compoundVerbRecoveryForms"},
+      {"spellings": ["すぎる", "過ぎる"], "gives": "v1", "group": "auxiliaryForms"},
+      {"spellings": ["なおす", "直す"], "gives": "v5", "group": "compoundVerbRecoveryForms"},
+      {"spellings": ["きる", "切る"], "gives": "v5", "group": "compoundVerbRecoveryForms"},
+      {"spellings": ["かける", "掛ける"], "gives": "v1", "group": "compoundVerbRecoveryForms"},
+      {"spellings": ["やすい"], "gives": "adj-i", "group": "auxiliaryForms"},
+      {"spellings": ["にくい"], "gives": "adj-i", "group": "auxiliaryForms"},
+      {"spellings": ["そう"], "gives": null, "group": "auxiliaryForms"}
     ]
   },
-
   "teHelpers": {
     "about": "Helper verbs after a verb's て-form folded into one segment (持っている). Only いる and いく/ゆく: Tatoeba, JMdict and MeCab write て | しまう, て | くる, て | ある … as two tokens, and so does the segmenter (2026-10-03: folding them all cut 7 gold tokens in held2k and gave してあれ | ほど). てゆく/ていく fold by the user's own decision (named cases 飛び込んでゆく, 歌い続けてゆく). The contractions below fuse て with the helper in writing, so they do fold.",
     "words": [
-      {"word": "いる", "gives": "v1"}, {"word": "いく", "gives": "v5"}, {"word": "ゆく", "gives": "v5"}
+      {"word": "いる", "gives": "v1", "group": "progressiveForms"},
+      {"word": "いく", "gives": "v5", "group": "auxiliaryForms"},
+      {"word": "ゆく", "gives": "v5", "group": "auxiliaryForms"}
     ],
     "contractions": [
-      {"plain": "てる", "voiced": "でる", "gives": "v1", "helper": "いる"},
-      {"plain": "ちゃう", "voiced": "じゃう", "gives": "v5", "helper": "しまう"},
-      {"plain": "とく", "voiced": "どく", "gives": "v5", "helper": "おく"},
-      {"plain": "てく", "voiced": "でく", "gives": "v5", "helper": "いく"}
+      {"plain": "てる", "voiced": "でる", "gives": "v1", "helper": "いる", "group": "contractionForms"},
+      {"plain": "ちゃう", "voiced": "じゃう", "gives": "v5", "helper": "しまう", "group": "contractionForms"},
+      {"plain": "とく", "voiced": "どく", "gives": "v5", "helper": "おく", "group": "contractionForms"},
+      {"plain": "てく", "voiced": "でく", "gives": "v5", "helper": "いく", "group": "contractionForms"}
     ]
   },
-
-  "standaloneForms": ["仮定形-融合", "命令形", "意志推量形", "終止形-撥音便", "連用形-融合", "連用形-一般"],
-
+  "standaloneForms": {
+    "about": "Forms used on their own, by the group the lookup sheet names them with. Groups whose name contains \"stem\" are bare-stem recovery, which the segmenter treats as such (Segmenter.surfaceIsOutrankedByConjugation).",
+    "forms": {
+      "仮定形-融合": "conditionalForms",
+      "命令形": "imperativeForms",
+      "意志推量形": "auxiliaryForms",
+      "終止形-撥音便": "contractionForms",
+      "連用形-融合": "contractionForms",
+      "連用形-一般": "stemRecoveryForms"
+    },
+    "ichidanStemGroup": "ichidanStemForms"
+  },
   "auxiliaryConjugations": {
     "about": "Auxiliaries whose own forms get rules, with the grammar a word ending in them has. Only their standalone forms (standaloneForms: なきゃ, ましょう): their other forms take further auxiliaries, which the attachment rules cover (ない conjugates like an adjective; ます takes た/ぬ itself, まし + た). A rule for every form would admit fragments like なけれ, cutting なければならない.",
-    "words": {"ない": "adj-i", "たい": "adj-i", "れる": "v1", "られる": "v1", "せる": "v1", "させる": "v1", "ます": "masu", "た": "ta", "だ": "ta", "ぬ": "nu"}
+    "words": {
+      "ない": {"grammar": "adj-i", "group": "negativeForms"},
+      "たい": {"grammar": "adj-i", "group": "desireForms"},
+      "れる": {"grammar": "v1", "group": "passivePotentialForms"},
+      "られる": {"grammar": "v1", "group": "passivePotentialForms"},
+      "せる": {"grammar": "v1", "group": "auxiliaryForms"},
+      "させる": {"grammar": "v1", "group": "auxiliaryForms"},
+      "ます": {"grammar": "masu", "group": "politeForms"},
+      "た": {"grammar": "ta", "group": "pastForms"},
+      "だ": {"grammar": "ta", "group": "pastForms"},
+      "ぬ": {"grammar": "nu", "group": "literaryNegativeForms"}
+    }
   },
-
   "fixedSequences": [
-    {"kanaIn": "ないで", "kanaOut": "ない", "rulesIn": ["te"], "rulesOut": ["adj-i"], "note": "ない + で (しないで)"},
-    {"kanaIn": "ませんでした", "kanaOut": "ます", "rulesIn": ["masu"], "rulesOut": ["masu"], "note": "ません + でした"},
-    {"kanaIn": "たら", "kanaOut": "た", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "た's conditional (なかったら, 行ったら)"},
-    {"kanaIn": "だら", "kanaOut": "だ", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "voiced (読んだら)"},
-    {"kanaIn": "たなら", "kanaOut": "た", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "conditional なら after た (したなら)"},
-    {"kanaIn": "だなら", "kanaOut": "だ", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "voiced (読んだなら)"},
-    {"kanaIn": "ずに", "kanaOut": "ず", "rulesIn": ["nu"], "rulesOut": ["nu"], "note": "ず + に"},
-    {"kanaIn": "ずとも", "kanaOut": "ず", "rulesIn": ["nu"], "rulesOut": ["nu"], "note": "ず + とも"}
+    {"kanaIn": "ないで", "kanaOut": "ない", "rulesIn": ["te"], "rulesOut": ["adj-i"], "note": "ない + で (しないで)", "group": "negativeTeForms"},
+    {"kanaIn": "ませんでした", "kanaOut": "ます", "rulesIn": ["masu"], "rulesOut": ["masu"], "note": "ません + でした", "group": "politeForms"},
+    {"kanaIn": "たら", "kanaOut": "た", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "た's conditional (なかったら, 行ったら)", "group": "conditionalForms"},
+    {"kanaIn": "だら", "kanaOut": "だ", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "voiced (読んだら)", "group": "conditionalForms"},
+    {"kanaIn": "たなら", "kanaOut": "た", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "conditional なら after た (したなら)", "group": "conditionalForms"},
+    {"kanaIn": "だなら", "kanaOut": "だ", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "voiced (読んだなら)", "group": "conditionalForms"},
+    {"kanaIn": "ずに", "kanaOut": "ず", "rulesIn": ["nu"], "rulesOut": ["nu"], "note": "ず + に", "group": "literaryNegativeForms"},
+    {"kanaIn": "ずとも", "kanaOut": "ず", "rulesIn": ["nu"], "rulesOut": ["nu"], "note": "ず + とも", "group": "literaryNegativeForms"},
+    {
+      "kanaIn": "たち",
+      "kanaOut": "",
+      "rulesIn": ["n"],
+      "rulesOut": ["n"],
+      "note": "plural noun suffix (私たち); \"noun suffix\" is read by the segmenter",
+      "group": "nounSuffixForms"
+    }
   ],
-
   "omitted": [
-    {"kanaIn": "よ", "kanaOut": "る", "rulesOut": ["v1"], "why": "Ichidan imperative よ (見よ): it swallows the sentence particle in 見て | よ, 伝えて | よ, まって | よ (named cases)."},
-    {"kanaIn": "ければ", "kanaOut": "い", "rulesOut": ["adj-i"], "why": "Plain adjective conditional: chaining through the negative gives 守らなければ | ならない, cutting the dictionary expression なければならない (held2k +8 cut-throughs, 2026-10-02). The contractions けりゃ/きゃ stay."}
+    {
+      "kanaIn": "よ",
+      "kanaOut": "る",
+      "rulesOut": ["v1"],
+      "why": "Ichidan imperative よ (見よ): it swallows the sentence particle in 見て | よ, 伝えて | よ, まって | よ (named cases)."
+    },
+    {
+      "kanaIn": "ければ",
+      "kanaOut": "い",
+      "rulesOut": ["adj-i"],
+      "why": "Plain adjective conditional: chaining through the negative gives 守らなければ | ならない, cutting the dictionary expression なければならない (held2k +8 cut-throughs, 2026-10-02). The contractions けりゃ/きゃ stay."
+    }
   ],
-
   "nonIchidanRuVerbs": ["知る", "しる", "識る", "走る", "はしる", "限る", "かぎる", "参る", "まいる", "蹴る", "ける"],
   "intermediateForms": ["te", "masu", "ta", "nu"]
 }
