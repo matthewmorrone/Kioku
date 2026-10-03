@@ -135,9 +135,10 @@ Store Connect will not ask.
 1. **Register the app**: App Store Connect → My Apps → "+" → New App, with
    bundle ID `matthewmorrone.Kioku` (register the ID at
    developer.apple.com/account → Identifiers first if it isn't listed).
-2. **Screenshots** (iPhone-only, one 6.9" set at 1320 × 2868, taken on the iPhone 17 Pro Max
-   simulator): lyrics view first, then the Read view with furigana, the lookup sheet,
-   dictionary search, and flashcard review. Sample notes only, nothing personal.
+2. **Screenshots** (iPhone-only, one 6.9" set at 1320 × 2868): 1.1 keeps the existing set. A new
+   set would lead with the lyrics view, then the Read view with furigana, the lookup sheet,
+   dictionary search, and flashcard review, using the sample notes only. A first simulator build
+   saturates the Mac, so run it while nobody is using it.
 3. **Archive & upload**: `scripts/distribute.sh` (see RELEASE.md §5), or
    Xcode → Product → Archive → Distribute App → App Store Connect.
 4. **TestFlight smoke test** on an iOS 18.x device if you can borrow one —
