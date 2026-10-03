@@ -58,9 +58,9 @@
   },
 
   "teHelpers": {
-    "about": "Helper verbs after a verb's て-form folded into one segment (持っている). Only いる: Tatoeba, JMdict and MeCab write て | しまう, て | くる, て | ある … as two tokens, and so does the segmenter (2026-10-03: folding them all cut 7 gold tokens in held2k and gave してあれ | ほど). The contractions below fuse て with the helper in writing, so they do fold.",
+    "about": "Helper verbs after a verb's て-form folded into one segment (持っている). Only いる and いく/ゆく: Tatoeba, JMdict and MeCab write て | しまう, て | くる, て | ある … as two tokens, and so does the segmenter (2026-10-03: folding them all cut 7 gold tokens in held2k and gave してあれ | ほど). てゆく/ていく fold by the user's own decision (named cases 飛び込んでゆく, 歌い続けてゆく). The contractions below fuse て with the helper in writing, so they do fold.",
     "words": [
-      {"word": "いる", "gives": "v1"}
+      {"word": "いる", "gives": "v1"}, {"word": "いく", "gives": "v5"}, {"word": "ゆく", "gives": "v5"}
     ],
     "contractions": [
       {"plain": "てる", "voiced": "でる", "gives": "v1", "helper": "いる"},
@@ -80,6 +80,8 @@
   "fixedSequences": [
     {"kanaIn": "ないで", "kanaOut": "ない", "rulesIn": ["te"], "rulesOut": ["adj-i"], "note": "ない + で (しないで)"},
     {"kanaIn": "ませんでした", "kanaOut": "ます", "rulesIn": ["masu"], "rulesOut": ["masu"], "note": "ません + でした"},
+    {"kanaIn": "たら", "kanaOut": "た", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "た's conditional (なかったら, 行ったら)"},
+    {"kanaIn": "だら", "kanaOut": "だ", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "voiced (読んだら)"},
     {"kanaIn": "たなら", "kanaOut": "た", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "conditional なら after た (したなら)"},
     {"kanaIn": "だなら", "kanaOut": "だ", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "voiced (読んだなら)"},
     {"kanaIn": "ずに", "kanaOut": "ず", "rulesIn": ["nu"], "rulesOut": ["nu"], "note": "ず + に"},
