@@ -101,6 +101,18 @@ nonisolated enum Attributions {
             license: "BYVoid/OpenCC — Apache-2.0",
             sourceURL: "https://github.com/BYVoid/OpenCC"
         ),
+        Dataset(
+            name: "キャラメルと飴玉 (sample note)",
+            description: "夢野久作's 1922 story and its reading, attached to the sample note. Text from Aozora Bunko.",
+            license: "Text and LibriVox recording — public domain",
+            sourceURL: "https://archive.org/details/multilingual_shorts_008_1306"
+        ),
+        Dataset(
+            name: "さくら さくら (sample note recording)",
+            description: "The sung recording attached to the sample note. Song and lyrics are traditional and in the public domain.",
+            license: "Kanohara, Wikimedia Commons — CC BY-SA 3.0",
+            sourceURL: "https://commons.wikimedia.org/wiki/File:Sakura_Sakura.song.ogg"
+        ),
     ]
 
     // Speech models the app downloads on first use (lyric alignment and vocal isolation). Listed

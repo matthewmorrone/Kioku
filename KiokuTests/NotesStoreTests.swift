@@ -30,6 +30,28 @@ final class NotesStoreTests: XCTestCase {
         try await super.tearDown()
     }
 
+    // A fresh install gets the sample notes exactly once, in source order, even after the user
+    // deletes them.
+    func testSampleNotesSeedOnceIntoAnEmptyStore() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "kioku-sample-note-\(UUID().uuidString)"))
+        let store = NotesStore(fileManager: fileManager)
+        let seeded = SampleNote.seedIfNeeded(into: store, defaults: defaults)
+        XCTAssertEqual(seeded.map(\.title), SampleNote.sources.map(\.title))
+        XCTAssertEqual(store.notes.map(\.id), seeded.map(\.id))
+        store.deleteNotes(ids: Set(seeded.map(\.id)))
+        XCTAssertTrue(SampleNote.seedIfNeeded(into: store, defaults: defaults).isEmpty)
+        XCTAssertTrue(store.notes.isEmpty)
+    }
+
+    // A user who already has notes (an upgrade or a restore) never gets the sample notes.
+    func testSampleNotesSkipAStoreThatHasNotes() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "kioku-sample-note-\(UUID().uuidString)"))
+        let store = NotesStore(fileManager: fileManager)
+        store.addNote(Note(title: "mine", content: "猫"))
+        XCTAssertTrue(SampleNote.seedIfNeeded(into: store, defaults: defaults).isEmpty)
+        XCTAssertEqual(store.notes.map(\.title), ["mine"])
+    }
+
     // A fresh directory yields an empty store — no migration noise, no leaked state.
     func testInitFromEmptyDirectoryIsEmpty() {
         let store = NotesStore(fileManager: fileManager)

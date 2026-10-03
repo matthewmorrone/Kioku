@@ -157,6 +157,9 @@ struct ContentView: View {
         .environmentObject(readNoteNavigation)
         .onAppear {
             StartupTimer.mark("onAppear fired")
+            if let firstSample = SampleNote.seedIfNeeded(into: notesStore).first {
+                lastActiveNoteID = firstSample.id.uuidString
+            }
             restoreLastActiveNote()
             // A Siri launch can raise the request before this view exists to observe the change.
             playRandomAudioNoteIfRequested()
