@@ -43,8 +43,7 @@ nonisolated struct FuriganaResolver {
                 segmentRange: segmentRange,
                 sourceText: sourceText,
                 lemmaReference: segmenter.preferredLemma(for: segmentSurface) ?? segmentSurface,
-                surfaceReadingData: surfaceReadingData,
-                allowKanjiFallback: edge.isDictionaryMatch == false
+                surfaceReadingData: surfaceReadingData
             )
             // Preserve the original ReadView pipeline's early-continue semantics: when run-level
             // projection produced no annotations, skip the fallback path entirely rather than
@@ -247,8 +246,7 @@ nonisolated struct FuriganaResolver {
         segmentRange: Range<String.Index>,
         sourceText: String,
         lemmaReference: String,
-        surfaceReadingData: SurfaceReadingDataMap,
-        allowKanjiFallback: Bool
+        surfaceReadingData: SurfaceReadingDataMap
     ) -> [(reading: String, localStartOffset: Int, localLength: Int)] {
         let runs = FuriganaAttributedString.kanjiRuns(in: segmentSurface)
         guard runs.isEmpty == false else {
@@ -328,8 +326,12 @@ nonisolated struct FuriganaResolver {
             }
         }
 
-        if annotations.isEmpty {
-            for run in runs {
+        // Each run still unread gets its bare kanji run's dictionary reading: every run when nothing
+        // above read the word, and on a multi-run word also the runs the passes above left bare
+        // (抜け殻 with no 抜ける entry: 殻 reads as a piece, 抜 only on its own).
+        if annotations.isEmpty || runs.count > 1 {
+            let readRunStarts = Set(annotations.map(\.localStartOffset))
+            for run in runs where readRunStarts.contains(run.start) == false {
                 let runSurface = String(Array(segmentSurface)[run.start..<run.end])
                 guard let runReading = FuriganaResolver.readingForSegment(
                     runSurface,
@@ -350,19 +352,11 @@ nonisolated struct FuriganaResolver {
             }
         }
 
-        // Last-resort per-kanji fallback: any individual kanji still without an annotation gets its
-        // standalone KANJIDIC2 reading, painted over just that one character, so the reader sees
-        // *some* furigana over a kanji even when no word/lemma reading resolved. The reading may not
-        // match the in-context pronunciation, so this is deliberately the lowest-priority source:
-        //   • gated on `allowKanjiFallback`, which the caller sets only for non-dictionary edges
-        //     (segments the segmenter couldn't resolve to a known word) — when an edge IS a
-        //     dictionary match we trust its reading pipeline, including its deliberate suppressions
-        //     (e.g. the 私たち okurigana-mismatch case), and never overpaint it with a guess;
-        //   • only fills kanji not already covered by a real reading above;
-        //   • a no-op whenever the fallback map is empty, keeping existing callers/tests unchanged.
-        // Words the segmenter recognises (incl. inflected/derived forms reachable via deinflection,
-        // like 眩しげ → 眩しい) get their correct reading from the paths above and never reach here.
-        if allowKanjiFallback, kanjiReadingFallback.isEmpty == false {
+        // Last-resort per-kanji fallback: every kanji gets furigana, so any kanji still without an
+        // annotation gets its standalone KANJIDIC2 reading, painted over just that one character.
+        // The reading may not match the in-context pronunciation, so it only fills kanji not already
+        // covered by a word reading above, on dictionary words and unknown segments alike.
+        if kanjiReadingFallback.isEmpty == false {
             let characters = Array(segmentSurface)
             let coveredOffsets = Set(annotations.flatMap { annotation in
                 annotation.localStartOffset..<(annotation.localStartOffset + annotation.localLength)

@@ -347,11 +347,13 @@ final class SegmenterIntegrationTests: XCTestCase {
         })
     }
 
-    // Verifies adjective adverbial-plus-particle forms recover their base adjective lemma.
-    func testDeinflectorRecoversAdjectiveLemmaFromKuDeForm() throws {
-        let candidates = try deinflectionCandidates(for: "近くで")
+    // 近くで is the noun 近く and the particle で (JMdict, Tatoeba and MeCab agree), not a form of
+    // 近い: no adjective conjugates to 〜くで, so the segmenter must split it.
+    func testKuDeSplitsIntoAdverbialNounAndParticle() throws {
+        let resources = try sharedResources()
+        let selectedSurfaces = resources.segmenter.longestMatchResult(for: "公園の近くで会った").selectedEdges.map { $0.surface }
 
-        XCTAssertTrue(candidates.contains("近い"))
+        XCTAssertEqual(selectedSurfaces, ["公園", "の", "近く", "で", "会った"])
     }
 
     // Verifies adjective nominalized forms recover their base adjective lemma.

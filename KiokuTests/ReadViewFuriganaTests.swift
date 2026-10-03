@@ -217,8 +217,7 @@ final class ReadViewFuriganaTests: XCTestCase {
     func testBuildFuriganaBySegmentLocationUsesKanjiFallbackWhenNoDictionaryReading() throws {
         let readView = try makeReadView(kanjiReadingFallback: ["眩": "まぶ"])
         let sourceText = "眩しげ"
-        // A non-dictionary edge (the segmenter couldn't resolve the surface to a known word) is the
-        // only case where the last-resort fallback is allowed to fire.
+        // A non-dictionary edge: the segmenter couldn't resolve the surface to a known word.
         let edge = LatticeEdge(
             start: sourceText.startIndex,
             end: sourceText.endIndex,
@@ -263,15 +262,12 @@ final class ReadViewFuriganaTests: XCTestCase {
         XCTAssertEqual(furigana.lengthByLocation[0], 1)
     }
 
-    // The kanji fallback is lowest-priority: it must not fire on dictionary-matched edges. When the
-    // segmenter resolved the surface to a known word we trust its reading pipeline (including its
-    // deliberate suppressions), so a kanji left un-annotated there stays bare rather than getting a
-    // context-free guess painted over it. Only unrecognised (non-dictionary) segments get the net.
-    func testKanjiFallbackSuppressedForDictionaryMatchedEdge() throws {
+    // Every kanji gets furigana: the kanji fallback also fires on dictionary-matched edges when no
+    // word reading resolved, so a recognised word never shows a bare kanji.
+    func testKanjiFallbackFillsDictionaryMatchedEdge() throws {
         let readView = try makeReadView(kanjiReadingFallback: ["眩": "まぶ"])
         let sourceText = "眩しげ"
-        // Mark the edge as a dictionary match — as if the segmenter resolved it to a known lemma —
-        // but provide no reading data, so only the (now-suppressed) fallback could produce ruby.
+        // A dictionary match with no reading data: only the fallback can produce ruby.
         let edge = LatticeEdge(
             start: sourceText.startIndex,
             end: sourceText.endIndex,
@@ -285,8 +281,9 @@ final class ReadViewFuriganaTests: XCTestCase {
             surfaceReadingData: makeSurfaceReadingData([:])
         )
 
-        XCTAssertTrue(furigana.furiganaByLocation.isEmpty)
-        XCTAssertTrue(furigana.lengthByLocation.isEmpty)
+        XCTAssertEqual(furigana.furiganaByLocation[0], "まぶ")
+        XCTAssertEqual(furigana.lengthByLocation[0], 1)
+        XCTAssertNil(furigana.furiganaByLocation[1], "no annotation should attach to the kana しげ")
     }
 
     // The gentle prune keeps fragmented per-character entries inside a merged segment so the

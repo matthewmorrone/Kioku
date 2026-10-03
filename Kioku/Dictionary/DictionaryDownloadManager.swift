@@ -46,8 +46,8 @@ final class DictionaryDownloadManager {
     // whatever tag is pinned here if the local Resources/dictionary.sqlite doesn't hash-match
     // it — so editing dictionary.sqlite locally without bumping this pin first gets silently
     // reverted on the very next build.
-    nonisolated static let releaseTag = "dictionary-v14"
-    nonisolated static let expectedSHA256 = "07b8431f12c214ff4e11547f4b2959994acf256835efaae2d6e4c6020ea2f22c"
+    nonisolated static let releaseTag = "dictionary-v15"
+    nonisolated static let expectedSHA256 = "a4c138b3556c4781f1e510c67d307dd5434ec3aeee1a8b2e0515fbb2df9c2866"
 
     // Public GitHub Release asset URL of the xz-compressed database — matthewmorrone/Kioku is a
     // public repo, so this needs no authentication to fetch. The release also carries the raw

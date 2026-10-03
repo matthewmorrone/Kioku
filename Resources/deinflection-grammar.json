@@ -62,7 +62,7 @@
       {"word": "くれる", "gives": "v1", "group": "benefactiveForms"}
     ],
     "contractions": [
-      {"plain": "てる", "voiced": "でる", "gives": "v1", "helper": "いる", "group": "contractionForms"},
+      {"plain": "てる", "voiced": "でる", "gives": "v1", "helper": "いる", "group": "progressiveForms"},
       {"plain": "ちゃう", "voiced": "じゃう", "gives": "v5", "helper": "しまう", "group": "contractionForms"},
       {"plain": "とく", "voiced": "どく", "gives": "v5", "helper": "おく", "group": "contractionForms"},
       {"plain": "てく", "voiced": "でく", "gives": "v5", "helper": "いく", "group": "contractionForms"},
