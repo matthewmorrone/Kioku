@@ -25,52 +25,61 @@ product name. The on-device display name under the icon is independent of this.
 
 ## Promotional text (170 chars max)
 
-> Paste any Japanese text and read it with furigana, tap-to-look-up, and
-> one-tap word saving. Fully offline dictionary. Your data never leaves your
-> phone.
+> Play a Japanese song or reading and follow along word by word. Kioku times the
+> text to the audio on your phone, with furigana and tap-to-look-up on every line.
+
+## What's New in This Version (1.1)
+
+> • Lyrics view starts aligning by itself: open it on a note with audio and the
+>   timing is worked out on your phone while you read along
+> • Two sample notes to try right away: a short story read aloud and さくら さくら
+> • Every kanji now gets furigana
+> • Smarter word splitting and readings, including old spellings and katakana names
+> • Tapping a word with no dictionary entry opens the full lookup sheet
 
 ## Description
 
-> Kioku turns any Japanese text into a readable, studyable document.
+> Kioku turns Japanese audio and text into something you can read along with.
+>
+> FOLLOW ALONG
+> • Add a song or recording to a note and Kioku times every line and word to
+>   the audio, on your phone, with no account and no upload
+> • Karaoke-style lyrics view: the current word lights up as it's sung or spoken
+> • Tap any word mid-song to look it up; tap a line to jump to it
+> • Switch between the full mix, the isolated voice, or the instrumental
+> • Fine-tune any word's timing by hand
 >
 > READ
-> • Paste or import text and get instant furigana annotations
-> • Tap any word for its dictionary entry, conjugation breakdown, and pitch info
+> • Paste or import text and get instant furigana
+> • Tap any word for its dictionary entry, conjugation breakdown, and pitch accent
 > • Smart segmentation understands conjugated forms — tap できない, see できる
 > • Adjustable typography: text size, line spacing, furigana size and gap
 >
 > LOOK UP
-> • Complete offline Japanese–English dictionary — no connection needed
+> • Complete offline Japanese–English dictionary
 > • Search by kanji, kana, romaji, English, or wildcards
-> • Handwriting input: draw kanji you can't type, including multi-character words
-> • Radical search and kanji detail views with stroke information
-> • Paste a whole sentence and get a word-by-word breakdown
+> • Handwriting input for kanji you can't type
+> • Radical search and kanji details with stroke order
 >
 > STUDY
-> • Save words while you read; organize them into lists
+> • Save words while you read and organize them into lists
 > • Flashcards and multiple-choice review with progress tracking
 > • Word of the Day notifications
-> • Study history that remembers every word you've looked up
->
-> LISTEN
-> • Attach audio to notes and follow along karaoke-style, line by line
-> • On-device transcription and lyric alignment (downloadable speech models)
-> • Per-word timing you can edit by hand
 >
 > PRIVATE BY DESIGN
-> • No accounts, no analytics, no tracking — the privacy label is empty
-> • Everything stays on your phone; full backup export/import included
-> • Optional AI features run on Apple Intelligence or your own API key, stored in the device Keychain
+> • No accounts, no analytics, no tracking
+> • Alignment, transcription, and the dictionary all run on your phone
+> • Optional AI features use Apple Intelligence or your own API key
 >
 > Dictionary data from JMdict (EDRDG), used under Creative Commons
 > Attribution-ShareAlike. Full attributions in Settings → About.
 
 ## Keywords (100 chars max)
 
-> japanese,dictionary,furigana,kanji,jlpt,flashcards,study,offline,handwriting,lyrics,vocabulary
+> japanese,dictionary,furigana,kanji,jlpt,flashcards,karaoke,offline,handwriting,lyrics,vocabulary
 
-(94 characters. "Reader" is dropped — it's already in the title "Kioku
-Reader" and Apple indexes the title. Don't repeat "kioku" either, same reason.)
+(96 characters. "study" made room for "karaoke". "Reader" is dropped — it's already in the
+title "Kioku Reader" and Apple indexes the title. Don't repeat "kioku" either, same reason.)
 
 ## URLs
 
@@ -126,10 +135,9 @@ Store Connect will not ask.
 1. **Register the app**: App Store Connect → My Apps → "+" → New App, with
    bundle ID `matthewmorrone.Kioku` (register the ID at
    developer.apple.com/account → Identifiers first if it isn't listed).
-2. **Screenshots** (iPhone-only now, so one set): take 6.9" screenshots on
-   your iPhone (1320 × 2868). Suggested five: Read view with furigana, a
-   word-detail sheet, dictionary search with handwriting input, flashcard
-   review, karaoke lyrics view. Settings → no personal notes visible.
+2. **Screenshots** (iPhone-only, one 6.9" set at 1320 × 2868, taken on the iPhone 17 Pro Max
+   simulator): lyrics view first, then the Read view with furigana, the lookup sheet,
+   dictionary search, and flashcard review. Sample notes only, nothing personal.
 3. **Archive & upload**: `scripts/distribute.sh` (see RELEASE.md §5), or
    Xcode → Product → Archive → Distribute App → App Store Connect.
 4. **TestFlight smoke test** on an iOS 18.x device if you can borrow one —
