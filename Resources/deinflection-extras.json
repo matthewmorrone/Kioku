@@ -1,0 +1,57 @@
+{
+  "about": "Rules added to the generated deinflection.json as written: exceptions, not grammar. The deinflection counterpart of extras.json. Each section says what its rules are for.",
+  "sections": [
+    {"about": "行く: godan-ka, but 行っ for た/て (行った, 行って, 行ったり, 行っちゃ)", "rules": [
+      {"group": "teForms", "kanaIn": "いって", "kanaOut": "いく", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+      {"group": "teForms", "kanaIn": "行って", "kanaOut": "行く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+      {"group": "pastForms", "kanaIn": "いった", "kanaOut": "いく", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+      {"group": "pastForms", "kanaIn": "行った", "kanaOut": "行く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+      {"group": "representativeForms", "kanaIn": "いったり", "kanaOut": "いく", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+      {"group": "representativeForms", "kanaIn": "行ったり", "kanaOut": "行く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+      {"group": "contractionForms", "kanaIn": "いっちゃ", "kanaOut": "いく", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+      {"group": "contractionForms", "kanaIn": "行っちゃ", "kanaOut": "行く", "rulesIn": ["v5"], "rulesOut": ["v5"]}
+    ]},
+    {"about": "てく (ていく contracted) takes 行く's irregular っ in its past and て-form: 持ってった, 持ってって (named case)", "rules": [
+      {"group": "contractionForms", "kanaIn": "てった", "kanaOut": "て", "rulesIn": ["v1", "v5", "vs", "vk"], "rulesOut": ["te"], "helper": "いく"},
+      {"group": "contractionForms", "kanaIn": "てって", "kanaOut": "て", "rulesIn": ["v1", "v5", "vs", "vk"], "rulesOut": ["te"], "helper": "いく"},
+      {"group": "contractionForms", "kanaIn": "でった", "kanaOut": "で", "rulesIn": ["v5"], "rulesOut": ["te"], "helper": "いく"},
+      {"group": "contractionForms", "kanaIn": "でって", "kanaOut": "で", "rulesIn": ["v5"], "rulesOut": ["te"], "helper": "いく"}
+    ]},
+    {"about": "Honorific godan verbs whose stem ends in い, not り: いらっしゃる, おっしゃる, なさる, くださる, ござる (いらっしゃいます → いらっしゃる)", "rules": [
+      {"group": "politeForms", "kanaIn": "います", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+      {"group": "politeForms", "kanaIn": "いました", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+      {"group": "politeForms", "kanaIn": "いまして", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+      {"group": "politeForms", "kanaIn": "いましょ", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+      {"group": "politeForms", "kanaIn": "いません", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+      {"group": "politeForms", "kanaIn": "いましたら", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+      {"group": "politeForms", "kanaIn": "いましょう", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+      {"group": "politeForms", "kanaIn": "いませんでした", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+      {"group": "imperativeForms", "kanaIn": "いなさい", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]}
+    ]},
+    {"about": "ちゃう + んだ (忘れちゃうんだ): the explanatory のだ fused onto the contraction", "rules": [
+      {"group": "contractionForms", "kanaIn": "っちゃうんだ", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"], "helper": "しまう"},
+      {"group": "contractionForms", "kanaIn": "いちゃうんだ", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"], "helper": "しまう"},
+      {"group": "contractionForms", "kanaIn": "いじゃうんだ", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"], "helper": "しまう"},
+      {"group": "contractionForms", "kanaIn": "しちゃうんだ", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"], "helper": "しまう"},
+      {"group": "contractionForms", "kanaIn": "っちゃうんだ", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"], "helper": "しまう"},
+      {"group": "contractionForms", "kanaIn": "んじゃうんだ", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"], "helper": "しまう"},
+      {"group": "contractionForms", "kanaIn": "んじゃうんだ", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"], "helper": "しまう"},
+      {"group": "contractionForms", "kanaIn": "んじゃうんだ", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"], "helper": "しまう"},
+      {"group": "contractionForms", "kanaIn": "っちゃうんだ", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"], "helper": "しまう"},
+      {"group": "contractionForms", "kanaIn": "ちゃうんだ", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"], "helper": "しまう"},
+      {"group": "contractionForms", "kanaIn": "きちゃうんだ", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"], "helper": "しまう"},
+      {"group": "contractionForms", "kanaIn": "しちゃうんだ", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"], "helper": "しまう"}
+    ]},
+    {"about": "する and くる as themselves, 来 written without okurigana, and their ば-contractions", "rules": [
+      {"group": "conditionalForms", "kanaIn": "くりゃ", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
+      {"group": "conditionalForms", "kanaIn": "すりゃ", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
+      {"group": "irregularForms", "kanaIn": "くる", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
+      {"group": "irregularForms", "kanaIn": "する", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
+      {"group": "stemRecoveryForms", "kanaIn": "来", "kanaOut": "来る", "rulesIn": ["vk"], "rulesOut": ["vk"]},
+      {"group": "stemRecoveryForms", "kanaIn": "来", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]}
+    ]},
+    {"about": "Ichidan stem ending in し (kept by the user 2026-10-03; the generated stems need ten verbs per kana)", "rules": [
+      {"group": "ichidanStemForms", "kanaIn": "し", "kanaOut": "しる", "rulesIn": ["v1"], "rulesOut": ["v1"]}
+    ]}
+  ]
+}

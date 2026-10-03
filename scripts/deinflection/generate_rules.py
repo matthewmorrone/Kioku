@@ -14,10 +14,15 @@ Rules come out in deinflection.json's format: a rule rewrites a word ending in k
 the word's current grammar is in rulesIn, and leaves it with the grammar in rulesOut. Each rule carries
 `source`, naming the grammar-table row and UniDic form it came from.
 
-    python3 generate_rules.py <lex.csv> [<grammar.json>] > deinflection.json [--explain]
+Then the rules of Resources/deinflection-extras.json (exceptions, not grammar: 行く's irregular forms,
+the honorific い-stems …) are added as written, rules that differ only in the steps they accept or in
+the helper they name are merged, and a "build" record notes the checksums of everything used.
+
+    python3 generate_rules.py <lex.csv> [--grammar G] [--extras E] [--unidic-sha SHA] > deinflection.json
 """
 import collections
 import csv
+import hashlib
 import json
 import os
 import re
@@ -25,7 +30,9 @@ import sys
 import unicodedata
 
 LEX_SURFACE, LEX_POS1, LEX_CTYPE, LEX_CFORM, LEX_KANA, LEX_KANA_BASE = 0, 4, 8, 9, 21, 22
-GRAMMAR_DEFAULT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'Resources', 'deinflection-grammar.json')
+RESOURCES = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'Resources')
+GRAMMAR_DEFAULT = os.path.join(RESOURCES, 'deinflection-grammar.json')
+EXTRAS_DEFAULT = os.path.join(RESOURCES, 'deinflection-extras.json')
 
 # A (cType, cForm) ending must be attested by this many words to count as conjugation rather than one
 # word's quirk or a data error. する and 来る are exempt: they are their types' only real members.
@@ -146,10 +153,54 @@ def one_rule_per_line(data):
     return '\n'.join(lines) + '\n'
 
 
+def option(name, default=None):
+    """The value after --name on the command line, else the default."""
+    return sys.argv[sys.argv.index(name) + 1] if name in sys.argv else default
+
+
+def sha256(path):
+    """Hex SHA-256 of a file, for the build record."""
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def is_omitted(rule, patterns):
+    """Whether a generated rule matches one of the grammar's omittedPatterns."""
+    for pattern in patterns:
+        if 'kanaIn' in pattern and not re.search(pattern['kanaIn'], rule['kanaIn']):
+            continue
+        if 'kanaOut' in pattern and not re.search(pattern['kanaOut'], rule['kanaOut']):
+            continue
+        if 'rulesOut' in pattern and rule['rulesOut'] != pattern['rulesOut']:
+            continue
+        return True
+    return False
+
+
+def merged(groups):
+    """Merges, within a group, rules that differ only in the steps they accept (rulesIn is unioned)
+    or in naming a helper (the one naming it is kept): the deinflector treats them as one rule."""
+    out = {}
+    for group, rules in groups.items():
+        by_shape = {}
+        for rule in rules:
+            shape = (rule['kanaIn'], rule['kanaOut'], tuple(rule['rulesOut']))
+            kept = by_shape.get(shape)
+            if kept is None or (kept.get('helper') and rule.get('helper') and kept['helper'] != rule['helper']):
+                by_shape[shape if kept is None else shape + (rule['helper'],)] = rule
+                continue
+            kept['rulesIn'] = kept['rulesIn'] + [g for g in rule['rulesIn'] if g not in kept['rulesIn']]
+            if rule.get('helper') and not kept.get('helper'):
+                kept['helper'] = rule['helper']
+        out[group] = list(by_shape.values())
+    return out
+
+
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith('--')]
-    lex = args[0]
-    grammar = json.load(open(args[1] if len(args) > 1 else GRAMMAR_DEFAULT, encoding='utf-8'))
+    lex = sys.argv[1]
+    grammar_path = option('--grammar', GRAMMAR_DEFAULT)
+    extras_path = option('--extras', EXTRAS_DEFAULT)
+    grammar = json.load(open(grammar_path, encoding='utf-8'))
     aux_words = grammar['auxiliaryConjugations']['words']
     aux_grammar = {aux: row['grammar'] for aux, row in aux_words.items()}
     voiced = grammar['voicing']['voiced']
@@ -209,8 +260,8 @@ def main():
                         [word_grammar], f"{unidic} + {te}{helper['word']} (teHelpers)", helper['word'])
                 for contraction in grammar['teHelpers']['contractions']:
                     form = contraction['voiced'] if is_voiced else contraction['plain']
-                    add(contraction['group'], ending + form, base_ending, [contraction['gives']],
-                        [word_grammar], f'{unidic} + {form} (teHelpers.contractions)', contraction['helper'])
+                    add(contraction['group'], ending + form, base_ending, [contraction['gives'] or word_grammar],
+                        [word_grammar], f'{unidic} + {form} (teHelpers.contractions)', contraction.get('helper'))
 
     # Ichidan stems (食べ, 続け) end in the stem itself, an empty ending a rule can't match on: such a
     # stem is matched by its last kana instead (べ → べる), one rule per kana ichidan stems end in.
@@ -233,18 +284,31 @@ def main():
         add(row['group'], row['kanaIn'], row['kanaOut'], row['rulesIn'], row['rulesOut'], f"fixedSequences: {row['note']}")
 
     omitted = {(o['kanaIn'], o['kanaOut'], tuple(o['rulesOut'])) for o in grammar['omitted']}
-    out = collections.defaultdict(list)
+    patterns = grammar['omittedPatterns']['patterns']
+    groups = collections.defaultdict(list)
     for (group, kana_in, kana_out, rules_in, rules_out), (helper, source) in sorted(rules.items()):
-        if (kana_in, kana_out, rules_out) in omitted:
-            continue
         rule = {'kanaIn': kana_in, 'kanaOut': kana_out, 'rulesIn': list(rules_in), 'rulesOut': list(rules_out)}
+        if (kana_in, kana_out, rules_out) in omitted or is_omitted(rule, patterns):
+            continue
         if helper:
             rule['helper'] = helper
         rule['source'] = source
-        out[group].append(rule)
-    out = dict(out)
+        groups[group].append(rule)
+    extras = json.load(open(extras_path, encoding='utf-8'))
+    for section in extras['sections']:
+        for row in section['rules']:
+            rule = {k: v for k, v in row.items() if k != 'group'}
+            rule['source'] = 'deinflection-extras.json: ' + section['about'].split(':')[0]
+            groups[row['group']].append(rule)
+    out = merged(groups)
     out['nonIchidanRuVerbs'] = grammar['nonIchidanRuVerbs']
     out['intermediateForms'] = grammar['intermediateForms']
+    out['build'] = {
+        'generator': 'scripts/deinflection/generate_rules.py',
+        'unidic': {'member': 'unidic-mecab_kana-accent-2.1.2_src/lex.csv', 'sha256': option('--unidic-sha', sha256(lex))},
+        'grammar': {'file': 'Resources/deinflection-grammar.json', 'sha256': sha256(grammar_path)},
+        'extras': {'file': 'Resources/deinflection-extras.json', 'sha256': sha256(extras_path)},
+    }
     sys.stdout.write(one_rule_per_line(out))
 
 

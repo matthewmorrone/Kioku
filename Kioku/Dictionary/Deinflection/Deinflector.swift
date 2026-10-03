@@ -78,15 +78,18 @@ nonisolated final class Deinflector {
     // The non-rule sibling keys alongside the rule groups (teForms, pastForms, …) in deinflection.json.
     private static let nonIchidanRuVerbsKey = "nonIchidanRuVerbs"
     private static let intermediateFormsKey = "intermediateForms"
+    // What the file was generated from (scripts/deinflection/regenerate.sh): source checksums, not rules.
+    private static let buildKey = "build"
 
     // Loads grouped rules from JSON data while preserving rule-group labels. Strips the non-rule
-    // "nonIchidanRuVerbs" / "intermediateForms" keys first so the rest decodes as pure rule groups.
+    // "nonIchidanRuVerbs" / "intermediateForms" / "build" keys first so the rest decodes as pure rule groups.
     static func loadGroupedRules(from data: Data) throws -> [String: [DeinflectionRule]] {
         guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return try JSONDecoder().decode([String: [DeinflectionRule]].self, from: data)
         }
         object.removeValue(forKey: nonIchidanRuVerbsKey)
         object.removeValue(forKey: intermediateFormsKey)
+        object.removeValue(forKey: buildKey)
         let rulesData = try JSONSerialization.data(withJSONObject: object)
         return try JSONDecoder().decode([String: [DeinflectionRule]].self, from: rulesData)
     }

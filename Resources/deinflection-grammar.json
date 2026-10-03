@@ -14,17 +14,10 @@
     {"attach": "せる", "gives": "v1", "after": ["v5"], "form": "未然形-一般", "group": "auxiliaryForms"},
     {"attach": "せる", "gives": "v1", "after": ["vs"], "form": "未然形-サ", "group": "auxiliaryForms"},
     {"attach": "させる", "gives": "v1", "after": ["v1", "vk"], "form": "未然形-一般", "group": "auxiliaryForms"},
-    {
-      "attach": "る",
-      "gives": "v1",
-      "after": ["v5"],
-      "form": "仮定形-一般",
-      "note": "godan potential (書ける): UniDic lists these as verbs of their own",
-      "group": "potentialForms"
-    },
+    {"attach": "る", "gives": "v1", "after": ["v5"], "form": "仮定形-一般", "note": "godan potential (書ける): UniDic lists these as verbs of their own", "group": "potentialForms"},
     {"attach": "ます", "gives": "masu", "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般", "group": "politeForms"},
     {"attach": "たい", "gives": "adj-i", "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般", "group": "desireForms"},
-    {"attach": "ながら", "gives": null, "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般", "group": "auxiliaryForms"},
+    {"attach": "ながら", "gives": null, "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般", "group": "auxiliaryForms", "helper": "ながら"},
     {"attach": "なさい", "gives": null, "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般", "group": "imperativeForms"},
     {"attach": "た", "gives": "ta", "after": ["v5", "v1", "vk", "vs", "masu"], "form": "euphonic", "group": "pastForms"},
     {"attach": "て", "gives": "te", "after": ["v5", "v1", "vk", "vs", "masu"], "form": "euphonic", "group": "teForms"},
@@ -61,17 +54,19 @@
     ]
   },
   "teHelpers": {
-    "about": "Helper verbs after a verb's て-form folded into one segment (持っている). Only いる and いく/ゆく: Tatoeba, JMdict and MeCab write て | しまう, て | くる, て | ある … as two tokens, and so does the segmenter (2026-10-03: folding them all cut 7 gold tokens in held2k and gave してあれ | ほど). てゆく/ていく fold by the user's own decision (named cases 飛び込んでゆく, 歌い続けてゆく). The contractions below fuse て with the helper in writing, so they do fold.",
+    "about": "Helper verbs after a verb's て-form folded into one segment (持っている). Only いる, いく/ゆく and くれる: Tatoeba, JMdict and MeCab write て | しまう, て | くる, て | ある … as two tokens, and so does the segmenter (2026-10-03: folding them all cut 7 gold tokens in held2k and gave してあれ | ほど). てゆく/ていく and てくれる fold by the user's own decision (named cases 飛び込んでゆく, 歌い続けてゆく; the hand-written benefactive rules). The contractions below fuse て with the helper in writing, so they do fold.",
     "words": [
       {"word": "いる", "gives": "v1", "group": "progressiveForms"},
       {"word": "いく", "gives": "v5", "group": "auxiliaryForms"},
-      {"word": "ゆく", "gives": "v5", "group": "auxiliaryForms"}
+      {"word": "ゆく", "gives": "v5", "group": "auxiliaryForms"},
+      {"word": "くれる", "gives": "v1", "group": "benefactiveForms"}
     ],
     "contractions": [
       {"plain": "てる", "voiced": "でる", "gives": "v1", "helper": "いる", "group": "contractionForms"},
       {"plain": "ちゃう", "voiced": "じゃう", "gives": "v5", "helper": "しまう", "group": "contractionForms"},
       {"plain": "とく", "voiced": "どく", "gives": "v5", "helper": "おく", "group": "contractionForms"},
-      {"plain": "てく", "voiced": "でく", "gives": "v5", "helper": "いく", "group": "contractionForms"}
+      {"plain": "てく", "voiced": "でく", "gives": "v5", "helper": "いく", "group": "contractionForms"},
+      {"plain": "てた", "voiced": "でた", "gives": null, "group": "teForms", "note": "ていた with the い dropped (持ってた)"}
     ]
   },
   "standaloneForms": {
@@ -120,12 +115,7 @@
     }
   ],
   "omitted": [
-    {
-      "kanaIn": "よ",
-      "kanaOut": "る",
-      "rulesOut": ["v1"],
-      "why": "Ichidan imperative よ (見よ): it swallows the sentence particle in 見て | よ, 伝えて | よ, まって | よ (named cases)."
-    },
+    {"kanaIn": "よ", "kanaOut": "る", "rulesOut": ["v1"], "why": "Ichidan imperative よ (見よ): it swallows the sentence particle in 見て | よ, 伝えて | よ, まって | よ (named cases)."},
     {
       "kanaIn": "ければ",
       "kanaOut": "い",
@@ -133,6 +123,23 @@
       "why": "Plain adjective conditional: chaining through the negative gives 守らなければ | ならない, cutting the dictionary expression なければならない (held2k +8 cut-throughs, 2026-10-02). The contractions けりゃ/きゃ stay."
     }
   ],
+  "omittedPatterns": {
+    "about": "Generated rules dropped by pattern: UniDic forms that are real but wrong for this purpose. Applied to generated rules only, never to deinflection-extras.json. Decided 2026-10-03 after reviewing every generated rule the hand-written file lacked.",
+    "patterns": [
+      {"why": "dialect (Kansai ます forms, これば)", "kanaIn": "まへ|まひょ|まっしゃろ|ませい|^まん$|^これば$"},
+      {"why": "a する form read as an ichidan せる verb (した → せる)", "kanaIn": "^[しじ]", "kanaOut": "^せる$"},
+      {"why": "the copula だ, not voiced た", "kanaIn": "^(じゃ|ぢゃ|で)$", "kanaOut": "^だ$"},
+      {"why": "over-general: っ-forms are く only for 行く (in deinflection-extras.json), never ちる", "kanaIn": "^っ", "kanaOut": "^(く|ちる)$"},
+      {"why": "over-general: ん-forms never come from a godan る verb", "kanaIn": "^ん", "kanaOut": "^る$", "rulesOut": ["v5"]},
+      {"why": "over-general: い-forms → る (the honorific い-stems are in deinflection-extras.json)", "kanaIn": "^い.", "kanaOut": "^る$"},
+      {"why": "single-kana casual volitional (行こ, 取ろ): on kana-only text it matches almost anything", "kanaIn": "^(お|こ|ご|そ|と|の|ぼ|も|ろ|よ)っ?$", "rulesOut": ["v5"]},
+      {"why": "single-kana casual volitional, ichidan (見よっ)", "kanaIn": "^よっ$"},
+      {"why": "single-kana fragments that are no word's ending: ん → る (godan), い → いる / る, か → かる, な → ぬ, じ → ずる, たか → たい", "kanaIn": "^(ん|い|か|な|じ)$|^たか$", "kanaOut": "^(る|いる|かる|ぬ|ずる|たい)$", "rulesOut": ["v5"]},
+      {"why": "single-kana fragments that are no word's ending (other classes)", "kanaIn": "^(ん|い|か|な|じ)$|^たか$", "kanaOut": "^(いる|る|かる|ずる|たい)$"},
+      {"why": "な → ぬ: a fragment, not ぬ's form (ん → ぬ for ません stays)", "kanaIn": "^な$", "kanaOut": "^ぬ$"},
+      {"why": "emphatic spelling (高くっ…)", "kanaIn": "^くっ"}
+    ]
+  },
   "nonIchidanRuVerbs": ["知る", "しる", "識る", "走る", "はしる", "限る", "かぎる", "参る", "まいる", "蹴る", "ける"],
   "intermediateForms": ["te", "masu", "ta", "nu"]
 }
