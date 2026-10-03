@@ -421,8 +421,16 @@ extension ReadView {
         }
 
         guard let definitionPayload = definitionPayloadForSelectedSegment(at: tappedSegmentLocation) else {
-            TapDiagnostics.mark("BAIL: definitionPayloadForSelectedSegment(at:) returned nil")
-            SegmentLookupSheet.shared.dismissPopover()
+            // No dictionary entry for this segment, so the popover has nothing to show. Open the
+            // full sheet instead of ignoring the tap: it guesses a gloss for unknown words and
+            // offers merge/split, which is usually the fix for a fragment like りゃ.
+            TapDiagnostics.mark("no definition payload; taking presentFullLookupSheet path")
+            presentFullLookupSheet(
+                tappedSegmentLocation: tappedSegmentLocation,
+                adjacentSurfaces: adjacentSurfaces,
+                sourceView: sourceView,
+                tappedSegmentRect: tappedSegmentRect
+            )
             return
         }
 

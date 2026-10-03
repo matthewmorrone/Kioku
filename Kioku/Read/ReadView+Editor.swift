@@ -445,6 +445,16 @@ extension ReadView {
                 .opacity(editModeScroll.isEditMode ? 1 : 0)
                 .allowsHitTesting(editModeScroll.isEditMode)
                 .animation(.default, value: editModeScroll.isEditMode)
+
+                // A note with text but no segmentation yet (a new note, or the dictionary still
+                // loading) has nothing for the reader to draw; show that it's coming.
+                if editModeScroll.isEditMode == false,
+                   document.text.isEmpty == false,
+                   hasRendererSegmentation == false {
+                    ProgressView()
+                        .controlSize(.large)
+                        .allowsHitTesting(false)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
