@@ -218,6 +218,9 @@ extension ReadView {
                     }
                 }
             }
+            .onChange(of: audioPlayback.isShowingLyricsView) { _, isShowing in
+                if isShowing { autoAlignIfNeeded() }
+            }
             .onChange(of: segmenterRevision) { _, _ in
                 if document.text.isEmpty == false, debugStartupSegmentationDiffs {
                     StartupTimer.measure("SegmentationDiffPrinter.printDiffs") {
@@ -241,6 +244,9 @@ extension ReadView {
                     StartupTimer.mark("no persisted segments, running full segmentation")
                     refreshSegmentationRanges()
                 }
+
+                // Lyrics opened on an unaligned song before the dictionary loaded can align now.
+                autoAlignIfNeeded()
 
                 // Resources just became ready. A split editor opened while they were still loading has
                 // no costs; re-install the provider with the now-loaded segmenter so it fills in.

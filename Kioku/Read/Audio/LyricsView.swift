@@ -452,6 +452,11 @@ struct LyricsView: View {
                 }
             } // end lyric VStack
             .clipped()
+            // No timing yet (alignment still running, or never run): show the note's lines
+            // instead of an empty card.
+            .overlay {
+                if cues.isEmpty { unalignedLines }
+            }
 
             controls
         }

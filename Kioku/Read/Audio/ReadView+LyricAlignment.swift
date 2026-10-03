@@ -113,6 +113,20 @@ extension ReadView {
         subtitleImport.alignmentCancellationToken.cancel()
     }
 
+    // Starts alignment by itself when the lyrics view opens on a note that has audio but no timing
+    // yet, so opening the lyrics is enough. Waits for the reader's dictionary, which the romanizer
+    // needs; the segmenter-revision hook calls this again once the dictionary lands.
+    @MainActor
+    func autoAlignIfNeeded() {
+        guard audioPlayback.isShowingLyricsView,
+              readResourcesReady,
+              lyricAlignment.isAligning == false,
+              audioPlayback.activeAudioAttachmentID != nil,
+              audioPlayback.audioAttachmentCues.isEmpty,
+              lyricsForAlignment.isEmpty == false else { return }
+        Task { await realignWholeNote() }
+    }
+
     // Re-runs the whole-song alignment over the note's lyrics against the already-attached
     // audio, then swaps the cue list in place — no wipe / re-import. Backs the karaoke bar's
     // "Re-align" action. Progress + spinner ride on `lyricAlignment.isAligning`;
@@ -134,7 +148,8 @@ extension ReadView {
             .count
 
         lyricAlignment.isAligning = true
-        lyricAlignment.progressMessage = "Re-aligning \(totalLines) lines…"
+        let verb = audioPlayback.audioAttachmentCues.isEmpty ? "Aligning" : "Re-aligning"
+        lyricAlignment.progressMessage = "\(verb) \(totalLines) lines…"
         subtitleImport.alignmentCancellationToken.reset()
         subtitleImport.isCancellingAlignment = false
         let foregroundGuard = AlignmentForegroundGuard()

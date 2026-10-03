@@ -139,10 +139,8 @@ extension ReadView {
             .onTapGesture {
                 // Nothing attached yet → the lyric view would be empty, so jump straight to the
                 // media picker (mp3 / srt / textgrid) instead of toggling a blank overlay. Once an
-                // attachment exists, the tap reverts to its normal show/hide-lyrics behavior — even
-                // with no cues yet, showing an empty lyrics overlay is fine and playback still works;
-                // alignment is a separate, explicit action (the Re-align control), not auto-triggered
-                // by this tap.
+                // attachment exists, the tap reverts to its normal show/hide-lyrics behavior; opening
+                // the lyrics on a note with no cues yet starts alignment (autoAlignIfNeeded).
                 if audioPlayback.activeAudioAttachmentID == nil {
                     subtitleImport.isShowingLyricMediaPicker = true
                 } else {
