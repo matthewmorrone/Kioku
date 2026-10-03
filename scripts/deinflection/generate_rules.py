@@ -128,6 +128,24 @@ def read_unidic(lex, aux_words):
     return endings, stem_last_kana, aux_forms
 
 
+def one_rule_per_line(data):
+    """deinflection.json with each rule on a line of its own: readable, and a diff shows one line per
+    changed rule."""
+    lines = ['{']
+    keys = list(data)
+    for index, key in enumerate(keys):
+        comma = ',' if index < len(keys) - 1 else ''
+        value = data[key]
+        if isinstance(value, list) and value and isinstance(value[0], dict):
+            lines.append(f'  {json.dumps(key, ensure_ascii=False)}: [')
+            lines += [f'    {json.dumps(rule, ensure_ascii=False)}' + (',' if i < len(value) - 1 else '') for i, rule in enumerate(value)]
+            lines.append(f'  ]{comma}')
+        else:
+            lines.append(f'  {json.dumps(key, ensure_ascii=False)}: {json.dumps(value, ensure_ascii=False)}{comma}')
+    lines.append('}')
+    return '\n'.join(lines) + '\n'
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     lex = args[0]
@@ -227,8 +245,7 @@ def main():
     out = dict(out)
     out['nonIchidanRuVerbs'] = grammar['nonIchidanRuVerbs']
     out['intermediateForms'] = grammar['intermediateForms']
-    json.dump(out, sys.stdout, ensure_ascii=False, indent=2)
-    sys.stdout.write('\n')
+    sys.stdout.write(one_rule_per_line(out))
 
 
 if __name__ == '__main__':
