@@ -23,21 +23,28 @@ final class GuessedGlossStoreTests: XCTestCase {
 
     // A stored guess survives into a fresh store over the same defaults.
     func testStoredGlossPersists() {
-        GuessedGlossStore(defaults: defaults).setGloss("light (French 'lumière')", for: "リュミエール")
-        XCTAssertEqual(GuessedGlossStore(defaults: defaults).gloss(for: "リュミエール"), "light (French 'lumière')")
+        GuessedGlossStore(defaults: defaults).setGloss("light (French 'lumière')", for: "リュミエール", in: "その物語リュミエール")
+        XCTAssertEqual(GuessedGlossStore(defaults: defaults).gloss(for: "リュミエール", in: "その物語リュミエール"), "light (French 'lumière')")
+    }
+
+    // A guess belongs to the line it was made from; the same spelling in another line asks again.
+    func testGlossIsKeyedByLine() {
+        let store = GuessedGlossStore(defaults: defaults)
+        store.setGloss("light (French 'lumière')", for: "リュミエール", in: "その物語リュミエール")
+        XCTAssertNil(store.gloss(for: "リュミエール", in: "別の行のリュミエール"))
     }
 
     // Blank guesses are not stored, so a failed reply can be retried later.
     func testBlankGlossIsNotStored() {
         let store = GuessedGlossStore(defaults: defaults)
-        store.setGloss("   ", for: "シェノン")
-        XCTAssertNil(store.gloss(for: "シェノン"))
+        store.setGloss("   ", for: "シェノン", in: "涙色のシェノン")
+        XCTAssertNil(store.gloss(for: "シェノン", in: "涙色のシェノン"))
     }
 
     // A stored guess is returned before any breakdown or model is consulted.
     func testGuessPrefersStoredGloss() async {
         let store = GuessedGlossStore(defaults: defaults)
-        store.setGloss("stored", for: "シェノン")
+        store.setGloss("stored", for: "シェノン", in: "涙色のシェノン")
         let breakdown = [SongWord(surface: "シェノン", sungRomaji: "shenon", definition: "from breakdown")]
         let guess = await GlossGuesser.guess(surface: "シェノン", lineContext: "涙色のシェノン", breakdownWords: breakdown, store: store)
         XCTAssertEqual(guess, "stored")

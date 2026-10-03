@@ -5,8 +5,9 @@ import FoundationModels
 
 // Guesses an English gloss for a word the dictionary has no entry for (a French loanword in a lyric,
 // a coined spelling), so the lookup sheet shows something instead of an empty middle. A gloss
-// already stored for the surface is used as is; otherwise an AI request (the configured remote
-// provider, else on-device Apple Intelligence) gets the word's line as context, plus the note's
+// already stored for the surface in that line is used as is; otherwise an AI request (the configured
+// remote provider, else on-device Apple Intelligence, which is also used when AI features are
+// turned off) gets the word's line as context, plus the note's
 // song breakdown explanation of the word when there is one. The breakdown text itself is not shown:
 // it's written to be read aloud and runs well past a gloss ("…, often symbolizes clarity or
 // revelation"). Every failure returns nil and the sheet stays as it was.
@@ -21,12 +22,14 @@ enum GlossGuesser {
         breakdownWords: [SongWord],
         store: GuessedGlossStore = .shared
     ) async -> String? {
-        if let stored = store.gloss(for: surface) { return stored }
+        if let stored = store.gloss(for: surface, in: lineContext) { return stored }
         let breakdownNote = breakdownWords.first(where: { $0.surface == surface })?.definition
-        guard LLMSettings.isEnabled(),
-              let raw = await askModel(prompt: prompt(surface: surface, lineContext: lineContext, breakdownNote: breakdownNote)),
-              let gloss = cleaned(raw) else { return nil }
-        store.setGloss(gloss, for: surface)
+        let request = prompt(surface: surface, lineContext: lineContext, breakdownNote: breakdownNote)
+        // With AI features turned off, the remote providers are off limits, but the on-device model
+        // is free and private, and a labelled guess beats an empty sheet.
+        let reply = LLMSettings.isEnabled() ? await askModel(prompt: request) : await askOnDeviceModel(prompt: request)
+        guard let reply, let gloss = cleaned(reply) else { return nil }
+        store.setGloss(gloss, for: surface, in: lineContext)
         return gloss
     }
 
