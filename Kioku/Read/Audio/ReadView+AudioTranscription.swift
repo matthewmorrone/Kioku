@@ -80,7 +80,7 @@ extension ReadView {
         do {
             defer { try? FileManager.default.removeItem(at: copiedURL) }
 
-            setTranscriptionStatusNote(id: noteID, statusLine: isolate ? "Isolating vocals…" : "Transcribing audio…", body: "")
+            setTranscriptionStatusNote(id: noteID, statusLine: isolate ? "Isolating…" : "Transcribing…", body: "")
             let cues = try await AudioTranscriptionService.transcribe(
                 url: copiedURL, isolateVocals: isolate
             )
@@ -117,7 +117,7 @@ extension ReadView {
         setTranscriptionStatusNote(id: noteID, statusLine: "Checking audio…", body: "")
         do {
             let isolate = await AudioContentClassifier.classify(url) == .singing
-            setTranscriptionStatusNote(id: noteID, statusLine: isolate ? "Isolating vocals…" : "Transcribing audio…", body: "")
+            setTranscriptionStatusNote(id: noteID, statusLine: isolate ? "Isolating…" : "Transcribing…", body: "")
             let cues = try await AudioTranscriptionService.transcribe(
                 url: url,
                 isolateVocals: isolate,

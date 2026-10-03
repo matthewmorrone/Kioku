@@ -62,7 +62,7 @@ final class AlignmentForegroundGuard {
     // during the run, in which case that is the cause worth naming whatever the aborted work said.
     func message(for error: Error) -> String {
         guard didBackground else { return error.localizedDescription }
-        return "Alignment stopped because Kioku went to the background. Isolating the vocals needs the app on screen — start it again and leave Kioku open."
+        return "Alignment stopped because Kioku went to the background. Start it again and leave Kioku open."
     }
 }
 

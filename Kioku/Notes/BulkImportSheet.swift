@@ -191,7 +191,7 @@ struct BulkImportSheet: View {
             }
 
             if case .running = progress?.status, BulkImportPlanner.requiresTranscription(item) {
-                // Stage + percentage above the bar (e.g. "Isolating vocals…   42%"), matching the
+                // Stage + percentage above the bar (e.g. "Isolating…   42%"), matching the
                 // alignment progress UI, so the user always sees what's happening and how far along.
                 let label = progress?.statusLabel ?? ""
                 let pct = Int(((progress?.transcriptionProgress ?? 0) * 100).rounded())

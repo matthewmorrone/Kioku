@@ -17,7 +17,7 @@ enum AppleSpeechTranscription {
             onStatus?("Downloading Japanese speech model…")
             try await request.downloadAndInstall()
         }
-        onStatus?("Transcribing audio…")
+        onStatus?("Transcribing…")
         let analyzer = SpeechAnalyzer(modules: [transcriber])
         let collector = Task { () throws -> [SubtitleCue] in
             var cues: [SubtitleCue] = []

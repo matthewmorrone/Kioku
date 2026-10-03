@@ -35,7 +35,7 @@ struct BulkImportItemProgress: Identifiable, Equatable {
     var baseName: String
     var status: BulkImportItemStatus
     var transcriptionProgress: Double
-    // What the engine is currently doing (e.g. "Isolating vocals…", "Transcribing vocals…"), shown
+    // What the engine is currently doing (e.g. "Isolating…", "Transcribing…"), shown
     // above the progress bar. Empty until the transcription service reports a stage.
     var statusLabel: String = ""
 }

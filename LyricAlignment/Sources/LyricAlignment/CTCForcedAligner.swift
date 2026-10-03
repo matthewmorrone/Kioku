@@ -58,7 +58,7 @@ public struct CTCForcedAligner {
         let vocalMono: [Float]
         if let cached = VocalStemCache.load(for: input.audioURL) {
             Self.breadcrumb("vocal stem CACHE HIT \(cached.count) frames (~\(cached.count / 44_100)s)")
-            onStage?("Loading cached vocals…")
+            onStage?("Loading…")
             vocalMono = cached
         } else {
             onProgress?(0.05)
