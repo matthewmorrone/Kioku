@@ -21,6 +21,7 @@ import csv
 import json
 import re
 import sys
+import unicodedata
 
 LEX_SURFACE, LEX_POS1, LEX_CTYPE, LEX_CFORM, LEX_KANA, LEX_KANA_BASE = 0, 4, 8, 9, 21, 22
 
@@ -113,6 +114,29 @@ def hiragana(text):
     return ''.join(chr(ord(c) - 0x60) if 'ァ' <= c <= 'ヶ' else c for c in text)
 
 
+# The vowel each kana ends in, for spotting a drawn-out spelling (しい for し, けえ for け, りゃあ).
+VOWEL_ROWS = {
+    'あ': 'あかさたなはまやらわがざだばぱゃ', 'い': 'いきしちにひみりぎじぢびぴ',
+    'う': 'うくすつぬふむゆるぐずづぶぷゅ', 'え': 'えけせてねへめれげぜでべぺ',
+    'お': 'おこそとのほもよろをごぞどぼぽょ',
+}
+VOWEL_OF = {kana: vowel for vowel, row in VOWEL_ROWS.items() for kana in row}
+
+
+def is_drawn_out(text):
+    """Whether a kana is followed by its own vowel (しい, けえ, ゃあ): a drawn-out, dialect or emphatic
+    spelling, not a conjugation ending. おう and えい are excluded: they spell real long vowels (こう, せい)."""
+    for a, b in zip(text, text[1:]):
+        if b in 'あいえ' and VOWEL_OF.get(a) == b:
+            return True
+    return False
+
+
+def unvoiced(kana):
+    """The kana without its voicing mark (づ → つ, ば → は), for telling rendaku from a real change."""
+    return unicodedata.normalize('NFC', unicodedata.normalize('NFD', kana).replace('\u3099', '').replace('\u309a', ''))
+
+
 def common_prefix(a, b):
     n = 0
     while n < min(len(a), len(b)) and a[n] == b[n]:
@@ -143,14 +167,17 @@ def main():
         if pos1 not in ('動詞', '形容詞'):
             continue
         # A compound's base reading is its last element's own (つくる) while the form carries the
-        # rendaku (形作った → ...づくった); such rows say nothing about endings.
-        if not surface or not base or surface[0] != base[0]:
+        # rendaku (形作った → ...づくった); such rows say nothing about endings. Only a voicing
+        # difference is rendaku: する → さ/し and くる → こ change their first kana and are real forms.
+        if not surface or not base:
+            continue
+        if surface[0] != base[0] and unvoiced(surface[0]) == base[0]:
             continue
         p = common_prefix(surface, base)
         ending, base_ending = surface[p:], base[p:]
         if not base_ending or not KANA.match(base_ending) or (ending and not KANA.match(ending)):
             continue
-        if STYLISED.search(ending):
+        if STYLISED.search(ending) or is_drawn_out(ending):
             continue
         endings[(ctype, cform)][(ending, base_ending)] += 1
         if not ending and p:
@@ -162,7 +189,9 @@ def main():
     forms = collections.defaultdict(list)  # cType → [(cForm, ending, base ending)]
     for (ctype, cform), counter in endings.items():
         for (ending, base_ending), count in counter.items():
-            if count >= MIN_WORDS:
+            # する and 来る are their conjugation types' only real members (UniDic writes 勉強する as
+            # 勉強 + する), so their forms count however few words show them.
+            if count >= MIN_WORDS or ctype.startswith(('サ行変格', 'カ行変格')):
                 forms[ctype].append((cform, ending, base_ending))
 
     # ます takes further auxiliaries the way a verb does (まし + た, ませ + ぬ): its forms join the
