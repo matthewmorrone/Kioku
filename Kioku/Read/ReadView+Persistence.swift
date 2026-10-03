@@ -200,6 +200,9 @@ extension ReadView {
     // Saves the in-memory editor state to storage and maintains active note identity.
     func persistCurrentNoteIfNeeded(reason _: String = #function) {
         guard !document.isLoadingSelectedNote else { return }
+        // The note this editor shows was deleted elsewhere (the Notes list). Saving now would
+        // write the stale editor text back as a brand-new note, undoing the delete.
+        if let activeNoteID = document.activeNoteID, notesStore.note(withID: activeNoteID) == nil { return }
 
         let trimmedText = document.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedTitle = titleEdit.customTitle.trimmingCharacters(in: .whitespacesAndNewlines)
