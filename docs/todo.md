@@ -37,11 +37,6 @@ written so a new session can pick it up cold.
 
 
 ## Segmentation & Lookup
-- [ ] **Dictionary rebuild pending for new `extras.json` entries** — シェノン (French *chaînon*,
-      "link in a chain") and リュミエール (French *lumière*, "light"), both sung in 月色Chainon, were
-      added 2026-09-26 and are inert until the next from-source rebuild. Batch it with the next dictionary change: `Resources/generate_db.py`,
-      bump `releaseTag`/`expectedSHA256` in `DictionaryDownloadManager.swift`, then
-      `scripts/publish_dictionary_release.sh`, and re-measure with `scripts/segmentation-eval`.
 - [ ] **ポケベルならしてよんで segments as ポケベル|なら|して|よ|んで** — the one miss in the
       segmentation-eval lyric set (37/38; want ならして|よんで, 鳴らして 呼んで). `segcli explain`
       2026-09-27: wanted path loses by 300 centi-nats (7444 vs 7144), all of it in ならして — the
