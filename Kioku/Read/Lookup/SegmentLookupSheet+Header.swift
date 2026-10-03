@@ -35,6 +35,18 @@ extension SegmentLookupSheet {
             segments.append(Segment(text: String(chars[cursor...]), ruby: nil))
         }
 
+        // A long segment (なって憤り出しました) is wider than the header at full size, and the row
+        // would otherwise truncate its last column to "…". Shrink both fonts by the same factor
+        // until every column — the wider of its glyphs and its ruby — fits.
+        let neededWidth = segments.reduce(CGFloat(0)) { total, segment in
+            let glyphWidth = (segment.text as NSString).size(withAttributes: [.font: headwordFont]).width
+            let rubyWidth = (segment.ruby as NSString?)?.size(withAttributes: [.font: rubyFont]).width ?? 0
+            return total + ceil(max(glyphWidth, rubyWidth))
+        }
+        let fitScale = min(1, sheetHeaderAvailableWidth() / max(neededWidth, 1))
+        let headwordFont = headwordFont.withSize(floor(headwordFont.pointSize * fitScale))
+        let rubyFont = rubyFont.withSize(floor(rubyFont.pointSize * fitScale))
+
         // No kanji run means no furigana can ever appear here, so don't reserve the ruby line
         // above the headword. (Kanji words keep the reserve: their reading arrives a moment
         // after the sheet opens, and the header must not jump when it does.)
@@ -72,6 +84,13 @@ extension SegmentLookupSheet {
             column.spacing = 2
             return column
         }
+    }
+
+    // Width the header row gets inside the sheet: the screen less the header container's 16 pt
+    // margins and the 36 pt reading chevrons (each with 8 pt of clearance) on either side. Must
+    // track the constraints in SurfaceSheetViewController+Build.
+    func sheetHeaderAvailableWidth() -> CGFloat {
+        activeScreenBounds().width - (16 * 2) - ((36 + 8) * 2)
     }
 
     // Creates the header container used at the top of the lookup sheet.
