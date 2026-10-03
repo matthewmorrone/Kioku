@@ -71,7 +71,3 @@ written so a new session can pick it up cold.
       tests were removed in `372c42a`), so this means adding a `KiokuUITests/` folder with XCUITests.
       They run on the phone or in CI; this Mac has no simulator runtime.
 
-## Release
-- [ ] **Run CI Tests on the release commit.** tests.yml is manual-only: start it from the Actions
-      tab (or `gh workflow run tests.yml --ref main`) on the exact commit being submitted, and wait
-      for it with `gh run watch --exit-status` in the background.

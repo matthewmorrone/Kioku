@@ -113,22 +113,19 @@ Store Connect will not ask.
 
 ## App Review notes (paste into "Notes" in the review information section)
 
-> Kioku is a fully offline Japanese dictionary/reader. Two features that may
-> need context:
+> Kioku is a Japanese reading and study app. Reading with furigana, tap-to-look-up in an offline dictionary, saving words, and flashcard review need no account and no sign-in.
 >
-> 1. AI FEATURES (correction, song breakdowns; OFF until configured): run on
->    Apple Intelligence, or on OpenAI / Anthropic with an API key the user
->    supplies; the app sends only the text the user asks about. No account or
->    sign-in is required to use the app (Guideline 5.1.1 — the features are
->    optional and keys are user-provided).
+> Network use: the dictionary downloads once on first launch. The first time a note's audio is aligned, the on-device alignment and voice-separation models download once. After that, everything except the optional features below works offline.
 >
-> 2. SUBTITLE SEARCH (optional, requires the user's own jimaku.cc API key,
->    unconfigured by default): searches a community subtitle index so users
->    can study song lyrics and dialogue alongside audio they already possess.
->    The app does not bundle, host, or distribute any copyrighted media.
+> To try alignment: the app starts with two sample notes that have audio. Open one and tap the music-note button above the text; the lyrics view opens and timing starts on the device.
 >
-> No demo account is needed. The dictionary downloads once on first launch;
-> after that, everything except the optional features above works offline.
+> Optional features, off until configured:
+>
+> 1. AI FEATURES (correction, song breakdowns): run on Apple Intelligence, or on OpenAI / Anthropic with an API key the user supplies. The app sends only the text the user asks about.
+>
+> 2. SUBTITLE SEARCH (needs the user's own jimaku.cc API key): searches a community subtitle index so users can study song lyrics and dialogue alongside audio they already have. The app does not bundle, host, or distribute any copyrighted media.
+>
+> No demo account is needed.
 
 ## ⚠️ Steps only you can do
 
