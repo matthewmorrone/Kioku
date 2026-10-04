@@ -728,6 +728,9 @@ def load_extra_entries():
     #     gloss?: string | { text: string } | [ string | { text: string } ]
     #       # shorthand allowed only when sense is omitted;
     #       # normalizes to sense: [{ gloss: [...] }]
+    #     sameAs?: integer
+    #       # ent_seq of an existing entry: kanji/kana are added to it as extra spellings
+    #       # (insert_extra_spelling) instead of making a new entry
     #   }
     # ]
     entries = load_extras_json()
@@ -919,6 +922,31 @@ def insert_entry(conn, entry, ent_seq):
                 "INSERT INTO lsource (sense_id, lang, ls_wasei, ls_type, content) VALUES (?, ?, ?, ?, ?)",
                 (sense_id, lang, wasei, ls_type, content),
             )
+
+
+def insert_extra_spelling(conn, entry, entry_index):
+    # { sameAs: ent_seq, kanji?: [...], kana?: [...] }: more spellings of an existing entry rather
+    # than a word of its own (ウエファース for ウエハース). The app's Custom Words exports these
+    # for spellings taught with Learn Spelling. Kanji spellings link to the entry's first reading.
+    row = conn.execute("SELECT id FROM entries WHERE ent_seq = ?", (int(entry["sameAs"]),)).fetchone()
+    if row is None:
+        raise ValueError(f"extras.json entry {entry_index}: sameAs {entry['sameAs']} is not an entry")
+    entry_id = row[0]
+    first_kana = conn.execute(
+        "SELECT id FROM kana_forms WHERE entry_id = ? ORDER BY id LIMIT 1", (entry_id,)
+    ).fetchone()
+    for text in entry.get("kanji", []):
+        text = text["text"] if isinstance(text, dict) else text
+        kanji_id = conn.execute(
+            "INSERT INTO kanji (text, entry_id) VALUES (?, ?)", (text, entry_id)
+        ).lastrowid
+        if first_kana is not None:
+            conn.execute(
+                "INSERT INTO kanji_kana_links (kanji_id, kana_id) VALUES (?, ?)", (kanji_id, first_kana[0])
+            )
+    for text in entry.get("kana", []):
+        text = text["text"] if isinstance(text, dict) else text
+        conn.execute("INSERT INTO kana_forms (text, entry_id, re_nokanji) VALUES (?, ?, 0)", (text, entry_id))
 
 
 def resolve_extra_ent_seq(entry, entry_index, used_ent_seqs):
@@ -1844,6 +1872,9 @@ def build_database():
             used_ent_seqs.add(ent_seq)
 
         for entry_index, entry in enumerate(extra_entries):
+            if entry.get("sameAs") is not None:
+                insert_extra_spelling(conn, entry, entry_index)
+                continue
             ent_seq = resolve_extra_ent_seq(entry, entry_index, used_ent_seqs)
             insert_entry(conn, entry, ent_seq)
             used_ent_seqs.add(ent_seq)

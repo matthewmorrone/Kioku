@@ -392,8 +392,9 @@ extension ReadView {
         // to nil) once the note has been loaded into `text` / `activeNoteID`, so reading
         // the binding here would always see nil and render an empty sheet.
         .sheet(isPresented: $readSheets.isShowingLearnSpelling) {
-            LearnSpellingView(
-                surface: readSheets.learnSpellingSurface,
+            CustomWordEditorView(
+                existing: nil,
+                spelling: readSheets.learnSpellingSurface,
                 dictionaryStore: dictionaryStore,
                 onFinish: { readSheets.isShowingLearnSpelling = false }
             )

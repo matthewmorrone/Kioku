@@ -21,7 +21,7 @@ struct ContentView: View {
     @StateObject private var wordListsStore = WordListsStore()
     @StateObject private var historyStore = HistoryStore()
     @StateObject private var songBreakdownStore = SongBreakdownStore()
-    @StateObject private var learnedWordStore = LearnedWordStore()
+    @StateObject private var customWordStore = CustomWordStore()
     @State private var selectedReadNote: Note?
     @State private var shouldActivateReadEditMode = false
     @State private var readResources = ReadResources()
@@ -154,7 +154,7 @@ struct ContentView: View {
         .environmentObject(wordListsStore)
         .environmentObject(historyStore)
         .environmentObject(songBreakdownStore)
-        .environmentObject(learnedWordStore)
+        .environmentObject(customWordStore)
         .environmentObject(wotdNavigation)
         .environmentObject(readNoteNavigation)
         .onAppear {
@@ -208,9 +208,9 @@ struct ContentView: View {
         .onChange(of: segmentationStrategySetting) { _, _ in
             rebuildReadResources()
         }
-        // A learned spelling added, edited or removed: the rebuild writes the new set into the
-        // dictionary first (LearnedWordApplier), then re-segments with it.
-        .onChange(of: learnedWordStore.words) { _, _ in
+        // A custom word added, edited or removed: the rebuild writes the new list into the
+        // dictionary first (CustomWordApplier), then re-segments with it.
+        .onChange(of: customWordStore.words) { _, _ in
             rebuildReadResources()
         }
         // Validate WOTD scheduling after startup has settled rather than on the critical path.
@@ -462,17 +462,22 @@ struct ContentView: View {
     // follow afterwards on a slower path and overwrite the partial state once ready.
     private func rebuildReadResources() {
         let currentRevision = readResources.segmenterRevision
-        let learnedWords = learnedWordStore.words
+        let customWords = customWordStore.words
+        let offeredDefaultKeys = Set(customWordStore.offeredDefaults.keys)
         Task.detached(priority: .userInitiated) {
-            // Learned spellings go into the dictionary file before anything reads it. A failure
-            // leaves the file as it was: lookups and segmentation work, minus the learned words.
+            // Custom Words go into the dictionary file before anything reads it, replacing the
+            // build's extras entries; defaults a newer dictionary brought go back to the store. A
+            // failure leaves the file as it was: lookups and segmentation work, minus the list.
             if DictionaryDownloadManager.isInstalled {
                 do {
-                    try StartupTimer.measure("LearnedWordApplier.apply") {
-                        try LearnedWordApplier.apply(learnedWords, toDatabaseAt: DictionaryDownloadManager.installedDatabaseURL)
+                    let newDefaults = try StartupTimer.measure("CustomWordApplier.apply") {
+                        try CustomWordApplier.apply(customWords, offeredDefaultKeys: offeredDefaultKeys, toDatabaseAt: DictionaryDownloadManager.installedDatabaseURL)
+                    }
+                    if newDefaults.isEmpty == false {
+                        await MainActor.run { customWordStore.addDefaults(newDefaults) }
                     }
                 } catch {
-                    AppLog.error(.dictionary, "applying learned words failed: \(error)")
+                    AppLog.error(.dictionary, "applying custom words failed: \(error)")
                 }
             }
 

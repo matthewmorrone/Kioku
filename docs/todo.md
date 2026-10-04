@@ -4,8 +4,6 @@ Open Kioku work only. Finished items are deleted, not ticked; git history has th
 written so a new session can pick it up cold.
 
 ## Features
-- [ ] Add manual/custom word creation and editing. all entries in extras.json are available for 
-      inspection and modification
 - [ ] Quiz on next and previous words/lines: points for consecutivity 
 - [ ] **Import a subtitle file straight to a note** — rewritten 2026-09-26 from an open design
       question. Today the Words tab's subtitle import (`SubtitleImportView`, also reached from

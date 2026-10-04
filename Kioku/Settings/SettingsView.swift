@@ -13,7 +13,7 @@ struct SettingsView: View {
     @EnvironmentObject var wordsStore: WordsStore
     @EnvironmentObject var wordListsStore: WordListsStore
     @EnvironmentObject var historyStore: HistoryStore
-    @EnvironmentObject var learnedWordStore: LearnedWordStore
+    @EnvironmentObject var customWordStore: CustomWordStore
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
 
     // Selected theme id — drives chrome and, unless customized, every text color. See ThemeID.
@@ -296,7 +296,7 @@ struct SettingsView: View {
             Button("Reset", role: .destructive) { resetAllData() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will permanently erase all notes, saved words, word lists, history, review progress, learned spellings, audio attachments, song breakdowns, and crash logs. App settings are kept. This cannot be undone.")
+            Text("This will permanently erase all notes, saved words, word lists, history, review progress, custom words (back to the defaults), audio attachments, song breakdowns, and crash logs. App settings are kept. This cannot be undone.")
         }
         .task { await refreshCachesBytes() }
         .alert("Replace All Data?", isPresented: $isShowingImportConfirmation) {
@@ -328,7 +328,7 @@ struct SettingsView: View {
         wordsStore.replaceAll(with: [])
         wordsStore.resetLifetimeCounts()
         historyStore.replaceAll(with: [])
-        learnedWordStore.replaceAll(with: [])
+        customWordStore.resetToDefaults()
         notesStore.replaceAll(with: [])
         songBreakdownStore.clearAll()
         NotesAudioStore.shared.deleteAllStoredFiles()
