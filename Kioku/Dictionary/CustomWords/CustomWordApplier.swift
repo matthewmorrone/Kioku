@@ -12,6 +12,10 @@ import SQLite3
 // this writes is recorded in `custom_word_rows` and removed before the next write;
 // `custom_word_state` holds the applied list so an unchanged list costs one read.
 nonisolated enum CustomWordApplier {
+    // Part of the applied-list signature: bump when the rows written for a word change, so a phone
+    // whose list is unchanged still rewrites them under the new rules.
+    static let rowFormatVersion = 2
+
     // Brings the dictionary at `url` in line with `words`. Returns the build's extras entries whose
     // headword isn't in `offeredDefaultKeys`, written in along with `words`. Throws on SQLite
     // failure; the caller logs it and builds resources from whatever the file holds.
@@ -38,7 +42,7 @@ nonisolated enum CustomWordApplier {
         let newDefaults = builtIns.filter { offeredDefaultKeys.contains($0.defaultKey ?? "") == false }
 
         let wordsToWrite = words + newDefaults
-        let signature = String(decoding: try JSONEncoder().encode(wordsToWrite), as: UTF8.self)
+        let signature = "v\(rowFormatVersion):" + String(decoding: try JSONEncoder().encode(wordsToWrite), as: UTF8.self)
         if builtInEntryIDs.isEmpty, try appliedSignature(db) == signature { return [] }
 
         try execute(db, "BEGIN IMMEDIATE")
