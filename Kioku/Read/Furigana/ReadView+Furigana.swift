@@ -270,7 +270,23 @@ extension ReadView {
                 return isContained && !isSameRange
             }
 
+            // Any existing entry the new one crosses without covering: a narrow per-character reading
+            // landing inside a wider one (さと at 郷 under にしさと at 西郷). Installing it would leave two
+            // overlapping readings over one kanji, so the existing wider entry keeps the span.
+            let overlapsUncovered = resultByLocation.keys.contains { existingLocation in
+                guard coveredLocations.contains(existingLocation) == false,
+                      existingLocation != newLocation,
+                      let existingLength = resultLengthByLocation[existingLocation], existingLength > 0
+                else {
+                    return false
+                }
+                return existingLocation < newEnd && newLocation < existingLocation + existingLength
+            }
+
             if coveredLocations.isEmpty {
+                if overlapsUncovered {
+                    continue
+                }
                 if resultByLocation[newLocation] == nil {
                     resultByLocation[newLocation] = newReading
                     resultLengthByLocation[newLocation] = newLength

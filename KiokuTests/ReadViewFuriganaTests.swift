@@ -415,6 +415,24 @@ final class ReadViewFuriganaTests: XCTestCase {
         XCTAssertEqual(result.lengthByLocation, [0: 1, 2: 1])
     }
 
+    // A narrow per-character reading landing inside an existing wider entry (さと at 郷 under the
+    // merged 西郷's にしさと) must not be installed beside it: that left two overlapping readings
+    // over one kanji in the note, rendered as にし さと さと.
+    func testApplyNewAnnotationsSkipsNarrowEntryInsideWiderOne() throws {
+        let readView = try makeReadView()
+
+        let result = readView.furiganaAfterApplyingNewAnnotations(
+            existingByLocation: [0: "にしさと", 2: "たま"],
+            existingLengthByLocation: [0: 2, 2: 1],
+            newByLocation: [0: "にし", 1: "さと", 2: "たま"],
+            newLengthByLocation: [0: 1, 1: 1, 2: 1],
+            synthesizedLocations: [0]
+        )
+
+        XCTAssertEqual(result.byLocation, [0: "にしさと", 2: "たま"])
+        XCTAssertEqual(result.lengthByLocation, [0: 2, 2: 1])
+    }
+
     // Disk-poisoned wide entries (e.g. ものご at [0, 2) produced by a synthesis pass that ran
     // before the dictionary loaded, then persisted) must be replaceable by the dict-derived
     // compound reading on a later recompute. Without the synthesized-origin marker, the
