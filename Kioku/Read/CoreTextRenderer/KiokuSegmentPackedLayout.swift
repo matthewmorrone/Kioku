@@ -321,9 +321,10 @@ enum KiokuSegmentPackedLayout {
             // Local indices are offsets into the segment, not absolute UTF-16 positions.
             let localStart = rubyLoc - segRange.location
             let localEnd = localStart + rubyLen
-            let xStart = CGFloat(CTLineGetOffsetForStringIndex(segLine, localStart, nil))
-            let xEnd = CGFloat(CTLineGetOffsetForStringIndex(segLine, localEnd, nil))
-                - KiokuRubyPadding.trailingPadding(in: attributedString, at: rubyLoc + rubyLen - 1)
+            let segment = attributedString.attributedSubstring(from: segRange)
+            let span = KiokuRubyPadding.kanjiSpan(in: segLine, segment: segment, localStart: localStart, localEnd: localEnd)
+            let xStart = span?.start ?? CGFloat(CTLineGetOffsetForStringIndex(segLine, localStart, nil))
+            let xEnd = span?.end ?? CGFloat(CTLineGetOffsetForStringIndex(segLine, localEnd, nil))
             let kanjiCenter = (xStart + xEnd) / 2
             // Unrounded, same reasoning as headwordWidth above — ceiling per ruby-run
             // would compound across every kanji-run in the segment (and every segment in

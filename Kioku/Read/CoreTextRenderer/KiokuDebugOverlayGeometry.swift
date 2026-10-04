@@ -79,10 +79,9 @@ enum KiokuDebugOverlayGeometry {
         var isFuriganaVisible: Bool = true
     }
 
-    // Builds the segment-level debug geometry. Headword rect targets the kanji-run
-    // inside the segment (when one exists) so bisectors pass through the actual kanji
-    // glyphs — for "見える" with ruby み on 見, the headword is just 見, not the whole
-    // word. The envelope spans the full segment ∪ ruby, since selection / hit-testing
+    // Builds the debug geometry: one entry per kanji run (one for a segment without any), so
+    // bisectors pass through the actual kanji glyphs — for "見える" with ruby み on 見, the
+    // headword is just 見, not the whole word. The envelope spans the full segment ∪ ruby, since selection / hit-testing
     // reuses it.
     //
     // Heights are standardized to font lineHeight so all rects on a line look uniform.
@@ -92,67 +91,49 @@ enum KiokuDebugOverlayGeometry {
         // collapses to headword height — toggling furigana OFF visually shrinks every
         // envelope, instead of leaving an empty ruby band that no longer matches reality.
         let rubyHeight = inputs.isFuriganaVisible ? ceil(inputs.furiganaFont.lineHeight) : 0
-        return inputs.segmentNSRanges.compactMap { segRange -> SegmentGeometry? in
-            guard let segRect = inputs.firstRectByNSRange[segRange] else { return nil }
-            // Find a kanji-run contained inside this segment (first match wins; segments
-            // with multiple ruby runs would need a richer model — out of scope for the
-            // overlay).
-            let kanjiRunEntry: (loc: Int, rect: CGRect, len: Int, reading: String)? = {
-                for (kanjiLoc, kanjiRect) in inputs.kanjiRunRectByLocation {
-                    guard NSLocationInRange(kanjiLoc, segRange) else { continue }
-                    guard let kLen = inputs.kanjiRunLengthByLocation[kanjiLoc],
+        return inputs.segmentNSRanges.flatMap { segRange -> [SegmentGeometry] in
+            guard let segRect = inputs.firstRectByNSRange[segRange] else { return [] }
+            // Every kanji run in the segment, left to right: 憤り出しました has two (憤, 出), and
+            // each gets its own headword rect, ruby rect and bisector.
+            let runs: [(rect: CGRect, reading: String)] = inputs.kanjiRunRectByLocation
+                .filter { NSLocationInRange($0.key, segRange) }
+                .sorted { $0.key < $1.key }
+                .compactMap { kanjiLoc, kanjiRect in
+                    guard inputs.kanjiRunLengthByLocation[kanjiLoc] != nil,
                           let reading = inputs.readingByLocation[kanjiLoc],
-                          reading.isEmpty == false else { continue }
-                    return (kanjiLoc, kanjiRect, kLen, reading)
+                          reading.isEmpty == false else { return nil }
+                    return (kanjiRect, reading)
                 }
-                return nil
-            }()
 
-            // Build the headword rect. When a kanji-run exists, use its rect (tight
-            // around the kanji glyphs); otherwise fall back to the segment rect.
-            let baseRectForHeadword = kanjiRunEntry?.rect ?? segRect
-            let headwordRect = CGRect(
-                x: baseRectForHeadword.origin.x,
-                y: baseRectForHeadword.maxY - headwordHeight,
-                width: baseRectForHeadword.width,
-                height: headwordHeight
-            )
-            let bisectorX = headwordRect.midX
-
-            // Build the furigana rect (centered above the kanji-run, NOT above the
-            // segment — okurigana to the right of the kanji shouldn't shift the ruby).
-            // Skipped entirely when furigana is hidden: there's no ruby being drawn, so
-            // the debug rect would be a phantom marker for content that isn't on screen.
-            let furiganaRect: CGRect?
-            if inputs.isFuriganaVisible, let entry = kanjiRunEntry {
-                let rubyWidth = ceil((entry.reading as NSString).size(withAttributes: [.font: inputs.furiganaFont]).width)
-                furiganaRect = CGRect(
-                    x: bisectorX - rubyWidth / 2,
+            // One headword rect per run (tight around its kanji glyphs), or the whole segment
+            // when it has no run; the bisector is its centre and the ruby is centred on it —
+            // above the kanji, not the segment, so okurigana doesn't shift it. No ruby rect while
+            // furigana is hidden: it would mark content that isn't on screen.
+            let parts: [(headword: CGRect, furigana: CGRect?)] = (runs.isEmpty ? [(segRect, "")] : runs).map { run in
+                let headwordRect = CGRect(
+                    x: run.rect.origin.x,
+                    y: run.rect.maxY - headwordHeight,
+                    width: run.rect.width,
+                    height: headwordHeight
+                )
+                guard inputs.isFuriganaVisible, run.reading.isEmpty == false else { return (headwordRect, nil) }
+                let rubyWidth = ceil((run.reading as NSString).size(withAttributes: [.font: inputs.furiganaFont]).width)
+                return (headwordRect, CGRect(
+                    x: headwordRect.midX - rubyWidth / 2,
                     y: headwordRect.minY - rubyHeight,
                     width: rubyWidth,
                     height: rubyHeight
-                )
-            } else {
-                furiganaRect = nil
+                ))
             }
 
-            // Envelope = horizontal bounding box of (segment ∪ furigana) × (headword height
-            // + ruby band when ruby exists). When ruby is wider than its kanji (ものがたり
-            // over 物語), it overhangs the segment on both sides; the envelope grows to
-            // contain it. When no ruby is present (no reading attached to this segment),
-            // the ruby band collapses to zero — reserving it would draw a phantom strip
-            // above the glyphs that doesn't reflect anything actually rendered, and would
-            // make hit-testing register interactions in empty space.
-            let envelopeMinX: CGFloat
-            let envelopeMaxX: CGFloat
-            if let furigana = furiganaRect {
-                envelopeMinX = min(segRect.minX, furigana.minX)
-                envelopeMaxX = max(segRect.maxX, furigana.maxX)
-            } else {
-                envelopeMinX = segRect.minX
-                envelopeMaxX = segRect.maxX
-            }
-            let effectiveRubyHeight = furiganaRect == nil ? 0 : rubyHeight
+            // Envelope = horizontal bounding box of the segment and all its ruby × (headword
+            // height + ruby band when ruby exists). Ruby wider than its kanji (ものがたり over
+            // 物語) can reach past the segment; the envelope grows to contain it. Without ruby the
+            // band collapses to zero, so hit-testing doesn't register taps in empty space.
+            let rubyRects = parts.compactMap(\.furigana)
+            let envelopeMinX = rubyRects.reduce(segRect.minX) { min($0, $1.minX) }
+            let envelopeMaxX = rubyRects.reduce(segRect.maxX) { max($0, $1.maxX) }
+            let effectiveRubyHeight = rubyRects.isEmpty ? 0 : rubyHeight
             let envelope = CGRect(
                 x: envelopeMinX,
                 y: segRect.maxY - headwordHeight - effectiveRubyHeight,
@@ -160,13 +141,15 @@ enum KiokuDebugOverlayGeometry {
                 height: headwordHeight + effectiveRubyHeight
             )
 
-            return SegmentGeometry(
-                location: segRange.location,
-                headwordRect: headwordRect,
-                furiganaRect: furiganaRect,
-                envelopeRect: envelope,
-                bisectorX: bisectorX
-            )
+            return parts.map { part in
+                SegmentGeometry(
+                    location: segRange.location,
+                    headwordRect: part.headword,
+                    furiganaRect: part.furigana,
+                    envelopeRect: envelope,
+                    bisectorX: part.headword.midX
+                )
+            }
         }
     }
 
