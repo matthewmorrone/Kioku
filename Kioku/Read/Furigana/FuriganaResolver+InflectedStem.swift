@@ -1,6 +1,6 @@
 import Foundation
 
-extension FuriganaResolver {
+nonisolated extension FuriganaResolver {
     // The reading of an inflected word's kanji when inflecting changes the stem's own sound, as it
     // does for 来る: 来て is きて, 来ない こない, 来よう こよう. Cropping the dictionary form's
     // reading (くる → く) is right for every regular verb but wrong for these, so the inflected
