@@ -22,8 +22,16 @@ nonisolated extension FuriganaResolver {
         else { return nil }
         let surfaceTail = String(surface[surface.index(after: surfaceKanji)...])
         let lemmaTail = String(lemma[lemma.index(after: lemmaKanji)...])
+        // Kana in front of the kanji (やって of やって来る) is read as written, so the verb proper is
+        // what follows it: やってくる → くる.
+        let lemmaHead = String(lemma.prefix { ScriptClassifier.containsKanji(String($0)) == false })
+        guard lemmaReading.hasPrefix(lemmaHead) else { return nil }
+        let lemmaReading = String(lemmaReading.dropFirst(lemmaHead.count))
+        let surfaceTailStart = surface.index(after: surfaceKanji)
         let stemLength = lemmaReading.count - lemmaTail.count
-        guard surfaceTail.isEmpty == false, stemLength > 0, lemmaReading.hasSuffix(lemmaTail) else { return nil }
+        guard surfaceTail.isEmpty == false, stemLength > 0, lemmaReading.hasSuffix(lemmaTail),
+              surface.prefix(lemmaHead.count) == lemmaHead, surfaceTailStart > surface.startIndex
+        else { return nil }
 
         let ownStem = String(lemmaReading.prefix(stemLength))
         var specificityByStem: [String: Int] = [ownStem: lemmaTail.count]

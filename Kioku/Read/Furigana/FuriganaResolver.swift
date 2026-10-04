@@ -291,6 +291,19 @@ nonisolated struct FuriganaResolver {
                 runs: lemmaRuns,
                 surfaceReadingData: surfaceReadingData
             )
+            // The last run carries the inflection: an irregular one (来 of 持って来て, projected from
+            // 持って来る as く) reads by its form, as the single-run path does.
+            if var readings = projectedReadings, let lastRun = runs.last, let lastLemmaRun = lemmaRuns.last,
+               let lastReading = readings.last {
+                let lemmaCharacters = Array(furiganaLemmaReference)
+                let lemmaPiece = String(lemmaCharacters[lastLemmaRun.start...])
+                let lemmaPieceReading = lastReading + String(lemmaCharacters[lastLemmaRun.end...])
+                let surfacePiece = String(Array(segmentSurface)[lastRun.start...])
+                if let stemReading = inflectedStemReading(surface: surfacePiece, lemma: lemmaPiece, lemmaReading: lemmaPieceReading) {
+                    readings[readings.count - 1] = stemReading
+                    projectedReadings = readings
+                }
+            }
         }
 
         if projectedReadings == nil {
@@ -392,6 +405,10 @@ nonisolated struct FuriganaResolver {
         guard let lemma = segmenter.preferredLemma(for: piece), lemma != piece,
               let lemmaReading = FuriganaResolver.readingForSegment(lemma, surfaceReadingData: surfaceReadingData) else {
             return nil
+        }
+        // An irregular stem (来て in 持って来て) reads by its form, not by the crop.
+        if let stemReading = inflectedStemReading(surface: piece, lemma: lemma, lemmaReading: lemmaReading) {
+            return stemReading
         }
         return firstKanjiRunReading(in: lemma, using: lemmaReading)
     }
