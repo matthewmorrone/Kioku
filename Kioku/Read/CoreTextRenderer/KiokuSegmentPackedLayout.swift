@@ -323,6 +323,7 @@ enum KiokuSegmentPackedLayout {
             let localEnd = localStart + rubyLen
             let xStart = CGFloat(CTLineGetOffsetForStringIndex(segLine, localStart, nil))
             let xEnd = CGFloat(CTLineGetOffsetForStringIndex(segLine, localEnd, nil))
+                - KiokuRubyPadding.trailingPadding(in: attributedString, at: rubyLoc + rubyLen - 1)
             let kanjiCenter = (xStart + xEnd) / 2
             // Unrounded, same reasoning as headwordWidth above — ceiling per ruby-run
             // would compound across every kanji-run in the segment (and every segment in

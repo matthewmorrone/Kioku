@@ -383,6 +383,7 @@ final class KiokuTextLayoutEngine {
                 let rubyLocalEnd = rubyLocalStart + rubyLen
                 let kanjiXStart = CGFloat(CTLineGetOffsetForStringIndex(segLine, rubyLocalStart, nil))
                 let kanjiXEnd = CGFloat(CTLineGetOffsetForStringIndex(segLine, rubyLocalEnd, nil))
+                    - KiokuRubyPadding.trailingPadding(in: segAttr, at: rubyLocalEnd - 1)
                 let kanjiCenter = (kanjiXStart + kanjiXEnd) / 2
                 let rubyW = ceil((reading as NSString).size(withAttributes: [.font: furiganaFont]).width)
                 minX = min(minX, kanjiCenter - rubyW / 2)

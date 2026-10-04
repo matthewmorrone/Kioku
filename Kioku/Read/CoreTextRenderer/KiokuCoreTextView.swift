@@ -317,6 +317,7 @@ final class KiokuCoreTextView: UIView {
                     let localEnd = localStart + entry.length
                     let xStart = CTLineGetOffsetForStringIndex(segLine, localStart, nil)
                     let xEnd = CTLineGetOffsetForStringIndex(segLine, localEnd, nil)
+                        - KiokuRubyPadding.trailingPadding(in: segAttr, at: localEnd - 1)
                     let headwordOriginX = placement.originX + placement.leftOverhang + rubyLineShift
                     let kanjiMidXInHeadword = (xStart + xEnd) / 2
                     let kanjiMidX = headwordOriginX + kanjiMidXInHeadword
