@@ -2,8 +2,8 @@ import SwiftUI
 import UIKit
 
 // Renders Settings → Debug Logs: a per-LogFeature on/off toggle list plus actions on the shared
-// on-disk log mirror (AppLogFileSink). Layout: one section explaining the feature, one row per
-// LogFeature with its detail text as a caption, and (DEBUG builds only, since the file sink only exists there) a section showing the
+// on-disk log mirror (AppLogFileSink). Layout: one row per LogFeature with its detail text as a
+// caption under a footer explaining the list, and (DEBUG builds only, since the file sink only exists there) a section showing the
 // mirror's current size with copy-path and clear actions.
 struct LogSettingsView: View {
     // One stored toggle per feature, seeded from LogFeatureSettings so the list reflects
@@ -18,12 +18,6 @@ struct LogSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Text("Each feature below logs its raw requests/responses and key lifecycle events at debug level. Turn one off if it's drowning out what you're actually looking for.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
                 ForEach(LogFeature.allCases) { feature in
                     Toggle(isOn: binding(for: feature)) {
                         VStack(alignment: .leading, spacing: 2) {
@@ -36,6 +30,8 @@ struct LogSettingsView: View {
                 }
             } header: {
                 Text("Features")
+            } footer: {
+                Text("Each feature logs its raw requests/responses and key lifecycle events at debug level. Turn one off if it's drowning out what you're actually looking for.")
             }
 
             #if DEBUG

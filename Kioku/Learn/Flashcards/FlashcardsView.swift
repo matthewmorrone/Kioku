@@ -252,14 +252,11 @@ struct FlashcardsView: View {
 
     // Shown when the user has no saved words yet.
     private var emptySavedState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "book").font(.largeTitle)
-            Text("No saved words").font(.headline)
-            Text("Save words from the Read tab to start reviewing.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ContentUnavailableView(
+            "No saved words",
+            systemImage: "book",
+            description: Text("Save words from the Read tab to start reviewing.")
+        )
     }
 
     // Shown after the last card in a session is resolved.

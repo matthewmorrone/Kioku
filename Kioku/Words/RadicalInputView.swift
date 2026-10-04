@@ -115,7 +115,7 @@ struct RadicalInputView: View {
                 // The "no matches" status waits until the query has actually returned (isQuerying)
                 // so it doesn't flash.
                 Text(selected.isEmpty ? "Tap radicals below to start." : "No kanji contain all selected radicals.")
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.bottom, 6)

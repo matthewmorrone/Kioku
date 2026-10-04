@@ -44,11 +44,6 @@ extension SettingsView {
             }
             .disabled(wordsStore.words.isEmpty)
             .sensoryFeedback(.success, trigger: wotdTestTapCount)
-            if wordsStore.words.isEmpty {
-                Text("Save some words in the Words tab first — Word of the Day picks from your saved list.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
             if let wotdTestStatus {
                 Text(wotdTestStatus)
                     .font(.footnote)
@@ -57,6 +52,10 @@ extension SettingsView {
             }
         } header: {
             Text("Developer Diagnostics")
+        } footer: {
+            if wordsStore.words.isEmpty {
+                Text("Save some words in the Words tab first — Word of the Day picks from your saved list.")
+            }
         }
 
         // MARK: Debug overlays.

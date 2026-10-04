@@ -40,6 +40,7 @@ struct ClozeStudyHomeView: View {
                 Section {
                     if notesStore.notes.isEmpty {
                         Text("Add a note to study.")
+                            .font(.footnote)
                             .foregroundStyle(.secondary)
                     } else {
                         Picker("Note", selection: $selectedNoteID) {

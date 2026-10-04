@@ -503,6 +503,7 @@ extension WordsView {
                 Text(isFilterActive
                     ? "No saved words match the current filter."
                     : "No saved words yet. Tap the star on any result to save it.")
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         } else {

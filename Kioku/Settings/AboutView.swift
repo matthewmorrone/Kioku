@@ -11,12 +11,13 @@ struct AboutView: View {
 
     var body: some View {
         Form {
-            Section("Kioku") {
+            Section {
                 LabeledContent("Version", value: Attributions.versionString())
                 LabeledContent("Dictionary", value: dictionaryVersionString)
+            } header: {
+                Text("Kioku")
+            } footer: {
                 Text("A Japanese reading and vocabulary companion. Built with the open datasets and libraries listed below — without them this app wouldn't exist.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
             }
 
             Section("Dictionary Data") {

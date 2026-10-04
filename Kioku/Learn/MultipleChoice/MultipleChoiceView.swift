@@ -273,14 +273,11 @@ struct MultipleChoiceView: View {
 
     // Shown when the user has no saved words yet.
     private var emptySavedState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "book").font(.largeTitle)
-            Text("No saved words").font(.headline)
-            Text("Save words from the Read tab to start quizzing.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ContentUnavailableView(
+            "No saved words",
+            systemImage: "book",
+            description: Text("Save words from the Read tab to start quizzing.")
+        )
     }
 
     // Shown after the last question is answered.
