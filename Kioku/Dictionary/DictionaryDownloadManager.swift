@@ -49,12 +49,32 @@ final class DictionaryDownloadManager {
     nonisolated static let releaseTag = "dictionary-v15"
     nonisolated static let expectedSHA256 = "a4c138b3556c4781f1e510c67d307dd5434ec3aeee1a8b2e0515fbb2df9c2866"
 
+    // Debug builds follow this moving release instead of the pin, so a dictionary rebuilt on the
+    // Mac reaches the developer's phone without a new pinned version: scripts/
+    // publish_dictionary_release.sh --dev overwrites its assets, including dictionary.sqlite.sha256,
+    // which the app compares against what it has (checkForDevUpdate). Release builds never read it.
+    nonisolated static let devChannelTag = "dictionary-dev"
+
+    // The release this build downloads from.
+    nonisolated static var channelTag: String {
+        #if DEBUG
+        devChannelTag
+        #else
+        releaseTag
+        #endif
+    }
+
     // Public GitHub Release asset URL of the xz-compressed database — matthewmorrone/Kioku is a
     // public repo, so this needs no authentication to fetch. The release also carries the raw
     // dictionary.sqlite, which scripts/ensure_dictionary.sh and CI download; the app takes the
     // archive because it is a quarter of the size. `expectedSHA256` pins the UNCOMPRESSED bytes.
     nonisolated static var remoteURL: URL {
-        URL(string: "https://github.com/matthewmorrone/Kioku/releases/download/\(releaseTag)/dictionary.sqlite.xz")!
+        URL(string: "https://github.com/matthewmorrone/Kioku/releases/download/\(channelTag)/dictionary.sqlite.xz")!
+    }
+
+    // The dev release's checksum of its uncompressed dictionary.sqlite (a one-line text asset).
+    nonisolated static var devChecksumURL: URL {
+        URL(string: "https://github.com/matthewmorrone/Kioku/releases/download/\(devChannelTag)/dictionary.sqlite.sha256")!
     }
 
     // Per-model subdirectory under Application Support where the downloaded database is stored.
@@ -83,6 +103,17 @@ final class DictionaryDownloadManager {
     // "what version do I actually have" in the About screen, including the stale-but-present
     // case where a device is mid-way through updating to a newer pinned release.
     nonisolated static var installedReleaseTag: String? {
+        installedMarker?.split(separator: " ").first.map(String.init)
+    }
+
+    // The checksum recorded with a dev-channel install ("dictionary-dev <sha256>"), nil otherwise.
+    nonisolated static var installedDevSHA256: String? {
+        let parts = installedMarker?.split(separator: " ") ?? []
+        return parts.count == 2 && parts[0] == devChannelTag ? String(parts[1]) : nil
+    }
+
+    // The marker file's contents: the release tag, plus the checksum for a dev-channel install.
+    nonisolated private static var installedMarker: String? {
         try? String(contentsOf: installedReleaseMarkerURL, encoding: .utf8)
     }
 
@@ -93,10 +124,16 @@ final class DictionaryDownloadManager {
     // truth for SwiftUI and a static forwarding call would add an indirection with no benefit.
     // Requires the release marker to match the CURRENT releaseTag, not just file presence — see
     // installedReleaseMarkerURL.
+    //
+    // A debug build counts any downloaded dictionary as installed: it keeps working on whatever it
+    // has (even the pinned release) while offline, and checkForDevUpdate decides when to replace it.
     nonisolated static var isInstalled: Bool {
         guard FileManager.default.fileExists(atPath: installedDatabaseURL.path) else { return false }
-        let installedTag = try? String(contentsOf: installedReleaseMarkerURL, encoding: .utf8)
-        return installedTag == releaseTag
+        #if DEBUG
+        return installedReleaseTag != nil
+        #else
+        return installedReleaseTag == releaseTag
+        #endif
     }
 
     // Reflects on-disk state; refreshed at init and after a successful download. An instance
@@ -107,6 +144,10 @@ final class DictionaryDownloadManager {
     // True while the downloaded archive is being unpacked and verified (a few seconds).
     private(set) var isUnpacking = false
     private(set) var errorMessage: String?
+    // A debug build's dev release has a different dictionary than the one installed.
+    private(set) var updateAvailable = false
+    // The dev release's checksum, read by checkForDevUpdate and verified after unpacking.
+    private var devExpectedSHA256: String?
 
     // Snapshots the current on-disk install state.
     init() {
@@ -118,12 +159,14 @@ final class DictionaryDownloadManager {
     // Explicitly @MainActor (redundant with this project's default MainActor isolation, but
     // documents that every direct property write below is safe to interleave with the delegate's
     // Task { @MainActor in ... } hop without a lock, since both land on the same serial executor).
+    // Returns true when a new dictionary was installed.
     @MainActor
-    func downloadIfNeeded() async {
-        guard !isInstalled else { return }
+    @discardableResult
+    func downloadIfNeeded() async -> Bool {
+        guard !isInstalled || updateAvailable else { return false }
         guard progress == nil else {
             AppLog.debug(.dictionaryDownload, "downloadIfNeeded: already in flight, skipping")
-            return
+            return false
         }
 
         progress = 0
@@ -138,8 +181,16 @@ final class DictionaryDownloadManager {
             excludedFromBackup.isExcludedFromBackup = true
             try? directoryURL.setResourceValues(excludedFromBackup)
 
+            #if DEBUG
+            if devExpectedSHA256 == nil { await checkForDevUpdate() }
+            guard let expectedSHA256 = devExpectedSHA256 else { throw DictionaryDownloadError.missingPayload }
+            let marker = "\(Self.devChannelTag) \(expectedSHA256)"
+            #else
+            let expectedSHA256 = Self.expectedSHA256
+            let marker = Self.releaseTag
+            #endif
             AppLog.info(.dictionaryDownload, "downloadIfNeeded: starting from \(Self.remoteURL)")
-            StartupTimer.mark("dictionary download started (\(Self.releaseTag))")
+            StartupTimer.mark("dictionary download started (\(Self.channelTag))")
             let tempURL = try await downloadToTemporaryFile()
             StartupTimer.mark("dictionary download finished")
             AppLog.debug(.dictionaryDownload, "downloadIfNeeded: temp file at \(tempURL.path)")
@@ -156,8 +207,8 @@ final class DictionaryDownloadManager {
                     try DictionaryArchiveExtractor.extract(archiveAt: tempURL, to: stagingURL)
                 }
             }.value
-            guard digest == Self.expectedSHA256 else {
-                AppLog.error(.dictionaryDownload, "downloadIfNeeded: checksum mismatch — expected \(Self.expectedSHA256), got \(digest)")
+            guard digest == expectedSHA256 else {
+                AppLog.error(.dictionaryDownload, "downloadIfNeeded: checksum mismatch — expected \(expectedSHA256), got \(digest)")
                 throw DictionaryDownloadError.checksumMismatch
             }
 
@@ -165,12 +216,14 @@ final class DictionaryDownloadManager {
                 try FileManager.default.removeItem(at: Self.installedDatabaseURL)
             }
             try FileManager.default.moveItem(at: stagingURL, to: Self.installedDatabaseURL)
-            try Self.releaseTag.write(to: Self.installedReleaseMarkerURL, atomically: true, encoding: .utf8)
+            try marker.write(to: Self.installedReleaseMarkerURL, atomically: true, encoding: .utf8)
             AppLog.info(.dictionaryDownload, "downloadIfNeeded: installed to \(Self.installedDatabaseURL.path)")
 
             StartupTimer.mark("dictionary installed")
             progress = nil
             isInstalled = true
+            updateAvailable = false
+            return true
         } catch {
             AppLog.error(.dictionaryDownload, "downloadIfNeeded: failed — \(error.localizedDescription)")
             progress = nil
@@ -179,6 +232,28 @@ final class DictionaryDownloadManager {
             errorMessage = error is FilterError
                 ? "The downloaded dictionary was damaged. Tap Retry to download it again."
                 : error.localizedDescription
+            return false
+        }
+    }
+
+    // Debug builds: reads the dev release's checksum and flags an update when it differs from the
+    // installed dictionary's. A failed check (offline, no dev release yet) changes nothing.
+    @MainActor
+    func checkForDevUpdate() async {
+        var request = URLRequest(url: Self.devChecksumURL)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                AppLog.info(.dictionaryDownload, "checkForDevUpdate: no dev release checksum (HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1))")
+                return
+            }
+            let remote = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard remote.count == 64 else { return }
+            devExpectedSHA256 = remote
+            updateAvailable = remote != Self.installedDevSHA256
+        } catch {
+            AppLog.info(.dictionaryDownload, "checkForDevUpdate: \(error.localizedDescription)")
         }
     }
 

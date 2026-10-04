@@ -253,7 +253,7 @@ struct ContentView: View {
         // "dictionary lookup failure must not block editing" failure boundary; dictionaryStore
         // staying nil already degrades dictionary-dependent views gracefully on its own.
         .overlay(alignment: .bottom) {
-            if !dictionaryDownloadManager.isInstalled {
+            if !dictionaryDownloadManager.isInstalled || dictionaryDownloadManager.progress != nil {
                 DictionaryDownloadBanner(downloadManager: dictionaryDownloadManager) {
                     Task { await downloadDictionaryAndRebuildIfNeeded() }
                 }
@@ -272,10 +272,13 @@ struct ContentView: View {
     // itself would also no-op in that case, but without this guard rebuildReadResources() (an
     // expensive full SQLite scan + trie build) would still re-run on every single normal launch,
     // duplicating the rebuild loadReadResourcesIfNeeded() already kicked off moments earlier.
+    // Debug builds first ask the dev release whether it has a newer dictionary.
     private func downloadDictionaryAndRebuildIfNeeded() async {
-        guard !dictionaryDownloadManager.isInstalled else { return }
-        await dictionaryDownloadManager.downloadIfNeeded()
-        if dictionaryDownloadManager.isInstalled {
+        #if DEBUG
+        await dictionaryDownloadManager.checkForDevUpdate()
+        #endif
+        guard !dictionaryDownloadManager.isInstalled || dictionaryDownloadManager.updateAvailable else { return }
+        if await dictionaryDownloadManager.downloadIfNeeded() {
             rebuildReadResources()
         }
     }
