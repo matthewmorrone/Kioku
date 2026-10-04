@@ -87,8 +87,8 @@ final class KiokuDebugOverlayView: UIView {
                     drawLineNumberPill(
                         text: "L\(index)",
                         font: labelFont,
-                        textColor: .white,
-                        backgroundColor: UIColor.systemBlue.withAlphaComponent(0.45),
+                        textColor: .systemBlue,
+                        backgroundColor: UIColor.systemBlue.withAlphaComponent(0.2),
                         row: line.headwordBandRect,
                         padX: padX,
                         padY: padY,
@@ -100,8 +100,8 @@ final class KiokuDebugOverlayView: UIView {
                     drawLineNumberPill(
                         text: "R\(index)",
                         font: labelFont,
-                        textColor: .white,
-                        backgroundColor: UIColor.systemPink.withAlphaComponent(0.45),
+                        textColor: .systemPink,
+                        backgroundColor: UIColor.systemPink.withAlphaComponent(0.2),
                         row: line.furiganaBandRect,
                         padX: padX,
                         padY: padY,
@@ -225,8 +225,8 @@ final class KiokuDebugOverlayView: UIView {
         }
     }
 
-    // Draws a label string inside a rounded-rect pill with high-contrast text. Used for
-    // the L# / R# line-number annotations so they stay readable when overlapping kanji.
+    // Draws a label string inside a faint rounded-rect pill. Used for the L# / R# line-number
+    // annotations, which overlap each line's first glyph.
     private func drawLineNumberPill(
         text: String,
         font: UIFont,
