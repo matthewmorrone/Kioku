@@ -269,14 +269,6 @@ struct ContentView: View {
         guard !dictionaryDownloadManager.isInstalled else { return }
         await dictionaryDownloadManager.downloadIfNeeded()
         if dictionaryDownloadManager.isInstalled {
-            // The pre-download rebuild (onAppear's loadReadResourcesIfNeeded()) already
-            // published readResources.ready = true with a nil dictionaryStore, so
-            // .onChange(of: readResources.ready) already fired once this session. Reset it here
-            // so that onChange's stable-key migration + WOTD refresh — which need the REAL
-            // store, not the placeholder one — fire again once this rebuild republishes ready
-            // with dictionaryStore actually populated, instead of silently no-opping on an
-            // already-true value.
-            readResources.ready = false
             rebuildReadResources()
         }
     }
@@ -508,7 +500,11 @@ struct ContentView: View {
                     surfaceReadingData: result.surfaceReadingData,
                     kanjiReadingFallback: result.kanjiReadingFallback,
                     frequencyRankBySurface: result.frequencyRankBySurface,
-                    ready: true,
+                    // Ready only with a dictionary behind the segmenter. Without one (a fresh
+                    // install whose download hasn't finished) the trie is empty, and the Read tab
+                    // would segment the open note character by character and persist that, after
+                    // which the real dictionary only refreshes furigana over the bad segments.
+                    ready: result.dictionaryStore != nil,
                     segmenterRevision: currentRevision + 1
                 )
                 StartupTimer.mark("readResourcesReady published to UI")
