@@ -3,6 +3,13 @@
 Open Kioku work only. Finished items are deleted, not ticked; git history has them. Each entry is
 written so a new session can pick it up cold.
 
+## Segmentation known cases
+- [ ] **あめ|だ|の|せんべい should be あめ|だの|せんべい** (sample note キャラメルと飴玉). だの (and やら)
+      have no rank in the frequency list (surface_readings best_rank 9999999), so they price as rare
+      words: だ+の costs 4056 vs だの 4472 centi-nats (`segcli explain`). Scoring unranked particles
+      by wordfreq zipf (だの 4.09) recovers ~390 of the 416 gap, not all; needs scoring work plus a
+      full eval (held2k, kana2k, named cases, lyrics).
+
 ## Features
 - [ ] Quiz on next and previous words/lines: points for consecutivity 
 - [ ] **Import a subtitle file straight to a note** — rewritten 2026-09-26 from an open design
