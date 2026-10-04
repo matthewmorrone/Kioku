@@ -74,6 +74,7 @@ extension ReadView {
             .onDisappear {
                 // Flushes any pending edit persistence before leaving the read screen.
                 document.segmentationRefreshTask?.cancel()
+                document.segmentationRefreshTask = nil
                 flushPendingNotePersistenceIfNeeded()
             }
             .onChange(of: scenePhase) { _, newPhase in
@@ -130,7 +131,9 @@ extension ReadView {
                     segmentSelection.illegalMergeBoundaryLocation = nil
                     segmentSelection.illegalMergeFlashTask?.cancel()
                     document.segmentationRefreshTask?.cancel()
+                    document.segmentationRefreshTask = nil
                     document.furiganaComputationTask?.cancel()
+                    document.furiganaComputationTask = nil
                     document.segmentLatticeEdges = []
                     document.segmentEdges = []
                     document.segmentRanges = []
@@ -201,7 +204,9 @@ extension ReadView {
                     segmentSelection.illegalMergeBoundaryLocation = nil
                     segmentSelection.illegalMergeFlashTask?.cancel()
                     document.segmentationRefreshTask?.cancel()
+                    document.segmentationRefreshTask = nil
                     document.furiganaComputationTask?.cancel()
+                    document.furiganaComputationTask = nil
                     document.segmentLatticeEdges = []
                     document.segmentEdges = []
                     document.segmentRanges = []
