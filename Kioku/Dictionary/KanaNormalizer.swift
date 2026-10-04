@@ -59,7 +59,7 @@ nonisolated enum KanaNormalizer {
             return false
         }
         let readingPrefix = String(reading.prefix(surfacePrefix.count))
-        return normalizeForFuriganaAlignment(readingPrefix) == normalizeForFuriganaAlignment(surfacePrefix)
+        return phoneticKey(readingPrefix) == phoneticKey(surfacePrefix)
     }
 
     // Checks whether `reading` ends with the same phonetic syllables as `surfaceSuffix`,
@@ -70,6 +70,12 @@ nonisolated enum KanaNormalizer {
             return false
         }
         let readingSuffix = String(reading.suffix(surfaceSuffix.count))
-        return normalizeForFuriganaAlignment(readingSuffix) == normalizeForFuriganaAlignment(surfaceSuffix)
+        return phoneticKey(readingSuffix) == phoneticKey(surfaceSuffix)
+    }
+
+    // Kana as compared for okurigana: alignment-normalized and in hiragana, so katakana okurigana
+    // (高慢チキ) matches its hiragana reading (こうまんちき).
+    private static func phoneticKey(_ text: String) -> String {
+        katakanaToHiragana(normalizeForFuriganaAlignment(text))
     }
 }

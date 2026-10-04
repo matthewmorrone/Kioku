@@ -186,7 +186,7 @@ nonisolated struct FuriganaResolver {
         _ segmentSurface: String,
         surfaceReadingData: SurfaceReadingDataMap
     ) -> String? {
-        guard let readings = surfaceReadingData[segmentSurface]?.readings,
+        guard let readings = listedReadings(segmentSurface, surfaceReadingData: surfaceReadingData),
               readings.isEmpty == false else {
             return nil
         }
@@ -200,6 +200,19 @@ nonisolated struct FuriganaResolver {
         return readings.first(where: { ScriptClassifier.isPureKatakana($0) == false }) ?? readings.first
     }
 
+    // The readings the dictionary lists for a surface, or for its hiragana spelling when the surface
+    // writes its kana in katakana (高慢チキ is listed as 高慢ちき, こうまんちき). The okurigana match
+    // that crops the reading already treats the two scripts alike.
+    static func listedReadings(_ surface: String, surfaceReadingData: SurfaceReadingDataMap) -> [String]? {
+        if let readings = surfaceReadingData[surface]?.readings, readings.isEmpty == false {
+            return readings
+        }
+        guard ScriptClassifier.containsKanji(surface) else { return nil }
+        let hiraganaSpelling = KanaNormalizer.katakanaToHiragana(surface)
+        guard hiraganaSpelling != surface else { return nil }
+        return surfaceReadingData[hiraganaSpelling]?.readings
+    }
+
     // All candidate readings for a surface, ordered the way `readingForSegment` prefers them:
     // non-katakana (hiragana) readings first in rank order, then any pure-katakana readings as a
     // last resort. `candidateReadingsForSegment(...).first` therefore equals `readingForSegment`,
@@ -210,7 +223,7 @@ nonisolated struct FuriganaResolver {
         _ segmentSurface: String,
         surfaceReadingData: SurfaceReadingDataMap
     ) -> [String] {
-        guard let readings = surfaceReadingData[segmentSurface]?.readings,
+        guard let readings = listedReadings(segmentSurface, surfaceReadingData: surfaceReadingData),
               readings.isEmpty == false else {
             return []
         }
