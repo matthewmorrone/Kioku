@@ -57,6 +57,7 @@ Dictionary/Deinflection/Deinflector+HelperWords.swift
 Dictionary/Deinflection/Deinflector+EndingGrammar.swift
 Dictionary/Deinflection/ConjugationClass.swift
 Read/Furigana/FuriganaResolver.swift
+Read/Furigana/FuriganaResolver+InflectedStem.swift
 Read/Furigana/FuriganaAttributedString.swift
 Dictionary/KanjiReadingFallbackMap.swift
 Settings/TypographySettings.swift

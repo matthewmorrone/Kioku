@@ -268,6 +268,9 @@ nonisolated struct FuriganaResolver {
                 surfaceReadingData: surfaceReadingData
             )
             for candidate in candidates {
+                if let stemReading = inflectedStemReading(surface: segmentSurface, lemma: furiganaLemmaReference, lemmaReading: candidate) {
+                    return [(reading: stemReading, localStartOffset: runs[0].start, localLength: runs[0].end - runs[0].start)]
+                }
                 if let lemmaCoreReading = firstKanjiRunReading(in: furiganaLemmaReference, using: candidate) {
                     return [
                         (
