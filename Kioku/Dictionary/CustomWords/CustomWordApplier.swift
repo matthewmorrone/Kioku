@@ -241,7 +241,7 @@ nonisolated enum CustomWordApplier {
     private static func queryRows(_ db: OpaquePointer, _ sql: String, _ values: [CustomWordSQLValue]) throws -> [[String]] {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw DictionarySQLiteError.prepareStatement(sql: sql, message: String(cString: sqlite3_errmsg(db)))
+            throw DictionarySQLiteError.prepareStatement(sql: sql, message: describe(db, sql))
         }
         defer { sqlite3_finalize(statement) }
         try bind(values, to: statement, db: db)
@@ -254,7 +254,7 @@ nonisolated enum CustomWordApplier {
             code = sqlite3_step(statement)
         }
         guard code == SQLITE_DONE else {
-            throw DictionarySQLiteError.step(message: String(cString: sqlite3_errmsg(db)))
+            throw DictionarySQLiteError.step(message: describe(db, sql))
         }
         return rows
     }
@@ -273,12 +273,12 @@ nonisolated enum CustomWordApplier {
     private static func run(_ db: OpaquePointer, _ sql: String, _ values: [CustomWordSQLValue]) throws {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw DictionarySQLiteError.prepareStatement(sql: sql, message: String(cString: sqlite3_errmsg(db)))
+            throw DictionarySQLiteError.prepareStatement(sql: sql, message: describe(db, sql))
         }
         defer { sqlite3_finalize(statement) }
         try bind(values, to: statement, db: db)
         guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw DictionarySQLiteError.step(message: String(cString: sqlite3_errmsg(db)))
+            throw DictionarySQLiteError.step(message: describe(db, sql))
         }
     }
 
@@ -302,7 +302,13 @@ nonisolated enum CustomWordApplier {
     // Runs one or more unparameterised statements.
     private static func execute(_ db: OpaquePointer, _ sql: String) throws {
         guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
-            throw DictionarySQLiteError.step(message: String(cString: sqlite3_errmsg(db)))
+            throw DictionarySQLiteError.step(message: describe(db, sql))
         }
+    }
+
+    // SQLite's message with its extended code and the statement, so a failure on the phone says
+    // which write failed and why (SQLITE_IOERR alone has a dozen causes).
+    private static func describe(_ db: OpaquePointer, _ sql: String) -> String {
+        "\(String(cString: sqlite3_errmsg(db))) (\(sqlite3_extended_errcode(db))) in: \(sql.prefix(120))"
     }
 }
