@@ -101,6 +101,8 @@
     {"kanaIn": "ないで", "kanaOut": "ない", "rulesIn": ["te"], "rulesOut": ["adj-i"], "note": "ない + で (しないで)", "group": "negativeTeForms"},
     {"kanaIn": "ませんでした", "kanaOut": "ます", "rulesIn": ["masu"], "rulesOut": ["masu"], "note": "ません + でした", "group": "politeForms"},
     {"kanaIn": "たら", "kanaOut": "た", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "た's conditional (なかったら, 行ったら)", "group": "conditionalForms"},
+    {"kanaIn": "たって", "kanaOut": "た", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "concessive たって, and た + quoting って kept with its verb (喰ったって, 過ごしたって): no segment starts with っ", "group": "conditionalForms"},
+    {"kanaIn": "だって", "kanaOut": "だ", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "voiced (飲んだって)", "group": "conditionalForms"},
     {"kanaIn": "だら", "kanaOut": "だ", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "voiced (読んだら)", "group": "conditionalForms"},
     {"kanaIn": "たなら", "kanaOut": "た", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "conditional なら after た (したなら)", "group": "conditionalForms"},
     {"kanaIn": "だなら", "kanaOut": "だ", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "voiced (読んだなら)", "group": "conditionalForms"},
