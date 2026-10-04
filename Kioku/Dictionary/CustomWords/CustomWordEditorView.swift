@@ -3,7 +3,8 @@ import SwiftUI
 // Renders the custom-word editor, opened from the lookup sheet's Learn Spelling (prefilled with the
 // tapped word) and from Custom Words to add or edit a word. Layout: Kanji and Kana spellings; a
 // Same Word / New Word picker; for Same Word, a search field and matching dictionary entries to
-// pick; for New Word, one section per meaning (glosses, part of speech, tags) and Add Meaning.
+// pick, under Suggestions for the spelling (near misses the dictionary has: 駆け寄る for 馳け寄って);
+// for New Word, one section per meaning (glosses, part of speech, tags) and Add Meaning.
 // Cancel and Save in the toolbar.
 struct CustomWordEditorView: View {
     let dictionaryStore: DictionaryStore?
@@ -16,6 +17,7 @@ struct CustomWordEditorView: View {
     @State private var mode: CustomWordEditorMode
     @State private var query: String
     @State private var results: [DictionaryEntry] = []
+    @State private var suggestions: [SpellingSuggestion] = []
     @State private var selectedEntryID: Int64?
     @State private var senses: [CustomWordSenseDraft]
 
@@ -55,6 +57,13 @@ struct CustomWordEditorView: View {
                 }
                 switch mode {
                 case .sameWord:
+                    if suggestions.isEmpty == false {
+                        Section("Suggestions") {
+                            ForEach(suggestions, id: \.entry.entryId) { suggestion in
+                                suggestionRow(suggestion)
+                            }
+                        }
+                    }
                     Section {
                         TextField("Search", text: $query)
                         ForEach(results, id: \.entryId) { entry in
@@ -92,6 +101,7 @@ struct CustomWordEditorView: View {
                 }
             }
             .task(id: query) { await search() }
+            .task(id: kanjiText + "|" + kanaText) { await suggest() }
         }
     }
 
@@ -110,6 +120,32 @@ struct CustomWordEditorView: View {
                 }
                 Spacer()
                 if selectedEntryID == entry.entryId {
+                    Image(systemName: "checkmark").foregroundStyle(.tint)
+                }
+            }
+        }
+    }
+
+    // A suggested entry; picking it also stores the spelling it implies (馳け寄る for 駆け寄る).
+    private func suggestionRow(_ suggestion: SpellingSuggestion) -> some View {
+        Button {
+            selectedEntryID = suggestion.entry.entryId
+            if ScriptClassifier.containsKanji(suggestion.spelling) {
+                kanjiText = suggestion.spelling
+            } else {
+                kanaText = suggestion.spelling
+            }
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Self.headword(suggestion.entry)).foregroundStyle(.primary)
+                    Text([suggestion.entry.kanaForms.first?.text, suggestion.entry.senses.first?.glosses.first].compactMap { $0 }.joined(separator: " · "))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                if selectedEntryID == suggestion.entry.entryId {
                     Image(systemName: "checkmark").foregroundStyle(.tint)
                 }
             }
@@ -170,12 +206,43 @@ struct CustomWordEditorView: View {
         } catch {
             return
         }
-        let searchMode: DictionarySearchMode = term.unicodeScalars.contains { $0.value > 0x2E80 } ? .japanese : .english
         do {
-            results = try dictionaryStore.searchEntries(term: term, mode: searchMode, limit: 20)
+            var found: [DictionaryEntry] = []
+            if ScriptClassifier.containsJapanese(term) {
+                found = try dictionaryStore.searchEntries(term: term, mode: .japanese, limit: 20)
+            } else {
+                // Latin input is romaji or English: search both, Japanese first.
+                if let kana = RomajiToKana.convert(term)?.kana {
+                    found += try dictionaryStore.searchEntries(term: kana, mode: .japanese, limit: 20)
+                }
+                found += try dictionaryStore.searchEntries(term: term, mode: .english, limit: 20)
+            }
+            var seen = Set<Int64>()
+            results = found.filter { seen.insert($0.entryId).inserted }
         } catch {
             AppLog.error(.dictionary, "custom word search failed: \(error)")
             results = []
+        }
+    }
+
+    // Near misses for the spelling (its first kanji form, else its first kana form), after a short
+    // pause in typing.
+    private func suggest() async {
+        let spelling = Self.items(kanjiText).first ?? Self.items(kanaText).first ?? ""
+        guard let dictionaryStore, spelling.isEmpty == false else {
+            suggestions = []
+            return
+        }
+        do {
+            try await Task.sleep(nanoseconds: 250_000_000)
+        } catch {
+            return
+        }
+        do {
+            suggestions = try dictionaryStore.spellingSuggestions(for: spelling)
+        } catch {
+            AppLog.error(.dictionary, "spelling suggestions failed: \(error)")
+            suggestions = []
         }
     }
 
