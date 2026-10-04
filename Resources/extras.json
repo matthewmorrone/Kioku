@@ -89,6 +89,32 @@
 					"gloss": ["like; as if (の様に with the に dropped, as in lyrics)"]
 				}
 			]
+		},
+		{
+			"kanji": "西郷玉",
+			"kana": "さいごうだま",
+			"sense": [
+				{
+					"partOfSpeech": ["n"],
+					"gloss": ["Saigō-dama (a round sweet named after Saigō Takamori)"]
+				}
+			]
+		},
+		{
+			"kana": "カステイラ",
+			"gloss": "castella (sponge cake) (old spelling of カステラ)"
+		},
+		{
+			"kana": "ウエファース",
+			"gloss": "wafer (old spelling of ウエハース)"
+		},
+		{
+			"kana": "ミンツ",
+			"gloss": "mints (peppermint sweets)"
+		},
+		{
+			"kana": "ドロップス",
+			"gloss": "drops (hard candy)"
 		}
 	]
 }
