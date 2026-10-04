@@ -153,12 +153,15 @@ nonisolated enum CustomWordApplier {
                 AppLog.error(.dictionary, "CustomWordApplier: no entry with ent_seq \(sameAs) for \(CustomWordIdentity.headword(of: word))")
                 return
             }
+            // With kanji spellings, the word's kana is their reading (馳け寄って read かけよって), not a
+            // spelling of its own; without one the entry's first reading stands in.
+            let reading = word.kanji.isEmpty ? firstKana[1] : (word.kana.first ?? firstKana[1])
             for text in word.kanji {
                 let kanjiID = try insertForm(db, table: "kanji", fts: "kanji_fts", text: text, entryID: entryID)
                 try insertRecorded(db, table: "kanji_kana_links", "INSERT INTO kanji_kana_links (kanji_id, kana_id) VALUES (?, ?)", [.int(kanjiID), .int(firstKanaID)])
-                try insertSurface(db, surface: text, reading: firstKana[1], readingOrder: firstKanaID, entryID: entryID)
+                try insertSurface(db, surface: text, reading: reading, readingOrder: firstKanaID, entryID: entryID)
             }
-            for text in word.kana {
+            for text in word.kanji.isEmpty ? word.kana : [] {
                 let kanaID = try insertForm(db, table: "kana_forms", fts: "kana_forms_fts", text: text, entryID: entryID)
                 try insertSurface(db, surface: text, reading: text, readingOrder: kanaID, entryID: entryID)
             }

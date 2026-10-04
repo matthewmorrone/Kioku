@@ -109,6 +109,7 @@ struct CustomWordEditorView: View {
     private func resultRow(_ entry: DictionaryEntry) -> some View {
         Button {
             selectedEntryID = entry.entryId
+            adoptDictionaryForm(of: entry)
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -150,6 +151,27 @@ struct CustomWordEditorView: View {
                 }
             }
         }
+    }
+
+    // Picking an entry turns an inflected kanji spelling into its dictionary form with the user's
+    // kanji kept (馳け寄って + 駆け寄る → 馳け寄る), so the learned spelling's inflections segment too,
+    // and drops a kana reading typed for the inflected form. Only when the spelling up to its last
+    // kanji lines up with the entry's form: same length, same kana, kanji swapped.
+    private func adoptDictionaryForm(of entry: DictionaryEntry) {
+        guard let spelling = Self.items(kanjiText).first, ScriptClassifier.containsKanji(spelling),
+              let form = entry.kanjiForms.first?.text else { return }
+        let characters = Array(spelling)
+        guard let lastKanji = characters.lastIndex(where: { ScriptClassifier.containsKanji(String($0)) }) else { return }
+        let stem = Array(characters[...lastKanji])
+        let formCharacters = Array(form)
+        guard formCharacters.count >= stem.count else { return }
+        for index in stem.indices where ScriptClassifier.containsKanji(String(stem[index])) == false {
+            guard formCharacters[index] == stem[index] else { return }
+        }
+        let dictionaryForm = String(stem) + String(formCharacters[stem.count...])
+        guard dictionaryForm != spelling else { return }
+        kanjiText = dictionaryForm
+        kanaText = ""
     }
 
     // Save needs a spelling, plus a picked entry or a reading and at least one meaning.
