@@ -81,6 +81,10 @@ final class SurfaceSheetViewController: UIViewController {
     // cut that way (Segmenter.splitCosts; nil while it isn't ready). The one list the readout and the
     // default pick both read.
     var splitCandidates: [(path: [String], cost: Int?)] = []
+    // The background pricing of splitCandidates, and the cut the editor opened on before costs
+    // arrived (moved to the cheapest when they land, unless the user has picked another).
+    var splitCostTask: Task<Void, Never>?
+    var provisionalSplit: [String]?
     var mergeLeftButton: UIButton!
     var mergeRightButton: UIButton!
     var saveButton: UIButton!
@@ -419,27 +423,24 @@ final class SurfaceSheetViewController: UIViewController {
 
     // Resets left and right split values to the cut the segmenter prices cheapest, falling back to a
     // midpoint split while no costs are available.
+    // The costs are priced in the background (rebuildSplitCandidates), so the editor opens on the
+    // midpoint and moves to the cheapest cut when they land.
     func resetSplitInputs(using outcomeSurface: String) {
-        rebuildSplitCandidates(for: outcomeSurface)
-
-        let cheapest = splitCandidates
-            .compactMap { candidate in candidate.cost.map { (path: candidate.path, cost: $0) } }
-            .min { $0.cost < $1.cost }
-        if let cheapest {
-            leftSplitValue = cheapest.path[0]
-            rightSplitValue = cheapest.path[1]
+        let characters = Array(outcomeSurface)
+        if characters.count <= 1 {
+            applySplitInputs(left: outcomeSurface, right: "")
         } else {
-            let characters = Array(outcomeSurface)
-            if characters.count <= 1 {
-                leftSplitValue = outcomeSurface
-                rightSplitValue = ""
-            } else {
-                let midpoint = characters.count / 2
-                leftSplitValue = String(characters[0..<midpoint])
-                rightSplitValue = String(characters[midpoint..<characters.count])
-            }
+            let midpoint = characters.count / 2
+            applySplitInputs(left: String(characters[0..<midpoint]), right: String(characters[midpoint..<characters.count]))
         }
+        provisionalSplit = [leftSplitValue, rightSplitValue]
+        rebuildSplitCandidates(for: outcomeSurface)
+    }
 
+    // Shows a cut in the [] ↔ [] inputs and updates which buttons it enables.
+    func applySplitInputs(left: String, right: String) {
+        leftSplitValue = left
+        rightSplitValue = right
         leftInput.text = leftSplitValue
         rightInput.text = rightSplitValue
         let isSplitValid = leftSplitValue.isEmpty == false && rightSplitValue.isEmpty == false
@@ -460,16 +461,38 @@ final class SurfaceSheetViewController: UIViewController {
     // Recomputes splitCandidates for `surface` — every cut, left to right, costed once by the
     // segmenter through the sheet's splitCostsProvider — and refreshes the readout from it.
     // Called when the segment changes and again when the segmenter becomes ready.
+    // The cuts list at once with "–" for their costs, which fill in when the background pricing
+    // lands; a newer rebuild cancels an older one.
     func rebuildSplitCandidates(for surface: String) {
         let characters = Array(surface)
         let paths = characters.count >= 2
             ? (1..<characters.count).map { [String(characters[..<$0]), String(characters[$0...])] }
             : []
-        let costs = sheet?.splitCostsReady == true ? sheet?.splitCostsProvider?(paths) ?? [] : []
-        splitCandidates = paths.enumerated().map { index, path in
-            (path: path, cost: costs.indices.contains(index) ? costs[index] : nil)
-        }
+        splitCandidates = paths.map { (path: $0, cost: nil) }
         updateSplitCostLabel()
+        splitCostTask?.cancel()
+        guard sheet?.splitCostsReady == true, let price = sheet?.splitCostsProvider?(paths) else { return }
+        splitCostTask = Task { [weak self] in
+            let costs = await Task.detached(priority: .userInitiated) { price() }.value
+            guard let self, Task.isCancelled == false, self.currentSurface == surface else { return }
+            self.splitCandidates = paths.enumerated().map { index, path in
+                (path: path, cost: costs.indices.contains(index) ? costs[index] : nil)
+            }
+            self.updateSplitCostLabel()
+            self.moveToCheapestSplitIfUntouched()
+        }
+    }
+
+    // When costs arrive, moves the inputs from the provisional midpoint to the cheapest cut, unless
+    // the user has already picked a different one.
+    func moveToCheapestSplitIfUntouched() {
+        guard provisionalSplit == [leftSplitValue, rightSplitValue] else { return }
+        provisionalSplit = nil
+        let cheapest = splitCandidates
+            .compactMap { candidate in candidate.cost.map { (path: candidate.path, cost: $0) } }
+            .min { $0.cost < $1.cost }
+        guard let cheapest else { return }
+        applySplitInputs(left: cheapest.path[0], right: cheapest.path[1])
     }
 
     // Lists every cut of the segment, left to right, each with what the segmenter charges for the

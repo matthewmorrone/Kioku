@@ -68,7 +68,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     var activeReadingOverrideProvider: (() -> String?)?
     // Prices candidate cuts of the current segment with the segmenter's own path costs, in the
     // context of the segment's line (Segmenter.splitCosts) — the split editor's only source of scores.
-    var splitCostsProvider: (([[String]]) -> [Int?])?
+    var splitCostsProvider: (([[String]]) -> @Sendable () -> [Int?])?
     // How far the presented sheet's top sits above the screen bottom, read from its on-screen frame
     // once it's shown and after every resize; nil before then and after dismissal. The read view
     // scrolls the selected word above this rather than above a guessed sheet height.
@@ -530,7 +530,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         onReadingSelected: ((String) -> Void)? = nil,
         onReadingReset: (() -> Void)? = nil,
         activeReadingOverrideProvider: (() -> String?)? = nil,
-        splitCostsProvider: (([[String]]) -> [Int?])? = nil,
+        splitCostsProvider: (([[String]]) -> @Sendable () -> [Int?])? = nil,
         sheetDictionaryEntryProvider: (() -> DictionaryEntry?)? = nil,
         sheetIsSavedProvider: (() -> Bool)? = nil,
         sheetSaveToggle: (() -> Void)? = nil,
