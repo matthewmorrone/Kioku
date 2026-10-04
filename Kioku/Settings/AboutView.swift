@@ -14,6 +14,9 @@ struct AboutView: View {
             Section("Kioku") {
                 LabeledContent("Version", value: Attributions.versionString())
                 LabeledContent("Dictionary", value: dictionaryVersionString)
+                Text("A Japanese reading and vocabulary companion. Built with the open datasets and libraries listed below — without them this app wouldn't exist.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Dictionary Data") {

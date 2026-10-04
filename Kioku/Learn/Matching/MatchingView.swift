@@ -206,6 +206,9 @@ struct MatchingView: View {
         VStack(spacing: 12) {
             Image(systemName: "book").font(.largeTitle)
             Text("No saved words").font(.headline)
+            Text("Save words from the Read tab to start matching.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

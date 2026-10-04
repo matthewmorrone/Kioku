@@ -502,7 +502,7 @@ extension WordsView {
             if visibleSavedKanji.isEmpty {
                 Text(isFilterActive
                     ? "No saved words match the current filter."
-                    : "No saved words yet.")
+                    : "No saved words yet. Tap the star on any result to save it.")
                     .foregroundStyle(.secondary)
             }
         } else {

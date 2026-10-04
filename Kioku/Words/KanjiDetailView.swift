@@ -172,7 +172,7 @@ struct KanjiDetailView: View {
     @ViewBuilder
     private var listAssignmentMenu: some View {
         if wordListsStore.lists.isEmpty {
-            Text("No lists yet")
+            Text("No lists yet — create one in Words")
         } else {
             let saved = savedKanjiStore.savedKanji(for: info.literal)
             let memberSet = Set(saved?.wordListIDs ?? [])

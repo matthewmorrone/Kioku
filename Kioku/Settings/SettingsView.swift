@@ -164,9 +164,14 @@ struct SettingsView: View {
                 // them has been answered right, and whether the Learn tab keeps drilling them.
                 Section {
                     Toggle("Skip Learned Words", isOn: $excludeLearnedInStudy)
+                    Text("Learn activities leave out words marked learned or mastered.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                     Toggle("Auto-mark as Learned", isOn: $autoLearnEnabled)
                 } header: {
                     Text("Learning")
+                } footer: {
+                    Text("When on, a word is automatically marked learned once every kind of question about it has been answered right. You can always mark words by hand by long-pressing any star.")
                 }
 
                 // MARK: Word of the Day — daily notification time and permission.

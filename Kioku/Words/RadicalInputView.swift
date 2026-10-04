@@ -94,7 +94,6 @@ struct RadicalInputView: View {
                     .frame(height: Self.resultStripHeight, alignment: .bottom)
                     .background(Color(.secondarySystemBackground))
                 radicalGrid
-                    .accessibilityHint("Tap radicals to find kanji that contain them")
             }
         }
     }
@@ -112,10 +111,10 @@ struct RadicalInputView: View {
         // floating with a black gap between them. Bottom padding stays so the strip doesn't
         // crowd the Divider/radical grid below.
         VStack(spacing: 6) {
-            if kanjiResults.isEmpty, selected.isEmpty == false, isQuerying == false {
-                // Only the "no matches" status — no instructional "tap radicals to start" prompt,
-                // and only once the query has actually returned (isQuerying) so it doesn't flash.
-                Text("No kanji contain all selected radicals.")
+            if kanjiResults.isEmpty, selected.isEmpty || isQuerying == false {
+                // The "no matches" status waits until the query has actually returned (isQuerying)
+                // so it doesn't flash.
+                Text(selected.isEmpty ? "Tap radicals below to start." : "No kanji contain all selected radicals.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
