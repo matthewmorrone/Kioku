@@ -89,6 +89,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     var guessedGlossSurface: String?
     var guessedGloss: String?
     var glossGuessTask: Task<Void, Never>?
+    // Opens the Learn Spelling form for a surface with no dictionary entry (supplied by the read view).
+    var learnSpellingHandler: (@MainActor (String) -> Void)?
     // Provides the minimal dictionary entry needed to render visible senses for the current segment.
     var sheetDictionaryEntryProvider: (() -> DictionaryEntry?)?
     var currentSheetDictionaryEntry: DictionaryEntry? = nil

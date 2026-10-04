@@ -22,4 +22,7 @@ final class ReadSheetsUIState {
     var isShowingTextConversion = false
     var textConversionProposals: [TextConversion] = []
     var textConversionSourceText = ""
+    // Learn Spelling form, opened from the lookup sheet for the word that has no entry.
+    var isShowingLearnSpelling = false
+    var learnSpellingSurface = ""
 }

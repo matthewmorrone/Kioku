@@ -64,15 +64,15 @@ extension SegmentLookupSheet {
     }
 
     // Fills the empty middle for a surface with no dictionary entry: the guessed gloss once known,
-    // a spinner while it's being fetched, nothing when no guess could be made. Starts the fetch the
-    // first time a surface shows up here and re-renders the sheet when it lands.
+    // a spinner while it's being fetched, and a Learn Spelling button. Starts the fetch the first
+    // time a surface shows up here and re-renders the sheet when it lands.
     private func showGuessedGloss(
         for surface: String,
         in middleContentStack: UIStackView,
         parent: UIViewController?,
-        provider: @escaping @MainActor (String) async -> String?
+        provider: (@MainActor (String) async -> String?)?
     ) {
-        if guessedGlossSurface != surface {
+        if let provider, guessedGlossSurface != surface {
             guessedGlossSurface = surface
             guessedGloss = nil
             glossGuessTask?.cancel()
@@ -84,17 +84,34 @@ extension SegmentLookupSheet {
                 (parent as? SurfaceSheetViewController)?.updateMiddleContent()
             }
         }
-        if let guessedGloss {
+        var hasContent = false
+        if let guessedGloss, guessedGlossSurface == surface {
             middleContentStack.addArrangedSubview(makeGuessedGlossLabel(guessedGloss))
+            hasContent = true
         } else if glossGuessTask != nil {
             let spinner = UIActivityIndicatorView(style: .medium)
             spinner.startAnimating()
             middleContentStack.addArrangedSubview(spinner)
-        } else {
-            middleContentStack.superview?.isHidden = true
-            return
+            hasContent = true
         }
-        middleContentStack.superview?.isHidden = false
+        if let learnSpellingHandler {
+            middleContentStack.addArrangedSubview(makeLearnSpellingButton(for: surface, handler: learnSpellingHandler))
+            hasContent = true
+        }
+        middleContentStack.superview?.isHidden = hasContent == false
+    }
+
+    // The Learn Spelling button under an unknown word's guess.
+    private func makeLearnSpellingButton(for surface: String, handler: @escaping @MainActor (String) -> Void) -> UIButton {
+        var configuration = UIButton.Configuration.plain()
+        configuration.title = "Learn Spelling"
+        configuration.image = UIImage(systemName: "character.book.closed")
+        configuration.imagePadding = 6
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0)
+        let button = UIButton(configuration: configuration)
+        button.contentHorizontalAlignment = .leading
+        button.addAction(UIAction { _ in handler(surface) }, for: .touchUpInside)
+        return button
     }
 
     // A guessed gloss, styled like a primary sense with a "guess" tag where a sense shows its part
@@ -174,7 +191,7 @@ extension SegmentLookupSheet {
                 return
             }
             // No entry: show a guessed gloss instead, with a spinner while it's fetched.
-            if let surface, let glossGuessProvider {
+            if let surface, glossGuessProvider != nil || learnSpellingHandler != nil {
                 showGuessedGloss(for: surface, in: middleContentStack, parent: parent, provider: glossGuessProvider)
                 return
             }

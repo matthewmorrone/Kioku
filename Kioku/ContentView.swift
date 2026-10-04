@@ -21,6 +21,7 @@ struct ContentView: View {
     @StateObject private var wordListsStore = WordListsStore()
     @StateObject private var historyStore = HistoryStore()
     @StateObject private var songBreakdownStore = SongBreakdownStore()
+    @StateObject private var learnedWordStore = LearnedWordStore()
     @State private var selectedReadNote: Note?
     @State private var shouldActivateReadEditMode = false
     @State private var readResources = ReadResources()
@@ -153,6 +154,7 @@ struct ContentView: View {
         .environmentObject(wordListsStore)
         .environmentObject(historyStore)
         .environmentObject(songBreakdownStore)
+        .environmentObject(learnedWordStore)
         .environmentObject(wotdNavigation)
         .environmentObject(readNoteNavigation)
         .onAppear {
@@ -204,6 +206,11 @@ struct ContentView: View {
         }
         // Bump the segmenter revision so ReadView re-segments existing text with the new strategy.
         .onChange(of: segmentationStrategySetting) { _, _ in
+            rebuildReadResources()
+        }
+        // A learned spelling added, edited or removed: the rebuild writes the new set into the
+        // dictionary first (LearnedWordApplier), then re-segments with it.
+        .onChange(of: learnedWordStore.words) { _, _ in
             rebuildReadResources()
         }
         // Validate WOTD scheduling after startup has settled rather than on the critical path.
@@ -452,7 +459,20 @@ struct ContentView: View {
     // follow afterwards on a slower path and overwrite the partial state once ready.
     private func rebuildReadResources() {
         let currentRevision = readResources.segmenterRevision
+        let learnedWords = learnedWordStore.words
         Task.detached(priority: .userInitiated) {
+            // Learned spellings go into the dictionary file before anything reads it. A failure
+            // leaves the file as it was: lookups and segmentation work, minus the learned words.
+            if DictionaryDownloadManager.isInstalled {
+                do {
+                    try StartupTimer.measure("LearnedWordApplier.apply") {
+                        try LearnedWordApplier.apply(learnedWords, toDatabaseAt: DictionaryDownloadManager.installedDatabaseURL)
+                    }
+                } catch {
+                    AppLog.error(.dictionary, "applying learned words failed: \(error)")
+                }
+            }
+
             // Stage 1 — fast path: open the read-only SQLite handle so the dictionary search bar is
             // usable, AND build the surface-reading/frequency map (a ~0.3s scan) so the lookup/split
             // frequency readout can resolve scores now, instead of waiting for the slow trie+lexicon.
