@@ -1,7 +1,8 @@
 import Foundation
 
 // The steps of each tab's first-visit tour, in the order they're shown, and the per-tab "seen"
-// flags. Steps run top to bottom, left to right, so the cutout moves down the screen.
+// flags. Steps run from what everyone uses on day one to the rarer, more advanced controls, not
+// in screen order.
 enum TourCatalog {
     // Tabs that have a tour; Settings has none, so it carries no seen flag either.
     static let touredTabs: [ContentTab] = [.read, .notes, .words, .learn]
@@ -13,29 +14,29 @@ enum TourCatalog {
             return [
                 TourStep(target: .readText, title: "Tap a Word",
                          message: "Tap any word to look it up. The alternating colors show where Kioku split the text into words."),
-                TourStep(target: .readCorrection, title: "AI Correction",
-                         message: "Ask an AI to fix word boundaries and readings. You review each change before it's applied."),
-                TourStep(target: .readBreakdown, title: "Breakdown",
-                         message: "Generate a line-by-line explanation of the note's vocabulary and grammar."),
-                TourStep(target: .readLyrics, title: "Audio & Lyrics",
-                         message: "Attach a song or recording. Kioku lines the lyrics up with the audio so you can follow along."),
-                TourStep(target: .readExtractWords, title: "Word List",
-                         message: "Every word in the note, ready to save for study. Long-press to see what you've changed."),
-                TourStep(target: .readReset, title: "Reset",
-                         message: "Undo your segmentation and reading edits and go back to Kioku's own split."),
                 TourStep(target: .readEdit, title: "Edit",
                          message: "Tap to edit the text. Long-press for display options like furigana, line wrapping and colors."),
+                TourStep(target: .readExtractWords, title: "Word List",
+                         message: "Every word in the note, ready to save for study. Long-press to see what you've changed."),
+                TourStep(target: .readLyrics, title: "Audio & Lyrics",
+                         message: "Attach a song or recording. Kioku lines the lyrics up with the audio so you can follow along."),
+                TourStep(target: .readBreakdown, title: "Breakdown",
+                         message: "Generate a line-by-line explanation of the note's vocabulary and grammar."),
+                TourStep(target: .readCorrection, title: "AI Correction",
+                         message: "Ask an AI to fix word boundaries and readings. You review each change before it's applied."),
+                TourStep(target: .readReset, title: "Reset",
+                         message: "Undo your segmentation and reading edits and go back to Kioku's own split."),
             ]
         case .notes:
             return [
-                TourStep(target: .notesImport, title: "Import",
-                         message: "Bring in text from files, audio, the camera, a photo or a web page."),
-                TourStep(target: .notesSort, title: "Sort",
-                         message: "Order notes by date, length, difficulty, or how many of their words you still have to learn."),
                 TourStep(target: .notesNew, title: "New Note",
                          message: "Start a blank note and type or paste Japanese into it."),
                 TourStep(target: .notesList, title: "Your Notes",
                          message: "Tap a note to read it. Long-press for rename, share, export and more."),
+                TourStep(target: .notesImport, title: "Import",
+                         message: "Bring in text from files, audio, the camera, a photo or a web page."),
+                TourStep(target: .notesSort, title: "Sort",
+                         message: "Order notes by date, length, difficulty, or how many of their words you still have to learn."),
             ]
         case .words:
             return [
