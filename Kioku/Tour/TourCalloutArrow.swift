@@ -2,7 +2,7 @@ import SwiftUI
 
 // The triangular pointer joining the tour callout to its target. Drawn pointing up; the overlay
 // flips it when the callout sits above the target.
-struct TourCalloutArrow: Shape {
+nonisolated struct TourCalloutArrow: Shape {
     // Triangle with its tip at the top centre of the rect.
     func path(in rect: CGRect) -> Path {
         var path = Path()
