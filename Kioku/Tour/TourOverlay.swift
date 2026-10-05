@@ -1,10 +1,11 @@
 import SwiftUI
 
 // Renders the first-visit tour over the whole app window: the screen dimmed except for a rounded
-// cutout around the current target, and a callout card (title, message, step count, Skip / Next)
-// with an arrow pointing at the cutout. The card goes below the target when there's more room
+// cutout around the current target, and a callout card (title, message, step count, Skip) with
+// an arrow pointing at the cutout. The card goes below the target when there's more room
 // there, above otherwise; a target taking up most of the screen (the Read text) gets the card
-// inside its lower edge, with no arrow. Tapping the dimmed area advances, as Next does.
+// inside its lower edge, with no arrow. Tapping the card or the dimmed area advances; the last
+// tap ends the tour.
 struct TourOverlay: View {
     @ObservedObject private var coordinator = TourCoordinator.shared
 
@@ -85,7 +86,8 @@ struct TourOverlay: View {
             .offset(x: x)
     }
 
-    // Title, message, progress and the two buttons.
+    // Title, message, progress and Skip. The whole card is the advance control; Skip, being a
+    // button, takes its own taps first.
     private func card(for step: TourStep) -> some View {
         let isLast = coordinator.stepIndex >= coordinator.stepCount - 1
         return VStack(alignment: .leading, spacing: 8) {
@@ -106,16 +108,16 @@ struct TourOverlay: View {
                     Button("Skip") { coordinator.finish() }
                         .buttonStyle(.borderless)
                 }
-                Button(isLast ? "Done" : "Next") { coordinator.advance() }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
             }
             .padding(.top, 4)
         }
         .padding(16)
         .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 14))
+        .contentShape(RoundedRectangle(cornerRadius: 14))
+        .onTapGesture { coordinator.advance() }
         .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
+        .accessibilityAction(named: isLast ? "Done" : "Next") { coordinator.advance() }
     }
 }
