@@ -86,7 +86,11 @@ extension SegmentLookupSheet {
         }
         var hasContent = false
         if let guessedGloss, guessedGlossSurface == surface {
-            middleContentStack.addArrangedSubview(makeGuessedGlossLabel(guessedGloss))
+            middleContentStack.addArrangedSubview(makeGuessedGlossRow(
+                guessedGloss,
+                explanation: "「\(surface)」 isn't in Kioku's dictionary, so AI guessed this meaning from the line it appears in, and from the song breakdown when there is one. It can be wrong.",
+                parent: parent
+            ))
             hasContent = true
         } else if glossGuessTask != nil {
             let spinner = UIActivityIndicatorView(style: .medium)
@@ -114,23 +118,37 @@ extension SegmentLookupSheet {
         return button
     }
 
-    // A guessed gloss, styled like a primary sense with a "guess" tag where a sense shows its part
-    // of speech. Also the whole-form meaning above an inflected word's senses.
-    func makeGuessedGlossLabel(_ gloss: String) -> UILabel {
-        let line = NSMutableAttributedString(
-            string: gloss,
-            attributes: [.font: UIFont.systemFont(ofSize: 15), .foregroundColor: UIColor.label]
-        )
-        line.append(NSAttributedString(
-            string: "  ·  guess",
-            attributes: [.font: UIFont.systemFont(ofSize: 12), .foregroundColor: UIColor.tertiaryLabel]
-        ))
+    // A guessed gloss, styled like a primary sense, with an ⓘ button beside it that explains where
+    // the guess came from (`explanation`) in an alert over `parent`. Also the whole-form meaning
+    // above an inflected word's senses.
+    func makeGuessedGlossRow(_ gloss: String, explanation: String, parent: UIViewController?) -> UIView {
         let label = UILabel()
-        label.attributedText = line
+        label.text = gloss
+        label.font = .systemFont(ofSize: 15)
+        label.textColor = .label
         label.numberOfLines = 0
         label.textAlignment = .natural
-        label.preferredMaxLayoutWidth = sheetContentWidth()
-        return label
+        label.preferredMaxLayoutWidth = sheetContentWidth() - 28
+
+        let infoButton = UIButton(type: .system)
+        infoButton.setImage(
+            UIImage(systemName: "info.circle", withConfiguration: UIImage.SymbolConfiguration(pointSize: 13)),
+            for: .normal
+        )
+        infoButton.tintColor = .tertiaryLabel
+        infoButton.accessibilityLabel = "Where this meaning comes from"
+        infoButton.setContentHuggingPriority(.required, for: .horizontal)
+        infoButton.addAction(UIAction { [weak parent] _ in
+            let alert = UIAlertController(title: "AI Guess", message: explanation, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            parent?.present(alert, animated: true)
+        }, for: .touchUpInside)
+
+        let row = UIStackView(arrangedSubviews: [label, infoButton, UIView()])
+        row.axis = .horizontal
+        row.spacing = 6
+        row.alignment = .center
+        return row
     }
 
     // Builds a small section header label.

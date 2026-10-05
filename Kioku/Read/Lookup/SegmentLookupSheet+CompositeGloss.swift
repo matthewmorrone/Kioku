@@ -39,7 +39,11 @@ extension SegmentLookupSheet {
             }
         }
         if let compositeGloss {
-            middleContentStack.addArrangedSubview(makeGuessedGlossLabel(compositeGloss))
+            middleContentStack.addArrangedSubview(makeGuessedGlossRow(
+                compositeGloss,
+                explanation: CompositeGlossGuesser.explanation(surface: surface, lemmaLine: info.lemma),
+                parent: parent
+            ))
         } else if compositeGlossTask != nil {
             let spinner = UIActivityIndicatorView(style: .medium)
             spinner.startAnimating()

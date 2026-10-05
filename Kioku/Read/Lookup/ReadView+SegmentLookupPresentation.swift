@@ -260,7 +260,11 @@ extension ReadView {
                 },
                 // Deferred to Breakdown expansion (see sheetReadingsProvider comment).
                 sheetWordComponentsProvider: { nil },
-                sheetCompoundComponentsProvider: { nil },
+                // One row per word the lemma line names (起こる + そう), each with its meaning.
+                sheetCompoundComponentsProvider: {
+                    guard let line = lemmaInfoForCurrentSelectedSegment()?.lemma else { return nil }
+                    return lexicon?.lemmaLineComponents(line)
+                },
                 sheetLookupCandidatesProvider: {
                     guard let surface = currentSelectedSurface(), let lexicon else { return (candidates: [], chosenEntryID: nil) }
                     let chosen = segmentSelection.selectedSegmentLocation.flatMap { document.chosenEntryIDBySegmentLocation[$0] }

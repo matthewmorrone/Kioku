@@ -48,4 +48,10 @@ enum CompositeGlossGuesser {
         it will fall. Reply with the gloss only.
         """
     }
+
+    // What the ⓘ beside a whole-form meaning says: where it came from and that it can be wrong.
+    static func explanation(surface: String, lemmaLine: String) -> String {
+        let parts = lemmaLine.components(separatedBy: " + ").map { "「\($0)」" }.joined(separator: " and ")
+        return "Kioku's dictionary defines \(parts) but not 「\(surface)」 as a whole, so Apple Intelligence on this device put this meaning together from those definitions and the form the word is in. It can be wrong."
+    }
 }

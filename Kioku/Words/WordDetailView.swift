@@ -85,6 +85,7 @@ struct WordDetailView: View {
     // happen"), the same CompositeGlossGuesser answer the lookup sheet shows. nil for a dictionary
     // form, while pending, or when the device can't make a guess.
     @State var compositeGloss: String? = nil
+    @State var showingCompositeGlossInfo = false
     @State var kanjiInfos: [KanjiInfo] = []
     @State var relatedEntries: [DictionaryEntry] = []
     @State var loanwordSources: [LoanwordSource] = []
@@ -369,12 +370,28 @@ struct WordDetailView: View {
                 .overlay(alignment: .leading) { readingSwitcherChevron(.previous) }
                 .overlay(alignment: .trailing) { readingSwitcherChevron(.next) }
 
-                // The whole form's meaning (言いたくない → to not want to say), tagged as a guess
-                // like the lookup sheet's.
+                // The whole form's meaning (言いたくない → to not want to say), with an ⓘ that
+                // explains it's an AI guess, like the lookup sheet's.
                 if let compositeGloss {
-                    (Text(compositeGloss) + Text("  ·  guess").font(.caption).foregroundStyle(.tertiary))
-                        .font(.subheadline)
-                        .padding(.horizontal, 16)
+                    HStack(spacing: 6) {
+                        Text(compositeGloss)
+                            .font(.subheadline)
+                        Button {
+                            showingCompositeGlossInfo = true
+                        } label: {
+                            Image(systemName: "info.circle")
+                                .font(.footnote)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Where this meaning comes from")
+                    }
+                    .padding(.horizontal, 16)
+                    .alert("AI Guess", isPresented: $showingCompositeGlossInfo) {
+                        Button("OK", role: .cancel) {}
+                    } message: {
+                        Text(CompositeGlossGuesser.explanation(surface: word.surface, lemmaLine: lemma ?? word.surface))
+                    }
                 }
 
                 // Plain-text gloss line for compound verbs, above the badge row — e.g.
