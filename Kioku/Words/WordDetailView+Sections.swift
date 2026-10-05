@@ -439,23 +439,52 @@ extension WordDetailView {
         let memberLists = wordListsStore.lists
             .filter { currentSavedWord.wordListIDs.contains($0.id) }
             .sorted { $0.name < $1.name }
-        // Only show the "Saved" section when the word actually belongs to a source note
-        // or a list — otherwise the header reads "Saved" over nothing.
-        if sourceNotes.isEmpty == false || memberLists.isEmpty == false {
+        // Shown when the word belongs to a source note or a list, or when there's a list it could be
+        // added to — otherwise the header reads "Saved" over nothing.
+        if sourceNotes.isEmpty == false || wordListsStore.lists.isEmpty == false {
             Section("Saved") {
                 ForEach(sourceNotes, id: \.id) { note in
                     Button {
                         ReadNoteNavigation.shared.pendingTarget = ReadNoteTarget(noteID: note.id, surface: currentSavedWord.surface)
                         dismiss()
                     } label: {
-                        Label(note.title, systemImage: "doc.text")
-                            .font(.subheadline)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label(note.title, systemImage: "doc.text")
+                                .font(.subheadline)
+                            // The note's lines the word occurs in, so the source shows its context.
+                            ForEach(originLines(in: note), id: \.self) { line in
+                                Text(line)
+                                    .font(.footnote)
+                                    .foregroundStyle(.primary)
+                                    .padding(.leading, 28)
+                            }
+                        }
                     }
                 }
                 ForEach(memberLists, id: \.id) { list in
                     Label(list.name, systemImage: "list.bullet")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                }
+                // Every list with a checkmark on the ones holding this word; tapping toggles
+                // membership, saving the word first when it isn't saved yet.
+                if wordListsStore.lists.isEmpty == false {
+                    Menu {
+                        ForEach(wordListsStore.lists) { list in
+                            Button {
+                                toggleListMembership(listID: list.id)
+                            } label: {
+                                if currentSavedWord.wordListIDs.contains(list.id) {
+                                    Label(list.name, systemImage: "checkmark")
+                                } else {
+                                    Text(list.name)
+                                }
+                            }
+                        }
+                    } label: {
+                        Label("Add to List", systemImage: "folder.badge.plus")
+                            .font(.subheadline)
+                    }
                 }
             }
         }

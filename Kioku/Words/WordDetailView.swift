@@ -106,7 +106,7 @@ struct WordDetailView: View {
     // "which entry is mine" decisions across the main view and its extension files.
     var activeEntryID: Int64 { repointedEntryID ?? word.canonicalEntryID }
     // Filled-star state: the active entry is saved, whichever note (if any) it came from.
-    private var isActiveEntrySaved: Bool {
+    var isActiveEntrySaved: Bool {
         wordsStore.words.contains { $0.canonicalEntryID == activeEntryID }
     }
     // The reading the header shows after the switcher flips to a WITHIN-entry reading (涙 なみだ ↔ なだ
@@ -309,6 +309,22 @@ struct WordDetailView: View {
                     lemma: lemma
                 )
                 .fixedSize()
+                // Long-press copy/share, as the lookup sheet's component headword offers.
+                .contextMenu {
+                    Button {
+                        UIPasteboard.general.string = word.surface
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                    }
+                    if let surfaceReading, surfaceReading != word.surface {
+                        Button {
+                            UIPasteboard.general.string = surfaceReading
+                        } label: {
+                            Label("Copy Reading", systemImage: "character.phonetic.ja")
+                        }
+                    }
+                    ShareLink(item: word.surface)
+                }
                 // Speaker rides past the title's LEADING edge (left of the word); the star rides
                 // past the TRAILING edge (right of the word). Both are overlays on the fixedSize
                 // title so neither shifts the centered headword.
@@ -420,6 +436,17 @@ struct WordDetailView: View {
                     // frequency is a surface-level statistic — see headerFrequencyLabel.
                     if let freqLabel = headerFrequencyLabel {
                         Text(freqLabel)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1))
+                            .fixedSize()
+                    }
+
+                    // JLPT level of the word itself (the Kanji section only carries per-kanji levels).
+                    if let jlpt = dictionaryStore?.jlptLevel(for: activeEntryID) {
+                        Text("JLPT \(DictionaryStore.jlptLabel(for: jlpt))")
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 8)
