@@ -542,4 +542,50 @@ extension WordDetailView {
             .padding(.vertical, 3)
             .background(Color.secondary.opacity(0.15), in: Capsule())
     }
+
+    // Lines of a source note that contain this word (any surface it was saved or met under), with
+    // those surfaces highlighted, so the Saved section shows where in the note it came from.
+    // Capped at three so a word repeated through a whole song doesn't swamp the section.
+    func originLines(in note: Note) -> [AttributedString] {
+        let surfaces = ([word.surface, currentSavedWord.surface] + currentSavedWord.encounteredSurfaces)
+            .filter { $0.isEmpty == false }
+            .sorted { $0.count > $1.count }
+        var seen = Set<String>()
+        let lines = note.content
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { line in
+                line.isEmpty == false
+                    && surfaces.contains { line.contains($0) }
+                    && seen.insert(line).inserted
+            }
+        return lines.prefix(3).map { line in
+            var attributed = AttributedString(line)
+            for surface in surfaces {
+                var searchStart = attributed.startIndex
+                while searchStart < attributed.endIndex,
+                      let range = attributed[searchStart...].range(of: surface) {
+                    attributed[range].swiftUI.foregroundColor = Color.accentColor
+                    attributed[range].swiftUI.font = Font.footnote.weight(.semibold)
+                    searchStart = range.upperBound
+                }
+            }
+            return attributed
+        }
+    }
+
+    // Adds the word to a list, or takes it out if it's already there. Membership only exists on
+    // saved words, so an unsaved word is saved first, the same way the star saves it.
+    func toggleListMembership(listID: UUID) {
+        if isActiveEntrySaved == false {
+            wordsStore.toggle(
+                canonicalEntryID: activeEntryID,
+                storedSurface: word.surface,
+                encounteredSurface: word.surface,
+                sourceNoteID: noteID,
+                defaultSenseIDs: savedDisplayData.map { DefaultSenseSelection.defaultSelectedSenseIDs(for: $0.entry) } ?? []
+            )
+        }
+        wordsStore.toggleListMembership(wordID: activeEntryID, listID: listID)
+    }
 }
