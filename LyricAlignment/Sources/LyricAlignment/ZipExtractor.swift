@@ -117,10 +117,13 @@ public enum ZipExtractor {
         }
         let handle = try FileHandle(forWritingTo: dest)
         defer { try? handle.close() }
+        // expectedSize has already been checked against the per-entry and per-archive budgets, so
+        // capping actual output at it enforces both while the bytes are being written, not after.
+        if method == 0, payload.count != expectedSize { throw ZipError.sizeMismatch(dest.lastPathComponent) }
         let written: Int = try payload.withUnsafeBytes { input in
             method == 0
                 ? try copyStored(input, to: handle)
-                : try inflateRaw(input, to: handle)
+                : try inflateRaw(input, to: handle, limit: expectedSize, name: dest.lastPathComponent)
         }
         guard written == expectedSize else { throw ZipError.sizeMismatch(dest.lastPathComponent) }
     }
@@ -139,8 +142,10 @@ public enum ZipExtractor {
     }
 
     // Inflates a raw-DEFLATE entry into the file one output chunk at a time, returning the number
-    // of bytes produced so the caller can check it against the local header.
-    private static func inflateRaw(_ input: UnsafeRawBufferPointer, to handle: FileHandle) throws -> Int {
+    // of bytes produced so the caller can check it against the local header. Throws before writing
+    // the chunk that would push output past `limit`, so a header that understates the inflated
+    // size can't spill past the extraction budget.
+    private static func inflateRaw(_ input: UnsafeRawBufferPointer, to handle: FileHandle, limit: Int, name: String) throws -> Int {
         guard let inBase = input.baseAddress, input.isEmpty == false else { return 0 }
         guard input.count <= Int(UInt32.max) else { throw ZipError.truncated }
         var stream = ZStream()
@@ -164,6 +169,7 @@ public enum ZipExtractor {
                 status = _inflate(&stream, Z_NO_FLUSH)
                 return out.count - Int(stream.availOut)
             }
+            guard Int(stream.totalOut) <= limit else { throw ZipError.sizeMismatch(name) }
             if produced > 0 {
                 try handle.write(contentsOf: Data(buffer[0 ..< produced]))
             }

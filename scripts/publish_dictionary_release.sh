@@ -115,9 +115,11 @@ fi
 # changing after the fact. Uses the release-asset API's own `digest` field so
 # this doesn't need to download the ~350MB asset just to check it.
 if EXISTING_JSON=$(gh api "repos/$REPO/releases/tags/$RELEASE_TAG" 2>/dev/null); then
-  PUBLISHED_DIGEST=$(python3 -c "
-import json
-data = json.loads('''$EXISTING_JSON''')
+  # Release JSON (including its editable body) is fed on stdin and parsed as data — never
+  # interpolated into the Python source, where release text could break out and run as code.
+  PUBLISHED_DIGEST=$(printf '%s' "$EXISTING_JSON" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
 matches = [a.get('digest') for a in data['assets'] if a['name'] == 'dictionary.sqlite']
 print(matches[0] if matches else '')
 ")
@@ -128,9 +130,9 @@ print(matches[0] if matches else '')
   fi
   # Releases published before the app switched to the archive only carry the raw sqlite. Adding
   # the archive leaves the pinned bytes untouched, so it doesn't count as reusing the tag.
-  HAS_ARCHIVE=$(python3 -c "
-import json
-data = json.loads('''$EXISTING_JSON''')
+  HAS_ARCHIVE=$(printf '%s' "$EXISTING_JSON" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
 print('yes' if any(a['name'] == 'dictionary.sqlite.xz' for a in data['assets']) else 'no')
 ")
   # Notes are regenerated on every run so an existing release picks up credit corrections.

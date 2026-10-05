@@ -100,8 +100,12 @@ enum LLMCorrectionFormat {
     // Only throws when NOTHING recognizable was found at all (e.g. the whole response is
     // conversational prose).
     //
+    // `sourceLineCount` is the note's line count. A record numbered past it can't correct any
+    // line and is discarded as noise; without that bound a single `1000000000|x|` record would
+    // drive the gap-filling loop below through a billion iterations.
+    //
     // Example: `1|A|\n2|B|\n3|\n4|C|` → [A, \n, B, \n, \n, C, \n]
-    static func parseCompactResponse(_ compact: String) throws -> LLMCorrectionResponse {
+    static func parseCompactResponse(_ compact: String, sourceLineCount: Int) throws -> LLMCorrectionResponse {
         let rawLines = compact.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { $0.isEmpty == false }
@@ -115,9 +119,10 @@ enum LLMCorrectionFormat {
             if digitPrefixCount > 0 {
                 let afterDigits = line.index(line.startIndex, offsetBy: digitPrefixCount)
                 guard afterDigits < line.endIndex, line[afterDigits] == "|",
-                      let lineNumber = Int(line.prefix(digitPrefixCount)), lineNumber > 0
+                      let lineNumber = Int(line.prefix(digitPrefixCount)), lineNumber > 0,
+                      lineNumber <= sourceLineCount
                 else {
-                    continue   // digits not followed by "|" (e.g. a stray number in prose) — noise, discard
+                    continue   // digits not followed by "|", or no such note line — noise, discard
                 }
                 sawNumberedLine = true
                 let rest = "|" + String(line[line.index(after: afterDigits)...])

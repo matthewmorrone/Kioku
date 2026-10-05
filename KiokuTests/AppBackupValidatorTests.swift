@@ -76,6 +76,28 @@ final class AppBackupValidatorTests: XCTestCase {
         )
     }
 
+    // Karaoke checkpoints are summed and sliced against cue text at render time, so restore must
+    // reject any range outside its cue — including one whose offset + length would overflow Int.
+    func testRejectsCheckpointsOutsideTheirCue() {
+        let attachmentID = UUID()
+        let note = Note(title: "Song", content: "猫", audioAttachmentID: attachmentID)
+        func payload(_ checkpoint: CueCharTiming) -> AppBackupPayload {
+            let cue = SubtitleCue(index: 1, startMs: 0, endMs: 1_000, text: "ねこ", checkpoints: [checkpoint])
+            let attachment = AudioAttachmentBackup(
+                attachmentID: attachmentID, audioFilename: "a.m4a", audioData: Data(), srtText: nil, cues: [cue]
+            )
+            return AppBackupPayload(
+                notes: [note], words: [], wordLists: [], history: [], reviewStats: [], markedWrong: [],
+                lifetimeCorrect: 0, lifetimeAgain: 0, audioAttachments: [attachment]
+            )
+        }
+
+        XCTAssertNoThrow(try AppBackupValidator.validate(payload(CueCharTiming(timeMs: 0, charOffsetInCue: 1, charLength: 1))))
+        XCTAssertThrowsError(try AppBackupValidator.validate(payload(CueCharTiming(timeMs: 0, charOffsetInCue: 1, charLength: 2))))
+        XCTAssertThrowsError(try AppBackupValidator.validate(payload(CueCharTiming(timeMs: 0, charOffsetInCue: -1, charLength: 1))))
+        XCTAssertThrowsError(try AppBackupValidator.validate(payload(CueCharTiming(timeMs: 0, charOffsetInCue: 1, charLength: Int.max))))
+    }
+
     // Builds the smallest valid backup needed by each validation test.
     private func makePayload(
         notes: [Note] = [],

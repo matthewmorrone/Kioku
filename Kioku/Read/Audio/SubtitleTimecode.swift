@@ -21,6 +21,11 @@ nonisolated enum SubtitleTimecode {
 
         let secParts = colonParts[2].components(separatedBy: ".")
         guard let seconds = Int(secParts[0]) else { return nil }
+        // Bound every component so the sum below can't overflow on a hostile timecode; minutes and
+        // seconds must be real clock fields, hours anything a subtitle could plausibly reach.
+        guard (0..<1_000).contains(hours), (0..<60).contains(minutes), (0..<60).contains(seconds) else {
+            return nil
+        }
 
         // Normalise the fractional part to exactly three digits (milliseconds): "5" → "500",
         // "50" (centiseconds) → "500", "500" → "500", "5009" → "500".

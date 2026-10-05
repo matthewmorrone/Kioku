@@ -59,10 +59,8 @@ final class ClipboardLookupCoordinator: ObservableObject {
         // Cap length so a pasted novel doesn't blow up the search field.
         pendingClipboardText = String(trimmed.prefix(200))
         hasPendingClipboard = true
-        AppLog.debug(
-            .clipboardLookup,
-            "checkClipboard: pending lookup — \(pendingClipboardText?.count ?? 0) chars: \(pendingClipboardText ?? "")"
-        )
+        // Length only: clipboard contents are the user's private data and the debug log is a plain file.
+        AppLog.debug(.clipboardLookup, "checkClipboard: pending lookup — \(pendingClipboardText?.count ?? 0) chars")
     }
 
     // Returns the cached clipboard text (read once during `checkClipboard`) and marks the

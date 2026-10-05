@@ -40,6 +40,27 @@ nonisolated enum AppBackupValidator {
         for note in payload.notes {
             try validateSegments(note.segments, content: note.content)
         }
+        for attachment in payload.audioAttachments {
+            try validateCues(attachment.cues ?? [])
+        }
+    }
+
+    // Verifies karaoke checkpoint ranges. Checkpoints are restored as-is and later
+    // summed (offset + length) and used to slice cue text, so every range must sit inside its
+    // cue's UTF-16 length; checking `length <= cueLength - offset` keeps the test itself overflow-free.
+    private static func validateCues(_ cues: [SubtitleCue]) throws {
+        for cue in cues {
+            let cueLength = cue.text.utf16.count
+            for checkpoint in cue.checkpoints {
+                guard checkpoint.timeMs >= 0,
+                      checkpoint.charOffsetInCue >= 0,
+                      checkpoint.charLength >= 0,
+                      checkpoint.charOffsetInCue <= cueLength,
+                      checkpoint.charLength <= cueLength - checkpoint.charOffsetInCue else {
+                    throw AppBackupValidationError.invalid("a karaoke checkpoint is outside its cue.")
+                }
+            }
+        }
     }
 
     // Verifies exact text coverage and valid half-open UTF-16 annotation ranges.

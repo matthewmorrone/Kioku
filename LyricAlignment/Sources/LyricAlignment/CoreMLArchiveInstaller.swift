@@ -96,7 +96,15 @@ actor CoreMLArchiveInstaller {
 
         onStage?("Extracting \(spec.stageNoun)…")
         let parent = try ModelStorage.directory(for: spec.modelId)
-        try ZipExtractor.extract(archiveAt: tempURL, to: parent)
+        do {
+            try ZipExtractor.extract(archiveAt: tempURL, to: parent)
+        } catch {
+            // Don't leave a half-extracted bundle behind; a rejected archive must not occupy disk.
+            if fm.fileExists(atPath: target.path) {
+                try? fm.removeItem(at: target)
+            }
+            throw error
+        }
         guard fm.fileExists(atPath: probe.path) else {
             throw NSError(
                 domain: spec.errorDomain,

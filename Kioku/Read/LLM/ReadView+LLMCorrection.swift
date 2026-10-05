@@ -69,7 +69,9 @@ extension ReadView {
                 // The user switched notes or edited the text mid-request: the answer no longer
                 // lines up with what's on screen, so it's dropped rather than staged.
                 guard Task.isCancelled == false, document.activeNoteID == noteID, document.text == text else { return }
-                let response = try LLMCorrectionFormat.parseCompactResponse(raw)
+                let response = try LLMCorrectionFormat.parseCompactResponse(
+                    raw, sourceLineCount: text.components(separatedBy: "\n").count
+                )
                 let merged = Self.mergeResponsePerLine(response: response, originalText: text, baseline: baseline)
                 handleLLMCorrectionResult(stageLLMCorrectionResponse(merged, originalText: text))
             } catch {
@@ -91,7 +93,9 @@ extension ReadView {
     // skipped — the next completed line gets another chance.
     func applyLLMStreamingPartial(_ partialText: String, originalText: String, baseline: [LLMSegmentEntry]) {
         llmCorrection.inFlightLineIndex = LLMCorrectionClient.completedLineCount(in: partialText)
-        guard let partial = try? LLMCorrectionFormat.parseCompactResponse(partialText) else { return }
+        guard let partial = try? LLMCorrectionFormat.parseCompactResponse(
+            partialText, sourceLineCount: originalText.components(separatedBy: "\n").count
+        ) else { return }
         let merged = Self.mergeResponsePerLine(response: partial, originalText: originalText, baseline: baseline)
         if case .applied(_, let changedLocations, let changedReadingLocations, let changesByLocation) = stageLLMCorrectionResponse(merged, originalText: originalText) {
             llmCorrection.pendingLLMChangedLocations = changedLocations

@@ -215,4 +215,27 @@ final class TextGridParserTests: XCTestCase {
         XCTAssertEqual(grid.tiers[1].spans.count, 4)
         XCTAssertEqual(grid.tiers[1].spans[3].text, "ん")
     }
+
+    // Counts and times from the file drive Int conversions and loop ranges; malformed values must
+    // surface as parse errors instead of trapping.
+    func testRejectsNonFiniteOrNegativeCountsAndTimes() {
+        let hugeCount = header + "\n1e300\n"
+        XCTAssertThrowsError(try TextGridParser.parse(hugeCount))
+        let negativeCount = header + "\n-1\n"
+        XCTAssertThrowsError(try TextGridParser.parse(negativeCount))
+        let infiniteTime = header + """
+
+        1
+        "IntervalTier"
+        "words"
+        0
+        177.396
+        1
+        0
+        inf
+        "ご"
+
+        """
+        XCTAssertThrowsError(try TextGridParser.parse(infiniteTime))
+    }
 }

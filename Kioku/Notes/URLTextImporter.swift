@@ -7,6 +7,10 @@ import UIKit
 // blog posts, etc.) and avoids the complexity of bundling a Readability-style extractor.
 nonisolated enum URLTextImporter {
 
+    // Article pages are tens to hundreds of KB; anything past this is not a page worth importing,
+    // and buffering it would risk exhausting memory before the MIME check can reject it.
+    static let maxResponseBytes = 10 << 20
+
     // Fetches the URL, parses the HTML, and returns the visible text as a single trimmed string.
     static func extractText(from urlString: String) async throws -> String {
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -22,7 +26,7 @@ nonisolated enum URLTextImporter {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(from: url)
+            (data, response) = try await BoundedDownload.data(from: url, maxBytes: maxResponseBytes)
         } catch {
             AppLog.error(.notesImport, "URL import: fetch failed for \(url) — \(error.localizedDescription)")
             throw URLTextImporterError.fetchFailed(underlying: error)

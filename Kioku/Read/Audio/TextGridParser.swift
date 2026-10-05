@@ -45,7 +45,9 @@ nonisolated enum TextGridParser {
         guard case let .number(tierCountValue)? = tokens.popFirst() else {
             throw TextGridParseError.malformed("Missing tier count.")
         }
-        let tierCount = Int(tierCountValue)
+        guard let tierCount = count(from: tierCountValue, limit: maxTierCount) else {
+            throw TextGridParseError.malformed("Invalid tier count.")
+        }
 
         var tiers: [TimedTier] = []
         for _ in 0..<tierCount {
@@ -62,7 +64,9 @@ nonisolated enum TextGridParser {
             guard case let .number(intervalCountValue)? = tokens.popFirst() else {
                 throw TextGridParseError.malformed("Missing interval count for tier \(tierName).")
             }
-            let intervalCount = Int(intervalCountValue)
+            guard let intervalCount = count(from: intervalCountValue, limit: maxIntervalCount) else {
+                throw TextGridParseError.malformed("Invalid interval count for tier \(tierName).")
+            }
 
             var spans: [TimedSpan] = []
             if tierKind == "IntervalTier" {
@@ -72,13 +76,11 @@ nonisolated enum TextGridParser {
                           case let .string(label)? = tokens.popFirst() else {
                         throw TextGridParseError.malformed("Truncated interval in tier \(tierName).")
                     }
-                    spans.append(
-                        TimedSpan(
-                            startMs: Int((xmin * 1000).rounded()),
-                            endMs: Int((xmax * 1000).rounded()),
-                            text: label
-                        )
-                    )
+                    guard let startMs = milliseconds(fromSeconds: xmin),
+                          let endMs = milliseconds(fromSeconds: xmax) else {
+                        throw TextGridParseError.malformed("Invalid interval time in tier \(tierName).")
+                    }
+                    spans.append(TimedSpan(startMs: startMs, endMs: endMs, text: label))
                 }
             } else {
                 // PointTier / TextTier — parse structurally, model as tier with zero spans.
@@ -92,10 +94,32 @@ nonisolated enum TextGridParser {
             tiers.append(TimedTier(name: tierName, spans: spans))
         }
 
-        return TimedTextDocument(
-            durationMs: Int((fileXmax * 1000).rounded()),
-            tiers: tiers
-        )
+        guard let durationMs = milliseconds(fromSeconds: fileXmax) else {
+            throw TextGridParseError.malformed("Invalid file xmax.")
+        }
+        return TimedTextDocument(durationMs: durationMs, tiers: tiers)
+    }
+
+    // Ceilings on declared counts. Real alignment TextGrids have a handful of tiers and at most a
+    // few thousand intervals; the counts drive loops, so an absurd value must be rejected rather
+    // than iterated. Each interval needs three tokens, so truncation is caught well before these.
+    private static let maxTierCount = 1_000
+    private static let maxIntervalCount = 1_000_000
+    // Twenty-four hours: far beyond any song or episode, small enough that ms arithmetic can't overflow.
+    private static let maxSeconds = 86_400.0
+
+    // Converts a parsed count to Int only when it is a finite, non-negative whole number within
+    // `limit`; Int(Double) traps on NaN, infinity and out-of-range values from a malformed file.
+    private static func count(from value: Double, limit: Int) -> Int? {
+        guard value.isFinite, value >= 0, value <= Double(limit), value.rounded() == value else { return nil }
+        return Int(value)
+    }
+
+    // Converts seconds to integer milliseconds, nil for non-finite, negative or implausibly large
+    // times so a malformed file fails to parse instead of trapping in Int(Double).
+    private static func milliseconds(fromSeconds seconds: Double) -> Int? {
+        guard seconds.isFinite, seconds >= 0, seconds <= maxSeconds else { return nil }
+        return Int((seconds * 1000).rounded())
     }
 
     // MARK: - Tokenizer

@@ -16,6 +16,9 @@ actor JimakuProvider: SubtitleProvider {
     // them would be a request storm. Cap matched entries and total surfaced files.
     private let maxEntries = 6
     private let maxFiles = 100
+    // Subtitle files are tens of KB; a ceiling keeps a hostile or broken file URL from
+    // exhausting memory before the parser ever sees it.
+    private let maxSubtitleBytes = 5 << 20
 
     // Searches Jimaku for matching shows, then surfaces their subtitle files (one result per file),
     // optionally filtered to a single episode. `season` is ignored — Jimaku models seasons as
@@ -59,7 +62,11 @@ actor JimakuProvider: SubtitleProvider {
     // remote name so ASSParser/SubtitleParser classify it correctly. Rejects archive/binary formats
     // we can't parse (Jimaku also hosts .zip/.sub) with a readable error instead of a parse failure.
     func download(_ result: SubtitleSearchResult) async throws -> SubtitleDownload {
-        guard let fileURL = URL(string: result.downloadToken) else { throw SubtitleProviderError.noDownloadLink }
+        // The URL comes from Jimaku's file listing; insist on HTTPS so a listing entry can't
+        // point the app at plaintext or non-web schemes.
+        guard let fileURL = URL(string: result.downloadToken),
+              fileURL.scheme?.lowercased() == "https",
+              fileURL.host?.isEmpty == false else { throw SubtitleProviderError.noDownloadLink }
 
         let ext = (result.releaseName as NSString).pathExtension.lowercased()
         guard SubtitleFormat.supportedExtensions.contains(ext) else {
@@ -68,7 +75,7 @@ actor JimakuProvider: SubtitleProvider {
 
         // The file URL is a direct/CDN link; fetch it WITHOUT the Authorization header so the API key
         // is never sent to a host other than jimaku.cc.
-        let (data, response) = try await URLSession.shared.data(from: fileURL)
+        let (data, response) = try await BoundedDownload.data(from: fileURL, maxBytes: maxSubtitleBytes)
         try Self.validate(response)
 
         // Write into a unique per-download directory but keep the file's REAL name, so downstream

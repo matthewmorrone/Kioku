@@ -168,10 +168,21 @@ public struct CTCForcedAligner {
         return mono
     }
 
+    // Longest recording decoded for isolation/alignment: thirty minutes covers a song or a full
+    // anime episode, while stereo float PCM for it (~635 MB) is already near the device's memory
+    // ceiling, and the model passes allocate more full-length arrays on top.
+    static let maxDecodeSeconds = 30 * 60
+
     // Decodes any audio file to 44.1 kHz stereo 32-bit float PCM via AVAssetReader.
-    // Deinterleaves into [left, right].
+    // Deinterleaves into [left, right]. Rejects recordings past maxDecodeSeconds, both from the
+    // declared duration up front and from the frames actually decoded, since metadata can lie.
     static func decodeStereoFloat(from url: URL) async throws -> [[Float]] {
         let asset = AVURLAsset(url: url)
+        let tooLong = NSError(domain: "LyricAlignment.CTC", code: 16,
+                              userInfo: [NSLocalizedDescriptionKey: "Audio is longer than \(maxDecodeSeconds / 60) minutes."])
+        let declared = try await asset.load(.duration).seconds
+        if declared.isFinite, declared > Double(maxDecodeSeconds) { throw tooLong }
+        let maxFrames = maxDecodeSeconds * 44_100
         let tracks = try await asset.loadTracks(withMediaType: .audio)
         guard let track = tracks.first else {
             throw NSError(domain: "LyricAlignment.CTC", code: 11,
@@ -215,6 +226,10 @@ public struct CTCForcedAligner {
             let fp = UnsafeRawPointer(dataPointer).assumingMemoryBound(to: Float.self)
             var i = 0
             while i + 1 < count { left.append(fp[i]); right.append(fp[i + 1]); i += 2 }
+            if left.count > maxFrames {
+                reader.cancelReading()
+                throw tooLong
+            }
         }
         if reader.status == .failed {
             throw reader.error ?? NSError(domain: "LyricAlignment.CTC", code: 14,
