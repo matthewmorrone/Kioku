@@ -281,6 +281,7 @@ extension ReadView {
             titleView
             VStack(spacing: 10) {
                 editorView
+                    .tourTarget(.readText)
                 toolbarButtons
             }
         }

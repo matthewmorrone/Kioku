@@ -148,6 +148,7 @@ extension WordsView {
                     .foregroundStyle(editMode == .active ? Color.accentColor : Color.secondary)
             }
             .accessibilityLabel("More actions")
+            .tourTarget(.wordsMore)
 
             HStack(spacing: 8) {
                 // Tapping the leading magnifying glass yields focus, dismissing the
@@ -191,6 +192,7 @@ extension WordsView {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(Color(.secondarySystemBackground), in: Capsule())
+            .tourTarget(.wordsSearch)
 
             // Trailing filter control. Context-aware: while a dictionary query is active it
             // exposes the live search sort/filter menu (note/list scopes don't apply to
@@ -220,6 +222,7 @@ extension WordsView {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(activeTab == .saved ? "Saved" : "History"), filter by Note or List")
+                .tourTarget(.wordsFilter)
             }
         }
         .padding(.horizontal, 12)

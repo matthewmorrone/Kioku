@@ -188,6 +188,7 @@ struct LearnPagerView: View {
             if dotsHidden == false {
                 LearnPageDotsOverlay(selectedPage: currentPage)
                     .allowsHitTesting(false)
+                    .tourTarget(.learnPages)
                     .padding(.bottom, 14)
             }
         }

@@ -145,6 +145,13 @@ struct ContentView: View {
         // On iOS 26 SwiftUI's TabView applies its own tint that overrides both the AccentColor asset
         // and UITabBar.appearance(), so the tint must be set explicitly here.
         .themedTint()
+        // First-visit tours sit above every tab (and the tab bar) so the dimming covers the whole
+        // window; each tab's tour starts the first time that tab is shown.
+        .overlay { TourOverlay() }
+        .onChange(of: selectedTab) { _, tab in
+            TourCoordinator.shared.cancelPendingStart()
+            TourCoordinator.shared.startIfUnseen(tab)
+        }
         // Re-apply or reset the nav/tab bar chrome the moment the toggle flips. Bars already on
         // screen refresh on the next navigation; the rest of the theme updates live.
         .onChange(of: japaneseTheme) { _, _ in Theme.refreshGlobalAppearance() }
@@ -163,6 +170,7 @@ struct ContentView: View {
                 lastActiveNoteID = firstSample.id.uuidString
             }
             restoreLastActiveNote()
+            TourCoordinator.shared.startIfUnseen(selectedTab)
             // A Siri launch can raise the request before this view exists to observe the change.
             playRandomAudioNoteIfRequested()
             loadReadResourcesIfNeeded()

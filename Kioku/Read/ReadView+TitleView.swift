@@ -40,12 +40,15 @@ extension ReadView {
                 }
                 Spacer(minLength: 0)
                 llmCorrectionButton
+                    .tourTarget(.readCorrection)
                 titleBreakdownButton
+                    .tourTarget(.readBreakdown)
                 if isShowingLyricsMiniPlayer {
                     lyricsMiniPlayerInlineControl
                         .matchedGeometryEffect(id: "lyricsControl", in: lyricsMiniPlayerNamespace)
                 } else {
                     titleLyricsButton
+                        .tourTarget(.readLyrics)
                         .matchedGeometryEffect(id: "lyricsControl", in: lyricsMiniPlayerNamespace)
                 }
             }

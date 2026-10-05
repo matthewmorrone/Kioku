@@ -68,6 +68,8 @@ struct NotesView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
+                    // Only the top row is the tour's example of a note.
+                    .tourTarget(note.id == displayedNotes.first?.id ? .notesList : nil)
                     .contextMenu {
                         noteContextMenu(for: note)
                     }
@@ -159,9 +161,11 @@ struct NotesView: View {
                 // reads "import" → "selection/editing" → "new" from left to right.
                 ToolbarItemGroup(placement: .topBarLeading) {
                     importMenu
+                        .tourTarget(.notesImport)
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     sortMenu
+                        .tourTarget(.notesSort)
 
                     // Shows bulk-delete action while edit mode is active.
                     if editMode == .active {
@@ -199,6 +203,7 @@ struct NotesView: View {
                             .frame(width: 32, height: 32)
                     }
                     .accessibilityLabel("New Note")
+                    .tourTarget(.notesNew)
                 }
             }
             // OCR plumbing. The error alert, camera sheet, photos picker, and the

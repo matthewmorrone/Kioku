@@ -27,8 +27,11 @@ extension ReadView {
         HStack {
             Spacer()
             titleExtractWordsButton
+                .tourTarget(.readExtractWords)
             resetButton
+                .tourTarget(.readReset)
             editModeButton
+                .tourTarget(.readEdit)
         }
     }
 

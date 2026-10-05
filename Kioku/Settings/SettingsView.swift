@@ -102,6 +102,8 @@ struct SettingsView: View {
     // Bumped after Clear Caches so the Downloaded Models section re-measures; the section
     // reports its own deletions back so the Clear Caches readout re-measures too.
     @State private var storageRefreshToken = 0
+    // Set once Replay Tours is tapped, so the row confirms it took effect.
+    @State private var hasResetTours = false
 
     // engineSettings (the diagnostics and debug sections) lives in
     // SettingsView+EngineSections.swift to keep this file under the line-count guardrail.
@@ -246,6 +248,15 @@ struct SettingsView: View {
                 )
 
                 Section {
+                    // Clears the tours' seen flags; each tab's tour then shows on its next visit.
+                    Button {
+                        TourCoordinator.shared.resetAll()
+                        hasResetTours = true
+                    } label: {
+                        Label(hasResetTours ? "Tours Will Replay" : "Replay Tours",
+                              systemImage: hasResetTours ? "checkmark.circle" : "questionmark.circle")
+                    }
+                    .disabled(hasResetTours)
                     NavigationLink {
                         AboutView()
                     } label: {
