@@ -3,7 +3,7 @@
 // The short-window export of the HuBERT phoneme aligner (HubertPhonemeSing.mlmodelc: same model,
 // labels and output as the alignment export, but a fixed 4 s input) that Sing mode runs every
 // fraction of a second over the latest stretch of the singer's microphone audio.
-// Sideloaded into the app's Documents folder for now; no download store yet.
+// Downloaded on first use by [[SingPhonemeModelStore]].
 
 import CoreML
 import Foundation
@@ -12,19 +12,14 @@ public final class SingPhonemeModel: @unchecked Sendable {
     public static let windowSec = 4.0
     public static let windowSamples = 64_000
     public static let classes = CTCEmissions.classes
-    public static let modelDirName = "HubertPhonemeSing.mlmodelc"
 
     private let model: MLModel
     // MLModel predictions are not safe to run concurrently on one instance.
     private let lock = NSLock()
 
-    // Where the sideloaded model lives: Documents/HubertPhonemeSing.mlmodelc.
-    public static var sideloadedURL: URL {
-        URL.documentsDirectory.appendingPathComponent(modelDirName, isDirectory: true)
-    }
-
-    // Loads the compiled model; CPU only, as the alignment export runs (see CTCEmissions.loadModel).
-    public init(url: URL = SingPhonemeModel.sideloadedURL) throws {
+    // Loads the compiled model at `url` (SingPhonemeModelStore.ensureModel); CPU only, as the
+    // alignment export runs (see CTCEmissions.loadModel).
+    public init(url: URL) throws {
         let cfg = MLModelConfiguration()
         cfg.computeUnits = .cpuOnly
         model = try MLModel(contentsOf: url, configuration: cfg)

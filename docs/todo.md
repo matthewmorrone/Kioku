@@ -29,21 +29,13 @@ written so a new session can pick it up cold.
       pass (grilling) before building: question source (saved words? by JLPT/frequency?), distractor
       selection, timer/scoring model, round length, how it ties into `ReviewStore` (does a fast
       correct answer count as a review?). Sits alongside the existing MultipleChoiceView.
-- [ ] **Sing mode (karaoke vocab probe)** — re-scoped 2026-10-05. Duolingo's speaking exercise
-      applied to lyrics: you sing over the instrumental and each word lights up **live** as
-      sung or not sung. The lyrics are the known target, so the check is "does the audio match
-      the expected words in this window", never open transcription (Apple's transcriber and
-      Qwen are both poor on sung vocals). Grading is lenient: a false "missed" costs more than
-      a false "produced". Practice one line (looping) or the whole song. A note encourages
-      headphones (without them the instrumental leaks into the mic); no hard requirement.
-      Kept from the 2026-07-02 spec: content words only, kana/mora matching, words only (no
-      pitch or rhythm score), lives in `LyricsView`, recording is never saved, missed words can
-      be saved/studied but never change SRS state on their own. Already in place: instrumental
-      stem + Mix/Vocals/Instrumental toggle, per-line and per-mora alignment timings, ♪
-      section boundaries. Open: the live engine. The HuBERT phoneme model only takes fixed
-      32 s windows, so live scoring needs either a short-window export of it or Apple
-      SpeechTranscriber streaming with the line as contextual strings. Spike both on the Mac
-      with recorded takes (sung properly / mumbled / skipped lines) before any UI work.
+- [ ] **Sing mode: tuning and gaps** — built 2026-10-05 (lyrics popup's Sing row; 4 s HuBERT
+      export from release `aligner-sing-v1`; per-word phoneme scoring in `SingPhonemeScorer`).
+      Open: line-final particles (に/ね/よ) score 0.00 even with a 2 s+ window — the per-word
+      diagnostics log line (`[Sing] word@…`) shows where each sound was found and the mic level,
+      so a 素敵だね run should say whether it's timing, level or scoring. Pass marks (0.15 per
+      phoneme, 0.6 per word) are first guesses. Particles are graded too; the spec wanted content
+      words only.
 
 ## Segmentation & Lookup
 - [ ] **ポケベルならしてよんで segments as ポケベル|なら|して|よ|んで** — the one miss in the

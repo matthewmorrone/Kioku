@@ -53,7 +53,10 @@ final class SingSession: ObservableObject {
             return
         }
         do {
-            let loaded = try await Task.detached(priority: .userInitiated) { try SingPhonemeModel() }.value
+            let modelURL = try await SingPhonemeModelStore.ensureModel(onStage: { stage in
+                Task { @MainActor [weak self] in self?.statusMessage = stage }
+            })
+            let loaded = try await Task.detached(priority: .userInitiated) { try SingPhonemeModel(url: modelURL) }.value
             let planned = await Task.detached(priority: .userInitiated) {
                 SingWordPlanner.targets(cues: cues, noteText: noteText, highlightRanges: highlightRanges,
                                         segmentRanges: segmentRanges, romanize: romanize)
@@ -67,7 +70,7 @@ final class SingSession: ObservableObject {
         } catch {
             AppLog.error(.audioPlayback, "[Sing] start failed: \(error.localizedDescription)")
             controller.isSingRecording = false
-            statusMessage = model == nil ? "Sing model not installed (HubertPhonemeSing.mlmodelc)." : error.localizedDescription
+            statusMessage = error.localizedDescription
             return
         }
         AppLog.info(.audioPlayback, "[Sing] listening for \(targets.count) words")
