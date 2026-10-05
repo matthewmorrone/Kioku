@@ -23,8 +23,9 @@ public struct CTCForcedAligner {
     public func align(
         input: AlignmentInput,
         cancellationCheck: (@Sendable () -> Bool)? = nil,
-        // Awaited before each vocal-isolation chunk; see HTDemucsCoreMLSeparator.isolateVocalsMono.
-        waitUntilReady: (@Sendable () async -> Void)? = nil,
+        // Asked before each vocal-isolation chunk: true runs it on the CPU and checkpoints progress
+        // (see HTDemucsCoreMLSeparator.isolateVocalsMono).
+        isBackgrounded: (@Sendable () async -> Bool)? = nil,
         onProgress: (@Sendable (Double) -> Void)? = nil,
         onStage: (@Sendable (String) -> Void)? = nil,
         onSegment: (@Sendable ([AlignedLine]) -> Void)? = nil
@@ -66,7 +67,8 @@ public struct CTCForcedAligner {
             let mono = try await HTDemucsCoreMLSeparator.isolateVocalsMono(
                 stereo: stereo,
                 cancellationCheck: cancellationCheck,
-                waitUntilReady: waitUntilReady,
+                isBackgrounded: isBackgrounded,
+                checkpointKey: VocalStemCache.identityKey(for: input.audioURL),
                 onProgress: { frac in
                     onProgress?(0.10 + 0.30 * frac)
                     onStage?("Isolating… \(Int((frac * 100).rounded()))%")
@@ -148,7 +150,7 @@ public struct CTCForcedAligner {
     public static func isolatedVocalStem(
         for url: URL,
         cancellationCheck: (@Sendable () -> Bool)? = nil,
-        waitUntilReady: (@Sendable () async -> Void)? = nil,
+        isBackgrounded: (@Sendable () async -> Bool)? = nil,
         onProgress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> [Float] {
         if let cached = VocalStemCache.load(for: url), cached.isEmpty == false { return cached }
@@ -159,7 +161,7 @@ public struct CTCForcedAligner {
         }
         let mono = try await HTDemucsCoreMLSeparator.isolateVocalsMono(
             stereo: stereo, cancellationCheck: cancellationCheck,
-            waitUntilReady: waitUntilReady, onProgress: onProgress)
+            isBackgrounded: isBackgrounded, checkpointKey: VocalStemCache.identityKey(for: url), onProgress: onProgress)
         guard mono.isEmpty == false else {
             throw NSError(domain: "LyricAlignment.CTC", code: 15,
                           userInfo: [NSLocalizedDescriptionKey: "Vocal isolation produced no output."])
