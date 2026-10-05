@@ -341,6 +341,7 @@ extension ReadView {
                     audioSource: audioPlayback.audioSource,
                     isSwitchingAudioSource: audioPlayback.isSwitchingAudioSource,
                     onCycleAudioSource: { cycleLyricAudioSource() },
+                    onSetAudioSource: { setLyricAudioSource($0) },
                     singRomanize: lyricRomanizer.spans(for:)
                 )
                 .opacity(audioPlayback.isShowingLyricsView ? 1 : 0)

@@ -14,6 +14,10 @@ final class SingSession: ObservableObject {
     @Published private(set) var verdicts: [Int: Bool] = [:]
     @Published private(set) var statusMessage: String?
     @Published var scope: SingScope = .song
+    // True for the first few seconds of a session, while the lyrics bar shows the headphones advice.
+    @Published private(set) var isShowingHeadphonesNotice = false
+    // The source that was playing before Sing switched to the instrumental; put back on stop.
+    var restoreAudioSource: LyricsAudioSource?
 
     private static let tickSec = 0.5
     // Frames in the last stretch of a window lack right-hand context; never grade from them.
@@ -69,6 +73,11 @@ final class SingSession: ObservableObject {
         lastSongSec = nil
         loopCueIndex = controller.activeCueIndex
         isActive = true
+        isShowingHeadphonesNotice = true
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            self?.isShowingHeadphonesNotice = false
+        }
         loop = Task { [weak self] in
             while Task.isCancelled == false {
                 self?.tick()
@@ -85,6 +94,8 @@ final class SingSession: ObservableObject {
         isActive = false
         verdicts = [:]
         statusMessage = nil
+        isShowingHeadphonesNotice = false
+        restoreAudioSource = nil
     }
 
     // One pass of the loop: follow pauses and seeks, loop the line in Line mode, and grade

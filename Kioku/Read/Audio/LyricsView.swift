@@ -65,6 +65,8 @@ struct LyricsView: View {
     var audioSource: LyricsAudioSource = .mix
     var isSwitchingAudioSource: Bool = false
     var onCycleAudioSource: () -> Void = {}
+    // Switches straight to one source: Sing mode plays the instrumental, then restores.
+    var onSetAudioSource: (LyricsAudioSource) -> Void = { _ in }
     // Romanizes one lyric line for Sing mode's phoneme targets (ReadView's LyricRomanizer). Nil
     // hides the Sing button (previews).
     var singRomanize: (@Sendable (String) -> [RomanizedSpan])? = nil
@@ -269,6 +271,7 @@ struct LyricsView: View {
         let belowUpper = max(belowLower, cues.count)
         return VStack(spacing: 0) {
             reAlignBar()
+            singNotice
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .center, spacing: 0) {
@@ -345,7 +348,8 @@ struct LyricsView: View {
                             furiganaLengthBySegmentLocation: cueInput.furiganaLengthBySegmentLocation,
                             isFuriganaVisible: isFuriganaVisible,
                             isVisualEnhancementsEnabled: true,
-                            isColorAlternationEnabled: isSegmentationVisible,
+                            // Sing mode drops the alternating word colours so only its verdicts colour words.
+                            isColorAlternationEnabled: isSegmentationVisible && singSession.isActive == false,
                             textSize: Binding(get: { scaledTextSize }, set: { _ in }),
                             lineSpacing: 0,
                             kerning: 0,
@@ -465,7 +469,6 @@ struct LyricsView: View {
                 if cues.isEmpty { unalignedLines }
             }
 
-            singBar
             controls
         }
         .frame(width: panelWidth, height: panelHeight)
@@ -528,7 +531,10 @@ struct LyricsView: View {
         .onAppear {
             if let attachmentID { translationCache.load(for: attachmentID) }
         }
-        .onDisappear { singSession.stop() }
+        .onDisappear {
+            if singSession.isActive, let previous = singSession.restoreAudioSource { onSetAudioSource(previous) }
+            singSession.stop()
+        }
     }
 
     // Returns the cue's raw SRT text — what the singer actually sang at that timecode.
