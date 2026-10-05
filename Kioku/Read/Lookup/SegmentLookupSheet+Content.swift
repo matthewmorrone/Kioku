@@ -151,15 +151,6 @@ extension SegmentLookupSheet {
         return row
     }
 
-    // Builds a small section header label.
-    func makeSheetSectionHeader(_ text: String) -> UILabel {
-        let label = UILabel()
-        label.text = text.uppercased()
-        label.font = .systemFont(ofSize: 10, weight: .semibold)
-        label.textColor = .tertiaryLabel
-        return label
-    }
-
     // Builds a body label for multi-line debug content.
     func makeSheetBodyLabel(_ text: String) -> UILabel {
         let label = UILabel()
@@ -227,6 +218,14 @@ extension SegmentLookupSheet {
             addCompositeGloss(for: surface, primarySense: visibleSenses[0], to: middleContentStack, parent: parent)
         }
 
+        // A form built from several words (起こる + そう, 消える + ゆく) shows each word with its
+        // meaning on one line instead of the first word's senses, which that line already gives.
+        if currentSheetCompoundComponents.count > 1 {
+            middleContentStack.addArrangedSubview(makeComponentEquationRow(currentSheetCompoundComponents, parent: parent))
+            middleContentStack.superview?.isHidden = false
+            return
+        }
+
         // Compact most-common-meanings list: JMdict orders senses by commonness, so the top
         // senses in array order are the word's dominant meanings. The primary sense renders
         // full-size; later senses render smaller and dimmer so the dominant meaning stays
@@ -258,60 +257,6 @@ extension SegmentLookupSheet {
             senseList.addArrangedSubview(moreLabel)
         }
         middleContentStack.addArrangedSubview(senseList)
-
-        // Compound verb components: shows each lemma + first gloss as a tappable row when the
-        // surface contains a main verb + auxiliary (e.g. 消えてゆく → 消える: to disappear /
-        // 行く: to go). Vertical list with lemma + definition inline so the user can see what
-        // each part means without drilling into a sub-sheet first.
-        if currentSheetCompoundComponents.count > 1 {
-            let separator = UIView()
-            separator.backgroundColor = .separator
-            separator.translatesAutoresizingMaskIntoConstraints = false
-            let hairlineScale = middleContentStack.traitCollection.displayScale
-            separator.heightAnchor.constraint(equalToConstant: 1 / (hairlineScale > 0 ? hairlineScale : 2)).isActive = true
-            middleContentStack.addArrangedSubview(separator)
-
-            let headerLabel = makeSheetSectionHeader("Compound")
-            middleContentStack.addArrangedSubview(headerLabel)
-
-            for component in currentSheetCompoundComponents {
-                let lemmaLabel = UILabel()
-                lemmaLabel.text = component.lemma
-                lemmaLabel.font = .systemFont(ofSize: 15, weight: .medium)
-                lemmaLabel.textColor = .label
-                lemmaLabel.setContentHuggingPriority(.required, for: .horizontal)
-                lemmaLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-
-                let glossLabel = UILabel()
-                glossLabel.text = component.gloss?
-                    .components(separatedBy: ";").first?
-                    .trimmingCharacters(in: .whitespaces) ?? ""
-                glossLabel.font = .systemFont(ofSize: 14)
-                glossLabel.textColor = .secondaryLabel
-                glossLabel.numberOfLines = 0
-                // The component row reserves the lemma label's intrinsic width plus 10pt spacing,
-                // so the gloss label wraps inside the remaining width — give Auto Layout a hint.
-                glossLabel.preferredMaxLayoutWidth = max(120, measuredContentWidth - 80)
-
-                let row = UIStackView(arrangedSubviews: [lemmaLabel, glossLabel])
-                row.axis = .horizontal
-                row.spacing = 10
-                row.alignment = .firstBaseline
-                row.isUserInteractionEnabled = true
-
-                let tap = ClosureTapGesture { [weak self, weak parent] in
-                    guard let self, let parent else { return }
-                    if let handler = self.onCompoundComponentTapped {
-                        handler(component.lemma, component.gloss)
-                    } else {
-                        // Fallback for contexts that haven't wired the full-chrome handler.
-                        self.presentComponentSheet(surface: component.lemma, gloss: component.gloss, from: parent)
-                    }
-                }
-                row.addGestureRecognizer(tap)
-                middleContentStack.addArrangedSubview(row)
-            }
-        }
 
         middleContentStack.superview?.isHidden = false
     }

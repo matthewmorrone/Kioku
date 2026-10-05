@@ -337,6 +337,37 @@ extension WordDetailView {
 
     }
 
+    // The lemma line's words side by side (起こる to occur + そう seeming that), each over its first
+    // gloss; tapping a word with an entry opens it as a nested detail screen.
+    var lemmaComponentsRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            ForEach(Array(lemmaComponents.enumerated()), id: \.offset) { index, component in
+                if index > 0 {
+                    Text("+")
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+                }
+                Button {
+                    if let entry = component.entry {
+                        presentedRelatedSavedWord = ephemeralSavedWord(for: entry)
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(component.lemma)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.primary)
+                        Text(component.gloss?.components(separatedBy: ";").first?.trimmingCharacters(in: .whitespaces) ?? "")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(component.entry == nil)
+            }
+        }
+    }
+
     // The whole-form meaning for the header (CompositeGlossGuesser), asked with the lemma line the
     // header shows, the inflection it names and the entry's primary sense. nil when the surface is
     // its own dictionary form, and until the entry has loaded so the request carries its sense.

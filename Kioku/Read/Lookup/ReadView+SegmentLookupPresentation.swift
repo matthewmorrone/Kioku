@@ -263,7 +263,7 @@ extension ReadView {
                 // One row per word the lemma line names (起こる + そう), each with its meaning.
                 sheetCompoundComponentsProvider: {
                     guard let line = lemmaInfoForCurrentSelectedSegment()?.lemma else { return nil }
-                    return lexicon?.lemmaLineComponents(line)
+                    return lexicon?.lemmaLineComponents(line)?.map { (lemma: $0.lemma, gloss: $0.gloss) }
                 },
                 sheetLookupCandidatesProvider: {
                     guard let surface = currentSelectedSurface(), let lexicon else { return (candidates: [], chosenEntryID: nil) }

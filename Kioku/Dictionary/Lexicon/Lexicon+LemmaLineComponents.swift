@@ -6,15 +6,17 @@ extension Lexicon {
     // A helper word is taken in its auxiliary, suffix or particle sense where it has one: そう's top
     // entry is the adverb "in that way", but the そう folded into 起こりそう is the auxiliary
     // "appearing that; seeming that". JMdict's own part-of-speech tags decide, not a word list.
-    public func lemmaLineComponents(_ lemmaLine: String) -> [(lemma: String, gloss: String?)]? {
+    // Each word also carries the entry its meaning came from, so the word detail screen can open it.
+    public func lemmaLineComponents(_ lemmaLine: String) -> [(lemma: String, gloss: String?, entry: DictionaryEntry?)]? {
         let parts = lemmaLine.components(separatedBy: " + ")
         guard parts.count > 1 else { return nil }
         return parts.enumerated().map { index, part in
             let entries = lookupEntries(for: part)
-            let senses = entries.flatMap(\.senses).filter { $0.glosses.isEmpty == false }
-            let helperSense = index > 0 ? senses.first(where: { Self.isHelperPOS($0.pos) }) : nil
-            let sense = helperSense ?? senses.first
-            return (lemma: part, gloss: sense?.glosses.prefix(3).joined(separator: "; "))
+            let helperEntry = index > 0 ? entries.first(where: { entry in entry.senses.contains { Self.isHelperPOS($0.pos) } }) : nil
+            let entry = helperEntry ?? entries.first
+            let senses = entry?.senses.filter { $0.glosses.isEmpty == false } ?? []
+            let sense = (helperEntry != nil ? senses.first(where: { Self.isHelperPOS($0.pos) }) : nil) ?? senses.first
+            return (lemma: part, gloss: sense?.glosses.prefix(3).joined(separator: "; "), entry: entry)
         }
     }
 
