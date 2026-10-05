@@ -72,6 +72,8 @@ struct LyricsView: View {
     var singRomanize: (@Sendable (String) -> [RomanizedSpan])? = nil
     // Sing mode's live listening loop and its per-word verdicts (LyricsView+Sing.swift).
     @StateObject var singSession = SingSession()
+    // The results sheet shown when the singer taps Stop (LyricsView+Sing.swift).
+    @State var isShowingSingSummary = false
 
     // Horizontal fine-scrub sensitivity. 5 ms per point means a full ~300 pt swipe across the
     // card covers ~1.5 s — coarse enough to travel, fine enough to settle on a boundary.
@@ -348,8 +350,8 @@ struct LyricsView: View {
                             furiganaLengthBySegmentLocation: cueInput.furiganaLengthBySegmentLocation,
                             isFuriganaVisible: isFuriganaVisible,
                             isVisualEnhancementsEnabled: true,
-                            // Sing mode drops the alternating word colours so only its verdicts colour words.
-                            isColorAlternationEnabled: isSegmentationVisible && singSession.isActive == false,
+                            // Sing results drop the alternating word colours so only verdicts colour words.
+                            isColorAlternationEnabled: isSegmentationVisible && isShowingSingResults == false,
                             textSize: Binding(get: { scaledTextSize }, set: { _ in }),
                             lineSpacing: 0,
                             kerning: 0,
@@ -383,15 +385,15 @@ struct LyricsView: View {
                             unknownSegmentLocations: untimedLocations,
                             isHighlightUnknownEnabled: false,
                             unknownSegmentColor: .tertiaryLabel,
-                            // While Sing mode listens, the Saved Highlight slots carry its verdicts
-                            // instead: heard words green, missed words red.
-                            isSavedHighlightEnabled: singSession.isActive || isSavedHighlightEnabled,
-                            savedSegmentLocations: singSession.isActive ? [] : rebaseIntoCue(savedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                            // While Sing results are showing, the Saved Highlight slots carry its
+                            // verdicts instead: heard words green, missed words red.
+                            isSavedHighlightEnabled: isShowingSingResults || isSavedHighlightEnabled,
+                            savedSegmentLocations: isShowingSingResults ? [] : rebaseIntoCue(savedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
                             savedHighlightColor: readingColors.saved,
-                            savedLearnedSegmentLocations: rebaseIntoCue(singSession.isActive ? singHeardLocations : savedLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
-                            savedLearnedHighlightColor: singSession.isActive ? Self.singHeardColor : readingColors.savedLearned,
-                            savedNotLearnedSegmentLocations: rebaseIntoCue(singSession.isActive ? singMissedLocations : savedNotLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
-                            savedNotLearnedHighlightColor: singSession.isActive ? Self.singMissedColor : readingColors.savedNotLearned,
+                            savedLearnedSegmentLocations: rebaseIntoCue(isShowingSingResults ? singHeardLocations : savedLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                            savedLearnedHighlightColor: isShowingSingResults ? Self.singHeardColor : readingColors.savedLearned,
+                            savedNotLearnedSegmentLocations: rebaseIntoCue(isShowingSingResults ? singMissedLocations : savedNotLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                            savedNotLearnedHighlightColor: isShowingSingResults ? Self.singMissedColor : readingColors.savedNotLearned,
                             // Overrides the highlighted range's glyph color so it never has to
                             // compete with whatever semantic token color (red vocab, blue, etc.)
                             // it already had — see activeWordForegroundColor's doc comment above.
@@ -535,6 +537,7 @@ struct LyricsView: View {
             if singSession.isActive, let previous = singSession.restoreAudioSource { onSetAudioSource(previous) }
             singSession.stop()
         }
+        .sheet(isPresented: $isShowingSingSummary) { singSummarySheet }
     }
 
     // Returns the cue's raw SRT text — what the singer actually sang at that timecode.

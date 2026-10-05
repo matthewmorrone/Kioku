@@ -8,6 +8,10 @@ extension LyricsView {
     static let singHeardColor = UIColor.systemGreen
     static let singMissedColor = UIColor.systemRed
 
+    // True while there are verdicts to show: during a session and after Stop, until Clear or
+    // the next start.
+    var isShowingSingResults: Bool { singSession.isActive || singSession.verdicts.isEmpty == false }
+
     // Note locations of words Sing mode heard.
     var singHeardLocations: Set<Int> { Set(singSession.verdicts.filter { $0.value }.keys) }
 
@@ -34,6 +38,36 @@ extension LyricsView {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(singSession.isActive ? "Stop singing" : "Sing along")
+
+        if singSession.isActive == false, singSession.verdicts.isEmpty == false {
+            Button {
+                isShowingSingSummary = true
+            } label: {
+                Image(systemName: "list.bullet")
+                    .scaledFont(size: 12, weight: .semibold)
+                    .foregroundStyle(Color.secondary)
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
+                    .background(Color.secondary.opacity(0.16))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Show Sing results")
+
+            Button {
+                singSession.clearResults()
+            } label: {
+                Image(systemName: "xmark")
+                    .scaledFont(size: 12, weight: .semibold)
+                    .foregroundStyle(Color.secondary)
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
+                    .background(Color.secondary.opacity(0.16))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Clear Sing results")
+        }
 
         if singSession.isActive {
             Button {
@@ -80,6 +114,8 @@ extension LyricsView {
         if singSession.isActive {
             if let previous = singSession.restoreAudioSource { onSetAudioSource(previous) }
             singSession.stop()
+            controller.pause()
+            if singSession.verdicts.isEmpty == false { isShowingSingSummary = true }
             return
         }
         guard let singRomanize else { return }
@@ -98,5 +134,48 @@ extension LyricsView {
             singSession.restoreAudioSource = previous
             onSetAudioSource(.instrumental)
         }
+    }
+
+    // The Stop summary: heard / graded counts and each missed word once, in song order.
+    var singSummarySheet: some View {
+        let words = segmentationRanges.map { NSRange($0, in: noteText) }
+        let noteNS = noteText as NSString
+        var seen = Set<String>()
+        let missed: [SingMissedWord] = singMissedLocations.sorted().compactMap { location in
+            guard let range = words.first(where: { location >= $0.location && location < NSMaxRange($0) }) else { return nil }
+            let surface = noteNS.substring(with: NSRange(location: location, length: NSMaxRange(range) - location))
+            return seen.insert(surface).inserted ? SingMissedWord(location: location, surface: surface) : nil
+        }
+        return SingSummaryView(
+            heardCount: singHeardLocations.count,
+            gradedCount: singSession.verdicts.count,
+            missedWords: missed,
+            onLookUp: { location in
+                // The lookup sheet belongs to the Read view underneath; let this sheet go first.
+                isShowingSingSummary = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { onSegmentTapped(location, nil, nil) }
+            },
+            onDone: { isShowingSingSummary = false }
+        )
+    }
+
+    // An inactive row's text with Sing verdicts coloured in (green heard, red missed), or nil when
+    // the row has no verdicts or its text can't be matched to the note.
+    func singColoredText(forCueAt index: Int, text: String) -> AttributedString? {
+        guard isShowingSingResults, index < highlightRanges.count, let cueRange = highlightRanges[index] else { return nil }
+        let noteNS = noteText as NSString
+        guard NSMaxRange(cueRange) <= noteNS.length, noteNS.substring(with: cueRange).hasPrefix(text) else { return nil }
+        let textNS = text as NSString
+        var attributed = AttributedString(text)
+        var colored = false
+        for range in segmentationRanges.map({ NSRange($0, in: noteText) }) {
+            let start = max(range.location, cueRange.location), end = min(NSMaxRange(range), cueRange.location + textNS.length)
+            guard end > start, let heard = singSession.verdicts[start],
+                  let local = Range(NSRange(location: start - cueRange.location, length: end - start), in: text),
+                  let attributedRange = Range(local, in: attributed) else { continue }
+            attributed[attributedRange].foregroundColor = heard ? Color(Self.singHeardColor) : Color(Self.singMissedColor)
+            colored = true
+        }
+        return colored ? attributed : nil
     }
 }

@@ -30,7 +30,8 @@ extension LyricsView {
                     .fill(Color.orange)
                     .frame(width: 6, height: 6)
             }
-            Text(text)
+            // Sing results colour the words of lines already sung.
+            Text(singColoredText(forCueAt: index, text: text) ?? AttributedString(text))
                 .font(.system(size: fontSize, weight: .regular))
                 .multilineTextAlignment(.center)
                 .lineLimit(1)

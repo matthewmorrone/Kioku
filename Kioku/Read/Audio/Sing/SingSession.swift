@@ -86,16 +86,21 @@ final class SingSession: ObservableObject {
         }
     }
 
-    // Stops listening and hands the audio session back to plain playback.
+    // Stops listening and hands the audio session back to plain playback. Verdicts stay, so the
+    // lyrics keep their colours and the summary can list them, until the next start clears them.
     func stop() {
         loop?.cancel(); loop = nil
         mic.stop()
         controller?.isSingRecording = false
         isActive = false
-        verdicts = [:]
         statusMessage = nil
         isShowingHeadphonesNotice = false
         restoreAudioSource = nil
+    }
+
+    // Drops the last session's verdicts, returning the lyrics to their normal colours.
+    func clearResults() {
+        verdicts = [:]
     }
 
     // One pass of the loop: follow pauses and seeks, loop the line in Line mode, and grade
