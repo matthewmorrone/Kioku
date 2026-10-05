@@ -368,7 +368,7 @@ struct LyricsView: View {
                             // segments come from the same noteText segmentation the Read view uses.
                             isRubySpacingEnabled: isRubySpacingEnabled,
                             selectedHighlightRange: nil,
-                            playbackHighlightRange: cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                            playbackHighlightRange: activeCardHighlightRange(cueIndex: displayIndex, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
                             selectionHighlightColor: .clear,
                             playbackHighlightColor: Self.activeWordHighlightColor,
                             // The played-portion band is gated on alignment-coverage: when
@@ -379,7 +379,7 @@ struct LyricsView: View {
                             // `cueHasReliableDimCoverage` for the 90%-of-cueLen threshold and its
                             // rationale.
                             unplayedDimmingLocation: cueHasReliableDimCoverage(forCueAtIndex: displayIndex, cueLength: cueInput.text.utf16.count)
-                                ? cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count).map { $0.location + $0.length }
+                                ? activeCardHighlightRange(cueIndex: displayIndex, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count).map { $0.location + $0.length }
                                 : nil,
                             unplayedDimmingColor: Self.playedLineHighlightColor,
                             unknownSegmentLocations: untimedLocations,
@@ -397,7 +397,7 @@ struct LyricsView: View {
                             // Overrides the highlighted range's glyph color so it never has to
                             // compete with whatever semantic token color (red vocab, blue, etc.)
                             // it already had — see activeWordForegroundColor's doc comment above.
-                            accentTextRange: cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                            accentTextRange: activeCardHighlightRange(cueIndex: displayIndex, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
                             accentTextColor: Self.activeWordForegroundColor,
                             debugFlags: KiokuDebugOverlayView.Flags(),
                             illegalMergeLocation: nil,

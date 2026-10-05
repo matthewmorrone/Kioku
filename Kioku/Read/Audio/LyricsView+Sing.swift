@@ -178,4 +178,21 @@ extension LyricsView {
         }
         return colored ? attributed : nil
     }
+
+    // The active card's highlight range, cue-local. While singing, the band steps mora by mora
+    // straight from the cue's karaoke checkpoints (whatever the Line / Word setting), so the singer
+    // can follow each syllable; otherwise it's the usual granularity-driven range.
+    func activeCardHighlightRange(cueIndex: Int, cueOriginInNote: Int, cueLength: Int) -> NSRange? {
+        guard singSession.isActive else {
+            return cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueLength)
+        }
+        guard controller.isPlaying, cueIndex == activeIndex, cueIndex < cues.count else { return nil }
+        let now = controller.currentTimeMs
+        guard let current = cues[cueIndex].checkpoints
+            .filter({ $0.timeMs <= now })
+            .max(by: { $0.timeMs < $1.timeMs }) else { return nil }
+        let start = min(max(0, current.charOffsetInCue), cueLength)
+        let end = min(start + max(1, current.charLength), cueLength)
+        return end > start ? NSRange(location: start, length: end - start) : nil
+    }
 }
