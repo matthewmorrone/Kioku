@@ -340,7 +340,8 @@ extension ReadView {
                     isCancellingReAlign: subtitleImport.isCancellingAlignment,
                     audioSource: audioPlayback.audioSource,
                     isSwitchingAudioSource: audioPlayback.isSwitchingAudioSource,
-                    onCycleAudioSource: { cycleLyricAudioSource() }
+                    onCycleAudioSource: { cycleLyricAudioSource() },
+                    singRomanize: lyricRomanizer.spans(for:)
                 )
                 .opacity(audioPlayback.isShowingLyricsView ? 1 : 0)
                 .allowsHitTesting(audioPlayback.isShowingLyricsView)
