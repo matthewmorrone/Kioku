@@ -29,17 +29,21 @@ written so a new session can pick it up cold.
       pass (grilling) before building: question source (saved words? by JLPT/frequency?), distractor
       selection, timer/scoring model, round length, how it ties into `ReviewStore` (does a fast
       correct answer count as a review?). Sits alongside the existing MultipleChoiceView.
-- [ ] **Karaoke vocab-probe mode** — planned 2026-07-02, spec'd via grilling. Reframed from a
-      karaoke "score" into a **vocabulary probe**: sing over the instrumental, transcribe per
-      section, and surface which *content words* you produced (known) vs missed (study
-      candidates). Decisions: words-only (no pitch/timing); play HTDemucs instrumental
-      (mix−vocals subtraction, cache both stems); per-section (♪/gap boundaries); post-hoc
-      scoring; kana/mora word matching; content-words-only; a "Sing" mode inside `LyricsView`;
-      transient recording; generate stem on demand; missed words → save/study, no SRS
-      auto-mutation. Large multi-part build — pick up in a dedicated session. (A detailed
-      4-phase TDD implementation plan existed at `docs/superpowers/plans/` and is recoverable
-      from git history if wanted, but that workflow is retired — re-derive fresh instead.)
-
+- [ ] **Sing mode (karaoke vocab probe)** — re-scoped 2026-10-05. Duolingo's speaking exercise
+      applied to lyrics: you sing over the instrumental and each word lights up **live** as
+      sung or not sung. The lyrics are the known target, so the check is "does the audio match
+      the expected words in this window", never open transcription (Apple's transcriber and
+      Qwen are both poor on sung vocals). Grading is lenient: a false "missed" costs more than
+      a false "produced". Practice one line (looping) or the whole song. A note encourages
+      headphones (without them the instrumental leaks into the mic); no hard requirement.
+      Kept from the 2026-07-02 spec: content words only, kana/mora matching, words only (no
+      pitch or rhythm score), lives in `LyricsView`, recording is never saved, missed words can
+      be saved/studied but never change SRS state on their own. Already in place: instrumental
+      stem + Mix/Vocals/Instrumental toggle, per-line and per-mora alignment timings, ♪
+      section boundaries. Open: the live engine. The HuBERT phoneme model only takes fixed
+      32 s windows, so live scoring needs either a short-window export of it or Apple
+      SpeechTranscriber streaming with the line as contextual strings. Spike both on the Mac
+      with recorded takes (sung properly / mumbled / skipped lines) before any UI work.
 
 ## Segmentation & Lookup
 - [ ] **ポケベルならしてよんで segments as ポケベル|なら|して|よ|んで** — the one miss in the
