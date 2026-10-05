@@ -108,6 +108,9 @@ struct ReadView: View {
     // Audio-attachment playback state (controller, cues, highlight override, active cue/attachment) —
     // see AudioPlaybackUIState.
     @State var audioPlayback = AudioPlaybackUIState()
+    // Sing mode's session and its per-word results: run from the lyrics popup, shown there and on
+    // the Read tab's text (ReadView+SingResults.swift).
+    @StateObject var singSession = SingSession()
     // Scrub-in-progress flag for the minimized "now playing" bar (ReadView+MiniPlayer.swift) —
     // separate from LyricsView's own isScrubbing so dragging one never fights the other's state.
     @State var isMiniPlayerScrubbing = false

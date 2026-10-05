@@ -9,7 +9,7 @@ nonisolated enum SingWordPlanner {
     // Words with fewer phonemes than this (を, a lone vowel) are too short to grade reliably.
     static let minimumTokens = 2
     // A held note can run long; the scorer's 4 s window has to fit the word plus slack.
-    static let maximumWordSec = 2.8
+    static let maximumWordSec = 2.4
 
     // One SingWordTarget per gradeable word, keyed by the word's UTF-16 start in `noteText`.
     // `highlightRanges[i]` is cue i's range in the note (nil → found by substring search, as the
@@ -50,7 +50,11 @@ nonisolated enum SingWordPlanner {
                 let start = starts[w]
                 let nextStart = w + 1 < words.count ? starts[w + 1] : Double(cue.endMs) / 1000
                 let end = min(max(nextStart, start + 0.1), start + maximumWordSec)
-                targets.append(SingWordTarget(id: cueStart + word.start, tokens: tokens, startSec: start, endSec: end))
+                targets.append(SingWordTarget(
+                    id: cueStart + word.start, tokens: tokens, startSec: start, endSec: end,
+                    leadSlackSec: w == 0 ? SingPhonemeScorer.lineEdgeLeadSlackSec : SingPhonemeScorer.leadSlackSec,
+                    tailSlackSec: w == words.count - 1 ? SingPhonemeScorer.lineEdgeTailSlackSec : SingPhonemeScorer.tailSlackSec
+                ))
             }
         }
         return targets

@@ -18,6 +18,9 @@ public enum SingPhonemeScorer {
     /// Slack around the aligned word time: singers come in early and drag late.
     public static let leadSlackSec = 0.25
     public static let tailSlackSec = 0.35
+    // At a line's first / last word the neighbour on that side is silence, so the window can widen.
+    public static let lineEdgeLeadSlackSec = 0.6
+    public static let lineEdgeTailSlackSec = 0.8
 
     // Phoneme tokens for a word from its romaji spans. っ (Q) is dropped (a silent gap the
     // model rarely marks in singing) and repeats collapse, since a held long vowel is one sound.
@@ -34,8 +37,15 @@ public enum SingPhonemeScorer {
     // Weighted share (0…1) of `tokens` heard in frames [first, last] of a row-major
     // [frames × classes] log-probability matrix. 0 when the window is shorter than the word.
     public static func score(tokens: [Int], logProbs: [Float], classes: Int, firstFrame: Int, lastFrame: Int) -> Double {
+        scoreDetails(tokens: tokens, logProbs: logProbs, classes: classes, firstFrame: firstFrame, lastFrame: lastFrame).score
+    }
+
+    // The score plus, per token in order, the absolute frame it was placed on and its probability
+    // there — what the diagnostics log prints to show where in the window each sound was found.
+    public static func scoreDetails(tokens: [Int], logProbs: [Float], classes: Int, firstFrame: Int, lastFrame: Int)
+        -> (score: Double, placements: [(frame: Int, probability: Float)]) {
         let k = tokens.count, t = lastFrame - firstFrame + 1
-        guard k > 0, t >= k, firstFrame >= 0 else { return 0 }
+        guard k > 0, t >= k, firstFrame >= 0 else { return (0, []) }
         @inline(__always) func lp(_ f: Int, _ token: Int) -> Float { logProbs[(firstFrame + f) * classes + token] }
 
         // best[i][f]: best summed log-prob placing tokens 0…i with token i on frame f (frames strictly increasing).
@@ -54,13 +64,21 @@ public enum SingPhonemeScorer {
         }
         var f = (k - 1..<t).max { best[(k - 1) * t + $0] < best[(k - 1) * t + $1] } ?? (t - 1)
         var heard = 0.0, total = 0.0
+        var placements = [(frame: Int, probability: Float)](repeating: (0, 0), count: k)
         for i in stride(from: k - 1, through: 0, by: -1) {
             let weight = isVowelLike(tokens[i]) ? 2.0 : 1.0
+            let probability = exp(lp(f, tokens[i]))
             total += weight
-            if exp(lp(f, tokens[i])) >= passProbability { heard += weight }
+            if probability >= passProbability { heard += weight }
+            placements[i] = (firstFrame + f, probability)
             if i > 0 { f = from[i * t + f] }
         }
-        return heard / total
+        return (heard / total, placements)
+    }
+
+    // The phoneme label for a token, for logs.
+    public static func label(_ token: Int) -> Character {
+        token < CTCEmissions.labels.count ? CTCEmissions.labels[token] : "?"
     }
 
     // Vowels and syllabic ん: the sounds that survive singing.

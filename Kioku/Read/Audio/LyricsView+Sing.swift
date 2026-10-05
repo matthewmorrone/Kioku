@@ -10,7 +10,7 @@ extension LyricsView {
 
     // True while there are verdicts to show: during a session and after Stop, until Clear or
     // the next start.
-    var isShowingSingResults: Bool { singSession.isActive || singSession.verdicts.isEmpty == false }
+    var isShowingSingResults: Bool { singSession.isActive || singSession.hasResults(for: noteText) }
 
     // Note locations of words Sing mode heard.
     var singHeardLocations: Set<Int> { Set(singSession.verdicts.filter { $0.value }.keys) }
@@ -39,7 +39,7 @@ extension LyricsView {
         .buttonStyle(.plain)
         .accessibilityLabel(singSession.isActive ? "Stop singing" : "Sing along")
 
-        if singSession.isActive == false, singSession.verdicts.isEmpty == false {
+        if singSession.isActive == false, singSession.hasResults(for: noteText) {
             Button {
                 isShowingSingSummary = true
             } label: {

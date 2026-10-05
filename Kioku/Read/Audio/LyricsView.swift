@@ -70,8 +70,9 @@ struct LyricsView: View {
     // Romanizes one lyric line for Sing mode's phoneme targets (ReadView's LyricRomanizer). Nil
     // hides the Sing button (previews).
     var singRomanize: (@Sendable (String) -> [RomanizedSpan])? = nil
-    // Sing mode's live listening loop and its per-word verdicts (LyricsView+Sing.swift).
-    @StateObject var singSession = SingSession()
+    // Sing mode's live listening loop and its per-word verdicts (LyricsView+Sing.swift). Owned by
+    // ReadView, so the Read tab can show the same results.
+    @ObservedObject var singSession: SingSession
     // The results sheet shown when the singer taps Stop (LyricsView+Sing.swift).
     @State var isShowingSingSummary = false
 

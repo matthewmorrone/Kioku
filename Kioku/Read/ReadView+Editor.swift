@@ -350,7 +350,8 @@ extension ReadView {
                         furiganaLengthBySegmentLocation: displayedFuriganaLengthBySegmentLocation,
                         isFuriganaVisible: isFuriganaVisible,
                         isVisualEnhancementsEnabled: readResourcesReady || hasRendererSegmentation,
-                        isColorAlternationEnabled: isColorAlternationEnabled,
+                        // Sing results drop the alternating word colours so only verdicts colour words.
+                        isColorAlternationEnabled: isColorAlternationEnabled && isShowingSingResults == false,
                         textSize: $textSize,
                         lineSpacing: lineSpacing,
                         kerning: kerning,
@@ -370,13 +371,14 @@ extension ReadView {
                         changedSegmentLocations: llmCorrection.pendingLLMChangedLocations,
                         changedReadingLocations: llmCorrection.pendingLLMChangedReadingLocations,
                         inFlightSegmentLocations: inFlightLineSegmentLocations,
-                        isSavedHighlightEnabled: isSavedHighlightEnabled,
-                        savedSegmentLocations: savedSegmentLocations,
+                        // Sing results take over the Saved Highlight slots: heard green, missed red.
+                        isSavedHighlightEnabled: isShowingSingResults || isSavedHighlightEnabled,
+                        savedSegmentLocations: isShowingSingResults ? [] : savedSegmentLocations,
                         savedHighlightColor: colors.saved,
-                        savedLearnedSegmentLocations: savedLearnedSegmentLocations,
-                        savedLearnedHighlightColor: colors.savedLearned,
-                        savedNotLearnedSegmentLocations: savedNotLearnedSegmentLocations,
-                        savedNotLearnedHighlightColor: colors.savedNotLearned,
+                        savedLearnedSegmentLocations: isShowingSingResults ? singHeardLocations : savedLearnedSegmentLocations,
+                        savedLearnedHighlightColor: isShowingSingResults ? LyricsView.singHeardColor : colors.savedLearned,
+                        savedNotLearnedSegmentLocations: isShowingSingResults ? singMissedLocations : savedNotLearnedSegmentLocations,
+                        savedNotLearnedHighlightColor: isShowingSingResults ? LyricsView.singMissedColor : colors.savedNotLearned,
                         debugFlags: KiokuDebugOverlayView.Flags(
                             headwordRects: debugHeadwordRects,
                             furiganaRects: debugFuriganaRects,
@@ -457,6 +459,7 @@ extension ReadView {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .bottomTrailing) { singResultsBadge }
         }
         .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

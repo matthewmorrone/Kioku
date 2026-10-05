@@ -13,7 +13,13 @@ public struct SingWordTarget: Sendable, Equatable {
     /// Song time the word starts and ends at, in seconds.
     public let startSec: Double
     public let endSec: Double
-    public init(id: Int, tokens: [Int], startSec: Double, endSec: Double) {
+    /// How far before / after the aligned time the singer may land. Wider at a line's edges,
+    /// where there is no neighbouring word to mistake for this one.
+    public let leadSlackSec: Double
+    public let tailSlackSec: Double
+    public init(id: Int, tokens: [Int], startSec: Double, endSec: Double,
+                leadSlackSec: Double = SingPhonemeScorer.leadSlackSec, tailSlackSec: Double = SingPhonemeScorer.tailSlackSec) {
         self.id = id; self.tokens = tokens; self.startSec = startSec; self.endSec = endSec
+        self.leadSlackSec = leadSlackSec; self.tailSlackSec = tailSlackSec
     }
 }
