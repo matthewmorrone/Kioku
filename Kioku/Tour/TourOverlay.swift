@@ -1,7 +1,7 @@
 import SwiftUI
 
 // Renders the first-visit tour over the whole app window: the screen dimmed except for a rounded
-// cutout around the current target, and a callout card (title, message, step count, Skip) with
+// cutout around the current target, ringed in the accent color, and an accent-filled callout card (title, message, step count, Skip) with
 // an arrow pointing at the cutout. The card goes below the target when there's more room
 // there, above otherwise; a target taking up most of the screen (the Read text) gets the card
 // inside its lower edge, with no arrow. Tapping the card or the dimmed area advances; the last
@@ -10,7 +10,9 @@ struct TourOverlay: View {
     @ObservedObject private var coordinator = TourCoordinator.shared
 
     private let cutoutPadding: CGFloat = 6
-    private let arrowSize = CGSize(width: 20, height: 10)
+    private let arrowSize = CGSize(width: 24, height: 12)
+    // Room between the cutout and the arrow tip, so the arrow doesn't sit on the highlight ring.
+    private let arrowGap: CGFloat = 8
     private let cardWidth: CGFloat = 300
     private let edgeMargin: CGFloat = 16
 
@@ -26,6 +28,11 @@ struct TourOverlay: View {
                     : (cutout.midY < proxy.size.height / 2 ? .below : .above)
                 ZStack(alignment: .topLeading) {
                     dimming(around: cutout, in: proxy.size)
+                    TourHighlightRing(cornerRadius: cornerRadius(for: cutout))
+                        .frame(width: cutout.width, height: cutout.height)
+                        .offset(x: cutout.minX, y: cutout.minY)
+                        // Restarts the pulse on each step rather than carrying it between targets.
+                        .id(step.target)
                     callout(for: step, pointingAt: cutout, placement: placement, in: proxy.size)
                 }
                 .transition(.opacity)
@@ -37,15 +44,21 @@ struct TourOverlay: View {
     // The dark layer with a hole punched around the target. Even-odd fill leaves the hole clear;
     // the whole layer still takes taps, so the highlighted control can't be used mid-tour.
     private func dimming(around cutout: CGRect, in size: CGSize) -> some View {
-        let radius = min(cutout.height, cutout.width) / 2 > 22 ? 14 : min(cutout.height, cutout.width) / 2
+        let radius = cornerRadius(for: cutout)
         return Path { path in
             path.addRect(CGRect(origin: .zero, size: size))
             path.addRoundedRect(in: cutout, cornerSize: CGSize(width: radius, height: radius))
         }
-        .fill(Color.black.opacity(0.6), style: FillStyle(eoFill: true))
+        .fill(Color.black.opacity(0.72), style: FillStyle(eoFill: true))
         .contentShape(Rectangle())
         .onTapGesture { coordinator.advance() }
         .accessibilityHidden(true)
+    }
+
+    // Fully rounded ends for small controls (round buttons stay round), a fixed radius for big areas.
+    private func cornerRadius(for cutout: CGRect) -> CGFloat {
+        let half = min(cutout.height, cutout.width) / 2
+        return half > 22 ? 14 : half
     }
 
     // The card and its arrow, kept inside the screen edges and pointing at the cutout's centre.
@@ -68,8 +81,8 @@ struct TourOverlay: View {
         // Alignment guides place the card from its own measured height, which `.offset` can't see.
         .alignmentGuide(.top) { dimensions in
             switch placement {
-            case .below: -(cutout.maxY + 4)
-            case .above: -(cutout.minY - 4 - dimensions.height)
+            case .below: -(cutout.maxY + arrowGap)
+            case .above: -(cutout.minY - arrowGap - dimensions.height)
             case .inside: -(cutout.maxY - edgeMargin - dimensions.height)
             }
         }
@@ -79,7 +92,7 @@ struct TourOverlay: View {
     // The arrow segment, offset horizontally to sit under (or over) the target.
     private func arrow(flipped: Bool, x: CGFloat) -> some View {
         TourCalloutArrow()
-            .fill(Color(.systemBackground))
+            .fill(Color.accentColor)
             .frame(width: arrowSize.width, height: arrowSize.height)
             .rotationEffect(flipped ? .degrees(180) : .zero)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -92,30 +105,33 @@ struct TourOverlay: View {
         let isLast = coordinator.stepIndex >= coordinator.stepCount - 1
         return VStack(alignment: .leading, spacing: 8) {
             Text(step.title)
-                .font(.headline)
+                .font(.title3.bold())
             Text(step.message)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.9))
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
                 if coordinator.stepCount > 1 {
                     Text("\(coordinator.stepIndex + 1) of \(coordinator.stepCount)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.75))
                 }
                 Spacer()
                 if isLast == false {
                     Button("Skip") { coordinator.finish() }
                         .buttonStyle(.borderless)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
                 }
             }
             .padding(.top, 4)
         }
+        .foregroundStyle(.white)
         .padding(16)
-        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14))
         .contentShape(RoundedRectangle(cornerRadius: 14))
         .onTapGesture { coordinator.advance() }
-        .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
+        .shadow(color: .black.opacity(0.45), radius: 18, y: 6)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
         .accessibilityAction(named: isLast ? "Done" : "Next") { coordinator.advance() }
