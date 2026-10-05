@@ -1,9 +1,8 @@
 import SwiftUI
 import UIKit
 
-// Sing mode's controls in the lyrics popup's top bar: the Sing capsule (beside the Mix / Vocals /
-// Instrumental one), and while listening the Line / Song capsule; plus the brief notice line
-// under the bar (headphones advice, or why Sing couldn't start). The verdict colours themselves
+// Sing mode's row just under the lyrics popup's top bar: the Sing capsule, the Line / Song capsule
+// while listening, and a short notice beside them (headphones advice, or why Sing couldn't start). The verdict colours themselves
 // are drawn by the active-cue card (LyricsView.swift) through its Saved Highlight slots.
 extension LyricsView {
     static let singHeardColor = UIColor.systemGreen
@@ -53,17 +52,25 @@ extension LyricsView {
         }
     }
 
-    // One line under the top bar: a start-up problem, or the headphones advice for a few seconds.
+    // The row under the top bar: Sing's capsules, then a start-up problem or, for a few seconds,
+    // the headphones advice. Hidden for notes without timing (nothing to grade against).
     @ViewBuilder
-    var singNotice: some View {
-        if let message = singSession.statusMessage ?? (singSession.isShowingHeadphonesNotice ? "Headphones recommended: the speaker leaks into the mic." : nil) {
-            Text(message)
-                .scaledFont(size: 11)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.horizontal, 14)
-                .padding(.top, 4)
-                .transition(.opacity)
+    var singRow: some View {
+        if singRomanize != nil, cues.isEmpty == false, isReAligning == false {
+            HStack(spacing: 8) {
+                singControls
+                if let message = singSession.statusMessage ?? (singSession.isShowingHeadphonesNotice ? "Headphones recommended: the speaker leaks into the mic." : nil) {
+                    Text(message)
+                        .scaledFont(size: 11)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                        .transition(.opacity)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 6)
         }
     }
 

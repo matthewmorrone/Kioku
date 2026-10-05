@@ -271,7 +271,7 @@ struct LyricsView: View {
         let belowUpper = max(belowLower, cues.count)
         return VStack(spacing: 0) {
             reAlignBar()
-            singNotice
+            singRow
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .center, spacing: 0) {

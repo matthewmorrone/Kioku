@@ -105,10 +105,6 @@ extension LyricsView {
             // Audio menu: Replace Audio picks a different song file (optionally with srt / TextGrid);
             // Remove Audio deletes the audio and its cues after a confirmation. Hidden mid-run so
             // neither can race the alignment in flight.
-            if isReAligning == false, singRomanize != nil, cues.isEmpty == false {
-                singControls
-            }
-
             if isReAligning == false {
                 Menu {
                     Button("Replace Audio…", systemImage: "waveform") { onReplaceAudio() }
