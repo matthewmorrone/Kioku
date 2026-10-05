@@ -74,12 +74,9 @@ final class KiokuDebugOverlayView: UIView {
             for line in lineGeometry { UIBezierPath(rect: line.furiganaBandRect).fill() }
         }
 
-        // 2. Line-number labels. "L#" pill at the left edge of each headword baseline;
-        //    "R#" pill at the left edge of each ruby baseline. Each label gets an opaque
-        //    dark background so it stays readable over kanji glyphs (the labels overlap
-        //    the first character of every line by design — there's no gutter). The
-        //    label's BASELINE is aligned with the ROW it annotates so the eye can scan
-        //    across to the actual headword / ruby content.
+        // 2. Line-number labels. "L#" pill beside each headword row, "R#" beside each ruby row,
+        //    vertically centred on the row it labels. The 4pt left inset leaves no gutter, so it
+        //    overlaps the first glyph and its background is translucent for the glyph to show through.
         if flags.headwordLineNumbers || flags.rubyLineNumbers {
             let labelFont = UIFont.monospacedSystemFont(ofSize: 11, weight: .bold)
             let padX: CGFloat = 3
@@ -90,9 +87,9 @@ final class KiokuDebugOverlayView: UIView {
                     drawLineNumberPill(
                         text: "L\(index)",
                         font: labelFont,
-                        textColor: .white,
-                        backgroundColor: UIColor.systemBlue.withAlphaComponent(0.92),
-                        topLeft: CGPoint(x: 0, y: line.headwordBandRect.minY),
+                        textColor: .systemBlue,
+                        backgroundColor: UIColor.systemBlue.withAlphaComponent(0.2),
+                        row: line.headwordBandRect,
                         padX: padX,
                         padY: padY,
                         cornerRadius: corner,
@@ -103,9 +100,9 @@ final class KiokuDebugOverlayView: UIView {
                     drawLineNumberPill(
                         text: "R\(index)",
                         font: labelFont,
-                        textColor: .white,
-                        backgroundColor: UIColor.systemPink.withAlphaComponent(0.92),
-                        topLeft: CGPoint(x: 0, y: line.furiganaBandRect.minY),
+                        textColor: .systemPink,
+                        backgroundColor: UIColor.systemPink.withAlphaComponent(0.2),
+                        row: line.furiganaBandRect,
                         padX: padX,
                         padY: padY,
                         cornerRadius: corner,
@@ -228,26 +225,23 @@ final class KiokuDebugOverlayView: UIView {
         }
     }
 
-    // Draws a label string inside a rounded-rect pill with high-contrast text. Used for
-    // the L# / R# line-number annotations so they stay readable when overlapping kanji.
+    // Draws a label string inside a faint rounded-rect pill. Used for the L# / R# line-number
+    // annotations, which overlap each line's first glyph.
     private func drawLineNumberPill(
         text: String,
         font: UIFont,
         textColor: UIColor,
         backgroundColor: UIColor,
-        topLeft: CGPoint,
+        row: CGRect,
         padX: CGFloat,
         padY: CGFloat,
         cornerRadius: CGFloat,
         in ctx: CGContext
     ) {
         let textSize = (text as NSString).size(withAttributes: [.font: font])
-        let pillRect = CGRect(
-            x: topLeft.x,
-            y: topLeft.y,
-            width: ceil(textSize.width) + padX * 2,
-            height: ceil(textSize.height) + padY * 2
-        )
+        let width = ceil(textSize.width) + padX * 2
+        let height = ceil(textSize.height) + padY * 2
+        let pillRect = CGRect(x: 0, y: row.midY - height / 2, width: width, height: height)
         let pillPath = UIBezierPath(roundedRect: pillRect, cornerRadius: cornerRadius)
         ctx.setFillColor(backgroundColor.cgColor)
         ctx.addPath(pillPath.cgPath)

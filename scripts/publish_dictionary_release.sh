@@ -9,6 +9,8 @@
 # afresh and can differ, and the database records which upstream bytes it was
 # built from (build_sources / build_info), which the release notes list.
 #
+# With --dev, publishes to the moving dictionary-dev release instead (see below).
+#
 # Requires: `gh` CLI authenticated with a token that can create releases on
 # this repo (`gh auth status` to check).
 set -euo pipefail
@@ -20,6 +22,26 @@ REPO="matthewmorrone/Kioku"
 ARCHIVE="$ROOT_DIR/Resources/dictionary.sqlite.xz"
 
 NOTES="$ROOT_DIR/Resources/dictionary-release-notes.md"
+
+# --dev [path]: overwrite the moving dictionary-dev release that debug builds follow
+# (DictionaryDownloadManager.devChannelTag) with the given database (default Resources/dictionary.sqlite).
+# No pin, no version bump: the app compares dictionary.sqlite.sha256 with what it has and re-downloads
+# when they differ. The pinned release only moves when an App Store build ships.
+if [[ "${1:-}" == "--dev" ]]; then
+  DEV_SQLITE="${2:-$SQLITE}"
+  DEV_DIR="$(mktemp -d)"
+  trap 'rm -rf "$DEV_DIR"' EXIT
+  echo "→ Compressing $DEV_SQLITE"
+  shasum -a 256 "$DEV_SQLITE" | awk '{print $1}' > "$DEV_DIR/dictionary.sqlite.sha256"
+  xz -6 -T0 -k -c "$DEV_SQLITE" > "$DEV_DIR/dictionary.sqlite.xz"
+  if ! gh release view dictionary-dev --repo "$REPO" > /dev/null 2>&1; then
+    gh release create dictionary-dev --repo "$REPO" --prerelease --title dictionary-dev \
+      --notes "Development dictionary for debug builds of Kioku; overwritten on every publish."
+  fi
+  gh release upload dictionary-dev "$DEV_DIR/dictionary.sqlite.xz" "$DEV_DIR/dictionary.sqlite.sha256" --repo "$REPO" --clobber
+  echo "✓ dictionary-dev now serves $(cat "$DEV_DIR/dictionary.sqlite.sha256")"
+  exit 0
+fi
 
 # Writes the release notes: the checksum pin, the database's license (a compilation of CC BY-SA
 # sources is CC BY-SA 4.0 as a whole), every source that feeds it with its license (read from

@@ -91,6 +91,8 @@ extension ReadView {
         // overrides while AI changes are pending.
         let isEnabled = (document.hasManualSegmentationEdits || document.differsFromDefault || llmCorrection.hasPendingLLMChanges)
             && editModeScroll.isEditMode == false
+        // Segmentation or its furigana pass is still running: the icon becomes a spinner.
+        let isSegmenting = document.segmentationRefreshTask != nil || document.furiganaComputationTask != nil
         return Button {
             if llmCorrection.hasPendingLLMChanges {
                 // Nothing has been written to the document yet — just drop the proposal,
@@ -110,6 +112,9 @@ extension ReadView {
                             .offset(x: 4, y: 4)
                     }
                     .foregroundStyle(Color.red)
+                } else if isSegmenting {
+                    ProgressView()
+                        .controlSize(.small)
                 } else {
                     Image(systemName: "arrow.counterclockwise")
                         .scaledFont(size: 16, weight: .semibold)
@@ -121,7 +126,7 @@ extension ReadView {
         }
         .buttonStyle(PlainButtonStyle())
         .disabled(!isEnabled)
-        .opacity(isEnabled ? 1.0 : 0.5)
+        .opacity(isEnabled || isSegmenting ? 1.0 : 0.5)
         .accessibilityLabel(llmCorrection.hasPendingLLMChanges ? "Reject AI Changes" : "Reset Segmentation")
     }
 

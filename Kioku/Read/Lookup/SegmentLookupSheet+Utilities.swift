@@ -10,7 +10,7 @@ extension SegmentLookupSheet {
     // on an already-open sheet. A split editor opened before then has no costs; called when resources
     // become ready so the open readout fills in by itself instead of forcing the user to reopen it.
     @MainActor
-    func refreshOpenSheetSplitCostsProvider(_ provider: @escaping ([[String]]) -> [Int?]) {
+    func refreshOpenSheetSplitCostsProvider(_ provider: @escaping ([[String]]) -> @Sendable () -> [Int?]) {
         splitCostsReady = true
         splitCostsProvider = provider
         guard let controller = presentedSheetController as? SurfaceSheetViewController else { return }

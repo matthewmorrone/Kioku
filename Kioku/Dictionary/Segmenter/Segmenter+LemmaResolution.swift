@@ -140,13 +140,23 @@ extension Segmenter {
         var fewestSteps: Int?
         for lemma in lemmas where lemma != surface {
             for path in paths[lemma] ?? [] where path.chain.isEmpty == false {
-                if fewestSteps == nil || path.chain.count < fewestSteps! {
-                    fewestSteps = path.chain.count
+                // A potential under further inflection (動けなく: potential + negative) isn't charged
+                // for the potential; a bare potential (おける from 置く) still is, so it doesn't
+                // undercut a dictionary word (における).
+                let counted = path.transitions.filter { Self.uncountedStepGroups.contains($0.label) == false }.count
+                let steps = counted == 0 ? path.transitions.count : counted
+                if fewestSteps == nil || steps < fewestSteps! {
+                    fewestSteps = steps
                 }
             }
         }
         return (lemmas, fewestSteps ?? 0)
     }
+
+    // Rule groups whose steps aren't priced under further inflection: a godan potential (動ける from
+    // 動く) is a verb of its own in UniDic, so 動けなく costs what できなく does rather than a step
+    // more. Path transitions carry normalized group labels.
+    static let uncountedStepGroups: Set<String> = [Deinflector.normalizedRuleLabel("potentialForms")]
 
     // A run of digits (ASCII or full-width) starting at `index`, as a lattice edge of its own. It is
     // offered at every digit even when dictionary words start there, because those words are what go

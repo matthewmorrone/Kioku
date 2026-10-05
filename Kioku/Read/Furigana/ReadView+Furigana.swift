@@ -29,6 +29,7 @@ extension ReadView {
     func performScheduleFuriganaGeneration(for sourceText: String, edges: [LatticeEdge]) {
         StartupTimer.mark("scheduleFuriganaGeneration called (\(edges.count) edges)")
         document.furiganaComputationTask?.cancel()
+        document.furiganaComputationTask = nil
         let currentSurfaceReadingData = surfaceReadingData
         let hasKanjiEdges = edges.contains { edge in
             ScriptClassifier.containsKanji(edge.surface)
@@ -59,6 +60,8 @@ extension ReadView {
                     document.text == sourceText,
                     document.segmentEdges.isEmpty == false
                 else {
+                    // Same ownership rule as the segmentation task: only a live task clears itself.
+                    if Task.isCancelled == false { document.furiganaComputationTask = nil }
                     return
                 }
 
@@ -126,6 +129,7 @@ extension ReadView {
                 // Persist segments with furigana now that readings are fully resolved.
                 rebuildAndPersistSegments(recordRuntime: true)
                 SegmentLookupSheet.shared.refreshOpenSheetReading()
+                document.furiganaComputationTask = nil
             }
         }
     }
@@ -266,7 +270,23 @@ extension ReadView {
                 return isContained && !isSameRange
             }
 
+            // Any existing entry the new one crosses without covering: a narrow per-character reading
+            // landing inside a wider one (さと at 郷 under にしさと at 西郷). Installing it would leave two
+            // overlapping readings over one kanji, so the existing wider entry keeps the span.
+            let overlapsUncovered = resultByLocation.keys.contains { existingLocation in
+                guard coveredLocations.contains(existingLocation) == false,
+                      existingLocation != newLocation,
+                      let existingLength = resultLengthByLocation[existingLocation], existingLength > 0
+                else {
+                    return false
+                }
+                return existingLocation < newEnd && newLocation < existingLocation + existingLength
+            }
+
             if coveredLocations.isEmpty {
+                if overlapsUncovered {
+                    continue
+                }
                 if resultByLocation[newLocation] == nil {
                     resultByLocation[newLocation] = newReading
                     resultLengthByLocation[newLocation] = newLength

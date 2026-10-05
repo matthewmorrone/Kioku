@@ -30,7 +30,8 @@ extension SettingsView {
                 mastered: Array(wordsStore.mastered).sorted(),
                 lifetimeCorrect: wordsStore.lifetimeCorrect,
                 lifetimeAgain: wordsStore.lifetimeAgain,
-                audioAttachments: audioAttachments
+                audioAttachments: audioAttachments,
+                customWords: customWordStore.state
             )
         )
         AppLog.debug(
@@ -145,6 +146,9 @@ extension SettingsView {
         wordListsStore.replaceAll(with: payload.wordLists)
         wordsStore.replaceAll(with: payload.words)
         historyStore.replaceAll(with: payload.history)
+        if let customWords = payload.customWords {
+            customWordStore.replaceAll(with: customWords)
+        }
         // Applies the parallel review arrays on top of the just-restored words. For a backup
         // exported after the ReviewStore/WordsStore merge this just reapplies the same data
         // that `payload.words` already carries; for an older backup (where review data lived

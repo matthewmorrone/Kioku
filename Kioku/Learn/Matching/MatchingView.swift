@@ -203,11 +203,11 @@ struct MatchingView: View {
 
     // Shown when the user has no saved words yet.
     private var emptySavedState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "book").font(.largeTitle)
-            Text("No saved words").font(.headline)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ContentUnavailableView(
+            "No saved words",
+            systemImage: "book",
+            description: Text("Save words from the Read tab to start matching.")
+        )
     }
 
     // Shown after the last board is cleared.

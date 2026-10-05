@@ -21,6 +21,7 @@ struct ContentView: View {
     @StateObject private var wordListsStore = WordListsStore()
     @StateObject private var historyStore = HistoryStore()
     @StateObject private var songBreakdownStore = SongBreakdownStore()
+    @StateObject private var customWordStore = CustomWordStore()
     @State private var selectedReadNote: Note?
     @State private var shouldActivateReadEditMode = false
     @State private var readResources = ReadResources()
@@ -153,6 +154,7 @@ struct ContentView: View {
         .environmentObject(wordListsStore)
         .environmentObject(historyStore)
         .environmentObject(songBreakdownStore)
+        .environmentObject(customWordStore)
         .environmentObject(wotdNavigation)
         .environmentObject(readNoteNavigation)
         .onAppear {
@@ -206,6 +208,11 @@ struct ContentView: View {
         .onChange(of: segmentationStrategySetting) { _, _ in
             rebuildReadResources()
         }
+        // A custom word added, edited or removed: the rebuild writes the new list into the
+        // dictionary first (CustomWordApplier), then re-segments with it.
+        .onChange(of: customWordStore.words) { _, _ in
+            rebuildReadResources()
+        }
         // Validate WOTD scheduling after startup has settled rather than on the critical path.
         .onChange(of: readResources.ready) { _, ready in
             guard ready else { return }
@@ -246,7 +253,7 @@ struct ContentView: View {
         // "dictionary lookup failure must not block editing" failure boundary; dictionaryStore
         // staying nil already degrades dictionary-dependent views gracefully on its own.
         .overlay(alignment: .bottom) {
-            if !dictionaryDownloadManager.isInstalled {
+            if !dictionaryDownloadManager.isInstalled || dictionaryDownloadManager.progress != nil {
                 DictionaryDownloadBanner(downloadManager: dictionaryDownloadManager) {
                     Task { await downloadDictionaryAndRebuildIfNeeded() }
                 }
@@ -265,18 +272,13 @@ struct ContentView: View {
     // itself would also no-op in that case, but without this guard rebuildReadResources() (an
     // expensive full SQLite scan + trie build) would still re-run on every single normal launch,
     // duplicating the rebuild loadReadResourcesIfNeeded() already kicked off moments earlier.
+    // Debug builds first ask the dev release whether it has a newer dictionary.
     private func downloadDictionaryAndRebuildIfNeeded() async {
-        guard !dictionaryDownloadManager.isInstalled else { return }
-        await dictionaryDownloadManager.downloadIfNeeded()
-        if dictionaryDownloadManager.isInstalled {
-            // The pre-download rebuild (onAppear's loadReadResourcesIfNeeded()) already
-            // published readResources.ready = true with a nil dictionaryStore, so
-            // .onChange(of: readResources.ready) already fired once this session. Reset it here
-            // so that onChange's stable-key migration + WOTD refresh — which need the REAL
-            // store, not the placeholder one — fire again once this rebuild republishes ready
-            // with dictionaryStore actually populated, instead of silently no-opping on an
-            // already-true value.
-            readResources.ready = false
+        #if DEBUG
+        await dictionaryDownloadManager.checkForDevUpdate()
+        #endif
+        guard !dictionaryDownloadManager.isInstalled || dictionaryDownloadManager.updateAvailable else { return }
+        if await dictionaryDownloadManager.downloadIfNeeded() {
             rebuildReadResources()
         }
     }
@@ -460,7 +462,25 @@ struct ContentView: View {
     // follow afterwards on a slower path and overwrite the partial state once ready.
     private func rebuildReadResources() {
         let currentRevision = readResources.segmenterRevision
+        let customWords = customWordStore.words
+        let offeredDefaultKeys = Set(customWordStore.offeredDefaults.keys)
         Task.detached(priority: .userInitiated) {
+            // Custom Words go into the dictionary file before anything reads it, replacing the
+            // build's extras entries; defaults a newer dictionary brought go back to the store. A
+            // failure leaves the file as it was: lookups and segmentation work, minus the list.
+            if DictionaryDownloadManager.isInstalled {
+                do {
+                    let newDefaults = try StartupTimer.measure("CustomWordApplier.apply") {
+                        try CustomWordApplier.apply(customWords, offeredDefaultKeys: offeredDefaultKeys, toDatabaseAt: DictionaryDownloadManager.installedDatabaseURL)
+                    }
+                    if newDefaults.isEmpty == false {
+                        await MainActor.run { customWordStore.addDefaults(newDefaults) }
+                    }
+                } catch {
+                    AppLog.error(.dictionary, "applying custom words failed: \(error)")
+                }
+            }
+
             // Stage 1 — fast path: open the read-only SQLite handle so the dictionary search bar is
             // usable, AND build the surface-reading/frequency map (a ~0.3s scan) so the lookup/split
             // frequency readout can resolve scores now, instead of waiting for the slow trie+lexicon.
@@ -508,7 +528,11 @@ struct ContentView: View {
                     surfaceReadingData: result.surfaceReadingData,
                     kanjiReadingFallback: result.kanjiReadingFallback,
                     frequencyRankBySurface: result.frequencyRankBySurface,
-                    ready: true,
+                    // Ready only with a dictionary behind the segmenter. Without one (a fresh
+                    // install whose download hasn't finished) the trie is empty, and the Read tab
+                    // would segment the open note character by character and persist that, after
+                    // which the real dictionary only refreshes furigana over the bad segments.
+                    ready: result.dictionaryStore != nil,
                     segmenterRevision: currentRevision + 1
                 )
                 StartupTimer.mark("readResourcesReady published to UI")

@@ -186,7 +186,7 @@ nonisolated struct FuriganaResolver {
         _ segmentSurface: String,
         surfaceReadingData: SurfaceReadingDataMap
     ) -> String? {
-        guard let readings = surfaceReadingData[segmentSurface]?.readings,
+        guard let readings = listedReadings(segmentSurface, surfaceReadingData: surfaceReadingData),
               readings.isEmpty == false else {
             return nil
         }
@@ -200,6 +200,19 @@ nonisolated struct FuriganaResolver {
         return readings.first(where: { ScriptClassifier.isPureKatakana($0) == false }) ?? readings.first
     }
 
+    // The readings the dictionary lists for a surface, or for its hiragana spelling when the surface
+    // writes its kana in katakana (高慢チキ is listed as 高慢ちき, こうまんちき). The okurigana match
+    // that crops the reading already treats the two scripts alike.
+    static func listedReadings(_ surface: String, surfaceReadingData: SurfaceReadingDataMap) -> [String]? {
+        if let readings = surfaceReadingData[surface]?.readings, readings.isEmpty == false {
+            return readings
+        }
+        guard ScriptClassifier.containsKanji(surface) else { return nil }
+        let hiraganaSpelling = KanaNormalizer.katakanaToHiragana(surface)
+        guard hiraganaSpelling != surface else { return nil }
+        return surfaceReadingData[hiraganaSpelling]?.readings
+    }
+
     // All candidate readings for a surface, ordered the way `readingForSegment` prefers them:
     // non-katakana (hiragana) readings first in rank order, then any pure-katakana readings as a
     // last resort. `candidateReadingsForSegment(...).first` therefore equals `readingForSegment`,
@@ -210,7 +223,7 @@ nonisolated struct FuriganaResolver {
         _ segmentSurface: String,
         surfaceReadingData: SurfaceReadingDataMap
     ) -> [String] {
-        guard let readings = surfaceReadingData[segmentSurface]?.readings,
+        guard let readings = listedReadings(segmentSurface, surfaceReadingData: surfaceReadingData),
               readings.isEmpty == false else {
             return []
         }
@@ -268,6 +281,9 @@ nonisolated struct FuriganaResolver {
                 surfaceReadingData: surfaceReadingData
             )
             for candidate in candidates {
+                if let stemReading = inflectedStemReading(surface: segmentSurface, lemma: furiganaLemmaReference, lemmaReading: candidate) {
+                    return [(reading: stemReading, localStartOffset: runs[0].start, localLength: runs[0].end - runs[0].start)]
+                }
                 if let lemmaCoreReading = firstKanjiRunReading(in: furiganaLemmaReference, using: candidate) {
                     return [
                         (
@@ -288,6 +304,19 @@ nonisolated struct FuriganaResolver {
                 runs: lemmaRuns,
                 surfaceReadingData: surfaceReadingData
             )
+            // The last run carries the inflection: an irregular one (来 of 持って来て, projected from
+            // 持って来る as く) reads by its form, as the single-run path does.
+            if var readings = projectedReadings, let lastRun = runs.last, let lastLemmaRun = lemmaRuns.last,
+               let lastReading = readings.last {
+                let lemmaCharacters = Array(furiganaLemmaReference)
+                let lemmaPiece = String(lemmaCharacters[lastLemmaRun.start...])
+                let lemmaPieceReading = lastReading + String(lemmaCharacters[lastLemmaRun.end...])
+                let surfacePiece = String(Array(segmentSurface)[lastRun.start...])
+                if let stemReading = inflectedStemReading(surface: surfacePiece, lemma: lemmaPiece, lemmaReading: lemmaPieceReading) {
+                    readings[readings.count - 1] = stemReading
+                    projectedReadings = readings
+                }
+            }
         }
 
         if projectedReadings == nil {
@@ -389,6 +418,10 @@ nonisolated struct FuriganaResolver {
         guard let lemma = segmenter.preferredLemma(for: piece), lemma != piece,
               let lemmaReading = FuriganaResolver.readingForSegment(lemma, surfaceReadingData: surfaceReadingData) else {
             return nil
+        }
+        // An irregular stem (来て in 持って来て) reads by its form, not by the crop.
+        if let stemReading = inflectedStemReading(surface: piece, lemma: lemma, lemmaReading: lemmaReading) {
+            return stemReading
         }
         return firstKanjiRunReading(in: lemma, using: lemmaReading)
     }

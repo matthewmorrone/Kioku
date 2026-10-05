@@ -582,16 +582,21 @@ extension ReadView {
     // Prices each candidate cut of the selected segment with the segmenter's own path costs
     // (Segmenter.splitCosts), in the context of the segment's line so the words on either side count
     // exactly as they do in segmentation. The split editor's only source of scores.
-    func splitCostsForCurrentSelectedSegment(_ candidates: [[String]]) -> [Int?] {
+    //
+    // Reads the note on the main thread and returns the scoring as work for the caller to run off it:
+    // each candidate re-prices the whole line, which on a long line took long enough to stall the
+    // split button.
+    func splitCostsForCurrentSelectedSegment(_ candidates: [[String]]) -> @Sendable () -> [Int?] {
         let none = candidates.map { _ in Int?.none }
-        guard let segmentRange = currentMergedSelectionNSRange() else { return none }
+        guard let segmentRange = currentMergedSelectionNSRange() else { return { none } }
         let text = document.text as NSString
-        guard NSMaxRange(segmentRange) <= text.length else { return none }
+        guard NSMaxRange(segmentRange) <= text.length else { return { none } }
         let lineRange = text.paragraphRange(for: segmentRange)
         let line = text.substring(with: lineRange)
         let localRange = NSRange(location: segmentRange.location - lineRange.location, length: segmentRange.length)
-        guard let range = Range(localRange, in: line) else { return none }
-        return segmenter.splitCosts(of: range, in: line, candidates: candidates)
+        guard let range = Range(localRange, in: line) else { return { none } }
+        nonisolated(unsafe) let segmenter = self.segmenter
+        return { segmenter.splitCosts(of: range, in: line, candidates: candidates) }
     }
 
     // Returns the header's dictionary-form subtitle for the current selection, naming every word the

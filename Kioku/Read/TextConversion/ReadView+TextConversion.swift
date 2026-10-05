@@ -62,7 +62,9 @@ extension ReadView {
         }
 
         document.segmentationRefreshTask?.cancel()
+        document.segmentationRefreshTask = nil
         document.furiganaComputationTask?.cancel()
+        document.furiganaComputationTask = nil
         document.segmentLatticeEdges = []
         document.segmentEdges = []
         document.segmentRanges = []

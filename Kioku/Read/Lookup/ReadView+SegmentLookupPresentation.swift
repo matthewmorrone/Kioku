@@ -64,6 +64,13 @@ extension ReadView {
                     .lines.flatMap(\.words) ?? []
                 return await GlossGuesser.guess(surface: surface, lineContext: line, breakdownWords: breakdownWords)
             }
+            // Learn Spelling closes the lookup sheet and opens the form for the word.
+            SegmentLookupSheet.shared.learnSpellingHandler = { surface in
+                SegmentLookupSheet.shared.dismissPopover {
+                    readSheets.learnSpellingSurface = surface
+                    readSheets.isShowingLearnSpelling = true
+                }
+            }
             SegmentLookupSheet.shared.onSheetHeightChanged = {
                 // The word now selected, which the sheet's arrows may have moved off the tapped one.
                 let selectedRect = segmentSelection.selectedSegmentLocation

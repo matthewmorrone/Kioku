@@ -315,8 +315,9 @@ final class KiokuCoreTextView: UIView {
                     let segLine = CTLineCreateWithAttributedString(segAttr as CFAttributedString)
                     let localStart = entry.location - placement.location
                     let localEnd = localStart + entry.length
-                    let xStart = CTLineGetOffsetForStringIndex(segLine, localStart, nil)
-                    let xEnd = CTLineGetOffsetForStringIndex(segLine, localEnd, nil)
+                    let span = KiokuRubyPadding.kanjiSpan(in: segLine, segment: segAttr, localStart: localStart, localEnd: localEnd)
+                    let xStart = span?.start ?? CTLineGetOffsetForStringIndex(segLine, localStart, nil)
+                    let xEnd = span?.end ?? CTLineGetOffsetForStringIndex(segLine, localEnd, nil)
                     let headwordOriginX = placement.originX + placement.leftOverhang + rubyLineShift
                     let kanjiMidXInHeadword = (xStart + xEnd) / 2
                     let kanjiMidX = headwordOriginX + kanjiMidXInHeadword
