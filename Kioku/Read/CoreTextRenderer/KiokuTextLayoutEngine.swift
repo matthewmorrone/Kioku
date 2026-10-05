@@ -280,8 +280,11 @@ final class KiokuTextLayoutEngine {
         let segLine = CTLineCreateWithAttributedString(segAttr as CFAttributedString)
         let localStart = range.location - placement.location
         let localEnd = min(range.location + range.length, placement.location + placement.length) - placement.location
-        let xStart = CTLineGetOffsetForStringIndex(segLine, localStart, nil)
-        let xEnd = CTLineGetOffsetForStringIndex(segLine, localEnd, nil)
+        // Glyph positions, not caret offsets: a caret sits halfway through the previous glyph's
+        // kern, so ruby padding would skew offset-based rects (KiokuRubyPadding.kanjiSpan).
+        let span = KiokuRubyPadding.kanjiSpan(in: segLine, segment: segAttr, localStart: localStart, localEnd: localEnd)
+        let xStart = span?.start ?? CTLineGetOffsetForStringIndex(segLine, localStart, nil)
+        let xEnd = span?.end ?? CTLineGetOffsetForStringIndex(segLine, localEnd, nil)
         // Headword's origin = footprint origin + leftOverhang + lineShift. The headword is offset
         // INTO the footprint by leftOverhang so ruby on the leftmost kanji-run sits at
         // the footprint's left edge instead of overhanging into the margin. lineShift mirrors
@@ -381,8 +384,9 @@ final class KiokuTextLayoutEngine {
                 guard NSIntersectionRange(rubyRange, range).length > 0 else { continue }
                 let rubyLocalStart = rubyLoc - placement.location
                 let rubyLocalEnd = rubyLocalStart + rubyLen
-                let kanjiXStart = CGFloat(CTLineGetOffsetForStringIndex(segLine, rubyLocalStart, nil))
-                let kanjiXEnd = CGFloat(CTLineGetOffsetForStringIndex(segLine, rubyLocalEnd, nil))
+                let span = KiokuRubyPadding.kanjiSpan(in: segLine, segment: segAttr, localStart: rubyLocalStart, localEnd: rubyLocalEnd)
+                let kanjiXStart = span?.start ?? CGFloat(CTLineGetOffsetForStringIndex(segLine, rubyLocalStart, nil))
+                let kanjiXEnd = span?.end ?? CGFloat(CTLineGetOffsetForStringIndex(segLine, rubyLocalEnd, nil))
                 let kanjiCenter = (kanjiXStart + kanjiXEnd) / 2
                 let rubyW = ceil((reading as NSString).size(withAttributes: [.font: furiganaFont]).width)
                 minX = min(minX, kanjiCenter - rubyW / 2)

@@ -52,6 +52,10 @@ extension SettingsView {
             }
         } header: {
             Text("Developer Diagnostics")
+        } footer: {
+            if wordsStore.words.isEmpty {
+                Text("Save some words in the Words tab first — Word of the Day picks from your saved list.")
+            }
         }
 
         // MARK: Debug overlays.

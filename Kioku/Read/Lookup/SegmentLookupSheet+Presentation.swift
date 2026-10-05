@@ -26,6 +26,7 @@ extension SegmentLookupSheet {
         let capturedSplitCostsProvider = self.splitCostsProvider
         let capturedOnSheetHeightChanged = self.onSheetHeightChanged
         let capturedGlossGuessProvider = self.glossGuessProvider
+        let capturedLearnSpellingHandler = self.learnSpellingHandler
         let capturedSheetLemmaInfoProvider = self.sheetLemmaInfoProvider
         let capturedSheetLemmaInfoByReadingProvider = self.sheetLemmaInfoByReadingProvider
         let capturedSheetDictionaryEntryProvider = self.sheetDictionaryEntryProvider
@@ -54,6 +55,7 @@ extension SegmentLookupSheet {
             self.splitCostsProvider = capturedSplitCostsProvider
             self.onSheetHeightChanged = capturedOnSheetHeightChanged
             self.glossGuessProvider = capturedGlossGuessProvider
+            self.learnSpellingHandler = capturedLearnSpellingHandler
             self.sheetLemmaInfoProvider = capturedSheetLemmaInfoProvider
             self.sheetLemmaInfoByReadingProvider = capturedSheetLemmaInfoByReadingProvider
             self.sheetDictionaryEntryProvider = capturedSheetDictionaryEntryProvider
@@ -212,6 +214,7 @@ extension SegmentLookupSheet {
         presentedSheetHeight = nil
         onSheetHeightChanged = nil
         glossGuessProvider = nil
+        learnSpellingHandler = nil
         glossGuessTask?.cancel()
         glossGuessTask = nil
         guessedGlossSurface = nil
@@ -289,7 +292,14 @@ extension SegmentLookupSheet {
 
         isPreparingSheetDismissal = true
         onWillDismiss { [weak self] in
-            self?.presentedSheetController?.dismiss(animated: true)
+            // A dismissal made in code never reaches presentationControllerDidDismiss, so this
+            // completion does its work: without it a swipe-down left the word highlighted.
+            self?.presentedSheetController?.dismiss(animated: true) { [weak self] in
+                guard let self else { return }
+                self.presentedSheetController = nil
+                self.resetSheetPresentationState()
+                self.fireOnDismissIfNeeded()
+            }
         }
         return false
     }

@@ -63,6 +63,31 @@ written so a new session can pick it up cold.
       near-zero real-world risk that Japanese dictionary/user text is already NFC-precomposed.
       Not started; on hold until the user says go (2026-09-26). Measure cold start with
       `StartupTimer` before and after.
+- [ ] **Unknown katakana runs: option A vs B — the user hasn't chosen (2026-10-03).** B is
+      shipped (`68754dba`): a whole-run edge for unknown katakana, and hiragana-only pieces inside a
+      katakana run pay a penalty. It fixes ミンツ and keeps 11 held2k names whole, with no change to
+      held2k cut-throughs (79) or named cases (62/63). A drops those pieces outright: it also
+      fixes カステイラ and ウエファース and keeps 18 names whole, but held2k goes to 81
+      cut-throughs and the named case ナカナイ|ヨ breaks (katakana-for-effect speech becomes one
+      blob). Choosing A means updating that named case, which is a test change: ask first.
+      Possible C: A, but keep the pieces when every piece is a hiragana-read word (ミンツ slips
+      through). The uncertainty item below may make the choice unnecessary.
+- [ ] **Fuzzy katakana lookup, labelled as a guess** — approved 2026-10-02, not built. Old
+      loanword spellings (カステイラ for カステラ, ウエファース for ウエハース) miss JMdict. At lookup
+      time, try regular katakana variants (ファ↔ハ, ティ↔チ, a dropped or extra イ/ー) and show a
+      hit marked "· guess", like the AI gloss guess. Never feeds segmentation.
+- [ ] **Segment uncertainty, then AI correction of only the low-confidence spans** — planned
+      2026-10-02. The segmenter's costs are centi-nats, so: (1) forward–backward over the existing
+      lattice gives each segment a probability summed over all paths; (2) fit one temperature on
+      held2k so "0.8" means right 80% of the time; (3) send only spans below a threshold to the AI
+      correction model, instead of whole lines. Read-only alongside the current path search, so no
+      segmentation change. Targets waiting on it, all near-ties in the キャラメルと飴玉 sample
+      (ours vs wanted, centi-nats): あめ|だ|の 6453 vs だの 6869; お|菓子箱 8397 vs お菓子|箱 8694;
+      おしまい|なさい 4373 vs お|しまい|なさい 5338; ドロップ|ス 4248 vs ドロップス 5673. Also
+      the reading choices of the same kind: 態 in 態をみろ reads たい (should be ざま), 方
+      ほう/かた, 中 なか/ちゅう, 分 ふん/ぶん. Don't retry "prefer the reading that spells a
+      dictionary word with the following kana": measured 2026-10-02 at 87.38% → 86.04% on
+      `score_readings.py`, fixed nothing, broke 18 (short kana strings always spell some word).
 
 ## Testing
 - [ ] **UI automation tests for the core loop** (notes, lookup/save, study, backup). Store-level

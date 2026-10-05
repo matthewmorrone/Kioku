@@ -97,6 +97,7 @@
     }
   },
   "fixedSequences": [
+    {"kanaIn": "ゃあ", "kanaOut": "ゃ", "rulesIn": ["v5", "v1", "vk", "vs", "adj-i", "nu"], "rulesOut": ["v5", "v1", "vk", "vs", "adj-i", "nu"], "note": "a ゃ contraction drawn out with あ (悪けりゃあ, 行かなきゃあ, すりゃあ, 行かにゃあ)", "group": "contractionForms"},
     {"kanaIn": "ないで", "kanaOut": "ない", "rulesIn": ["te"], "rulesOut": ["adj-i"], "note": "ない + で (しないで)", "group": "negativeTeForms"},
     {"kanaIn": "ませんでした", "kanaOut": "ます", "rulesIn": ["masu"], "rulesOut": ["masu"], "note": "ません + でした", "group": "politeForms"},
     {"kanaIn": "たら", "kanaOut": "た", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "た's conditional (なかったら, 行ったら)", "group": "conditionalForms"},

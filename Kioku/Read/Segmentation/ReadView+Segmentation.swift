@@ -198,6 +198,7 @@ extension ReadView {
             segmentSelection.illegalMergeBoundaryLocation = nil
             segmentSelection.illegalMergeFlashTask?.cancel()
             document.furiganaComputationTask?.cancel()
+            document.furiganaComputationTask = nil
             document.segmentLatticeEdges = []
             document.segmentEdges = []
             document.segmentRanges = []
@@ -237,6 +238,9 @@ extension ReadView {
                     document.segments == persistedSegments,
                     editModeScroll.isEditMode == false
                 else {
+                    // Stale result: clear the task so the reset button's spinner stops. A cancelled
+                    // task was replaced by a newer one, which owns the property now.
+                    if Task.isCancelled == false { document.segmentationRefreshTask = nil }
                     return
                 }
 

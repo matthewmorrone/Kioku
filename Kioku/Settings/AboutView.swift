@@ -11,9 +11,13 @@ struct AboutView: View {
 
     var body: some View {
         Form {
-            Section("Kioku") {
+            Section {
                 LabeledContent("Version", value: Attributions.versionString())
                 LabeledContent("Dictionary", value: dictionaryVersionString)
+            } header: {
+                Text("Kioku")
+            } footer: {
+                Text("A Japanese reading and vocabulary companion. Built with the open datasets and libraries listed below — without them this app wouldn't exist.")
             }
 
             Section("Dictionary Data") {
@@ -64,7 +68,10 @@ struct AboutView: View {
         guard let installedTag = DictionaryDownloadManager.installedReleaseTag else {
             return "Not downloaded"
         }
-        if installedTag == DictionaryDownloadManager.releaseTag {
+        if let devSHA256 = DictionaryDownloadManager.installedDevSHA256 {
+            return "\(installedTag) \(devSHA256.prefix(7))"
+        }
+        if installedTag == DictionaryDownloadManager.channelTag {
             return installedTag
         }
         return "\(installedTag) (update pending)"

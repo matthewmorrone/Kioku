@@ -129,7 +129,7 @@ struct CSVImportView: View {
                 EmptyView()
             case .existing:
                 if wordListsStore.lists.isEmpty {
-                    Text("No lists yet.")
+                    Text("No lists yet. Create one first.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } else {

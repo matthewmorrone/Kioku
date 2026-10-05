@@ -22,6 +22,9 @@ nonisolated struct AppBackupPayload: Codable {
     // Audio file bytes, SRT text, and cues for notes that have audio attachments.
     // Empty array when no audio attachments exist.
     var audioAttachments: [AudioAttachmentBackup]
+    // The Custom Words list and the defaults already offered. nil in backups made before it
+    // existed, which leave the list as it is on restore.
+    var customWords: CustomWordStoreState?
 
     // Creates a full backup payload from the current in-memory stores.
     init(
@@ -38,7 +41,8 @@ nonisolated struct AppBackupPayload: Codable {
         mastered: [Int64] = [],
         lifetimeCorrect: Int,
         lifetimeAgain: Int,
-        audioAttachments: [AudioAttachmentBackup] = []
+        audioAttachments: [AudioAttachmentBackup] = [],
+        customWords: CustomWordStoreState? = nil
     ) {
         self.version = version
         self.exportedAt = exportedAt
@@ -54,12 +58,13 @@ nonisolated struct AppBackupPayload: Codable {
         self.lifetimeCorrect = lifetimeCorrect
         self.lifetimeAgain = lifetimeAgain
         self.audioAttachments = audioAttachments
+        self.customWords = customWords
     }
 
     private enum CodingKeys: String, CodingKey {
         case version, exportedAt, notes, words, wordLists, history
         case reviewStats, markedWrong, learned, notLearned, mastered, lifetimeCorrect, lifetimeAgain
-        case audioAttachments
+        case audioAttachments, customWords
     }
 
     // Custom decoder so version-1 backups (no audioAttachments key) decode cleanly.
@@ -79,5 +84,6 @@ nonisolated struct AppBackupPayload: Codable {
         lifetimeCorrect = try c.decode(Int.self, forKey: .lifetimeCorrect)
         lifetimeAgain = try c.decode(Int.self, forKey: .lifetimeAgain)
         audioAttachments = (try? c.decode([AudioAttachmentBackup].self, forKey: .audioAttachments)) ?? []
+        customWords = try? c.decode(CustomWordStoreState.self, forKey: .customWords)
     }
 }

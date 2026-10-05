@@ -74,6 +74,7 @@ extension ReadView {
             .onDisappear {
                 // Flushes any pending edit persistence before leaving the read screen.
                 document.segmentationRefreshTask?.cancel()
+                document.segmentationRefreshTask = nil
                 flushPendingNotePersistenceIfNeeded()
             }
             .onChange(of: scenePhase) { _, newPhase in
@@ -130,7 +131,9 @@ extension ReadView {
                     segmentSelection.illegalMergeBoundaryLocation = nil
                     segmentSelection.illegalMergeFlashTask?.cancel()
                     document.segmentationRefreshTask?.cancel()
+                    document.segmentationRefreshTask = nil
                     document.furiganaComputationTask?.cancel()
+                    document.furiganaComputationTask = nil
                     document.segmentLatticeEdges = []
                     document.segmentEdges = []
                     document.segmentRanges = []
@@ -201,7 +204,9 @@ extension ReadView {
                     segmentSelection.illegalMergeBoundaryLocation = nil
                     segmentSelection.illegalMergeFlashTask?.cancel()
                     document.segmentationRefreshTask?.cancel()
+                    document.segmentationRefreshTask = nil
                     document.furiganaComputationTask?.cancel()
+                    document.furiganaComputationTask = nil
                     document.segmentLatticeEdges = []
                     document.segmentEdges = []
                     document.segmentRanges = []
@@ -386,6 +391,14 @@ extension ReadView {
         // `selectedNote` binding: ReadView's load handler consumes `selectedNote` (sets it
         // to nil) once the note has been loaded into `text` / `activeNoteID`, so reading
         // the binding here would always see nil and render an empty sheet.
+        .sheet(isPresented: $readSheets.isShowingLearnSpelling) {
+            CustomWordEditorView(
+                existing: nil,
+                spelling: readSheets.learnSpellingSurface,
+                dictionaryStore: dictionaryStore,
+                onFinish: { readSheets.isShowingLearnSpelling = false }
+            )
+        }
         .sheet(isPresented: $readSheets.isShowingTextConversion) {
             TextConversionSheet(
                 proposals: $readSheets.textConversionProposals,

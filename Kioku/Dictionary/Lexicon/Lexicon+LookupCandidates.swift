@@ -8,8 +8,9 @@ nonisolated extension Lexicon {
     static let maxLookupCandidates = 6
 
     // The words `surface` can be, best first. The first row is the engine's own pick (its top lemma's
-    // most frequent entry); after it, each other lemma's most frequent entry in lemma order, then the
-    // remaining ranked entries by frequency. An entry only counts when it conjugates the way the
+    // best entry); after it, each other lemma's best entry in lemma order, then the remaining entries
+    // by frequency. "Best" is the most frequent, except that for a kana lemma the words written in
+    // kana come first and are listed even without a rank (isWrittenInKana). An entry only counts when it conjugates the way the
     // chain reaching it claims: いった reaches いる by a godan rule, so 要る is listed and 居る is not.
     // The surface's own headwords are always possibilities too, even when the engine reads the form
     // as a conjugation: きた is 来る's past and also 北.
@@ -29,7 +30,13 @@ nonisolated extension Lexicon {
                         || ConjugationClass.grammars(forPOSStrings: entry.senses.compactMap(\.pos)).isDisjoint(with: grammars) == false
                 }
                 .filter { seenEntryIDs.insert($0.entryId).inserted }
-                .sorted { ($0.frequencyRank ?? Int.max) < ($1.frequencyRank ?? Int.max) }
+                .sorted { lhs, rhs in
+                    // A kana surface is first the words written in kana: the copula だ (no kanji
+                    // form, and no frequency rank) before 打 and 駄, which are only read だ.
+                    let lhsKana = isWrittenInKana(lhs, surface: lemma), rhsKana = isWrittenInKana(rhs, surface: lemma)
+                    if lhsKana != rhsKana { return lhsKana }
+                    return (lhs.frequencyRank ?? Int.max) < (rhs.frequencyRank ?? Int.max)
+                }
             for (index, entry) in entries.enumerated() {
                 let candidate = LookupCandidate(
                     lemma: lemma,
@@ -39,13 +46,22 @@ nonisolated extension Lexicon {
                 )
                 if index == 0 {
                     leaders.append(candidate)
-                } else if entry.frequencyRank != nil {
+                } else if entry.frequencyRank != nil || isWrittenInKana(entry, surface: lemma) {
                     others.append(candidate)
                 }
             }
         }
         others.sort { ($0.entry.frequencyRank ?? Int.max) < ($1.entry.frequencyRank ?? Int.max) }
         return Array((leaders + others).prefix(Self.maxLookupCandidates))
+    }
+
+    // True when `surface` is kana and the entry is a word normally written that way: no kanji form,
+    // or JMdict's "usually written using kana alone" (uk) on a sense. Such entries are what a kana
+    // surface most likely is, ranked or not; a kanji word that merely reads the same is not.
+    private func isWrittenInKana(_ entry: DictionaryEntry, surface: String) -> Bool {
+        guard ScriptClassifier.containsKanji(surface) == false else { return false }
+        if entry.kanjiForms.isEmpty { return true }
+        return entry.senses.contains { ($0.misc ?? "").split(separator: ",").contains("uk") }
     }
 
     // The candidate to show before the user picks, or nil when the form is genuinely ambiguous.

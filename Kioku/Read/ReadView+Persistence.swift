@@ -33,7 +33,9 @@ extension ReadView {
             }
 
             document.segmentationRefreshTask?.cancel()
+            document.segmentationRefreshTask = nil
             document.furiganaComputationTask?.cancel()
+            document.furiganaComputationTask = nil
             llmCorrection.llmCorrectionTask?.cancel()
             document.isLoadingSelectedNote = true
             document.activeNoteID = nil
@@ -74,7 +76,9 @@ extension ReadView {
         }
 
         document.segmentationRefreshTask?.cancel()
+        document.segmentationRefreshTask = nil
         document.furiganaComputationTask?.cancel()
+        document.furiganaComputationTask = nil
         llmCorrection.llmCorrectionTask?.cancel()
         llmCorrection.pendingLLMChangedLocations = []
         llmCorrection.pendingLLMChangedReadingLocations = []

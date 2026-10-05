@@ -244,6 +244,30 @@ enum KiokuCoreTextAttributedStringBuilder {
                     reading: reading
                 ))
 
+                // Intra-segment spacing, in both layout modes: ruby wider than its kanji never
+                // overhangs kana of its own segment. Kern on the character before the run pushes
+                // the kanji right; kern on the run's last character pushes the following kana
+                // away, recorded under KiokuRubyPadding.key so ruby centring can discount it.
+                if inputs.isRubySpacingEnabled,
+                   let containing = segmentNSRanges.first(where: { NSLocationInRange(kanjiLoc, $0) }) {
+                    let kanjiW = ceil((kanjiText as NSString).size(withAttributes: [.font: baseFont]).width)
+                    let rubyW = ceil((reading as NSString).size(withAttributes: [.font: furiganaFont]).width)
+                    let overhang = max(0, ceil((rubyW - kanjiW) / 2))
+                    if overhang > 0.5 {
+                        let runLastIdx = kanjiLoc + kanjiLen - 1
+                        if runLastIdx < containing.location + containing.length - 1 {
+                            let kern = (result.attribute(.kern, at: runLastIdx, effectiveRange: nil) as? CGFloat) ?? inputs.kerning
+                            result.addAttribute(.kern, value: kern + overhang, range: NSRange(location: runLastIdx, length: 1))
+                            result.addAttribute(KiokuRubyPadding.key, value: overhang, range: NSRange(location: runLastIdx, length: 1))
+                        }
+                        if kanjiLoc > containing.location {
+                            let beforeIdx = kanjiLoc - 1
+                            let kern = (result.attribute(.kern, at: beforeIdx, effectiveRange: nil) as? CGFloat) ?? inputs.kerning
+                            result.addAttribute(.kern, value: kern + overhang, range: NSRange(location: beforeIdx, length: 1))
+                        }
+                    }
+                }
+
                 // Inter-segment spacing: when ruby is wider than its kanji, BOTH sides
                 // overhang the kanji. Push gap into the adjacent segment boundaries so
                 // okurigana stays glued to its kanji:
@@ -281,7 +305,7 @@ enum KiokuCoreTextAttributedStringBuilder {
                                 && other.location < lineEnd
                                 && other.length > 0
                         }
-                        if hasMeaningfulFollower {
+                        if hasMeaningfulFollower, kanjiLoc + kanjiLen == containing.location + containing.length {
                             let tailRange = NSRange(location: tailIdx, length: 1)
                             let tailKern = (result.attribute(.kern, at: tailIdx, effectiveRange: nil) as? CGFloat) ?? inputs.kerning
                             result.addAttribute(.kern, value: tailKern + overhang, range: tailRange)
