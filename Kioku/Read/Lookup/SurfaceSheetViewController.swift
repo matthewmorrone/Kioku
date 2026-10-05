@@ -296,9 +296,24 @@ final class SurfaceSheetViewController: UIViewController {
         guard let lemmaLabel else { return }
         let info = sheet?.currentSheetLemmaInfo
         let show = info != nil && info?.lemma != currentSurface
-        lemmaLabel.attributedText = show ? info.map { NSAttributedString(string: $0.lemma) } : nil
+        lemmaLabel.attributedText = show ? info.map { lemmaLine(lemma: $0.lemma, chain: $0.chain) } : nil
         lemmaLabel.isHidden = !show
         syncFuriganaToCurrentIndex()
+    }
+
+    // The lemma under the headword, followed by the inflection it is in when that has a name
+    // (言う  desiderative · negative), so an inflected form never shows as its bare lemma. A line
+    // naming helper words (起こる + そう) already says what was added and gets no caption.
+    private func lemmaLine(lemma: String, chain: [String]) -> NSAttributedString {
+        let line = NSMutableAttributedString(string: lemma)
+        let form = InflectionFormNames.describe(chain)
+        if form.isEmpty == false, lemma.contains(" + ") == false {
+            line.append(NSAttributedString(
+                string: "  \(form)",
+                attributes: [.font: UIFont.preferredFont(forTextStyle: .footnote), .foregroundColor: UIColor.tertiaryLabel]
+            ))
+        }
+        return line
     }
 
     // Presents the custom reading prompt for the header row tap gesture. Uses

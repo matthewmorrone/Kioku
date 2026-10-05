@@ -81,6 +81,10 @@ struct WordDetailView: View {
     // the header renders a chip strip; otherwise it falls back to the single-sentence
     // `summary`. Computed in loadDisplayData; nil for non-derived words. See DerivationAnalyzer.
     @State var derivation: DerivationAnalyzer.Result? = nil
+    // What an inflected or helper-word surface means as a whole (起こりそう → "seems likely to
+    // happen"), the same CompositeGlossGuesser answer the lookup sheet shows. nil for a dictionary
+    // form, while pending, or when the device can't make a guess.
+    @State var compositeGloss: String? = nil
     @State var kanjiInfos: [KanjiInfo] = []
     @State var relatedEntries: [DictionaryEntry] = []
     @State var loanwordSources: [LoanwordSource] = []
@@ -280,6 +284,9 @@ struct WordDetailView: View {
                     return "\(parts.base) + \(parts.auxiliary)"
                 }
                 if surfaceIsBaseForm { return nil }
+                // Helper words folded into the form (起こりそう → 起こる + そう), named like the
+                // lookup sheet names them.
+                if let composed = lexicon?.lemmaWithHelpers(surface: word.surface) { return composed }
                 if ScriptClassifier.containsKanji(word.surface) == false {
                     return entry?.kanaForms.first?.text
                 }
@@ -362,10 +369,19 @@ struct WordDetailView: View {
                 .overlay(alignment: .leading) { readingSwitcherChevron(.previous) }
                 .overlay(alignment: .trailing) { readingSwitcherChevron(.next) }
 
+                // The whole form's meaning (言いたくない → to not want to say), tagged as a guess
+                // like the lookup sheet's.
+                if let compositeGloss {
+                    (Text(compositeGloss) + Text("  ·  guess").font(.caption).foregroundStyle(.tertiary))
+                        .font(.subheadline)
+                        .padding(.horizontal, 16)
+                }
+
                 // Plain-text gloss line for compound verbs, above the badge row — e.g.
                 // "to search for + continue ~ing (auxiliary)". Falls back to the bare lemma
                 // form when a gloss wasn't resolvable so the line stays readable either way.
-                if let parts = derivation?.compoundVerbParts {
+                // The whole-form guess above says the same thing better when there is one.
+                if compositeGloss == nil, let parts = derivation?.compoundVerbParts {
                     Text("\(parts.baseGloss ?? parts.base) + \(parts.auxiliaryGloss ?? parts.auxiliary) (auxiliary)")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -435,6 +451,9 @@ struct WordDetailView: View {
             }
             .padding(.top, 24)
             .padding(.bottom, 16)
+            .task(id: "\(word.surface)|\(lemma ?? "")|\(entry?.entryId ?? 0)") {
+                compositeGloss = await guessCompositeGloss(lemmaLine: lemma, entry: entry)
+            }
 
             ScrollViewReader { proxy in
             List {

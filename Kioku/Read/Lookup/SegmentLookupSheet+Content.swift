@@ -115,8 +115,8 @@ extension SegmentLookupSheet {
     }
 
     // A guessed gloss, styled like a primary sense with a "guess" tag where a sense shows its part
-    // of speech.
-    private func makeGuessedGlossLabel(_ gloss: String) -> UILabel {
+    // of speech. Also the whole-form meaning above an inflected word's senses.
+    func makeGuessedGlossLabel(_ gloss: String) -> UILabel {
         let line = NSMutableAttributedString(
             string: gloss,
             attributes: [.font: UIFont.systemFont(ofSize: 15), .foregroundColor: UIColor.label]
@@ -203,6 +203,11 @@ extension SegmentLookupSheet {
 
         // Every word an ambiguous form can be (いった → 言う / 行く / 要る), above the shown word's senses.
         addLookupCandidateRows(to: middleContentStack, parent: parent)
+
+        // What the whole form means (言いたくない → to not want to say), above the lemma's senses.
+        if let surface {
+            addCompositeGloss(for: surface, primarySense: visibleSenses[0], to: middleContentStack, parent: parent)
+        }
 
         // Compact most-common-meanings list: JMdict orders senses by commonness, so the top
         // senses in array order are the word's dominant meanings. The primary sense renders

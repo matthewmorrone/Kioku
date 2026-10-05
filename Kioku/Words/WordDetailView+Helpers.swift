@@ -337,6 +337,21 @@ extension WordDetailView {
 
     }
 
+    // The whole-form meaning for the header (CompositeGlossGuesser), asked with the lemma line the
+    // header shows, the inflection it names and the entry's primary sense. nil when the surface is
+    // its own dictionary form, and until the entry has loaded so the request carries its sense.
+    func guessCompositeGloss(lemmaLine: String?, entry: DictionaryEntry?) async -> String? {
+        guard let lemmaLine, lemmaLine != word.surface, let entry else { return nil }
+        let form = InflectionFormNames.describe(lexicon?.inflectionInfo(surface: word.surface)?.chain ?? [])
+        let baseGloss = entry.senses.first?.glosses.prefix(2).joined(separator: "; ")
+        return await CompositeGlossGuesser.guess(
+            surface: word.surface,
+            lemmaLine: lemmaLine,
+            formDescription: form.isEmpty ? nil : form,
+            baseGloss: baseGloss?.isEmpty == false ? baseGloss : nil
+        )
+    }
+
     // Maps ISO 639-2/B language codes to display names for common loanword source languages.
     func languageName(for code: String) -> String {
         let map: [String: String] = [
