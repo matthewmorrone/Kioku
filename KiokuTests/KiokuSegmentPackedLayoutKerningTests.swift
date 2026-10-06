@@ -66,7 +66,7 @@ final class KiokuSegmentPackedLayoutKerningTests: XCTestCase {
     // Computes where the ruby's left edge will actually render given the placement.
     // Matches the renderer's `drawSegmentPacked` math exactly:
     //   headwordOriginX = placement.originX + placement.leftOverhang
-    //   kanjiCenter     = headwordOriginX + (CT offset at kanjiLoc + CT offset at kanjiEnd) / 2
+    //   kanjiCenter     = headwordOriginX + midpoint of the kanji's glyph span (KiokuRubyPadding.kanjiSpan)
     //   rubyLeft        = kanjiCenter - rubyWidth / 2
     private func renderedRubyLeftEdge(
         text: String,
@@ -78,8 +78,9 @@ final class KiokuSegmentPackedLayoutKerningTests: XCTestCase {
     ) -> CGFloat {
         let attributed = makeAttributed(text, kerning: kerning)
         let segLine = CTLineCreateWithAttributedString(attributed as CFAttributedString)
-        let xStart = CGFloat(CTLineGetOffsetForStringIndex(segLine, kanjiLocation, nil))
-        let xEnd = CGFloat(CTLineGetOffsetForStringIndex(segLine, kanjiLocation + kanjiLength, nil))
+        let span = KiokuRubyPadding.kanjiSpan(in: segLine, segment: attributed, localStart: kanjiLocation, localEnd: kanjiLocation + kanjiLength)
+        let xStart = span?.start ?? CGFloat(CTLineGetOffsetForStringIndex(segLine, kanjiLocation, nil))
+        let xEnd = span?.end ?? CGFloat(CTLineGetOffsetForStringIndex(segLine, kanjiLocation + kanjiLength, nil))
         let kanjiMidInHeadword = (xStart + xEnd) / 2
         let headwordOriginX = placement.originX + placement.leftOverhang
         let kanjiMidX = headwordOriginX + kanjiMidInHeadword
