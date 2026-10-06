@@ -65,14 +65,6 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // `nil` leaves the previous track's title in place, which never happens in practice since
     // `load()` is always called with one before playback can start.
     private var nowPlayingTitle: String?
-    // Furigana runs per cue (index-aligned with `cues`) for the lyrics Live Activity, supplied by
-    // the Read screen's LyricsActivityRubyFeeder since the furigana tables live with the note.
-    // Empty or mismatched → the activity falls back to the cue's plain text.
-    var cueRubyRuns: [[LyricsActivityRubyRun]] = [] {
-        didSet { syncLyricsActivity() }
-    }
-    private let lyricsActivity = LyricsLiveActivityController()
-
     override init() {
         super.init()
         configureAudioSession()
@@ -92,10 +84,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // elapsed time between updates from those two values, so this doesn't need to run on the
     // 50ms polling timer.
     private func updateNowPlayingInfo() {
-        syncLyricsActivity()
-        // While the lyrics Live Activity is up it carries the line, the timer and the transport
-        // buttons, so the Now Playing card would only duplicate it.
-        guard let player, lyricsActivity.isShowing == false else {
+        guard let player else {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             return
         }
@@ -124,40 +113,8 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     private func nowPlayingLyricLine() -> String? {
         guard AudioSettings.lyricsOnNowPlayingEnabled,
               let index = activeCueIndex, index >= 0, index < cues.count else { return nil }
-        let firstLine = LyricsActivityRubyBuilder.firstLine(of: cues[index].text)
+        let firstLine = LyricCueLine.firstLine(of: cues[index].text)
         return firstLine.isEmpty ? nil : firstLine
-    }
-
-    // Pushes the current line and play state to the lyrics Live Activity. Rides along with every
-    // Now Playing refresh (play, pause, seek, stop, line change), which are exactly the moments
-    // the activity's content can change; the activity controller drops unchanged states.
-    private func syncLyricsActivity() {
-        lyricsActivity.sync(title: nowPlayingTitle, state: lyricsActivityState())
-    }
-
-    // The Live Activity's content for the active cue, or nil when nothing is loaded or no cue is
-    // active (which ends the activity). The next line skips blank cues so the preview isn't empty.
-    private func lyricsActivityState() -> LyricsActivityState? {
-        guard player != nil, let index = activeCueIndex, index >= 0, index < cues.count else { return nil }
-        // Runs built for a different cue list (the feeder hasn't caught up with a new note yet)
-        // are ignored rather than risk pairing a line with another line's furigana.
-        let runs = cueRubyRuns.count == cues.count ? cueRubyRuns[index] : []
-        let line = runs.isEmpty
-            ? LyricsActivityRubyBuilder.plainRuns(LyricsActivityRubyBuilder.firstLine(of: cues[index].text))
-            : runs
-        let nextLine = cues[(index + 1)...]
-            .lazy
-            .map { LyricsActivityRubyBuilder.firstLine(of: $0.text) }
-            .first { $0.isEmpty == false }
-        // The start date is rounded to a quarter second: it's derived from the live position, so
-        // without rounding every Now Playing refresh would produce a slightly different state and
-        // spend an ActivityKit update on a change nobody can see.
-        let position = player?.currentTime ?? 0
-        let start = isPlaying
-            ? Date(timeIntervalSinceReferenceDate: ((Date().timeIntervalSinceReferenceDate - position) * 4).rounded() / 4)
-            : nil
-        return LyricsActivityState(line: line, nextLine: nextLine, isPlaying: isPlaying,
-                                   playbackStart: start, elapsed: position, duration: duration)
     }
 
     // Picks the session category based on the user's Background Audio setting.
@@ -191,9 +148,6 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // Throws if AVAudioPlayer cannot open the file.
     func load(audioURL: URL, cues: [SubtitleCue], title: String? = nil) throws {
         stop()
-        // The activity's title is fixed at creation, so a new track gets a fresh activity on
-        // its first play rather than an update.
-        lyricsActivity.end()
         let newPlayer = try AVAudioPlayer(contentsOf: audioURL)
         newPlayer.prepareToPlay()
         player = newPlayer

@@ -10,7 +10,6 @@ extension LyricsView {
             Toggle("Background Audio", isOn: $backgroundPlaybackEnabled)
             Toggle("Continue to Next Note", isOn: $autoAdvanceToNextNoteEnabled)
             Toggle("Lyrics on Lock Screen", isOn: $lyricsOnNowPlayingEnabled)
-            Toggle("Lyrics Live Activity", isOn: $lyricsLiveActivityEnabled)
 
             Picker("Track By", selection: $quickGranularityRaw) {
                 Text("Line").tag(LyricsHighlightGranularity.sentence.rawValue)

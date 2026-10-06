@@ -10,18 +10,6 @@
 		C0FFEE00000000000000000E /* KiokuWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000002 /* KiokuWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C0FFEE000000000000000011 /* WordOfTheDayMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */; };
 		C0FFEE000000000000000012 /* WordOfTheDayMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */; };
-		C0FFEE000000000000000016 /* LyricsActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000015 /* LyricsActivityAttributes.swift */; };
-		C0FFEE000000000000000017 /* LyricsActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000015 /* LyricsActivityAttributes.swift */; };
-		C0FFEE000000000000000021 /* LyricsActivityCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000020 /* LyricsActivityCommand.swift */; };
-		C0FFEE000000000000000022 /* LyricsActivityCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000020 /* LyricsActivityCommand.swift */; };
-		C0FFEE000000000000000024 /* LyricsActivityCommandRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000023 /* LyricsActivityCommandRelay.swift */; };
-		C0FFEE000000000000000025 /* LyricsActivityCommandRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000023 /* LyricsActivityCommandRelay.swift */; };
-		C0FFEE000000000000000027 /* LyricsTogglePlaybackIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000026 /* LyricsTogglePlaybackIntent.swift */; };
-		C0FFEE000000000000000028 /* LyricsTogglePlaybackIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000026 /* LyricsTogglePlaybackIntent.swift */; };
-		C0FFEE00000000000000002A /* LyricsPreviousLineIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000029 /* LyricsPreviousLineIntent.swift */; };
-		C0FFEE00000000000000002B /* LyricsPreviousLineIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000029 /* LyricsPreviousLineIntent.swift */; };
-		C0FFEE00000000000000002D /* LyricsNextLineIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE00000000000000002C /* LyricsNextLineIntent.swift */; };
-		C0FFEE00000000000000002E /* LyricsNextLineIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE00000000000000002C /* LyricsNextLineIntent.swift */; };
 		E32B0CE32F57BC070020F5C2 /* data-manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDE2F57BC070020F5C2 /* data-manifest.json */; };
 		E3D1C7002F4DFDB8005FDA11 /* dictionary.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */; };
 		E3FBBF9B303F516D009664F4 /* SwiftDagre in Frameworks */ = {isa = PBXBuildFile; productRef = DA6ADE0022FC000040000002 /* SwiftDagre */; };
@@ -70,12 +58,6 @@
 
 /* Begin PBXFileReference section */
 		C0FFEE000000000000000002 /* KiokuWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KiokuWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		C0FFEE000000000000000015 /* LyricsActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsActivityAttributes.swift; sourceTree = "<group>"; };
-		C0FFEE000000000000000020 /* LyricsActivityCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsActivityCommand.swift; sourceTree = "<group>"; };
-		C0FFEE000000000000000023 /* LyricsActivityCommandRelay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsActivityCommandRelay.swift; sourceTree = "<group>"; };
-		C0FFEE000000000000000026 /* LyricsTogglePlaybackIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsTogglePlaybackIntent.swift; sourceTree = "<group>"; };
-		C0FFEE000000000000000029 /* LyricsPreviousLineIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsPreviousLineIntent.swift; sourceTree = "<group>"; };
-		C0FFEE00000000000000002C /* LyricsNextLineIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsNextLineIntent.swift; sourceTree = "<group>"; };
 		C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordOfTheDayMirror.swift; sourceTree = "<group>"; };
 		E3070AE82F4DFDB6005FD323 /* Kioku Reader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Kioku Reader.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		E3070AF52F4DFDB8005FD323 /* KiokuTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KiokuTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -167,12 +149,6 @@
 		C0FFEE00000000000000000F /* Shared */ = {
 			isa = PBXGroup;
 			children = (
-				C0FFEE000000000000000015 /* LyricsActivityAttributes.swift */,
-				C0FFEE000000000000000020 /* LyricsActivityCommand.swift */,
-				C0FFEE000000000000000023 /* LyricsActivityCommandRelay.swift */,
-				C0FFEE000000000000000026 /* LyricsTogglePlaybackIntent.swift */,
-				C0FFEE000000000000000029 /* LyricsPreviousLineIntent.swift */,
-				C0FFEE00000000000000002C /* LyricsNextLineIntent.swift */,
 				C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */,
 			);
 			path = Shared;
@@ -479,12 +455,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				C0FFEE000000000000000012 /* WordOfTheDayMirror.swift in Sources */,
-				C0FFEE000000000000000017 /* LyricsActivityAttributes.swift in Sources */,
-				C0FFEE000000000000000021 /* LyricsActivityCommand.swift in Sources */,
-				C0FFEE000000000000000024 /* LyricsActivityCommandRelay.swift in Sources */,
-				C0FFEE000000000000000027 /* LyricsTogglePlaybackIntent.swift in Sources */,
-				C0FFEE00000000000000002A /* LyricsPreviousLineIntent.swift in Sources */,
-				C0FFEE00000000000000002D /* LyricsNextLineIntent.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -493,12 +463,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				C0FFEE000000000000000011 /* WordOfTheDayMirror.swift in Sources */,
-				C0FFEE000000000000000016 /* LyricsActivityAttributes.swift in Sources */,
-				C0FFEE000000000000000022 /* LyricsActivityCommand.swift in Sources */,
-				C0FFEE000000000000000025 /* LyricsActivityCommandRelay.swift in Sources */,
-				C0FFEE000000000000000028 /* LyricsTogglePlaybackIntent.swift in Sources */,
-				C0FFEE00000000000000002B /* LyricsPreviousLineIntent.swift in Sources */,
-				C0FFEE00000000000000002E /* LyricsNextLineIntent.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -732,8 +696,6 @@
 				INFOPLIST_FILE = Kioku/Info-URLTypes.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
-				INFOPLIST_KEY_NSSupportsLiveActivitiesFrequentUpdates = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to capture text for OCR into a new note.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Sing mode listens to you sing along so it can show which lyrics you got. Nothing is recorded or saved.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Allow speech recognition to transcribe imported audio into notes with karaoke timing.";
@@ -780,8 +742,6 @@
 				INFOPLIST_FILE = Kioku/Info-URLTypes.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
-				INFOPLIST_KEY_NSSupportsLiveActivitiesFrequentUpdates = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to capture text for OCR into a new note.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Sing mode listens to you sing along so it can show which lyrics you got. Nothing is recorded or saved.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Allow speech recognition to transcribe imported audio into notes with karaoke timing.";

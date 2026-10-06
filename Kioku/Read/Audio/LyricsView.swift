@@ -230,7 +230,6 @@ struct LyricsView: View {
     @AppStorage(AudioSettings.backgroundPlaybackKey) var backgroundPlaybackEnabled: Bool = AudioSettings.defaultBackgroundPlayback
     @AppStorage(AudioSettings.autoAdvanceToNextNoteKey) var autoAdvanceToNextNoteEnabled: Bool = AudioSettings.defaultAutoAdvanceToNextNote
     @AppStorage(AudioSettings.lyricsOnNowPlayingKey) var lyricsOnNowPlayingEnabled: Bool = AudioSettings.defaultLyricsOnNowPlaying
-    @AppStorage(AudioSettings.lyricsLiveActivityKey) var lyricsLiveActivityEnabled: Bool = AudioSettings.defaultLyricsLiveActivity
     @AppStorage(LyricsPopupSettings.showTranslationKey) var isTranslationVisible: Bool = LyricsPopupSettings.defaultShowTranslation
     @AppStorage(LyricsPopupSettings.showSegmentationKey) var isSegmentationVisible: Bool = LyricsPopupSettings.defaultShowSegmentation
     @AppStorage(LyricsPopupSettings.showFuriganaKey) var isFuriganaVisible: Bool = LyricsPopupSettings.defaultShowFurigana

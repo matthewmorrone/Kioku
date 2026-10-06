@@ -12,6 +12,6 @@ protocol RemotePlaybackTarget: AnyObject {
     func remotePause() -> Bool
     // Scrubbing on the card's progress bar, for players with a timeline.
     func remoteSeek(toSeconds seconds: Double) -> Bool
-    // Back or forward a lyric line (offset -1 / +1): the card's ⏮ ⏭ and the Live Activity's buttons.
+    // Back or forward a lyric line (offset -1 / +1): the card's ⏮ ⏭.
     func remoteSkipLine(by offset: Int) -> Bool
 }

@@ -1,8 +1,7 @@
 import Foundation
 import MediaPlayer
 
-// Wires the lock-screen / Control Center transport buttons and the lyrics Live Activity's buttons
-// to the app's players. MPRemoteCommandCenter
+// Wires the lock-screen / Control Center transport buttons to the app's players. MPRemoteCommandCenter
 // is process-wide, while the app has several players (the Read song, the breakdown's intro/outro, the
 // listen-along narration); registering once here and forwarding to the player that last started
 // (ExclusivePlayback.current) means the buttons drive what the card is showing, and never wake a
@@ -37,21 +36,6 @@ enum RemoteCommandRouter {
         center.nextTrackCommand.addTarget { _ in
             status(currentTarget.map { $0.remoteSkipLine(by: 1) })
         }
-        LyricsActivityCommandRelay.handler = { command in
-            handle(command)
-        }
-    }
-
-    // Carries out a Live Activity button press on the current player.
-    private static func handle(_ command: LyricsActivityCommand) {
-        guard let target = currentTarget else { return }
-        let handled: Bool
-        switch command {
-        case .togglePlayback: handled = target.isPlaying ? target.remotePause() : target.remotePlay()
-        case .previousLine: handled = target.remoteSkipLine(by: -1)
-        case .nextLine: handled = target.remoteSkipLine(by: 1)
-        }
-        AppLog.info(.audioPlayback, "[RemoteCommandRouter] live activity \(command) handled=\(handled)")
     }
 
     // The player the buttons act on: the last one to claim ExclusivePlayback, if it takes remote

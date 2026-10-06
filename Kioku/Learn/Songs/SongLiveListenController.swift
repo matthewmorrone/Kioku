@@ -563,7 +563,7 @@ final class SongLiveListenController: NSObject, ObservableObject {
             return
         }
         let songTitle = nowPlayingTitle ?? "Kioku"
-        let line = LyricsActivityRubyBuilder.firstLine(of: originalByLineIndex[segment.lineIndex] ?? "")
+        let line = LyricCueLine.firstLine(of: originalByLineIndex[segment.lineIndex] ?? "")
         var info: [String: Any] = [:]
         if AudioSettings.lyricsOnNowPlayingEnabled, line.isEmpty == false {
             info[MPMediaItemPropertyTitle] = line
