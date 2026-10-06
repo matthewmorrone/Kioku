@@ -10,8 +10,8 @@ or your phone.
 
 | Field | Value |
 |---|---|
-| Name | **Kioku Reader** |
-| Subtitle | Read, look up, and study Japanese |
+| Name | **Kioku Reader: Learn Japanese** |
+| Subtitle | Furigana Dictionary & Lyrics |
 | Bundle ID | `matthewmorrone.Kioku` |
 | SKU | `kioku-ios` |
 | Primary language | English (U.S.) |
@@ -22,6 +22,11 @@ Name resolved 2026-06-12: bare "Kioku" is unavailable in App Store Connect
 (it blocks reserved-but-unpublished names, which the public iTunes Search API
 doesn't reveal), so the store title is "Kioku Reader" — matches the bundle
 product name. The on-device display name under the icon is independent of this.
+
+Name and subtitle are both 28/30 characters (the limit is 30). Search weighs the name
+most, so "japanese" goes there; Apple combines words across name, subtitle and
+keywords, so this also matches "japanese reader" and "learn japanese". The
+subtitle carries the three terms people search for that the name doesn't.
 
 ## Promotional text (170 chars max)
 
@@ -76,10 +81,22 @@ product name. The on-device display name under the icon is independent of this.
 
 ## Keywords (100 chars max)
 
-> japanese,dictionary,furigana,kanji,jlpt,flashcards,karaoke,offline,handwriting,lyrics,vocabulary
+> kanji,jlpt,flashcard,karaoke,song,offline,handwriting,vocabulary,hiragana,katakana,nihongo,study
 
-(96 characters. "study" made room for "karaoke". "Reader" is dropped — it's already in the
-title "Kioku Reader" and Apple indexes the title. Don't repeat "kioku" either, same reason.)
+(96 characters. Never repeat a word already in the name or subtitle (kioku, reader,
+learn, japanese, furigana, dictionary, lyrics); Apple already indexes those. No
+competitor app names such as "anki"; App Review rejects them.)
+
+### Spanish (Mexico) localization
+
+The US storefront also indexes the es-MX listing's subtitle and keywords. Add an
+es-MX localization with the English name and description, and use its fields for
+terms that don't fit above, again without repeating any word from the English fields:
+
+| Field | Value |
+|---|---|
+| Subtitle | Manga, Kana & Reading Practice |
+| Keywords | translate,words,grammar,conjugation,romaji,jmdict,pitch,accent,radical,stroke,order,sentence,learning |
 
 ## URLs
 
