@@ -96,7 +96,7 @@ terms that don't fit above, again without repeating any word from the English fi
 | Field | Value |
 |---|---|
 | Subtitle | Manga, Kana & Reading Practice |
-| Keywords | translate,words,grammar,conjugation,romaji,jmdict,pitch,accent,radical,stroke,order,sentence,learning |
+| Keywords | translate,words,grammar,conjugation,romaji,jmdict,pitch,accent,radical,stroke,sentence,learning |
 
 ## URLs
 
