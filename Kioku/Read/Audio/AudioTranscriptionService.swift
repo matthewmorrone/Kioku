@@ -44,7 +44,11 @@ enum AudioTranscriptionService {
     ) async throws -> URL {
         guard isolateVocals else { return url }
         onStatus?("Isolating…")
-        _ = try await CTCForcedAligner.isolatedVocalStem(for: url, onProgress: { f in onProgress?(f * 0.5) })
+        _ = try await CTCForcedAligner.isolatedVocalStem(
+            for: url,
+            isBackgrounded: { await AlignmentForegroundGuard.isBackgrounded() },
+            onProgress: { f in onProgress?(f * 0.5) }
+        )
         onStatus?("Transcribing…")
         return VocalStemCache.playableStemURL(for: url) ?? url
     }

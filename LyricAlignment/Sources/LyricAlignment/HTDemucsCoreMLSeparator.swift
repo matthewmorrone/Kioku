@@ -35,9 +35,15 @@ enum HTDemucsCoreMLSeparator {
     // Support cache, same purge-resistant placement as the ASR + CTC aligner weights.
     // NOT cached in memory: a 269 MB MLModel left resident OOM-kills the aligner that
     // runs right after, so we build → predict → drop on every isolation. ----
-    static func loadModel(onStage: (@Sendable (String) -> Void)? = nil) async throws -> MLModel {
+    static func loadModel(cpuOnly: Bool = false, onStage: (@Sendable (String) -> Void)? = nil) async throws -> MLModel {
         let url = try await HTDemucsModelStore.ensureModel(onStage: onStage)
         let cfg = MLModelConfiguration()
+        // A backgrounded app may not use the GPU (iOS aborts the command buffer), so the separator
+        // swaps to a CPU-only instance while in the background and back on return.
+        if cpuOnly {
+            cfg.computeUnits = .cpuOnly
+            return try MLModel(contentsOf: url, configuration: cfg)
+        }
         // .all, not .cpuOnly: GPU/ANE is faster and more power-efficient than the CPU. On iOS 27
         // beta 24A5380h this model's attention layers crashed CoreML's GPU/ANE compilation inside
         // Apple's MetalPerformanceShadersGraph MLIR optimizer (FoldMultiplyIntoSDPAScale), which
@@ -50,21 +56,24 @@ enum HTDemucsCoreMLSeparator {
     // Isolates vocals from decoded stereo, returning full-length mono vocals at 44.1 kHz.
     // The await is at the top (model-store check + any first-run download); the iSTFT
     // overlap-add loop below runs synchronously on the caller's task.
-    // `waitUntilReady`, when supplied, is awaited before every chunk. iOS refuses GPU work from a
-    // backgrounded process and aborts the command buffer, so a host that knows it has gone to the
-    // background parks the loop here instead of letting the next `predict` fail. The accumulators
-    // hold their partial result across the wait, and a suspended process resumes mid-loop.
+    // `isBackgrounded`, when supplied, is asked before every chunk. iOS refuses GPU work from a
+    // backgrounded process and aborts the command buffer, so while it answers true the chunks run
+    // on a CPU-only model instead, and after each one the partial result is saved under
+    // `checkpointKey`: if iOS then kills the app, the next isolation of the same audio resumes from
+    // that save rather than from zero.
     static func isolateVocalsMono(
         stereo: [[Float]],
         cancellationCheck: (@Sendable () -> Bool)? = nil,
-        waitUntilReady: (@Sendable () async -> Void)? = nil,
+        isBackgrounded: (@Sendable () async -> Bool)? = nil,
+        checkpointKey: String? = nil,
         onProgress: ((Double) -> Void)? = nil,
         onStage: (@Sendable (String) -> Void)? = nil
     ) async throws -> [Float] {
         guard stereo.count == 2 else { return [] }
         let L = min(stereo[0].count, stereo[1].count)
         guard L > 0 else { return [] }
-        let model = try await loadModel(onStage: onStage)
+        var model: MLModel? = try await loadModel(onStage: onStage)
+        var modelIsCPU = false
         guard let fft = vDSP_create_fftsetup(vDSP_Length(log2N), FFTRadix(kFFTRadix2)) else { return [] }
         defer { vDSP_destroy_fftsetup(fft) }
         // Where the time goes, logged once at the end: the model call vs our iSTFT/overlap-add.
@@ -82,6 +91,10 @@ enum HTDemucsCoreMLSeparator {
         var acc = [Float](repeating: 0, count: L)
         var wacc = [Float](repeating: 0, count: L)
         var start = 0
+        if let checkpointKey, let saved = IsolationCheckpoint.load(key: checkpointKey, length: L) {
+            acc = saved.acc; wacc = saved.wacc; start = saved.nextStart
+            logger.info("isolation resuming from checkpoint at \(Double(start) / 44_100, format: .fixed(precision: 1)) s")
+        }
         // Attempts spent on the chunk at `start`; reset each time one lands.
         var chunkAttempts = 0
         while start < L {
@@ -92,9 +105,22 @@ enum HTDemucsCoreMLSeparator {
             // that song with a permanently silent stem, and the cache never invalidates it since
             // "isEmpty" is never true (seen 2026-09-22, commit 6717695). Throwing means a cancelled
             // isolation is never mistaken for a completed one.
-            if cancellationCheck?() == true { throw CancellationError() }
-            await waitUntilReady?()
-            if cancellationCheck?() == true { throw CancellationError() }
+            if cancellationCheck?() == true {
+                if let checkpointKey { IsolationCheckpoint.delete(key: checkpointKey) }
+                throw CancellationError()
+            }
+            let backgrounded = await isBackgrounded?() ?? false
+            if backgrounded != modelIsCPU {
+                // Drop the current instance first: two copies of this model don't fit in memory.
+                model = nil
+                model = try await loadModel(cpuOnly: backgrounded, onStage: onStage)
+                modelIsCPU = backgrounded
+                logger.info("isolation switched to \(backgrounded ? "CPU (backgrounded)" : "GPU", privacy: .public)")
+            }
+            guard let activeModel = model else {
+                throw NSError(domain: "LyricAlignment.HTDemucs", code: 3,
+                              userInfo: [NSLocalizedDescriptionKey: "Vocal isolation model unavailable."])
+            }
             let end = min(L, start + SEG)
             let n = end - start
             // Per-chunk autoreleasepool drain: predict() returns MLMultiArray-backed values
@@ -111,7 +137,7 @@ enum HTDemucsCoreMLSeparator {
                 for i in 0..<n { lch[i] = stereo[0][start + i]; rch[i] = stereo[1][start + i] }
 
                 let predictStart = Date()
-                let (specL, specR, timeL, timeR) = try predict(model: model, left: lch, right: rch)
+                let (specL, specR, timeL, timeR) = try predict(model: activeModel, left: lch, right: rch)
                 let postStart = Date()
                 predictSeconds += postStart.timeIntervalSince(predictStart)
                 // Vocals = iSTFT(spec) + time-branch, per channel; downmix to mono.
@@ -134,7 +160,7 @@ enum HTDemucsCoreMLSeparator {
             } catch {
                 // The prediction in flight when the app leaves the foreground is aborted by iOS.
                 // Nothing reaches the accumulators until predict returns, so this chunk can simply
-                // be run again — back round the loop, where waitUntilReady parks until it can.
+                // be run again — back round the loop, which switches to the CPU model first.
                 // The attempt cap keeps a genuinely broken prediction from looping forever.
                 chunkAttempts += 1
                 if chunkAttempts >= 3 { throw error }
@@ -143,7 +169,9 @@ enum HTDemucsCoreMLSeparator {
             chunkAttempts = 0
             if end >= L { break }
             start += stride
+            if modelIsCPU, let checkpointKey { IsolationCheckpoint.save(key: checkpointKey, nextStart: start, acc: acc, wacc: wacc) }
         }
+        if let checkpointKey { IsolationCheckpoint.delete(key: checkpointKey) }
         var out = [Float](repeating: 0, count: L)
         for i in 0..<L { out[i] = wacc[i] > 1e-6 ? acc[i] / wacc[i] : 0 }
         let total = Date().timeIntervalSince(started)

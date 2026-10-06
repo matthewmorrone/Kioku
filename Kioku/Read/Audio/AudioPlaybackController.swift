@@ -29,6 +29,19 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     var onDidFinishRange: (() -> Void)? = nil
 
     private var player: AVAudioPlayer?
+    // True while Sing mode listens: the session must allow recording alongside playback.
+    // Re-applies the session category on change so the switch takes effect mid-song.
+    var isSingRecording = false {
+        didSet {
+            guard oldValue != isSingRecording else { return }
+            configureAudioSession()
+            do {
+                try AVAudioSession.sharedInstance().setActive(true)
+            } catch {
+                AppLog.error(.audioPlayback, "[AudioPlaybackController] setActive for Sing failed: \(error.localizedDescription)")
+            }
+        }
+    }
     var cues: [SubtitleCue] = []
     private var timer: Timer?
     // When set, the timer tick pauses playback once `currentTimeMs` reaches this value.
@@ -149,7 +162,11 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         // AirPods reconnect). Log instead of swallowing so "playback started but no sound"
         // bug reports have something to point at.
         do {
-            if AudioSettings.backgroundPlaybackEnabled {
+            if isSingRecording {
+                // Sing mode: microphone in, song out. A2DP keeps wireless headphones on their
+                // high-quality output route (the phone's own mic does the listening).
+                try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP])
+            } else if AudioSettings.backgroundPlaybackEnabled {
                 try session.setCategory(.playback, mode: .spokenAudio)
             } else {
                 try session.setCategory(.ambient, mode: .default)

@@ -415,6 +415,19 @@
       "feedsDictionary": false
     },
     {
+      "name": "hubert-phoneme-sing",
+      "description": "The hubert-phoneme-aligner model exported with a 4 s input as HubertPhonemeSing.mlmodelc, for Sing mode's live grading of the user's singing. LyricAlignment's SingPhonemeModelStore downloads it the first time Sing mode starts; never bundled or committed.",
+      "license": "Apache-2.0 (prj-beatrice fine-tune; base rinna/japanese-hubert-base, Apache-2.0; trained on ReazonSpeech under Japanese Copyright Act Art. 30-4).",
+      "type": "runtime-model",
+      "path": null,
+      "required": false,
+      "derived": false,
+      "url": "https://github.com/matthewmorrone/Kioku/releases/download/aligner-sing-v1/HubertPhonemeSing.mlmodelc.zip",
+      "sha256": "cb70cc91fb47b96c1bf3697eded06eed3dbd5aea1ef0e5ed2d024dfe22d94558",
+      "provenance": "Converted with coremltools 9.0 (torch 2.14.1) from prj-beatrice/japanese-hubert-base-phoneme-ctc-v4 @ f5fe070 with the same label reduction and precision as hubert-phoneme-aligner, input fixed at 4 s of 16 kHz (export_sing_coreml.py attached to the release), 2026-10-05. Published as Kioku GitHub Release aligner-sing-v1 (SingPhonemeModelStore.releaseTag); sha256 is the zip's and is verified on download.",
+      "feedsDictionary": false
+    },
+    {
       "name": "htdemucs-coreml",
       "description": "HTDemucs vocal-isolation model converted to CoreML. LyricAlignment's HTDemucsModelStore downloads it on first isolation, pinned to a Hugging Face commit; never bundled or committed.",
       "license": "MIT (Meta, facebookresearch/demucs)",

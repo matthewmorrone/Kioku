@@ -27,7 +27,7 @@ nonisolated final class AlignmentCancellationToken: @unchecked Sendable {
 // (WholeSongAlignment) and saves the resulting cues.
 extension ReadView {
     // Romanizes lyric lines with the reader's own segmenter and readings, for the aligner.
-    private var lyricRomanizer: LyricRomanizer {
+    var lyricRomanizer: LyricRomanizer {
         LyricRomanizer(segmenter: segmenter, surfaceReadingData: surfaceReadingData, kanjiReadingFallback: kanjiReadingFallback)
     }
 

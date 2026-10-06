@@ -65,11 +65,17 @@ extension ReadView {
     // the switch waits for it off the main thread; if a source isn't available (no stem cached) the
     // cycle skips past it.
     func cycleLyricAudioSource() {
+        setLyricAudioSource(audioPlayback.audioSource.next)
+    }
+
+    // Moves the lyrics view's playback to `target` (Sing mode asks for the instrumental directly),
+    // falling through the cycle order when that source isn't available.
+    func setLyricAudioSource(_ target: LyricsAudioSource) {
         guard audioPlayback.isSwitchingAudioSource == false,
+              target != audioPlayback.audioSource,
               let id = audioPlayback.activeAudioAttachmentID,
               let originalURL = NotesAudioStore.shared.audioURL(for: id) else { return }
         audioPlayback.isSwitchingAudioSource = true
-        let target = audioPlayback.audioSource.next
         Task {
             let resolved: (LyricsAudioSource, URL) = await {
                 var candidate = target

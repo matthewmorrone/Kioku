@@ -29,17 +29,13 @@ written so a new session can pick it up cold.
       pass (grilling) before building: question source (saved words? by JLPT/frequency?), distractor
       selection, timer/scoring model, round length, how it ties into `ReviewStore` (does a fast
       correct answer count as a review?). Sits alongside the existing MultipleChoiceView.
-- [ ] **Karaoke vocab-probe mode** — planned 2026-07-02, spec'd via grilling. Reframed from a
-      karaoke "score" into a **vocabulary probe**: sing over the instrumental, transcribe per
-      section, and surface which *content words* you produced (known) vs missed (study
-      candidates). Decisions: words-only (no pitch/timing); play HTDemucs instrumental
-      (mix−vocals subtraction, cache both stems); per-section (♪/gap boundaries); post-hoc
-      scoring; kana/mora word matching; content-words-only; a "Sing" mode inside `LyricsView`;
-      transient recording; generate stem on demand; missed words → save/study, no SRS
-      auto-mutation. Large multi-part build — pick up in a dedicated session. (A detailed
-      4-phase TDD implementation plan existed at `docs/superpowers/plans/` and is recoverable
-      from git history if wanted, but that workflow is retired — re-derive fresh instead.)
-
+- [ ] **Sing mode: tuning and gaps** — built 2026-10-05 (lyrics popup's Sing row; 4 s HuBERT
+      export from release `aligner-sing-v1`; per-word phoneme scoring in `SingPhonemeScorer`).
+      Open: line-final particles (に/ね/よ) score 0.00 even with a 2 s+ window — the per-word
+      diagnostics log line (`[Sing] word@…`) shows where each sound was found and the mic level,
+      so a 素敵だね run should say whether it's timing, level or scoring. Pass marks (0.15 per
+      phoneme, 0.6 per word) are first guesses. Particles are graded too; the spec wanted content
+      words only.
 
 ## Segmentation & Lookup
 - [ ] **ポケベルならしてよんで segments as ポケベル|なら|して|よ|んで** — the one miss in the
