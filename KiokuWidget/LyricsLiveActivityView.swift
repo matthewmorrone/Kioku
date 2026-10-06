@@ -1,28 +1,28 @@
 import SwiftUI
 
 // Renders the lyrics Live Activity's Lock Screen banner on the system's default activity
-// background. Layout: a header row (play-state waveform, note title, transport buttons), then the
-// current line with furigana and the labelled next line below it (LyricsLineView).
+// background, everything centred. Layout: a header (playing indicator, note title), the current
+// line with furigana and the next line beneath it (LyricsLineView), the progress row, then the
+// transport buttons.
 struct LyricsLiveActivityView: View {
     let title: String
     let state: LyricsActivityState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(spacing: 10) {
             HStack(spacing: 6) {
-                Image(systemName: state.isPlaying ? "waveform" : "pause.fill")
+                LyricsPlayingIndicator(isPlaying: state.isPlaying)
                     .font(.caption)
-                    .foregroundStyle(WidgetTheme.vermilion)
                 Text(title)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Spacer()
-                LyricsActivityControls(isPlaying: state.isPlaying)
             }
             LyricsLineView(state: state, baseSize: 24, rubySize: 11,
                            baseColor: AnyShapeStyle(.primary),
                            rubyColor: AnyShapeStyle(.secondary))
+            LyricsActivityProgress(state: state)
+            LyricsActivityControls(isPlaying: state.isPlaying)
         }
         .padding(16)
     }

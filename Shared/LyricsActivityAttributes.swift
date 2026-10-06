@@ -17,6 +17,13 @@ nonisolated struct LyricsActivityState: Codable, Hashable, Sendable {
     // The following line as plain text, shown dimmed under the current one; nil at the last line.
     let nextLine: String?
     let isPlaying: Bool
+    // When the song would have been at 0:00, had it played straight through at normal speed; nil
+    // while paused. The widget's elapsed timer and progress bar run off it on their own, so the app
+    // doesn't need to send an update every second.
+    let playbackStart: Date?
+    // Position in seconds, shown as-is while paused.
+    let elapsed: Double
+    let duration: Double
 }
 
 // The fixed part of the lyrics Live Activity: the note playing. Compiled into BOTH the app (which

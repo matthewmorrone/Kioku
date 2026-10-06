@@ -12,8 +12,7 @@ struct LyricsLiveActivity: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Image(systemName: context.state.isPlaying ? "waveform" : "pause.fill")
-                        .foregroundStyle(WidgetTheme.vermilion)
+                    LyricsPlayingIndicator(isPlaying: context.state.isPlaying)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     Text(context.attributes.title)
@@ -25,6 +24,7 @@ struct LyricsLiveActivity: Widget {
                     VStack(spacing: 10) {
                         LyricsLineView(state: context.state, baseSize: 20, rubySize: 9,
                                        baseColor: AnyShapeStyle(.primary), rubyColor: AnyShapeStyle(.secondary))
+                        LyricsActivityProgress(state: context.state)
                         LyricsActivityControls(isPlaying: context.state.isPlaying)
                     }
                 }
@@ -32,8 +32,7 @@ struct LyricsLiveActivity: Widget {
                 Image(systemName: "music.note")
                     .foregroundStyle(WidgetTheme.vermilion)
             } compactTrailing: {
-                Image(systemName: context.state.isPlaying ? "waveform" : "pause.fill")
-                    .foregroundStyle(WidgetTheme.vermilion)
+                LyricsPlayingIndicator(isPlaying: context.state.isPlaying)
             } minimal: {
                 Image(systemName: "music.note")
                     .foregroundStyle(WidgetTheme.vermilion)

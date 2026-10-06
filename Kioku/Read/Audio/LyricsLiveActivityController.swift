@@ -20,6 +20,10 @@ final class LyricsLiveActivityController {
     // Numbers each update in the debug log, pairing a sent line with when ActivityKit accepted it.
     private var updateNumber = 0
 
+    // Whether this controller has a Live Activity up, so the playback controller can leave the Now
+    // Playing card off while it is.
+    var isShowing: Bool { activity != nil }
+
     init() {
         guard Self.didEndOrphanedActivities == false else { return }
         Self.didEndOrphanedActivities = true

@@ -93,7 +93,9 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // 50ms polling timer.
     private func updateNowPlayingInfo() {
         syncLyricsActivity()
-        guard let player else {
+        // While the lyrics Live Activity is up it carries the line, the timer and the transport
+        // buttons, so the Now Playing card would only duplicate it.
+        guard let player, lyricsActivity.isShowing == false else {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             return
         }
@@ -147,7 +149,15 @@ final class AudioPlaybackController: NSObject, ObservableObject {
             .lazy
             .map { LyricsActivityRubyBuilder.firstLine(of: $0.text) }
             .first { $0.isEmpty == false }
-        return LyricsActivityState(line: line, nextLine: nextLine, isPlaying: isPlaying)
+        // The start date is rounded to a quarter second: it's derived from the live position, so
+        // without rounding every Now Playing refresh would produce a slightly different state and
+        // spend an ActivityKit update on a change nobody can see.
+        let position = player?.currentTime ?? 0
+        let start = isPlaying
+            ? Date(timeIntervalSinceReferenceDate: ((Date().timeIntervalSinceReferenceDate - position) * 4).rounded() / 4)
+            : nil
+        return LyricsActivityState(line: line, nextLine: nextLine, isPlaying: isPlaying,
+                                   playbackStart: start, elapsed: position, duration: duration)
     }
 
     // Picks the session category based on the user's Background Audio setting.

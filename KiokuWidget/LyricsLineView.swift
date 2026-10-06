@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Renders the current lyric line (with furigana) and the next line dimmed beneath it. Shared by
+// Renders the current lyric line (with furigana) and the next line dimmed beneath it, centred. Shared by
 // the Lock Screen banner and the expanded Dynamic Island. Layout: the furigana line when it fits
 // on one row, else the plain line wrapped to two rows (furigana runs can't wrap), then the next
 // line. On each line change both rows push up from the bottom, so the dimmed line visibly rises
@@ -15,7 +15,7 @@ struct LyricsLineView: View {
 
     var body: some View {
         let plain = state.line.map(\.text).joined()
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .center, spacing: 4) {
             ViewThatFits(in: .horizontal) {
                 FuriganaText(
                     surface: plain,
@@ -31,6 +31,7 @@ struct LyricsLineView: View {
                     .font(WidgetTheme.japanese(baseSize * 0.8, bold: true))
                     .foregroundStyle(baseColor)
                     .lineLimit(2)
+                    .multilineTextAlignment(.center)
                     .minimumScaleFactor(0.7)
             }
             .id(plain)
@@ -44,6 +45,6 @@ struct LyricsLineView: View {
                     .transition(.push(from: .bottom))
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }
