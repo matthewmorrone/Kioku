@@ -299,6 +299,16 @@ extension ReadView {
                 playbackHighlightRangeOverride: $audioPlayback.playbackHighlightRangeOverride,
                 activePlaybackCueIndex: $audioPlayback.activePlaybackCueIndex
             )
+            LyricsActivityRubyFeeder(
+                controller: audioPlayback.audioController,
+                inputs: LyricsActivityRubyInputs(
+                    cues: audioPlayback.audioAttachmentCues,
+                    highlightRanges: audioPlayback.audioAttachmentHighlightRanges,
+                    noteText: document.text,
+                    furiganaBySegmentLocation: document.furiganaBySegmentLocation,
+                    furiganaLengthBySegmentLocation: document.furiganaLengthBySegmentLocation
+                )
+            )
         }
         .overlay(alignment: .topLeading) {
             // Pixel ruler is non-interactive and only drawn when its debug toggle is active.

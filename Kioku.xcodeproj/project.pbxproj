@@ -10,6 +10,8 @@
 		C0FFEE00000000000000000E /* KiokuWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000002 /* KiokuWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C0FFEE000000000000000011 /* WordOfTheDayMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */; };
 		C0FFEE000000000000000012 /* WordOfTheDayMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */; };
+		C0FFEE000000000000000016 /* LyricsActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000015 /* LyricsActivityAttributes.swift */; };
+		C0FFEE000000000000000017 /* LyricsActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000015 /* LyricsActivityAttributes.swift */; };
 		E32B0CE32F57BC070020F5C2 /* data-manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDE2F57BC070020F5C2 /* data-manifest.json */; };
 		E3D1C7002F4DFDB8005FDA11 /* dictionary.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */; };
 		E3FBBF9B303F516D009664F4 /* SwiftDagre in Frameworks */ = {isa = PBXBuildFile; productRef = DA6ADE0022FC000040000002 /* SwiftDagre */; };
@@ -58,6 +60,7 @@
 
 /* Begin PBXFileReference section */
 		C0FFEE000000000000000002 /* KiokuWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KiokuWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0FFEE000000000000000015 /* LyricsActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsActivityAttributes.swift; sourceTree = "<group>"; };
 		C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordOfTheDayMirror.swift; sourceTree = "<group>"; };
 		E3070AE82F4DFDB6005FD323 /* Kioku Reader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Kioku Reader.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		E3070AF52F4DFDB8005FD323 /* KiokuTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KiokuTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -149,6 +152,7 @@
 		C0FFEE00000000000000000F /* Shared */ = {
 			isa = PBXGroup;
 			children = (
+				C0FFEE000000000000000015 /* LyricsActivityAttributes.swift */,
 				C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */,
 			);
 			path = Shared;
@@ -455,6 +459,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C0FFEE000000000000000012 /* WordOfTheDayMirror.swift in Sources */,
+				C0FFEE000000000000000017 /* LyricsActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -463,6 +468,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C0FFEE000000000000000011 /* WordOfTheDayMirror.swift in Sources */,
+				C0FFEE000000000000000016 /* LyricsActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -696,6 +702,7 @@
 				INFOPLIST_FILE = Kioku/Info-URLTypes.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to capture text for OCR into a new note.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Allow speech recognition to transcribe imported audio into notes with karaoke timing.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -741,6 +748,7 @@
 				INFOPLIST_FILE = Kioku/Info-URLTypes.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to capture text for OCR into a new note.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Allow speech recognition to transcribe imported audio into notes with karaoke timing.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

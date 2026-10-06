@@ -1,11 +1,11 @@
 import WidgetKit
 import SwiftUI
 
-// Entry point for the widget extension. A bundle can vend several widgets; for now it vends only
-// the Word of the Day widget.
+// Entry point for the widget extension: the Word of the Day widget and the lyrics Live Activity.
 @main
 struct KiokuWidgetBundle: WidgetBundle {
     var body: some Widget {
         WordOfTheDayWidget()
+        LyricsLiveActivity()
     }
 }

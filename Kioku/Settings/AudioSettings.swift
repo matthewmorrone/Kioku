@@ -10,6 +10,9 @@ enum AudioSettings {
     static let lyricsOnNowPlayingKey = "kioku.settings.audio.lyricsOnNowPlaying"
     static let defaultLyricsOnNowPlaying = true
 
+    static let lyricsLiveActivityKey = "kioku.settings.audio.lyricsLiveActivity"
+    static let defaultLyricsLiveActivity = false
+
     // Read the toggle from UserDefaults, falling back to the default when the key has never
     // been written — @AppStorage in SettingsView only persists once the user touches the row.
     // The explicit nil-check avoids the NSNumber-vs-Bool footgun in `object(forKey:) as? Bool`.
@@ -42,5 +45,16 @@ enum AudioSettings {
             return defaultLyricsOnNowPlaying
         }
         return defaults.bool(forKey: lyricsOnNowPlayingKey)
+    }
+
+    // Whether playing a note with timed lyrics starts a Live Activity (Lock Screen banner + Dynamic
+    // Island) showing the current line with furigana. Defaults off: it's a second lock-screen
+    // surface on top of the Now Playing card, so the user opts in.
+    static var lyricsLiveActivityEnabled: Bool {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: lyricsLiveActivityKey) != nil else {
+            return defaultLyricsLiveActivity
+        }
+        return defaults.bool(forKey: lyricsLiveActivityKey)
     }
 }

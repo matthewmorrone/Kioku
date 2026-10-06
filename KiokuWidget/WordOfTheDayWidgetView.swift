@@ -2,68 +2,6 @@ import WidgetKit
 import SwiftUI
 import UIKit
 
-// The app's visual language, redeclared locally because Theme lives in the main app target and
-// isn't shared with the extension: warm sumi/kinari canvas, vermilion 朱色 accent, Hiragino Mincho
-// for Japanese, system serif for English. Colors adapt to light/dark like the app's palette.
-private enum WidgetTheme {
-    // Builds a light/dark-adaptive color from two RGB triples (0–255), matching Theme.swift.
-    static func adaptive(light: (CGFloat, CGFloat, CGFloat), dark: (CGFloat, CGFloat, CGFloat)) -> Color {
-        Color(uiColor: UIColor { traits in
-            let c = traits.userInterfaceStyle == .dark ? dark : light
-            return UIColor(red: c.0 / 255, green: c.1 / 255, blue: c.2 / 255, alpha: 1)
-        })
-    }
-
-    static let surface = adaptive(light: (255, 253, 248), dark: (33, 30, 24))
-    static let ink = adaptive(light: (33, 28, 22), dark: (236, 228, 214))
-    static let inkSecondary = adaptive(light: (110, 101, 90), dark: (168, 155, 137))
-    static let vermilion = adaptive(light: (199, 54, 59), dark: (219, 90, 78))
-
-    // Bold Hiragino Mincho for headwords; light for readings/labels. Both ship with iOS.
-    static func mincho(_ size: CGFloat, bold: Bool = false) -> Font {
-        .custom(bold ? "HiraMinProN-W6" : "HiraMinProN-W3", size: size)
-    }
-
-    // System serif for English glosses, keeping tonal kinship with the Mincho display face.
-    static func serif(_ size: CGFloat) -> Font {
-        .system(size: size, design: .serif)
-    }
-}
-
-// Renders a word with per-run furigana. Each kanji run rides its reading in a VStack whose last text
-// baseline aligns with the neighbouring kana, so okurigana stays on the baseline.
-private struct FuriganaText: View {
-    let surface: String
-    let reading: String?
-    // Per-kanji-run furigana from the mirror; nil puts one ruby over the whole surface.
-    let rubyRuns: [WordOfTheDayRubyRun]?
-    let baseFont: Font
-    let rubyFont: Font
-    // Colors default to the paper-surface ink used by the home families. The Lock Screen accessory
-    // slots pass .primary/.secondary instead so the system's vibrant monochrome rendering keeps the
-    // text legible against any wallpaper (the fixed ink colors would wash out on a dark background).
-    var baseColor: AnyShapeStyle = AnyShapeStyle(WidgetTheme.ink)
-    var rubyColor: AnyShapeStyle = AnyShapeStyle(WidgetTheme.inkSecondary)
-
-    var body: some View {
-        let wholeWordRuby = (reading?.isEmpty == false && reading != surface) ? reading : nil
-        let segments = rubyRuns ?? [WordOfTheDayRubyRun(text: surface, ruby: wholeWordRuby)]
-        HStack(alignment: .lastTextBaseline, spacing: 0) {
-            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
-                if let ruby = segment.ruby {
-                    VStack(spacing: 1) {
-                        Text(ruby).font(rubyFont).foregroundStyle(rubyColor)
-                        Text(segment.text).font(baseFont).foregroundStyle(baseColor)
-                    }
-                    .fixedSize()
-                } else {
-                    Text(segment.text).font(baseFont).foregroundStyle(baseColor)
-                }
-            }
-        }
-    }
-}
-
 // Renders one Word of the Day entry, scaling content to the widget family.
 struct WordOfTheDayWidgetView: View {
     @Environment(\.widgetFamily) private var family
