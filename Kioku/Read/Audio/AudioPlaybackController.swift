@@ -106,11 +106,34 @@ final class AudioPlaybackController: NSObject, ObservableObject {
             return
         }
         var info: [String: Any] = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-        info[MPMediaItemPropertyTitle] = nowPlayingTitle ?? info[MPMediaItemPropertyTitle] ?? "Kioku"
+        // With a lyric to show, the line takes the title slot (the most prominent text on every
+        // Now Playing surface) and the note title drops to the artist slot. Without one, the
+        // artist slot is cleared so a previous line's layout doesn't linger.
+        if let lyric = nowPlayingLyricLine() {
+            info[MPMediaItemPropertyTitle] = lyric
+            info[MPMediaItemPropertyArtist] = nowPlayingTitle ?? "Kioku"
+        } else {
+            info[MPMediaItemPropertyTitle] = nowPlayingTitle ?? "Kioku"
+            info[MPMediaItemPropertyArtist] = nil
+        }
         info[MPMediaItemPropertyPlaybackDuration] = duration
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = player.currentTime
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    // The lyric line the Now Playing card should show, or nil to show the plain note title.
+    // Nil when the setting is off, when nothing is loaded or playing position has no cue, or when
+    // the cue is blank. Only the first line of a multi-line cue is used — the card truncates
+    // anyway, and the first line is the one being sung.
+    private func nowPlayingLyricLine() -> String? {
+        guard AudioSettings.lyricsOnNowPlayingEnabled,
+              let index = activeCueIndex, index >= 0, index < cues.count else { return nil }
+        let firstLine = cues[index].text
+            .split(whereSeparator: \.isNewline)
+            .first
+            .map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+        return firstLine.isEmpty ? nil : firstLine
     }
 
     // Picks the session category based on the user's Background Audio setting.
@@ -466,6 +489,9 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         if activeCueIndex != newActiveCueIndex {
             KaraokeDebugLog.log("controller.cue: \(activeCueIndex.map(String.init) ?? "nil") → \(newActiveCueIndex.map(String.init) ?? "nil") at t=\(ms)ms (cues.count=\(cues.count))")
             activeCueIndex = newActiveCueIndex
+            // Line changed: push it to the Now Playing card. Cheap (one dictionary write) and
+            // only runs on cue transitions, not every timer tick.
+            updateNowPlayingInfo()
         }
     }
 }

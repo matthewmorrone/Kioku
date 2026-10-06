@@ -7,6 +7,9 @@ enum AudioSettings {
     static let autoAdvanceToNextNoteKey = "kioku.settings.audio.autoAdvanceToNextNote"
     static let defaultAutoAdvanceToNextNote = false
 
+    static let lyricsOnNowPlayingKey = "kioku.settings.audio.lyricsOnNowPlaying"
+    static let defaultLyricsOnNowPlaying = true
+
     // Read the toggle from UserDefaults, falling back to the default when the key has never
     // been written — @AppStorage in SettingsView only persists once the user touches the row.
     // The explicit nil-check avoids the NSNumber-vs-Bool footgun in `object(forKey:) as? Bool`.
@@ -28,5 +31,16 @@ enum AudioSettings {
             return defaultAutoAdvanceToNextNote
         }
         return defaults.bool(forKey: autoAdvanceToNextNoteKey)
+    }
+
+    // Whether the system Now Playing card (lock screen, Control Center, CarPlay) shows the current
+    // lyric line as its title, with the note's title moved to the artist slot. Defaults on: it only
+    // changes what the card says while a note with timed lyrics is playing.
+    static var lyricsOnNowPlayingEnabled: Bool {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: lyricsOnNowPlayingKey) != nil else {
+            return defaultLyricsOnNowPlaying
+        }
+        return defaults.bool(forKey: lyricsOnNowPlayingKey)
     }
 }

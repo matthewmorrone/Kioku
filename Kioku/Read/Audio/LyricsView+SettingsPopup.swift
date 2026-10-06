@@ -2,13 +2,14 @@ import SwiftUI
 
 // The top bar's gear button (LyricsView+ReAlignBar.swift) opens this in place (a popover anchored
 // to the button, forced off the iPhone's default full-sheet adaptation) instead of jumping to the
-// Settings tab — the six toggles a user is likely to want mid-listen, without leaving the lyric
+// Settings tab — the toggles a user is likely to want mid-listen, without leaving the lyric
 // view. Not private: called from LyricsView+ReAlignBar.swift.
 extension LyricsView {
     var settingsPopup: some View {
         VStack(alignment: .leading, spacing: 14) {
             Toggle("Background Audio", isOn: $backgroundPlaybackEnabled)
             Toggle("Continue to Next Note", isOn: $autoAdvanceToNextNoteEnabled)
+            Toggle("Lyrics on Lock Screen", isOn: $lyricsOnNowPlayingEnabled)
 
             Picker("Track By", selection: $quickGranularityRaw) {
                 Text("Line").tag(LyricsHighlightGranularity.sentence.rawValue)
