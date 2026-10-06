@@ -111,6 +111,7 @@ extension SongStepperView {
         )
         let originalByIndex = Dictionary(breakdown.lines.map { ($0.index, $0.original) }, uniquingKeysWith: { first, _ in first })
         liveListen.pauseAfterEachLine = pauseAfterEachLine
+        liveListen.nowPlayingTitle = note.resolvedTitle
         liveListen.configure(steps: steps, sourceAudioURL: listenSourceAudioURL, originalByLineIndex: originalByIndex)
     }
 

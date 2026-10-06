@@ -2,6 +2,7 @@ import AVFoundation
 import Combine
 import Foundation
 import LyricAlignment
+import MediaPlayer
 
 // Plays a SongBreakdown's listen-along script live, one step at a time: each step (a sung clip from
 // the note's own audio, or a speech segment) starts only once the previous one has actually
@@ -20,11 +21,15 @@ import LyricAlignment
 // and audio keeps being produced, tiny gaps between steps included.
 @MainActor
 final class SongLiveListenController: NSObject, ObservableObject {
-    @Published private(set) var isPlaying = false
+    @Published private(set) var isPlaying = false {
+        didSet { if isPlaying != oldValue { updateNowPlayingInfo() } }
+    }
     // The segment currently being spoken — or, for a `.clip` step, a synthetic sentence-kind
     // segment carrying the line's text so the Japanese row highlights while the sung clip
     // plays, mirroring what a speech step for that same line would look like.
-    @Published private(set) var currentSegment: SongListenSegment?
+    @Published private(set) var currentSegment: SongListenSegment? {
+        didSet { if currentSegment?.lineIndex != oldValue?.lineIndex { updateNowPlayingInfo() } }
+    }
     // Fractional progress (0...1) through the active `.sentence` segment's spoken text, driven
     // by AVSpeechSynthesizer's live per-character callback. Nil outside a single-run sentence
     // step (a mixed-language sentence splits into multiple runs — rare — skips fine tracking).
@@ -38,6 +43,13 @@ final class SongLiveListenController: NSObject, ObservableObject {
     // AudioPlaybackController's identically-named field, used by SongStepperView to advance
     // to the next note when that setting is on.
     var onDidFinishPlayingNaturally: (() -> Void)?
+
+    // The song's name for the lock screen / Control Center Now Playing card. Set by
+    // SongStepperView alongside `configure`.
+    var nowPlayingTitle: String?
+    // Whether this controller is the one that last wrote the Now Playing card, so clearing it on
+    // stop never wipes a card the Read screen's player published.
+    private var ownsNowPlayingInfo = false
 
     private var steps: [SongListenStep] = []
     private var sourceAudioURL: URL?
@@ -531,6 +543,37 @@ final class SongLiveListenController: NSObject, ObservableObject {
         let tightEndMs = startMs + Int(Double(trimEndFrame) / sampleRate * 1000)
         guard tightEndMs > tightStartMs else { return (startMs, endMs) }
         return (tightStartMs, tightEndMs)
+    }
+
+    // MARK: - Now Playing
+
+    // Publishes the line being worked through to the system Now Playing card: the Japanese line
+    // as the title (also while its explanation is being narrated, so the card keeps showing what
+    // the narration is about) and the song as the artist. Runs on line changes and play/pause
+    // only. The script has no single timeline, so no duration or elapsed time is sent. Cleared
+    // once nothing is current (stop, natural end).
+    private func updateNowPlayingInfo() {
+        let center = MPNowPlayingInfoCenter.default()
+        guard let segment = currentSegment else {
+            if ownsNowPlayingInfo {
+                center.nowPlayingInfo = nil
+                ownsNowPlayingInfo = false
+            }
+            return
+        }
+        let songTitle = nowPlayingTitle ?? "Kioku"
+        let line = LyricsActivityRubyBuilder.firstLine(of: originalByLineIndex[segment.lineIndex] ?? "")
+        var info: [String: Any] = [:]
+        if AudioSettings.lyricsOnNowPlayingEnabled, line.isEmpty == false {
+            info[MPMediaItemPropertyTitle] = line
+            info[MPMediaItemPropertyArtist] = songTitle
+        } else {
+            info[MPMediaItemPropertyTitle] = songTitle
+        }
+        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+        center.nowPlayingInfo = info
+        ownsNowPlayingInfo = true
+        AppLog.info(.audioPlayback, "[SongLiveListenController] now playing line \(segment.lineIndex): \(line)")
     }
 
     // MARK: - Session + voices

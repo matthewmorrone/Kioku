@@ -118,6 +118,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         // Now Playing surface) and the note title drops to the artist slot. Without one, the
         // artist slot is cleared so a previous line's layout doesn't linger.
         if let lyric = nowPlayingLyricLine() {
+            AppLog.info(.audioPlayback, "[AudioPlaybackController] now playing lyric: \(lyric)")
             info[MPMediaItemPropertyTitle] = lyric
             info[MPMediaItemPropertyArtist] = nowPlayingTitle ?? "Kioku"
         } else {
