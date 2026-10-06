@@ -88,6 +88,7 @@ final class SongLiveListenController: NSObject, ObservableObject {
     override init() {
         super.init()
         synthesizer.delegate = self
+        RemoteCommandRouter.registerIfNeeded()
         NotificationCenter.default.addObserver(self, selector: #selector(otherPlayerStarted(_:)), name: ExclusivePlayback.didStart, object: nil)
     }
 
@@ -660,4 +661,33 @@ enum SongListenControlState: Equatable {
     case idle
     case playing
     case failed
+}
+
+// Lock-screen / Control Center transport buttons, forwarded by RemoteCommandRouter while the
+// listen-along is the player that last started.
+extension SongLiveListenController: RemotePlaybackTarget {
+    // Resumes the way the mini player's play does: just the parked line when lines pause at their
+    // end, else on through the rest of the song; from the top when nothing is parked.
+    func remotePlay() -> Bool {
+        guard steps.isEmpty == false else { return false }
+        if let lineIndex = currentSegment?.lineIndex {
+            pauseAfterEachLine ? playLine(lineIndex) : play(fromLine: lineIndex)
+        } else {
+            play()
+        }
+        return true
+    }
+
+    // Pauses in place, so play resumes on the same step.
+    func remotePause() -> Bool {
+        guard steps.isEmpty == false else { return false }
+        pause()
+        return true
+    }
+
+    // The script has no single timeline (the card shows no progress bar), so there is nothing to
+    // scrub to.
+    func remoteSeek(toSeconds seconds: Double) -> Bool {
+        false
+    }
 }

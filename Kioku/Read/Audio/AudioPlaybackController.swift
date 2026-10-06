@@ -63,7 +63,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     override init() {
         super.init()
         configureAudioSession()
-        configureRemoteCommandCenter()
+        RemoteCommandRouter.registerIfNeeded()
         NotificationCenter.default.addObserver(self, selector: #selector(otherPlayerStarted(_:)), name: ExclusivePlayback.didStart, object: nil)
     }
 
@@ -71,35 +71,6 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     @objc private func otherPlayerStarted(_ notification: Notification) {
         guard notification.object as AnyObject? !== self, isPlaying else { return }
         pause()
-    }
-
-    // Wires the lock-screen / Control Center transport buttons to this controller. Registered
-    // once for the controller's lifetime — MPRemoteCommandCenter is a process-wide singleton,
-    // but only the app's single ReadView-owned controller instance ever plays audio, so there's
-    // no competing claimant to hand commands off to.
-    private func configureRemoteCommandCenter() {
-        let center = MPRemoteCommandCenter.shared()
-        center.playCommand.addTarget { [weak self] _ in
-            guard let self, self.player != nil else { return .noSuchContent }
-            self.play()
-            return .success
-        }
-        center.pauseCommand.addTarget { [weak self] _ in
-            guard let self, self.player != nil else { return .noSuchContent }
-            self.pause()
-            return .success
-        }
-        center.togglePlayPauseCommand.addTarget { [weak self] _ in
-            guard let self, self.player != nil else { return .noSuchContent }
-            self.isPlaying ? self.pause() : self.play()
-            return .success
-        }
-        center.changePlaybackPositionCommand.addTarget { [weak self] event in
-            guard let self, self.player != nil,
-                  let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
-            self.seek(toMs: Int(event.positionTime * 1000))
-            return .success
-        }
     }
 
     // Publishes the current track/position to the system Now Playing card (lock screen,
@@ -526,5 +497,30 @@ final class AudioPlaybackController: NSObject, ObservableObject {
             // only runs on cue transitions, not every timer tick.
             updateNowPlayingInfo()
         }
+    }
+}
+
+// Lock-screen / Control Center transport buttons, forwarded by RemoteCommandRouter while this
+// player is the one that last started.
+extension AudioPlaybackController: RemotePlaybackTarget {
+    // Resumes the loaded song; false with nothing loaded.
+    func remotePlay() -> Bool {
+        guard player != nil else { return false }
+        play()
+        return true
+    }
+
+    // Pauses the loaded song; false with nothing loaded.
+    func remotePause() -> Bool {
+        guard player != nil else { return false }
+        pause()
+        return true
+    }
+
+    // Scrubbing on the Now Playing card's progress bar.
+    func remoteSeek(toSeconds seconds: Double) -> Bool {
+        guard player != nil else { return false }
+        seek(toMs: Int(seconds * 1000))
+        return true
     }
 }

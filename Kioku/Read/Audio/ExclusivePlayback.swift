@@ -9,8 +9,13 @@ import Foundation
 enum ExclusivePlayback {
     static let didStart = Notification.Name("ExclusivePlayback.didStart")
 
+    // The player that started most recently: the one the lock-screen buttons drive
+    // (RemoteCommandRouter). Weak so a dismissed screen's player isn't kept alive by it.
+    @MainActor private(set) static weak var current: AnyObject?
+
     // Announces that `owner` has started playing, so every other player pauses.
     @MainActor static func claim(_ owner: AnyObject) {
+        current = owner
         NotificationCenter.default.post(name: didStart, object: owner)
     }
 }
