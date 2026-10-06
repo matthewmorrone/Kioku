@@ -22,7 +22,14 @@ nonisolated extension Lexicon {
         var leaders: [LookupCandidate] = []
         var others: [LookupCandidate] = []
         var seenEntryIDs = Set<Int64>()
+        let surfaceIsWord = lookupEntries(for: surface).isEmpty == false
         for (lemma, _) in lemmas {
+            // A lemma reached by folding in a helper word (思い出す → 思う + 出す) is one of the
+            // surface's parts, not another word it could be, when the surface is a word itself.
+            if surfaceIsWord, lemma != surface,
+               deinflector.helperWords(from: pathsByLemma, targetLemma: lemma).isEmpty == false {
+                continue
+            }
             let grammars = deinflector.endingGrammars(from: pathsByLemma, targetLemma: lemma)
             let entries = lookupEntries(for: lemma)
                 .filter { entry in

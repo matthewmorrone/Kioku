@@ -11,7 +11,9 @@ extension SegmentLookupSheet {
         to middleContentStack: UIStackView,
         parent: UIViewController?
     ) {
-        guard let info = currentSheetLemmaInfo, info.lemma != surface else { return }
+        // A word the dictionary defines as a whole (思い出す) needs no guess.
+        guard let info = currentSheetLemmaInfo, info.lemma != surface,
+              currentSheetDictionaryEntryDefines(surface) == false else { return }
         let key = surface + "\u{1F}" + info.lemma
         let isNewKey = compositeGlossKey != key
         if isNewKey {
@@ -49,5 +51,12 @@ extension SegmentLookupSheet {
             spinner.startAnimating()
             middleContentStack.addArrangedSubview(spinner)
         }
+    }
+
+    // True when the shown entry has `surface` among its own spellings, so its senses already define
+    // the whole form rather than one of its parts.
+    func currentSheetDictionaryEntryDefines(_ surface: String) -> Bool {
+        guard let entry = currentSheetDictionaryEntry else { return false }
+        return entry.kanjiForms.contains { $0.text == surface } || entry.kanaForms.contains { $0.text == surface }
     }
 }

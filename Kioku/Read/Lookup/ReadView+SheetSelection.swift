@@ -623,8 +623,8 @@ extension ReadView {
             return (lemma: ([compoundPrefix, "する"] + helpers).joined(separator: " + "), chain: inflected.chain)
         }
 
-        if let inflected, let composed = lexicon.lemmaWithHelpers(surface: surface) {
-            return (lemma: composed, chain: inflected.chain)
+        if let composed = lexicon.lemmaWithHelpers(surface: surface) {
+            return (lemma: composed, chain: inflected?.chain ?? [])
         }
 
         if let parts = compoundVerbPartsForCurrentSelectedSegment(surface: surface) {

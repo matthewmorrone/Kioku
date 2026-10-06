@@ -370,9 +370,14 @@ extension WordDetailView {
 
     // The whole-form meaning for the header (CompositeGlossGuesser), asked with the lemma line the
     // header shows, the inflection it names and the entry's primary sense. nil when the surface is
-    // its own dictionary form, and until the entry has loaded so the request carries its sense.
+    // its own dictionary form or a word the entry spells, and until the entry has loaded so the
+    // request carries its sense.
     func guessCompositeGloss(lemmaLine: String?, entry: DictionaryEntry?) async -> String? {
         guard let lemmaLine, lemmaLine != word.surface, let entry else { return nil }
+        // A word the dictionary defines as a whole (思い出す) needs no guess.
+        if entry.kanjiForms.contains(where: { $0.text == word.surface }) || entry.kanaForms.contains(where: { $0.text == word.surface }) {
+            return nil
+        }
         let form = InflectionFormNames.describe(lexicon?.inflectionInfo(surface: word.surface)?.chain ?? [])
         let baseGloss = entry.senses.first?.glosses.prefix(2).joined(separator: "; ")
         return await CompositeGlossGuesser.guess(

@@ -220,7 +220,10 @@ extension SegmentLookupSheet {
 
         // A form built from several words (起こる + そう, 消える + ゆく) shows each word with its
         // meaning on one line instead of the first word's senses, which that line already gives.
-        if currentSheetCompoundComponents.count > 1 {
+        // A word with its own entry (思い出す) keeps its senses and gets the line underneath.
+        let showsComponents = currentSheetCompoundComponents.count > 1
+        let surfaceHasOwnEntry = surface.map { currentSheetDictionaryEntryDefines($0) } ?? false
+        if showsComponents, surfaceHasOwnEntry == false {
             middleContentStack.addArrangedSubview(makeComponentEquationRow(currentSheetCompoundComponents, parent: parent))
             middleContentStack.superview?.isHidden = false
             return
@@ -257,6 +260,9 @@ extension SegmentLookupSheet {
             senseList.addArrangedSubview(moreLabel)
         }
         middleContentStack.addArrangedSubview(senseList)
+        if showsComponents {
+            middleContentStack.addArrangedSubview(makeComponentEquationRow(currentSheetCompoundComponents, parent: parent))
+        }
 
         middleContentStack.superview?.isHidden = false
     }

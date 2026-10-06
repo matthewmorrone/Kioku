@@ -287,10 +287,10 @@ struct WordDetailView: View {
                 if let parts = derivation?.compoundVerbParts {
                     return "\(parts.base) + \(parts.auxiliary)"
                 }
-                if surfaceIsBaseForm { return nil }
                 // Helper words folded into the form (起こりそう → 起こる + そう), named like the
-                // lookup sheet names them.
+                // lookup sheet names them, also for a word with its own entry (思い出す → 思う + 出す).
                 if let composed = lexicon?.lemmaWithHelpers(surface: word.surface) { return composed }
+                if surfaceIsBaseForm { return nil }
                 if ScriptClassifier.containsKanji(word.surface) == false {
                     return entry?.kanaForms.first?.text
                 }
