@@ -9,12 +9,10 @@ struct LyricsLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: LyricsActivityAttributes.self) { context in
             LyricsLiveActivityView(title: context.attributes.title, state: context.state)
-                .activityBackgroundTint(WidgetTheme.surface)
-                .activitySystemActionForegroundColor(WidgetTheme.ink)
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Image(systemName: context.state.isPlaying ? "music.note" : "pause.fill")
+                    Image(systemName: context.state.isPlaying ? "waveform" : "pause.fill")
                         .foregroundStyle(WidgetTheme.vermilion)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
@@ -24,8 +22,11 @@ struct LyricsLiveActivity: Widget {
                         .lineLimit(1)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    LyricsLineView(state: context.state, baseSize: 20, rubySize: 9,
-                                   baseColor: AnyShapeStyle(.primary), rubyColor: AnyShapeStyle(.secondary))
+                    VStack(spacing: 10) {
+                        LyricsLineView(state: context.state, baseSize: 20, rubySize: 9,
+                                       baseColor: AnyShapeStyle(.primary), rubyColor: AnyShapeStyle(.secondary))
+                        LyricsActivityControls(isPlaying: context.state.isPlaying)
+                    }
                 }
             } compactLeading: {
                 Image(systemName: "music.note")

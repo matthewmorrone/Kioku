@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 // The app's visual language, redeclared locally because Theme lives in the main app target and
-// isn't shared with the extension: warm sumi/kinari canvas, vermilion 朱色 accent, Hiragino Mincho
+// isn't shared with the extension: warm sumi/kinari canvas, vermilion 朱色 accent, the system font
 // for Japanese, system serif for English. Colors adapt to light/dark like the app's palette.
 enum WidgetTheme {
     // Builds a light/dark-adaptive color from two RGB triples (0–255), matching Theme.swift.
@@ -18,12 +18,13 @@ enum WidgetTheme {
     static let inkSecondary = adaptive(light: (110, 101, 90), dark: (168, 155, 137))
     static let vermilion = adaptive(light: (199, 54, 59), dark: (219, 90, 78))
 
-    // Bold Hiragino Mincho for headwords; light for readings/labels. Both ship with iOS.
-    static func mincho(_ size: CGFloat, bold: Bool = false) -> Font {
-        .custom(bold ? "HiraMinProN-W6" : "HiraMinProN-W3", size: size)
+    // The system font for Japanese: semibold for headwords and lyric lines, regular for readings
+    // and labels.
+    static func japanese(_ size: CGFloat, bold: Bool = false) -> Font {
+        .system(size: size, weight: bold ? .semibold : .regular)
     }
 
-    // System serif for English glosses, keeping tonal kinship with the Mincho display face.
+    // System serif for English glosses.
     static func serif(_ size: CGFloat) -> Font {
         .system(size: size, design: .serif)
     }

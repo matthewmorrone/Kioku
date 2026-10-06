@@ -540,4 +540,13 @@ extension AudioPlaybackController: RemotePlaybackTarget {
         seek(toMs: Int(seconds * 1000))
         return true
     }
+
+    // Jumps to the start of the cue `offset` lines from the active one, clamped to the first and
+    // last cue. Seeking keeps the play state, so a paused song stays paused on the new line.
+    func remoteSkipLine(by offset: Int) -> Bool {
+        guard player != nil, cues.isEmpty == false else { return false }
+        let target = min(max((activeCueIndex ?? -1) + offset, 0), cues.count - 1)
+        seek(toMs: cues[target].startMs)
+        return true
+    }
 }

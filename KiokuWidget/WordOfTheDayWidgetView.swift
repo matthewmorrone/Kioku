@@ -54,7 +54,7 @@ struct WordOfTheDayWidgetView: View {
     // The centered vermilion label that tops the home layouts.
     private var brandLabel: some View {
         Text("今日の言葉")
-            .font(WidgetTheme.mincho(11))
+            .font(WidgetTheme.japanese(11))
             .tracking(2)
             .foregroundStyle(WidgetTheme.vermilion)
     }
@@ -62,7 +62,7 @@ struct WordOfTheDayWidgetView: View {
     // The centered furigana headword.
     private func headword(_ word: WordOfTheDayMirrorEntry, base: CGFloat, ruby: CGFloat) -> some View {
         FuriganaText(surface: word.surface, reading: word.kana, rubyRuns: word.rubyRuns,
-                     baseFont: WidgetTheme.mincho(base, bold: true), rubyFont: WidgetTheme.mincho(ruby))
+                     baseFont: WidgetTheme.japanese(base, bold: true), rubyFont: WidgetTheme.japanese(ruby))
             .minimumScaleFactor(0.5)
             .lineLimit(1)
             .frame(maxWidth: .infinity)
@@ -187,7 +187,7 @@ struct WordOfTheDayWidgetView: View {
     private func exampleBlock(_ example: WordOfTheDayExample, highlight surface: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             exampleText(example.japanese, highlight: surface)
-                .font(WidgetTheme.mincho(15))
+                .font(WidgetTheme.japanese(15))
                 .lineLimit(2)
             Text(example.english)
                 .font(WidgetTheme.serif(13))
@@ -220,7 +220,7 @@ struct WordOfTheDayWidgetView: View {
             ForEach(entry.recent.prefix(3), id: \.fireDate) { item in
                 HStack(alignment: .firstTextBaseline) {
                     Text(item.surface)
-                        .font(WidgetTheme.mincho(16))
+                        .font(WidgetTheme.japanese(16))
                         .foregroundStyle(WidgetTheme.ink)
                         .lineLimit(1)
                     Spacer(minLength: 8)
@@ -234,15 +234,14 @@ struct WordOfTheDayWidgetView: View {
     }
 
     // A furigana headword tinted for the Lock Screen: .primary/.secondary let the system's vibrant
-    // monochrome rendering keep it legible on any wallpaper. Mincho keeps it on-brand by typography
-    // (color is stripped by the system on the Lock Screen, so the font is the only brand signal left).
+    // monochrome rendering keep it legible on any wallpaper.
     private func accessoryHeadword(_ word: WordOfTheDayMirrorEntry, base: CGFloat, ruby: CGFloat) -> some View {
         FuriganaText(
             surface: word.surface,
             reading: word.kana,
             rubyRuns: word.rubyRuns,
-            baseFont: WidgetTheme.mincho(base, bold: true),
-            rubyFont: WidgetTheme.mincho(ruby),
+            baseFont: WidgetTheme.japanese(base, bold: true),
+            rubyFont: WidgetTheme.japanese(ruby),
             baseColor: AnyShapeStyle(.primary),
             rubyColor: AnyShapeStyle(.secondary)
         )
@@ -256,7 +255,7 @@ struct WordOfTheDayWidgetView: View {
             // Furigana can't fill a circle legibly, so the circular slot is a clean word badge: the
             // surface centered and scaled to fill the round area, on the accessory backdrop.
             Text(word.surface)
-                .font(WidgetTheme.mincho(22, bold: true))
+                .font(WidgetTheme.japanese(22, bold: true))
                 .foregroundStyle(.primary)
                 .minimumScaleFactor(0.35)
                 .lineLimit(1)

@@ -15,6 +15,9 @@ final class LyricsLiveActivityController {
     // Orphan cleanup must run once per launch, not once per instance: SongStepperView makes its
     // own AudioPlaybackController, and its init would otherwise end the Read screen's live activity.
     private static var didEndOrphanedActivities = false
+    // The last ActivityKit call queued. Each update or end waits for it, so calls reach ActivityKit
+    // in the order the lines changed; unordered Tasks could let an older line land last and stick.
+    private var pendingCall: Task<Void, Never>?
 
     init() {
         guard Self.didEndOrphanedActivities == false else { return }
@@ -36,7 +39,8 @@ final class LyricsLiveActivityController {
             lastState = state
             let content = ActivityContent(state: state, staleDate: nil)
             let id = activity.id
-            Task { await Self.update(activityID: id, content: content) }
+            AppLog.info(.audioPlayback, "[LyricsLiveActivityController] update: \(state.line.map(\.text).joined()) playing=\(state.isPlaying)")
+            enqueue { await Self.update(activityID: id, content: content) }
             return
         }
         guard state.isPlaying,
@@ -61,7 +65,16 @@ final class LyricsLiveActivityController {
         self.activity = nil
         lastState = nil
         let id = activity.id
-        Task { await Self.end(activityID: id) }
+        enqueue { await Self.end(activityID: id) }
+    }
+
+    // Runs `call` after every previously queued ActivityKit call has finished.
+    private func enqueue(_ call: @escaping @Sendable () async -> Void) {
+        let previous = pendingCall
+        pendingCall = Task {
+            await previous?.value
+            await call()
+        }
     }
 
     // Ends activities left over from a previous launch (the app was killed mid-song), which this

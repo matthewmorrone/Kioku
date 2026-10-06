@@ -690,4 +690,19 @@ extension SongLiveListenController: RemotePlaybackTarget {
     func remoteSeek(toSeconds seconds: Double) -> Bool {
         false
     }
+
+    // Starts the line `offset` lines from the current one (clamped to the script's first and last),
+    // playing it the way the mini player would: that line only when lines pause at their end, else
+    // on through the song. With no current line, forward starts the first line.
+    func remoteSkipLine(by offset: Int) -> Bool {
+        var lineOrder: [Int] = []
+        for step in steps where lineOrder.contains(stepLineIndex(step)) == false {
+            lineOrder.append(stepLineIndex(step))
+        }
+        guard lineOrder.isEmpty == false else { return false }
+        let position = currentSegment.flatMap { lineOrder.firstIndex(of: $0.lineIndex) } ?? -1
+        let target = lineOrder[min(max(position + offset, 0), lineOrder.count - 1)]
+        pauseAfterEachLine ? playLine(target) : play(fromLine: target)
+        return true
+    }
 }

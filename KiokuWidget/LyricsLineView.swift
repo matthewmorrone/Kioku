@@ -1,9 +1,9 @@
 import SwiftUI
 
-// Renders the current lyric line (with furigana) and the next line dimmed beneath it. Shared by
+// Renders the current lyric line (with furigana) and the next line, labelled NEXT, beneath it. Shared by
 // the Lock Screen banner and the expanded Dynamic Island. Layout: the furigana line when it fits
 // on one row, else the plain line wrapped to two rows (furigana runs can't wrap), then the next
-// line.
+// line under a NEXT label.
 struct LyricsLineView: View {
     let state: LyricsActivityState
     let baseSize: CGFloat
@@ -19,23 +19,28 @@ struct LyricsLineView: View {
                     surface: plain,
                     reading: nil,
                     rubyRuns: state.line.map { WordOfTheDayRubyRun(text: $0.text, ruby: $0.ruby) },
-                    baseFont: WidgetTheme.mincho(baseSize, bold: true),
-                    rubyFont: WidgetTheme.mincho(rubySize),
+                    baseFont: WidgetTheme.japanese(baseSize, bold: true),
+                    rubyFont: WidgetTheme.japanese(rubySize),
                     baseColor: baseColor,
                     rubyColor: rubyColor
                 )
                 .fixedSize()
                 Text(plain)
-                    .font(WidgetTheme.mincho(baseSize * 0.8, bold: true))
+                    .font(WidgetTheme.japanese(baseSize * 0.8, bold: true))
                     .foregroundStyle(baseColor)
                     .lineLimit(2)
                     .minimumScaleFactor(0.7)
             }
             if let next = state.nextLine {
-                Text(next)
-                    .font(WidgetTheme.mincho(baseSize * 0.6))
-                    .foregroundStyle(rubyColor)
-                    .lineLimit(1)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("NEXT")
+                        .font(.system(size: baseSize * 0.4, weight: .bold))
+                        .foregroundStyle(rubyColor)
+                    Text(next)
+                        .font(WidgetTheme.japanese(baseSize * 0.6))
+                        .foregroundStyle(rubyColor)
+                        .lineLimit(1)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
