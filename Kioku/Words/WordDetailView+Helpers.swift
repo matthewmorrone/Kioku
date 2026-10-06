@@ -337,6 +337,57 @@ extension WordDetailView {
 
     }
 
+    // The lemma line's words side by side (起こる to occur + そう seeming that), each over its first
+    // gloss; tapping a word with an entry opens it as a nested detail screen.
+    var lemmaComponentsRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            ForEach(Array(lemmaComponents.enumerated()), id: \.offset) { index, component in
+                if index > 0 {
+                    Text("+")
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+                }
+                Button {
+                    if let entry = component.entry {
+                        presentedRelatedSavedWord = ephemeralSavedWord(for: entry)
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(component.lemma)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.primary)
+                        Text(component.gloss?.components(separatedBy: ";").first?.trimmingCharacters(in: .whitespaces) ?? "")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(component.entry == nil)
+            }
+        }
+    }
+
+    // The whole-form meaning for the header (CompositeGlossGuesser), asked with the lemma line the
+    // header shows, the inflection it names and the entry's primary sense. nil when the surface is
+    // its own dictionary form or a word the entry spells, and until the entry has loaded so the
+    // request carries its sense.
+    func guessCompositeGloss(lemmaLine: String?, entry: DictionaryEntry?) async -> String? {
+        guard let lemmaLine, lemmaLine != word.surface, let entry else { return nil }
+        // A word the dictionary defines as a whole (思い出す) needs no guess.
+        if entry.kanjiForms.contains(where: { $0.text == word.surface }) || entry.kanaForms.contains(where: { $0.text == word.surface }) {
+            return nil
+        }
+        let form = InflectionFormNames.describe(lexicon?.inflectionInfo(surface: word.surface)?.chain ?? [])
+        let baseGloss = entry.senses.first?.glosses.prefix(2).joined(separator: "; ")
+        return await CompositeGlossGuesser.guess(
+            surface: word.surface,
+            lemmaLine: lemmaLine,
+            formDescription: form.isEmpty ? nil : form,
+            baseGloss: baseGloss?.isEmpty == false ? baseGloss : nil
+        )
+    }
+
     // Maps ISO 639-2/B language codes to display names for common loanword source languages.
     func languageName(for code: String) -> String {
         let map: [String: String] = [

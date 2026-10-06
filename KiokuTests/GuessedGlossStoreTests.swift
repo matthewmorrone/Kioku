@@ -67,4 +67,27 @@ final class GuessedGlossStoreTests: XCTestCase {
         XCTAssertNil(GlossGuesser.cleaned("   \n"))
         XCTAssertNil(GlossGuesser.cleaned(String(repeating: "a", count: 200)))
     }
+
+    // Composite meanings live in their own map, so they never answer for an unknown-word guess.
+    func testCompositeStoreIsSeparate() {
+        let guesses = GuessedGlossStore(defaults: defaults)
+        let composites = GuessedGlossStore(defaults: defaults, storageKey: "kioku.lookup.compositeGlosses")
+        composites.setGloss("seems likely to happen", for: "起こりそう", in: "起こる + そう")
+        XCTAssertEqual(composites.gloss(for: "起こりそう", in: "起こる + そう"), "seems likely to happen")
+        XCTAssertNil(guesses.gloss(for: "起こりそう", in: "起こる + そう"))
+    }
+
+    // A helper-word form names its parts; a plain inflection names its form instead.
+    func testCompositePromptNamesPartsOrForm() {
+        let helper = CompositeGlossGuesser.prompt(
+            surface: "起こりそう", lemmaLine: "起こる + そう", formDescription: "auxiliary", baseGloss: "to occur"
+        )
+        XCTAssertTrue(helper.contains("「起こる」 + 「そう」"))
+        XCTAssertFalse(helper.contains("auxiliary"))
+        XCTAssertTrue(helper.contains("「起こる」 means: to occur"))
+        let inflected = CompositeGlossGuesser.prompt(
+            surface: "言いたくない", lemmaLine: "言う", formDescription: "desiderative · negative", baseGloss: nil
+        )
+        XCTAssertTrue(inflected.contains("the desiderative · negative form of 「言う」"))
+    }
 }

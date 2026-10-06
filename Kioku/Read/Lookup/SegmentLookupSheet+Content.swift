@@ -86,7 +86,11 @@ extension SegmentLookupSheet {
         }
         var hasContent = false
         if let guessedGloss, guessedGlossSurface == surface {
-            middleContentStack.addArrangedSubview(makeGuessedGlossLabel(guessedGloss))
+            middleContentStack.addArrangedSubview(makeGuessedGlossRow(
+                guessedGloss,
+                explanation: "「\(surface)」 isn't in Kioku's dictionary, so AI guessed this meaning from the line it appears in, and from the song breakdown when there is one. It can be wrong.",
+                parent: parent
+            ))
             hasContent = true
         } else if glossGuessTask != nil {
             let spinner = UIActivityIndicatorView(style: .medium)
@@ -114,32 +118,37 @@ extension SegmentLookupSheet {
         return button
     }
 
-    // A guessed gloss, styled like a primary sense with a "guess" tag where a sense shows its part
-    // of speech.
-    private func makeGuessedGlossLabel(_ gloss: String) -> UILabel {
-        let line = NSMutableAttributedString(
-            string: gloss,
-            attributes: [.font: UIFont.systemFont(ofSize: 15), .foregroundColor: UIColor.label]
-        )
-        line.append(NSAttributedString(
-            string: "  ·  guess",
-            attributes: [.font: UIFont.systemFont(ofSize: 12), .foregroundColor: UIColor.tertiaryLabel]
-        ))
+    // A guessed gloss, styled like a primary sense, with an ⓘ button beside it that explains where
+    // the guess came from (`explanation`) in an alert over `parent`. Also the whole-form meaning
+    // above an inflected word's senses.
+    func makeGuessedGlossRow(_ gloss: String, explanation: String, parent: UIViewController?) -> UIView {
         let label = UILabel()
-        label.attributedText = line
+        label.text = gloss
+        label.font = .systemFont(ofSize: 15)
+        label.textColor = .label
         label.numberOfLines = 0
         label.textAlignment = .natural
-        label.preferredMaxLayoutWidth = sheetContentWidth()
-        return label
-    }
+        label.preferredMaxLayoutWidth = sheetContentWidth() - 28
 
-    // Builds a small section header label.
-    func makeSheetSectionHeader(_ text: String) -> UILabel {
-        let label = UILabel()
-        label.text = text.uppercased()
-        label.font = .systemFont(ofSize: 10, weight: .semibold)
-        label.textColor = .tertiaryLabel
-        return label
+        let infoButton = UIButton(type: .system)
+        infoButton.setImage(
+            UIImage(systemName: "info.circle", withConfiguration: UIImage.SymbolConfiguration(pointSize: 13)),
+            for: .normal
+        )
+        infoButton.tintColor = .tertiaryLabel
+        infoButton.accessibilityLabel = "Where this meaning comes from"
+        infoButton.setContentHuggingPriority(.required, for: .horizontal)
+        infoButton.addAction(UIAction { [weak parent] _ in
+            let alert = UIAlertController(title: "AI Guess", message: explanation, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            parent?.present(alert, animated: true)
+        }, for: .touchUpInside)
+
+        let row = UIStackView(arrangedSubviews: [label, infoButton, UIView()])
+        row.axis = .horizontal
+        row.spacing = 6
+        row.alignment = .center
+        return row
     }
 
     // Builds a body label for multi-line debug content.
@@ -204,6 +213,22 @@ extension SegmentLookupSheet {
         // Every word an ambiguous form can be (いった → 言う / 行く / 要る), above the shown word's senses.
         addLookupCandidateRows(to: middleContentStack, parent: parent)
 
+        // What the whole form means (言いたくない → to not want to say), above the lemma's senses.
+        if let surface {
+            addCompositeGloss(for: surface, primarySense: visibleSenses[0], to: middleContentStack, parent: parent)
+        }
+
+        // A form built from several words (起こる + そう, 消える + ゆく) shows each word with its
+        // meaning on one line instead of the first word's senses, which that line already gives.
+        // A word with its own entry (思い出す) keeps its senses and gets the line underneath.
+        let showsComponents = currentSheetCompoundComponents.count > 1
+        let surfaceHasOwnEntry = surface.map { currentSheetDictionaryEntryDefines($0) } ?? false
+        if showsComponents, surfaceHasOwnEntry == false {
+            middleContentStack.addArrangedSubview(makeComponentEquationRow(currentSheetCompoundComponents, parent: parent))
+            middleContentStack.superview?.isHidden = false
+            return
+        }
+
         // Compact most-common-meanings list: JMdict orders senses by commonness, so the top
         // senses in array order are the word's dominant meanings. The primary sense renders
         // full-size; later senses render smaller and dimmer so the dominant meaning stays
@@ -235,59 +260,8 @@ extension SegmentLookupSheet {
             senseList.addArrangedSubview(moreLabel)
         }
         middleContentStack.addArrangedSubview(senseList)
-
-        // Compound verb components: shows each lemma + first gloss as a tappable row when the
-        // surface contains a main verb + auxiliary (e.g. 消えてゆく → 消える: to disappear /
-        // 行く: to go). Vertical list with lemma + definition inline so the user can see what
-        // each part means without drilling into a sub-sheet first.
-        if currentSheetCompoundComponents.count > 1 {
-            let separator = UIView()
-            separator.backgroundColor = .separator
-            separator.translatesAutoresizingMaskIntoConstraints = false
-            let hairlineScale = middleContentStack.traitCollection.displayScale
-            separator.heightAnchor.constraint(equalToConstant: 1 / (hairlineScale > 0 ? hairlineScale : 2)).isActive = true
-            middleContentStack.addArrangedSubview(separator)
-
-            let headerLabel = makeSheetSectionHeader("Compound")
-            middleContentStack.addArrangedSubview(headerLabel)
-
-            for component in currentSheetCompoundComponents {
-                let lemmaLabel = UILabel()
-                lemmaLabel.text = component.lemma
-                lemmaLabel.font = .systemFont(ofSize: 15, weight: .medium)
-                lemmaLabel.textColor = .label
-                lemmaLabel.setContentHuggingPriority(.required, for: .horizontal)
-                lemmaLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-
-                let glossLabel = UILabel()
-                glossLabel.text = component.gloss?
-                    .components(separatedBy: ";").first?
-                    .trimmingCharacters(in: .whitespaces) ?? ""
-                glossLabel.font = .systemFont(ofSize: 14)
-                glossLabel.textColor = .secondaryLabel
-                glossLabel.numberOfLines = 0
-                // The component row reserves the lemma label's intrinsic width plus 10pt spacing,
-                // so the gloss label wraps inside the remaining width — give Auto Layout a hint.
-                glossLabel.preferredMaxLayoutWidth = max(120, measuredContentWidth - 80)
-
-                let row = UIStackView(arrangedSubviews: [lemmaLabel, glossLabel])
-                row.axis = .horizontal
-                row.spacing = 10
-                row.alignment = .firstBaseline
-                row.isUserInteractionEnabled = true
-
-                let tap = ClosureTapGesture { [weak self, weak parent] in
-                    guard let self, let parent else { return }
-                    if let handler = self.onCompoundComponentTapped {
-                        handler(component.lemma, component.gloss)
-                    } else {
-                        // Fallback for contexts that haven't wired the full-chrome handler.
-                        self.presentComponentSheet(surface: component.lemma, gloss: component.gloss, from: parent)
-                    }
-                }
-                row.addGestureRecognizer(tap)
-                middleContentStack.addArrangedSubview(row)
-            }
+        if showsComponents {
+            middleContentStack.addArrangedSubview(makeComponentEquationRow(currentSheetCompoundComponents, parent: parent))
         }
 
         middleContentStack.superview?.isHidden = false

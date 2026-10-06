@@ -219,6 +219,10 @@ extension SegmentLookupSheet {
         glossGuessTask = nil
         guessedGlossSurface = nil
         guessedGloss = nil
+        compositeGlossTask?.cancel()
+        compositeGlossTask = nil
+        compositeGlossKey = nil
+        compositeGloss = nil
         sheetDictionaryEntryProvider = nil
         sheetIsSavedProvider = nil
         sheetSaveToggle = nil

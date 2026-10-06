@@ -81,6 +81,14 @@ struct WordDetailView: View {
     // the header renders a chip strip; otherwise it falls back to the single-sentence
     // `summary`. Computed in loadDisplayData; nil for non-derived words. See DerivationAnalyzer.
     @State var derivation: DerivationAnalyzer.Result? = nil
+    // What an inflected or helper-word surface means as a whole (起こりそう → "seems likely to
+    // happen"), the same CompositeGlossGuesser answer the lookup sheet shows. nil for a dictionary
+    // form, while pending, or when the device can't make a guess.
+    @State var compositeGloss: String? = nil
+    @State var showingCompositeGlossInfo = false
+    // Each word the lemma line names (起こる + そう) with its meaning and entry, shown on one line
+    // under the whole-form meaning like the lookup sheet's. Empty for a single-word lemma line.
+    @State var lemmaComponents: [(lemma: String, gloss: String?, entry: DictionaryEntry?)] = []
     @State var kanjiInfos: [KanjiInfo] = []
     @State var relatedEntries: [DictionaryEntry] = []
     @State var loanwordSources: [LoanwordSource] = []
@@ -279,6 +287,9 @@ struct WordDetailView: View {
                 if let parts = derivation?.compoundVerbParts {
                     return "\(parts.base) + \(parts.auxiliary)"
                 }
+                // Helper words folded into the form (起こりそう → 起こる + そう), named like the
+                // lookup sheet names them, also for a word with its own entry (思い出す → 思う + 出す).
+                if let composed = lexicon?.lemmaWithHelpers(surface: word.surface) { return composed }
                 if surfaceIsBaseForm { return nil }
                 if ScriptClassifier.containsKanji(word.surface) == false {
                     return entry?.kanaForms.first?.text
@@ -290,7 +301,7 @@ struct WordDetailView: View {
             // drives the Read-tab lookup header. Nil for base forms or chains with no displayable step.
             // Also nil when a compound-verb derivation is showing: describing 歩いてゆこう's raw
             // deinflection chain ("auxiliary · contraction · te-form") duplicates and reads far
-            // muddier than the compoundVerbParts gloss line already rendered just below it.
+            // muddier than the word-by-word line (lemmaComponentsRow) rendered just below it.
             let formDescription: String? = {
                 guard derivation?.compoundVerbParts == nil,
                       let lexicon,
@@ -378,13 +389,34 @@ struct WordDetailView: View {
                 .overlay(alignment: .leading) { readingSwitcherChevron(.previous) }
                 .overlay(alignment: .trailing) { readingSwitcherChevron(.next) }
 
-                // Plain-text gloss line for compound verbs, above the badge row — e.g.
-                // "to search for + continue ~ing (auxiliary)". Falls back to the bare lemma
-                // form when a gloss wasn't resolvable so the line stays readable either way.
-                if let parts = derivation?.compoundVerbParts {
-                    Text("\(parts.baseGloss ?? parts.base) + \(parts.auxiliaryGloss ?? parts.auxiliary) (auxiliary)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                // The whole form's meaning (言いたくない → to not want to say), with an ⓘ that
+                // explains it's an AI guess, like the lookup sheet's.
+                if let compositeGloss {
+                    HStack(spacing: 6) {
+                        Text(compositeGloss)
+                            .font(.subheadline)
+                        Button {
+                            showingCompositeGlossInfo = true
+                        } label: {
+                            Image(systemName: "info.circle")
+                                .font(.footnote)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Where this meaning comes from")
+                    }
+                    .padding(.horizontal, 16)
+                    .alert("AI Guess", isPresented: $showingCompositeGlossInfo) {
+                        Button("OK", role: .cancel) {}
+                    } message: {
+                        Text(CompositeGlossGuesser.explanation(surface: word.surface, lemmaLine: lemma ?? word.surface))
+                    }
+                }
+
+                // Each word of the lemma line with its meaning, "+" between them; tapping one
+                // opens it.
+                if lemmaComponents.count > 1 {
+                    lemmaComponentsRow
                         .padding(.horizontal, 16)
                 }
 
@@ -394,7 +426,7 @@ struct WordDetailView: View {
                     // Derived forms (弱さ, お酒, 食べ始める …) describe their derivation in place
                     // of the bare POS tag. ～がり屋 returns a structured morpheme list and
                     // renders as a chip strip; compound verbs get their own gloss line below
-                    // instead (the compoundVerbParts gloss line) rather than the summary sentence here.
+                    // instead (lemmaComponentsRow) rather than the summary sentence here.
                     if let morphemes = derivation?.morphemes {
                         derivationMorphemeChips(morphemes)
                     } else if derivation?.compoundVerbParts == nil, let posSummary = derivation?.summary ?? entryPOSSummary {
@@ -462,6 +494,10 @@ struct WordDetailView: View {
             }
             .padding(.top, 24)
             .padding(.bottom, 16)
+            .task(id: "\(word.surface)|\(lemma ?? "")|\(entry?.entryId ?? 0)") {
+                lemmaComponents = lemma.flatMap { lexicon?.lemmaLineComponents($0) } ?? []
+                compositeGloss = await guessCompositeGloss(lemmaLine: lemma, entry: entry)
+            }
 
             ScrollViewReader { proxy in
             List {

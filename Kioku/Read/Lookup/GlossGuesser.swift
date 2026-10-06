@@ -94,8 +94,9 @@ enum GlossGuesser {
     // The on-device fallback: Apple Intelligence's system model, when the device has it ready.
     // Glossing is a transformation of text the user supplied, so it runs under the permissive
     // guardrails: the default ones refuse whole lines of ordinary fiction ("May contain unsafe
-    // content") over an insult like 間抜け野郎 elsewhere in the line.
-    private static func askOnDeviceModel(prompt: String) async -> String? {
+    // content") over an insult like 間抜け野郎 elsewhere in the line. Also CompositeGlossGuesser's
+    // only model.
+    static func askOnDeviceModel(prompt: String) async -> String? {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *), SystemLanguageModel.default.isAvailable {
             do {
