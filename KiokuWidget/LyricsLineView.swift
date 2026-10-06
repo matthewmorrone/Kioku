@@ -1,9 +1,11 @@
 import SwiftUI
 
-// Renders the current lyric line (with furigana) and the next line, labelled NEXT, beneath it. Shared by
+// Renders the current lyric line (with furigana) and the next line dimmed beneath it. Shared by
 // the Lock Screen banner and the expanded Dynamic Island. Layout: the furigana line when it fits
 // on one row, else the plain line wrapped to two rows (furigana runs can't wrap), then the next
-// line under a NEXT label.
+// line. On each line change both rows push up from the bottom, so the dimmed line visibly rises
+// into the current slot — the motion, rather than a label, says which line comes next. Each row
+// is identified by its text, which is what makes the system animate it as a new view.
 struct LyricsLineView: View {
     let state: LyricsActivityState
     let baseSize: CGFloat
@@ -31,16 +33,15 @@ struct LyricsLineView: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.7)
             }
+            .id(plain)
+            .transition(.push(from: .bottom))
             if let next = state.nextLine {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("NEXT")
-                        .font(.system(size: baseSize * 0.4, weight: .bold))
-                        .foregroundStyle(rubyColor)
-                    Text(next)
-                        .font(WidgetTheme.japanese(baseSize * 0.6))
-                        .foregroundStyle(rubyColor)
-                        .lineLimit(1)
-                }
+                Text(next)
+                    .font(WidgetTheme.japanese(baseSize * 0.6))
+                    .foregroundStyle(rubyColor)
+                    .lineLimit(1)
+                    .id(next)
+                    .transition(.push(from: .bottom))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
