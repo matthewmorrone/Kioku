@@ -15,9 +15,10 @@ final class LyricsLiveActivityController {
     // Orphan cleanup must run once per launch, not once per instance: SongStepperView makes its
     // own AudioPlaybackController, and its init would otherwise end the Read screen's live activity.
     private static var didEndOrphanedActivities = false
-    // The last ActivityKit call queued. Each update or end waits for it, so calls reach ActivityKit
-    // in the order the lines changed; unordered Tasks could let an older line land last and stick.
-    private var pendingCall: Task<Void, Never>?
+    // What `update(activityID:content:)` reports when iOS no longer has the activity.
+    nonisolated private static let goneOutcome = "skipped: activity gone"
+    // Numbers each update in the debug log, pairing a sent line with when ActivityKit accepted it.
+    private var updateNumber = 0
 
     init() {
         guard Self.didEndOrphanedActivities == false else { return }
@@ -39,8 +40,23 @@ final class LyricsLiveActivityController {
             lastState = state
             let content = ActivityContent(state: state, staleDate: nil)
             let id = activity.id
-            AppLog.info(.audioPlayback, "[LyricsLiveActivityController] update: \(state.line.map(\.text).joined()) playing=\(state.isPlaying)")
-            enqueue { await Self.update(activityID: id, content: content) }
+            updateNumber += 1
+            let number = updateNumber
+            AppLog.info(.audioPlayback, "[LyricsLiveActivityController] update #\(number): \(state.line.map(\.text).joined()) playing=\(state.isPlaying)")
+            // Updates go out independently, not queued behind each other: lines are seconds apart, so
+            // ordering isn't at risk, while a queue would let one slow ActivityKit call freeze every
+            // later line.
+            Task { [weak self] in
+                let started = Date()
+                let outcome = await Self.update(activityID: id, content: content)
+                AppLog.info(.audioPlayback, "[LyricsLiveActivityController] update #\(number) \(outcome) after \(Int(Date().timeIntervalSince(started) * 1000)) ms")
+                // iOS dropped the activity: forget it, so the next foreground play starts a new one
+                // instead of updating a banner that no longer exists.
+                if outcome == Self.goneOutcome, self?.activity?.id == id {
+                    self?.activity = nil
+                    self?.lastState = nil
+                }
+            }
             return
         }
         guard state.isPlaying,
@@ -65,16 +81,7 @@ final class LyricsLiveActivityController {
         self.activity = nil
         lastState = nil
         let id = activity.id
-        enqueue { await Self.end(activityID: id) }
-    }
-
-    // Runs `call` after every previously queued ActivityKit call has finished.
-    private func enqueue(_ call: @escaping @Sendable () async -> Void) {
-        let previous = pendingCall
-        pendingCall = Task {
-            await previous?.value
-            await call()
-        }
+        Task { await Self.end(activityID: id) }
     }
 
     // Ends activities left over from a previous launch (the app was killed mid-song), which this
@@ -87,9 +94,15 @@ final class LyricsLiveActivityController {
 
     // Activity isn't Sendable, so a handle held on the main actor can't cross into the async
     // ActivityKit call. These re-fetch the activity by id inside the nonisolated call instead.
-    nonisolated private static func update(activityID: String, content: ActivityContent<LyricsActivityState>) async {
-        guard let activity = Activity<LyricsActivityAttributes>.activities.first(where: { $0.id == activityID }) else { return }
+    // Returns what happened for the debug log: the activity's state when updated, or that iOS no
+    // longer has it (dismissed by the user or ended by the system).
+    nonisolated private static func update(activityID: String, content: ActivityContent<LyricsActivityState>) async -> String {
+        guard let activity = Activity<LyricsActivityAttributes>.activities.first(where: { $0.id == activityID }) else {
+            return goneOutcome
+        }
+        let stateBefore = activity.activityState
         await activity.update(content)
+        return "applied (state \(stateBefore))"
     }
 
     // Ends the activity with the given id immediately; see `update(activityID:content:)` for why
