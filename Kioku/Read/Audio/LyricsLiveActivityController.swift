@@ -35,7 +35,8 @@ final class LyricsLiveActivityController {
             guard state != lastState else { return }
             lastState = state
             let content = ActivityContent(state: state, staleDate: nil)
-            Task { await activity.update(content) }
+            let id = activity.id
+            Task { await Self.update(activityID: id, content: content) }
             return
         }
         guard state.isPlaying,
@@ -59,14 +60,29 @@ final class LyricsLiveActivityController {
         guard let activity else { return }
         self.activity = nil
         lastState = nil
-        Task { await activity.end(nil, dismissalPolicy: .immediate) }
+        let id = activity.id
+        Task { await Self.end(activityID: id) }
     }
 
     // Ends activities left over from a previous launch (the app was killed mid-song), which this
     // instance has no handle to and would otherwise sit frozen on the Lock Screen for hours.
     private static func endOrphanedActivities() {
-        for activity in Activity<LyricsActivityAttributes>.activities {
-            Task { await activity.end(nil, dismissalPolicy: .immediate) }
+        for id in Activity<LyricsActivityAttributes>.activities.map(\.id) {
+            Task { await end(activityID: id) }
         }
+    }
+
+    // Activity isn't Sendable, so a handle held on the main actor can't cross into the async
+    // ActivityKit call. These re-fetch the activity by id inside the nonisolated call instead.
+    nonisolated private static func update(activityID: String, content: ActivityContent<LyricsActivityState>) async {
+        guard let activity = Activity<LyricsActivityAttributes>.activities.first(where: { $0.id == activityID }) else { return }
+        await activity.update(content)
+    }
+
+    // Ends the activity with the given id immediately; see `update(activityID:content:)` for why
+    // it goes by id.
+    nonisolated private static func end(activityID: String) async {
+        guard let activity = Activity<LyricsActivityAttributes>.activities.first(where: { $0.id == activityID }) else { return }
+        await activity.end(nil, dismissalPolicy: .immediate)
     }
 }
