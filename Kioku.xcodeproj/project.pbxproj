@@ -733,6 +733,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivitiesFrequentUpdates = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to capture text for OCR into a new note.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Sing mode listens to you sing along so it can show which lyrics you got. Nothing is recorded or saved.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Allow speech recognition to transcribe imported audio into notes with karaoke timing.";
@@ -780,6 +781,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivitiesFrequentUpdates = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to capture text for OCR into a new note.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Sing mode listens to you sing along so it can show which lyrics you got. Nothing is recorded or saved.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Allow speech recognition to transcribe imported audio into notes with karaoke timing.";
