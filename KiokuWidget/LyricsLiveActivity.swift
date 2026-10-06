@@ -22,7 +22,7 @@ struct LyricsLiveActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(spacing: 10) {
-                        LyricsLineView(state: context.state, baseSize: 20, rubySize: 9,
+                        LyricsLineView(state: context.state, baseSize: 18, rubySize: 8,
                                        baseColor: AnyShapeStyle(.primary), rubyColor: AnyShapeStyle(.secondary))
                         LyricsActivityProgress(state: context.state)
                         LyricsActivityControls(isPlaying: context.state.isPlaying)

@@ -18,7 +18,7 @@ struct LyricsLiveActivityView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            LyricsLineView(state: state, baseSize: 24, rubySize: 11,
+            LyricsLineView(state: state, baseSize: 21, rubySize: 10,
                            baseColor: AnyShapeStyle(.primary),
                            rubyColor: AnyShapeStyle(.secondary))
             LyricsActivityProgress(state: state)
