@@ -233,6 +233,15 @@ nonisolated public final class Lexicon {
         return deinflector.helperWords(from: pathsByLemma, targetLemma: lemma)
     }
 
+    // The lemma line naming every word an inflected `surface` holds ("起こる + そう", "歩く + ゆく"),
+    // or nil when no helper word was folded in. One builder, so the lookup sheet and the word detail
+    // screen never disagree about what sits under the headword.
+    public func lemmaWithHelpers(surface: String) -> String? {
+        guard let info = inflectionInfo(surface: surface), info.lemma != surface else { return nil }
+        let helpers = helperWords(surface: surface, lemma: info.lemma)
+        return helpers.isEmpty ? nil : ([info.lemma] + helpers).joined(separator: " + ")
+    }
+
     // Returns the kanaIn→kanaOut transition steps for the best deinflection path to the top lemma.
     public func inflectionTransitions(surface: String) -> [(label: String, kanaIn: String, kanaOut: String)]? {
         let (entries, pathsByLemma) = admittedLemmasAndPaths(for: surface)

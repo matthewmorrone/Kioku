@@ -89,6 +89,12 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     var guessedGlossSurface: String?
     var guessedGloss: String?
     var glossGuessTask: Task<Void, Never>?
+    // The whole-form meaning of an inflected or helper-word form (CompositeGlossGuesser): the
+    // surface and lemma line it belongs to, its result (nil while pending or when there is none),
+    // and the request in flight.
+    var compositeGlossKey: String?
+    var compositeGloss: String?
+    var compositeGlossTask: Task<Void, Never>?
     // Opens the Learn Spelling form for a surface with no dictionary entry (supplied by the read view).
     var learnSpellingHandler: (@MainActor (String) -> Void)?
     // Provides the minimal dictionary entry needed to render visible senses for the current segment.
