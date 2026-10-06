@@ -247,7 +247,7 @@ enum KiokuCoreTextAttributedStringBuilder {
                 // Intra-segment spacing, in both layout modes: ruby wider than its kanji never
                 // overhangs kana of its own segment. Kern on the character before the run pushes
                 // the kanji right; kern on the run's last character pushes the following kana
-                // away, recorded under KiokuRubyPadding.key so ruby centring can discount it.
+                // away; ruby centring discounts it (KiokuRubyPadding.kanjiSpan).
                 if inputs.isRubySpacingEnabled,
                    let containing = segmentNSRanges.first(where: { NSLocationInRange(kanjiLoc, $0) }) {
                     let kanjiW = ceil((kanjiText as NSString).size(withAttributes: [.font: baseFont]).width)
@@ -258,7 +258,6 @@ enum KiokuCoreTextAttributedStringBuilder {
                         if runLastIdx < containing.location + containing.length - 1 {
                             let kern = (result.attribute(.kern, at: runLastIdx, effectiveRange: nil) as? CGFloat) ?? inputs.kerning
                             result.addAttribute(.kern, value: kern + overhang, range: NSRange(location: runLastIdx, length: 1))
-                            result.addAttribute(KiokuRubyPadding.key, value: overhang, range: NSRange(location: runLastIdx, length: 1))
                         }
                         if kanjiLoc > containing.location {
                             let beforeIdx = kanjiLoc - 1
