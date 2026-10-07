@@ -48,13 +48,7 @@ nonisolated public final class DictionaryTrie {
 
         for character in surface {
             length += 1
-            if let next = node.children[character] {
-                node = next
-            } else {
-                let next = Node()
-                node.children[character] = next
-                node = next
-            }
+            node = node.childCreating(character)
         }
 
         let incomingHandle = entryIDs.isEmpty ? nil : entryIDPool.intern(entryIDs)
@@ -121,8 +115,8 @@ nonisolated public final class DictionaryTrie {
         mutating func advance(over character: Character) -> Bool {
             let mapped = SpellingNormalizer.alternate(character)
             let modernStart = (mapped != nil && diverged == false) ? literal : modern
-            let nextLiteral = literal?.children[character]
-            let nextModern = (diverged || mapped != nil) ? modernStart?.children[mapped ?? character] : nil
+            let nextLiteral = literal?.child(character)
+            let nextModern = (diverged || mapped != nil) ? modernStart?.child(mapped ?? character) : nil
             guard nextLiteral != nil || nextModern != nil else { return false }
             let isKanji = SpellingNormalizer.isKanji(character)
             if mapped != nil && diverged == false { modernHasKanji = literalHasKanji }

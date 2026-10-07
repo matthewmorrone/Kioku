@@ -39,24 +39,6 @@ written so a new session can pick it up cold.
       The only lever found is a global one (transition weight/table fitted on held2k), expected to
       cost more than one lyric line — unmeasured. If picked up: `segcli fit` sweep of `WEIGHT CLAMP`
       on held2k + kana2k + lyrics before any change; a note-level merge fixes the song meanwhile.
-- [ ] **`DictionaryTrie.Node.children` is `[Character: Node]` — consider a scalar-keyed
-      dictionary instead.** Investigated 2026-07-13 while chasing cold-start latency
-      (`StartupTimer` measured `trie population (456249 records)` at ~1005ms). `Character` is a
-      variable-width grapheme-cluster type; hashing/equality has to account for Unicode
-      grapheme-boundary edge cases that essentially never apply to dictionary/user text (kanji/
-      kana are almost always single Unicode scalars). Switching `children` to a scalar key
-      (e.g. `[UInt32: Node]` keyed by `Unicode.Scalar.value`) would speed up not just the
-      one-time trie build but every lookup during live segmentation too (`contains`,
-      `partOfSpeech`, `hitMeta`, `prefixScan`, `prefixHitScan` — all contained to `Kioku/Dictionary/DictionaryTrie.swift` +
-      `Kioku/Dictionary/Node.swift`, nothing else touches `.children`). Estimated payoff is
-      modest and uncertain without benchmarking — maybe 200-400ms off the trie-build step,
-      nothing for `fetchSurfaceData` (a separate function; its query plan already uses
-      `idx_kanji_text`/`idx_kana_text` reasonably well).
-      Correctness risk: multi-scalar Characters (rare combining-mark sequences) would need
-      either an NFC-normalization safety net before scalar iteration, or accepting the
-      near-zero real-world risk that Japanese dictionary/user text is already NFC-precomposed.
-      Not started; on hold until the user says go (2026-09-26). Measure cold start with
-      `StartupTimer` before and after.
 - [ ] **Segment uncertainty, then AI correction of only the low-confidence spans** — planned
       2026-10-02. The segmenter's costs are centi-nats, so: (1) forward–backward over the existing
       lattice gives each segment a probability summed over all paths; (2) fit one temperature on

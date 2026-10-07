@@ -15,7 +15,9 @@ let store = try DictionaryStore(databaseURL: URL(fileURLWithPath: ProcessInfo.pr
 try store.populateSurfacePOSBitsMap()
 let trie = DictionaryTrie()
 let surfaceData = try store.fetchSurfaceData()
+let trieBuildStart = Date()
 for record in surfaceData.surfaceRecords { trie.insert(record) }
+FileHandle.standardError.write("trie: \(surfaceData.surfaceRecords.count) records in \(String(format: "%.3f", Date().timeIntervalSince(trieBuildStart))) s\n".data(using: .utf8)!)
 let deinflector = Deinflector(ruleSet: try store.fetchDeinflectionRuleSet(), trie: trie)
 let segmenter = Segmenter(
     trie: trie,
