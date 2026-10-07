@@ -660,7 +660,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     // Whether the katakana run around `range` reaches past it on either side, i.e. the span is a
     // piece of a longer katakana word rather than the whole word. ・ separates katakana words, so it
     // doesn't extend a run.
-    private func isInsideLongerKatakanaRun(_ range: Range<String.Index>, in text: String) -> Bool {
+    func isInsideLongerKatakanaRun(_ range: Range<String.Index>, in text: String) -> Bool {
         // A katakana letter or ー, but not the ・ word separator.
         func isKatakanaLetter(_ character: Character) -> Bool {
             character != "・" && ScriptClassifier.isPureKatakana(String(character))

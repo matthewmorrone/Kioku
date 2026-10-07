@@ -4,7 +4,9 @@ import Foundation
 // can only cut a name into the words it happens to contain (田|中). Name edges come from JMnedict
 // (nameSurfaces) and are added only where no dictionary edge already spans the same text, so a name
 // never displaces a word JMdict spells the same way; the path search weighs a name against the
-// pieces on cost like any other edge.
+// pieces on cost like any other edge. A katakana name must be the whole katakana run: JMnedict has
+// short katakana names (パル, スミ, タイラ) that would otherwise cut unknown loanwords apart
+// (パル|ミンツァ).
 extension Segmenter {
     // The usual reading of `surface` when it is one of the lattice's names; see TextSegmenting.
     func nameReading(for surface: String) -> String? {
@@ -26,6 +28,7 @@ extension Segmenter {
             guard length >= 2, alreadyEndingAt.contains(end) == false else { continue }
             let surface = String(text[index..<end])
             guard nameSurfaces.contains(surface) else { continue }
+            if ScriptClassifier.isPureKatakana(surface), isInsideLongerKatakanaRun(index..<end, in: text) { continue }
             var edge = LatticeEdge(start: index, end: end, surface: surface)
             edge.isDictionaryMatch = true
             edge.partOfSpeech = PartOfSpeech.noun.bit
