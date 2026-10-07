@@ -49,6 +49,36 @@ extension DictionaryStore {
         }
     }
 
+    // The name spellings the segmenter may use as words (Segmenter.nameSurfaces): two or more
+    // characters, no hiragana, and some kanji or all katakana. Single characters (中, 森) and
+    // hiragana names (まこと, あい) are nearly always ordinary words in running text, so they stay
+    // out. Empty for a dictionary built before the name tables existed.
+    nonisolated func fetchSegmenterNameSurfaces() throws -> Set<String> {
+        try withSerializedDatabaseAccess {
+            guard tableExists("name_forms") else { return [] }
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            try prepare(sql: "SELECT DISTINCT surface FROM name_forms", statement: &statement)
+            var surfaces = Set<String>()
+            var stepCode = sqlite3_step(statement)
+            while stepCode == SQLITE_ROW {
+                if let pointer = sqlite3_column_text(statement, 0) {
+                    let surface = String(cString: pointer)
+                    if surface.count >= 2,
+                       surface.unicodeScalars.contains(where: { (0x3041...0x309F).contains($0.value) }) == false,
+                       ScriptClassifier.containsKanji(surface) || ScriptClassifier.isPureKatakana(surface) {
+                        surfaces.insert(surface)
+                    }
+                }
+                stepCode = sqlite3_step(statement)
+            }
+            guard stepCode == SQLITE_DONE else {
+                throw DictionarySQLiteError.step(message: errorMessage())
+            }
+            return surfaces
+        }
+    }
+
     // Plain-English label for a JMnedict name type tag, for the lookup sheet ("fem" → "female given
     // name"). Unlisted tags fall back to the tag itself.
     nonisolated static func nameTypeLabel(_ tag: String) -> String {

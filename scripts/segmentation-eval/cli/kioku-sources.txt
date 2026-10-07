@@ -32,6 +32,9 @@ Dictionary/Segmenter/SegmentationDemotions.swift
 Dictionary/Segmenter/Segmenter+LemmaResolution.swift
 Dictionary/Segmenter/Segmenter.swift
 Dictionary/Segmenter/Segmenter+Viterbi.swift
+Dictionary/Segmenter/Segmenter+Names.swift
+Dictionary/DictionaryStore+Names.swift
+Dictionary/DictionaryName.swift
 Dictionary/Segmenter/SegmenterConfig.swift
 Dictionary/Segmenter/SegmenterScoring.swift
 Dictionary/Segmenter/TextSegmenting.swift
@@ -63,3 +66,4 @@ Dictionary/KanjiReadingFallbackMap.swift
 Settings/TypographySettings.swift
 Dictionary/Deinflection/DeinflectionRuleSet.swift
 Dictionary/DictionaryStore+Deinflection.swift
+Dictionary/DictionaryStore+JLPT.swift

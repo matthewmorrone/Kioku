@@ -23,6 +23,8 @@ let segmenter = Segmenter(
     partOfSpeechByEntryID: surfaceData.partOfSpeechByEntryID,
     frequenciesFrom: store
 )
+// NO_NAMES=1 measures the same dictionary without JMnedict name edges (Segmenter+Names.swift).
+if ProcessInfo.processInfo.environment["NO_NAMES"] == "1" { segmenter.useNameSurfaces([]) }
 UserDefaults.standard.removeObject(forKey: SegmenterSettings.strategyKey)
 // STRATEGY=local measures the greedy walk (with its demotion list) instead of the shipped path search.
 if ProcessInfo.processInfo.environment["STRATEGY"] == "local" {
