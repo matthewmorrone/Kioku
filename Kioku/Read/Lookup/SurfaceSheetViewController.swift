@@ -585,9 +585,14 @@ final class SurfaceSheetViewController: UIViewController {
         saveButton.setImage(UIImage(systemName: icon), for: .normal)
         saveButton.tintColor = (learnedState != .unmarked || isSaved) ? .systemYellow : .secondaryLabel
         saveButton.accessibilityLabel = isSaved ? "Unsave" : "Save"
+        // A form that is several words with none picked yet has no word to save: greyed out
+        // until one of the possibilities is tapped.
+        let isAwaitingPick = sheet?.isAwaitingLookupCandidatePick ?? false
+        saveButton.isEnabled = isAwaitingPick == false
+        saveButton.alpha = isAwaitingPick ? 0.45 : 1
         // Rebuilt on every refresh so the menu's setState closure always targets the currently
         // shown word, mirroring SegmentLookupSheet's popover star (see its refresh comment).
-        if let setLearnedState = sheet?.sheetSetLearnedState {
+        if isAwaitingPick == false, let setLearnedState = sheet?.sheetSetLearnedState {
             // Deferred write + self-refresh for the same reason as the popover star: applying the
             // mark inline collides with the menu's teardown and the icon flips a beat late.
             saveButton.menu = learnedStateUIMenu(currentState: learnedState) { [weak self] state in

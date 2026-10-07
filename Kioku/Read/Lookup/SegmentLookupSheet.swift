@@ -321,10 +321,13 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         popoverStarButton?.setImage(UIImage(systemName: icon), for: .normal)
         popoverStarButton?.tintColor = (learnedState != .unmarked || isSaved) ? .systemYellow : .secondaryLabel
         popoverStarButton?.accessibilityLabel = isSaved ? "Unsave" : "Save"
+        // Greyed out while a form that is several words has none picked: nothing to save yet.
+        popoverStarButton?.isEnabled = isAwaitingLookupCandidatePick == false
+        popoverStarButton?.alpha = isAwaitingLookupCandidatePick ? 0.45 : 1
         // Rebuilt on every refresh (not set once) so the menu's setState closure always targets
         // the currently-shown word — see the class-level comment on why this popover is reused
         // in place rather than torn down and rebuilt when the user switches words.
-        if let onSetLearnedState = popoverOnSetLearnedState {
+        if isAwaitingLookupCandidatePick == false, let onSetLearnedState = popoverOnSetLearnedState {
             // The mark is applied (and the glyph refreshed) on the next runloop rather than inline:
             // a synchronous write lands while UIKit is still tearing the menu down, which delays the
             // resulting icon change by a beat — same reasoning as learnedStateSetter.
