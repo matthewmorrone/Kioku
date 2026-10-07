@@ -72,14 +72,26 @@ extension SegmentLookupSheet {
         parent: UIViewController?,
         provider: (@MainActor (String) async -> String?)?
     ) {
-        if let provider, guessedGlossSurface != surface {
+        if provider != nil || spellingGuessProvider != nil, guessedGlossSurface != surface {
             guessedGlossSurface = surface
             guessedGloss = nil
+            guessedGlossIsSpelling = false
             glossGuessTask?.cancel()
+            let spellingProvider = spellingGuessProvider
             glossGuessTask = Task { @MainActor [weak self, weak parent] in
-                let gloss = await provider(surface)
+                // A near dictionary spelling first (free, and a real entry); the AI only without one.
+                var gloss: String?
+                var isSpelling = false
+                if let suggestion = await spellingProvider?(surface),
+                   let meaning = suggestion.entry.senses.first?.glosses.prefix(3).joined(separator: "; ") {
+                    gloss = "\(suggestion.spelling) · guess — \(meaning)"
+                    isSpelling = true
+                } else if let provider {
+                    gloss = await provider(surface)
+                }
                 guard let self, Task.isCancelled == false, self.guessedGlossSurface == surface else { return }
                 self.guessedGloss = gloss
+                self.guessedGlossIsSpelling = isSpelling
                 self.glossGuessTask = nil
                 (parent as? SurfaceSheetViewController)?.updateMiddleContent()
             }
@@ -88,7 +100,9 @@ extension SegmentLookupSheet {
         if let guessedGloss, guessedGlossSurface == surface {
             middleContentStack.addArrangedSubview(makeGuessedGlossRow(
                 guessedGloss,
-                explanation: "「\(surface)」 isn't in Kioku's dictionary, so AI guessed this meaning from the line it appears in, and from the song breakdown when there is one. It can be wrong.",
+                explanation: guessedGlossIsSpelling
+                    ? "「\(surface)」 isn't in Kioku's dictionary. This is a word it has that the spelling may be an older or looser form of (ファ for ハ, イ for ー, and so on). It can be wrong."
+                    : "「\(surface)」 isn't in Kioku's dictionary, so AI guessed this meaning from the line it appears in, and from the song breakdown when there is one. It can be wrong.",
                 parent: parent
             ))
             hasContent = true
@@ -255,7 +269,7 @@ extension SegmentLookupSheet {
                 return
             }
             // No entry: show a guessed gloss instead, with a spinner while it's fetched.
-            if let surface, glossGuessProvider != nil || learnSpellingHandler != nil {
+            if let surface, glossGuessProvider != nil || spellingGuessProvider != nil || learnSpellingHandler != nil {
                 showGuessedGloss(for: surface, in: middleContentStack, parent: parent, provider: glossGuessProvider)
                 return
             }

@@ -91,6 +91,12 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     // none), and the request in flight.
     var guessedGlossSurface: String?
     var guessedGloss: String?
+    // Whether guessedGloss came from a near dictionary spelling (spellingGuessProvider) rather than
+    // the AI, so the ⓘ explains the right source.
+    var guessedGlossIsSpelling = false
+    // The dictionary word an unknown katakana word is a respelling of (DictionaryStore.
+    // katakanaSpellingGuess, supplied by the read view): カステイラ → カステラ. Tried before the AI guess.
+    var spellingGuessProvider: (@MainActor (String) async -> SpellingSuggestion?)?
     var glossGuessTask: Task<Void, Never>?
     // The whole-form meaning of an inflected or helper-word form (CompositeGlossGuesser): the
     // surface and lemma line it belongs to, its result (nil while pending or when there is none),

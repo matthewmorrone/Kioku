@@ -66,10 +66,6 @@ written so a new session can pick it up cold.
       blob). Choosing A means updating that named case, which is a test change: ask first.
       Possible C: A, but keep the pieces when every piece is a hiragana-read word (ミンツ slips
       through). The uncertainty item below may make the choice unnecessary.
-- [ ] **Fuzzy katakana lookup, labelled as a guess** — approved 2026-10-02, not built. Old
-      loanword spellings (カステイラ for カステラ, ウエファース for ウエハース) miss JMdict. At lookup
-      time, try regular katakana variants (ファ↔ハ, ティ↔チ, a dropped or extra イ/ー) and show a
-      hit marked "· guess", like the AI gloss guess. Never feeds segmentation.
 - [ ] **Segment uncertainty, then AI correction of only the low-confidence spans** — planned
       2026-10-02. The segmenter's costs are centi-nats, so: (1) forward–backward over the existing
       lattice gives each segment a probability summed over all paths; (2) fit one temperature on

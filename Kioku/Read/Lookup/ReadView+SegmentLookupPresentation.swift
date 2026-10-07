@@ -74,6 +74,19 @@ extension ReadView {
                     return []
                 }
             }
+            // An unknown katakana word that is a regular respelling of a dictionary word (カステイラ →
+            // カステラ, an older loanword spelling) shows that word as a guess, before any AI guess.
+            SegmentLookupSheet.shared.spellingGuessProvider = { surface in
+                guard ScriptClassifier.isPureKatakana(surface), let dictionaryStore else { return nil }
+                return await Task.detached(priority: .userInitiated) {
+                    do {
+                        return try dictionaryStore.katakanaSpellingGuess(for: surface)
+                    } catch {
+                        AppLog.error(.dictionary, "Spelling guess failed for \(surface): \(error)")
+                        return nil
+                    }
+                }.value
+            }
             // Learn Spelling closes the lookup sheet and opens the form for the word.
             SegmentLookupSheet.shared.learnSpellingHandler = { surface in
                 SegmentLookupSheet.shared.dismissPopover {
