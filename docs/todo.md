@@ -17,13 +17,16 @@ written so a new session can pick it up cold.
       pass (grilling) before building: question source (saved words? by JLPT/frequency?), distractor
       selection, timer/scoring model, round length, how it ties into `ReviewStore` (does a fast
       correct answer count as a review?). Sits alongside the existing MultipleChoiceView.
-- [ ] **Sing mode: tuning and gaps** — built 2026-10-05 (lyrics popup's Sing row; 4 s HuBERT
-      export from release `aligner-sing-v1`; per-word phoneme scoring in `SingPhonemeScorer`).
-      Open: line-final particles (に/ね/よ) score 0.00 even with a 2 s+ window — the per-word
-      diagnostics log line (`[Sing] word@…`) shows where each sound was found and the mic level,
-      so a 素敵だね run should say whether it's timing, level or scoring. Pass marks (0.15 per
-      phoneme, 0.6 per word) are first guesses. Particles are graded too; the spec wanted content
-      words only.
+- [ ] **Sing mode: check the 2026-10-07 retune on a real run** — a word now passes when half its
+      vowels and half its consonants are heard (long-vowel う/い optional); a word's graded stretch
+      is capped at 2.6 s by trimming tail slack, since long line-final windows put the onset at the
+      front of the 4 s input and scored 0.00 half the time; standalone は/へ score as wa/e. Never
+      run on device: sing a song with `[Sing] word@…` logging and compare line-final words and the
+      pass rate (old rule: 64% on 月虹 + 私たちになりたくて) before changing anything else.
+- [ ] **Lyric aligner reads the particle は as "ha"** — `LyricRomanizer` transliterates kana, so
+      the forced aligner looks for h+a where the singer sings "wa" (へ: "he" for "e"). Sing mode's
+      planner overrides standalone は/へ; the aligner doesn't. Needs a word-level particle signal
+      (segmentation POS) in the romanizer and an alignment-replay run before and after.
 
 ## Segmentation & Lookup
 - [ ] **ポケベルならしてよんで segments as ポケベル|なら|して|よ|んで** — the one miss in the

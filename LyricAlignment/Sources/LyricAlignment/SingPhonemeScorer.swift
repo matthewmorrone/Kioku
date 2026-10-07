@@ -4,17 +4,18 @@
 // phoneme model hears, in order, inside the word's time window. The lyrics are the known
 // target, so this never transcribes — it only asks whether the expected sounds are there.
 // Each phoneme gets the frame where it peaks best (in order, one frame per phoneme, the way a
-// CTC model spikes); it passes when its probability there clears a low bar. Vowels and ん count
-// double because sung consonants are often swallowed. Lenient on purpose: marking a word the
-// singer knew as missed costs more than letting a mumble through.
+// CTC model spikes); it passes when its probability there clears a low bar. A word needs both
+// its vowels (with ん) and its consonants: each group is scored on its own and the word's score
+// is the lower share, so a vowel-only mumble doesn't pass. Vowel length is forgiven: a held vowel
+// is one sound, and the lengthening う of おう / い of えい counts only when it is heard.
 
 import Foundation
 
 public enum SingPhonemeScorer {
     /// A phoneme counts as heard when its best in-order frame reaches this probability.
     public static let passProbability: Float = 0.15
-    /// A word counts as sung when this share of its (weighted) phonemes is heard.
-    public static let passFraction = 0.6
+    /// A word counts as sung when this share of its vowels and this share of its consonants are heard.
+    public static let passFraction = 0.5
     /// Slack around the aligned word time: singers come in early and drag late.
     public static let leadSlackSec = 0.25
     public static let tailSlackSec = 0.35
@@ -34,8 +35,9 @@ public enum SingPhonemeScorer {
         return out
     }
 
-    // Weighted share (0…1) of `tokens` heard in frames [first, last] of a row-major
-    // [frames × classes] log-probability matrix. 0 when the window is shorter than the word.
+    // The word's score (0…1) in frames [first, last] of a row-major [frames × classes]
+    // log-probability matrix: the lower of its heard-vowel and heard-consonant shares. 0 when the
+    // window is shorter than the word.
     public static func score(tokens: [Int], logProbs: [Float], classes: Int, firstFrame: Int, lastFrame: Int) -> Double {
         scoreDetails(tokens: tokens, logProbs: logProbs, classes: classes, firstFrame: firstFrame, lastFrame: lastFrame).score
     }
@@ -63,17 +65,22 @@ public enum SingPhonemeScorer {
             }
         }
         var f = (k - 1..<t).max { best[(k - 1) * t + $0] < best[(k - 1) * t + $1] } ?? (t - 1)
-        var heard = 0.0, total = 0.0
+        // Heard / total per group: [0] vowels and ん, [1] consonants.
+        var heard = [0.0, 0.0], total = [0.0, 0.0]
         var placements = [(frame: Int, probability: Float)](repeating: (0, 0), count: k)
         for i in stride(from: k - 1, through: 0, by: -1) {
-            let weight = isVowelLike(tokens[i]) ? 2.0 : 1.0
             let probability = exp(lp(f, tokens[i]))
-            total += weight
-            if probability >= passProbability { heard += weight }
             placements[i] = (firstFrame + f, probability)
+            let isHeard = probability >= passProbability
+            if isHeard || isLengthener(at: i, in: tokens) == false {
+                let group = isVowelLike(tokens[i]) ? 0 : 1
+                total[group] += 1
+                if isHeard { heard[group] += 1 }
+            }
             if i > 0 { f = from[i * t + f] }
         }
-        return (heard / total, placements)
+        let shares = (0..<2).compactMap { total[$0] > 0 ? heard[$0] / total[$0] : nil }
+        return (shares.min() ?? 0, placements)
     }
 
     // The phoneme label for a token, for logs.
@@ -81,6 +88,14 @@ public enum SingPhonemeScorer {
         token < CTCEmissions.labels.count ? CTCEmissions.labels[token] : "?"
     }
 
-    // Vowels and syllabic ん: the sounds that survive singing.
+    // Vowels and syllabic ん, scored as one group against the consonants.
     private static func isVowelLike(_ token: Int) -> Bool { (1...6).contains(token) }
+
+    // True for the う right after an o or the い right after an e (こう, せい): usually sung as a
+    // longer vowel rather than a sound of its own, so it only counts when the model hears it.
+    private static func isLengthener(at i: Int, in tokens: [Int]) -> Bool {
+        guard i > 0 else { return false }
+        let pair = (label(tokens[i - 1]), label(tokens[i]))
+        return pair == ("o", "u") || pair == ("e", "i")
+    }
 }
