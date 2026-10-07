@@ -151,6 +151,52 @@ extension SegmentLookupSheet {
         return row
     }
 
+    // The name readings of a surface JMdict doesn't have, one line each: the reading, the kind of
+    // name, and its English rendering dimmed ("たなか  surname · Tanaka"). Styled like the sense
+    // list, the first line primary.
+    func makeNameList(_ names: [DictionaryName]) -> UIStackView {
+        let list = UIStackView()
+        list.axis = .vertical
+        list.spacing = 4
+        list.alignment = .fill
+        for (index, name) in names.enumerated() {
+            let isPrimary = index == 0
+            let line = NSMutableAttributedString(
+                string: name.reading,
+                attributes: [.font: UIFont.systemFont(ofSize: isPrimary ? 15 : 13), .foregroundColor: isPrimary ? UIColor.label : UIColor.secondaryLabel]
+            )
+            let kinds = name.types.map(DictionaryStore.nameTypeLabel).joined(separator: ", ")
+            let detail = [kinds, name.gloss].filter { $0.isEmpty == false }.joined(separator: " · ")
+            line.append(NSAttributedString(
+                string: "  \(detail)",
+                attributes: [.font: UIFont.systemFont(ofSize: isPrimary ? 12 : 11), .foregroundColor: UIColor.tertiaryLabel]
+            ))
+            let label = UILabel()
+            label.attributedText = line
+            label.numberOfLines = 0
+            label.preferredMaxLayoutWidth = sheetContentWidth()
+            list.addArrangedSubview(label)
+        }
+        return list
+    }
+
+    // "Also a name: もり · place, surname, female given name" — the one dim line under a word's
+    // senses when the word is also a common name.
+    func makeAlsoANameLabel(_ names: [DictionaryName]) -> UILabel {
+        let text = names.map { name in
+            ([name.reading] + [name.types.map(DictionaryStore.nameTypeLabel).joined(separator: ", ")])
+                .filter { $0.isEmpty == false }
+                .joined(separator: " · ")
+        }.joined(separator: "; ")
+        let label = UILabel()
+        label.text = "Also a name: \(text)"
+        label.font = .systemFont(ofSize: 12)
+        label.textColor = .tertiaryLabel
+        label.numberOfLines = 0
+        label.preferredMaxLayoutWidth = sheetContentWidth()
+        return label
+    }
+
     // Builds a body label for multi-line debug content.
     func makeSheetBodyLabel(_ text: String) -> UILabel {
         let label = UILabel()
@@ -196,6 +242,15 @@ extension SegmentLookupSheet {
                 let spinner = UIActivityIndicatorView(style: .medium)
                 spinner.startAnimating()
                 middleContentStack.addArrangedSubview(spinner)
+                middleContentStack.superview?.isHidden = false
+                return
+            }
+            // No entry but a known name (田中, 富良野): its name readings, no AI guess.
+            if let surface, let names = nameLookupProvider?(surface), names.isEmpty == false {
+                middleContentStack.addArrangedSubview(makeNameList(names))
+                if let learnSpellingHandler {
+                    middleContentStack.addArrangedSubview(makeLearnSpellingButton(for: surface, handler: learnSpellingHandler))
+                }
                 middleContentStack.superview?.isHidden = false
                 return
             }
@@ -260,6 +315,10 @@ extension SegmentLookupSheet {
             senseList.addArrangedSubview(moreLabel)
         }
         middleContentStack.addArrangedSubview(senseList)
+        // A word that is also a common name (森 もり, 光 ひかり): its usual name reading underneath.
+        if let surface, let usualNames = nameLookupProvider?(surface).filter(\.isUsualReading), usualNames.isEmpty == false {
+            middleContentStack.addArrangedSubview(makeAlsoANameLabel(usualNames))
+        }
         if showsComponents {
             middleContentStack.addArrangedSubview(makeComponentEquationRow(currentSheetCompoundComponents, parent: parent))
         }

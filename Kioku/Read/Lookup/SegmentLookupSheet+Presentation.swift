@@ -26,6 +26,7 @@ extension SegmentLookupSheet {
         let capturedSplitCostsProvider = self.splitCostsProvider
         let capturedOnSheetHeightChanged = self.onSheetHeightChanged
         let capturedGlossGuessProvider = self.glossGuessProvider
+        let capturedNameLookupProvider = self.nameLookupProvider
         let capturedLearnSpellingHandler = self.learnSpellingHandler
         let capturedSheetLemmaInfoProvider = self.sheetLemmaInfoProvider
         let capturedSheetLemmaInfoByReadingProvider = self.sheetLemmaInfoByReadingProvider
@@ -55,6 +56,7 @@ extension SegmentLookupSheet {
             self.splitCostsProvider = capturedSplitCostsProvider
             self.onSheetHeightChanged = capturedOnSheetHeightChanged
             self.glossGuessProvider = capturedGlossGuessProvider
+            self.nameLookupProvider = capturedNameLookupProvider
             self.learnSpellingHandler = capturedLearnSpellingHandler
             self.sheetLemmaInfoProvider = capturedSheetLemmaInfoProvider
             self.sheetLemmaInfoByReadingProvider = capturedSheetLemmaInfoByReadingProvider
@@ -214,6 +216,7 @@ extension SegmentLookupSheet {
         presentedSheetHeight = nil
         onSheetHeightChanged = nil
         glossGuessProvider = nil
+        nameLookupProvider = nil
         learnSpellingHandler = nil
         glossGuessTask?.cancel()
         glossGuessTask = nil

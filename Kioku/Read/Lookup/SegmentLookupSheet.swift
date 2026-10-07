@@ -84,6 +84,9 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     // Guesses an English gloss for a surface with no dictionary entry (GlossGuesser, supplied by the
     // read view with the word's line and the note's breakdown); shown in place of the empty middle.
     var glossGuessProvider: (@MainActor (String) async -> String?)?
+    // JMnedict name readings for a surface (DictionaryStore.lookupNames, supplied by the read view);
+    // shown for a surface with no dictionary entry, ahead of any guessed gloss.
+    var nameLookupProvider: ((String) -> [DictionaryName])?
     // The surface the current guess belongs to, its result (nil while pending or when there is
     // none), and the request in flight.
     var guessedGlossSurface: String?

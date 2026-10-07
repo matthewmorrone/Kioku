@@ -45,6 +45,7 @@ DEINFLECTION_GENERATOR_PATH = PROJECT_ROOT / "scripts" / "deinflection" / "gener
 # and materialize_surface_frequency.
 FREQUENCY_PATH = None
 KANJIDIC2_PATH = None
+JMNEDICT_PATH = None
 RADKFILE_PATH = None
 KRADFILE_PATH = None
 KANJIVG_PATH = None
@@ -95,11 +96,12 @@ def sha256_of_file(path: Path) -> str:
 # Creates the run's work folder and points the input paths into it. Every source is downloaded
 # fresh into it; close_work_dir deletes it, so a run leaves nothing behind but its output.
 def open_work_dir():
-    global WORK_DIR, JMDICT_PATH, FREQUENCY_PATH, KANJIDIC2_PATH, RADKFILE_PATH, KRADFILE_PATH, KANJIVG_PATH
+    global WORK_DIR, JMDICT_PATH, FREQUENCY_PATH, KANJIDIC2_PATH, JMNEDICT_PATH, RADKFILE_PATH, KRADFILE_PATH, KANJIVG_PATH
     WORK_DIR = Path(tempfile.mkdtemp(prefix="kioku-dictionary-sources-"))
     JMDICT_PATH = WORK_DIR / "jmdict-eng-3.6.2.json"
     FREQUENCY_PATH = WORK_DIR / "jiten-frequency-global.json"
     KANJIDIC2_PATH = WORK_DIR / "kanjidic2-all.json"
+    JMNEDICT_PATH = WORK_DIR / "jmnedict-all.json"
     RADKFILE_PATH = WORK_DIR / "radkfile2.utf8"
     KRADFILE_PATH = WORK_DIR / "kradfile2.utf8"
     KANJIVG_PATH = WORK_DIR / "kanjivg.xml"
@@ -1260,6 +1262,80 @@ def import_kanjidic2(conn):
     print(f"  Done: {count} kanji characters imported")
 
 
+# Imports JMnedict (proper names) into name_entries / name_forms: one entry per name with its JMnedict
+# type tags (surname, place, fem…) and English renderings, and one form row per written surface and
+# reading the entry pairs (a reading restricted to some kanji pairs with those only; a kana-only name
+# is its own surface). Separate from entries/kanji/kana_forms on purpose: the trie, the segmenter and
+# every word lookup read those, and 743k names would merge ordinary text (中, あい) into names.
+# JMnedict carries no frequency, and its entry order puts rare readings first (鈴木 すすき before
+# すずき), so each form gets a rank: 0 when its reading is the one MeCab's IPA dictionary gives the
+# surface (the usual reading of a common name), 1 otherwise. The lookup sheet sorts on it.
+def import_names(conn):
+    if not JMNEDICT_PATH.exists():
+        print(f"  JMnedict file not found at {JMNEDICT_PATH} — skipping")
+        return
+    conn.executescript(
+        """
+        CREATE TABLE name_entries (
+            id INTEGER PRIMARY KEY,
+            types TEXT NOT NULL,
+            gloss TEXT NOT NULL
+        );
+        CREATE TABLE name_forms (
+            surface TEXT NOT NULL,
+            reading TEXT NOT NULL,
+            entry_id INTEGER NOT NULL REFERENCES name_entries(id),
+            rank INTEGER NOT NULL
+        );
+        """
+    )
+    with open(JMNEDICT_PATH, "r", encoding="utf-8") as f:
+        words = json.load(f)["words"]
+    entry_rows, form_rows = [], []
+    for word in words:
+        entry_id = int(word["id"])
+        types = []
+        glosses = []
+        for translation in word["translation"]:
+            types += [t for t in translation["type"] if t not in types]
+            glosses += [t["text"] for t in translation["translation"] if t["lang"] == "eng" and t["text"] not in glosses]
+        entry_rows.append((entry_id, ",".join(types), "; ".join(glosses)))
+        kanji = [k["text"] for k in word["kanji"]]
+        for kana in word["kana"]:
+            applies = kanji if kana["appliesToKanji"] == ["*"] else [k for k in kanji if k in kana["appliesToKanji"]]
+            for surface in applies:
+                form_rows.append((surface, kana["text"], entry_id))
+            if not kanji:
+                form_rows.append((kana["text"], kana["text"], entry_id))
+    usual = mecab_readings(sorted({surface for surface, _, _ in form_rows}))
+    form_rows = [(surface, reading, entry_id, 0 if usual.get(surface) == reading else 1)
+                 for surface, reading, entry_id in form_rows]
+    conn.executemany("INSERT INTO name_entries VALUES (?, ?, ?)", entry_rows)
+    conn.executemany("INSERT INTO name_forms VALUES (?, ?, ?, ?)", form_rows)
+    conn.execute("CREATE INDEX idx_name_forms_surface ON name_forms(surface)")
+    print(f"  {len(entry_rows)} names, {len(form_rows)} written forms, "
+          f"{sum(1 for row in form_rows if row[3] == 0)} with MeCab's usual reading")
+
+
+# The hiragana reading MeCab (IPA dictionary) gives each surface: its tokens' readings joined, or
+# nothing when a token has no reading (unknown to MeCab). Used to rank JMnedict's readings.
+def mecab_readings(surfaces):
+    surfaces = [s for s in surfaces if s and "\n" not in s and "\t" not in s]
+    proc = subprocess.run(
+        [shutil.which("mecab"), "--node-format=%f[7]\n", "--unk-format=*\n", "--eos-format=__EOS__\n"],
+        input="\n".join(surfaces) + "\n", capture_output=True, text=True, check=True,
+    )
+    readings, pieces, index = {}, [], 0
+    for line in proc.stdout.splitlines():
+        if line == "__EOS__":
+            if pieces and "*" not in pieces and index < len(surfaces):
+                readings[surfaces[index]] = katakana_to_hiragana("".join(pieces))
+            pieces, index = [], index + 1
+        else:
+            pieces.append(line)
+    return readings
+
+
 def import_pitch_accent(conn):
     # Populates pitch_accent from rows derived out of UniDic's kana-accent lexicon
     # (derive_pitch_accent_rows): id, word, kana, kind, accent, morae.
@@ -1889,6 +1965,9 @@ def build_database():
     with phase("Importing KANJIDIC2 data..."):
         import_kanjidic2(conn)
         classify_reading_types(conn)
+
+    with phase("Importing JMnedict names..."):
+        import_names(conn)
 
     with phase("Importing pitch accent data..."):
         import_pitch_accent(conn)

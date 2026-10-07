@@ -64,6 +64,16 @@ extension ReadView {
                     .lines.flatMap(\.words) ?? []
                 return await GlossGuesser.guess(surface: surface, lineContext: line, breakdownWords: breakdownWords)
             }
+            // A word with no dictionary entry that JMnedict knows as a name shows its name readings.
+            SegmentLookupSheet.shared.nameLookupProvider = { surface in
+                guard let dictionaryStore else { return [] }
+                do {
+                    return try dictionaryStore.lookupNames(surface: surface)
+                } catch {
+                    AppLog.error(.dictionary, "Name lookup failed for \(surface): \(error)")
+                    return []
+                }
+            }
             // Learn Spelling closes the lookup sheet and opens the form for the word.
             SegmentLookupSheet.shared.learnSpellingHandler = { surface in
                 SegmentLookupSheet.shared.dismissPopover {
