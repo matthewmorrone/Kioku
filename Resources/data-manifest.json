@@ -110,6 +110,28 @@
       "feedsDictionary": true
     },
     {
+      "name": "jmnedict-all",
+      "description": "JMnedict, the Japanese proper-name dictionary: surnames, given names, places, stations, companies and foreign names in katakana, as scriptin's JSON rebuild of the EDRDG XML. Backs the lookup sheet's name readings for words JMdict doesn't have (田中, 富良野). Kept in its own tables; the segmenter never reads it.",
+      "license": "CC BY-SA 4.0 (Electronic Dictionary Research and Development Group); JSON conversion by scriptin/jmdict-simplified, also CC BY-SA 4.0",
+      "type": "jmnedict",
+      "path": null,
+      "required": false,
+      "derived": false,
+      "url": "https://github.com/scriptin/jmdict-simplified/releases/download/3.6.2%2B20260223124729/jmnedict-all-3.6.2%2B20260223124729.json.zip",
+      "sha256": "447a3b3dae88250aeac4f63a212051a5770ef2ca746d30bbebf8424fe6ea539a",
+      "provenance": "scriptin/jmdict-simplified jmnedict-all release asset; generate_db.py downloads the zip and extracts jmnedict-all-3.6.2.json as jmnedict-all.json in the run's work folder",
+      "fetch": {
+        "url": "https://github.com/scriptin/jmdict-simplified/releases/download/3.6.2%2B20260223124729/jmnedict-all-3.6.2%2B20260223124729.json.zip",
+        "format": "zip",
+        "member": "jmnedict-all-3.6.2.json",
+        "cacheName": "jmnedict-all-3.6.2+20260223124729.json.zip",
+        "archiveSha256": "18122b1167032631be25ef411a86b69e38bea980c725ffd129af91bd4608cd82",
+        "extractAs": "jmnedict-all.json"
+      },
+      "materialize": true,
+      "feedsDictionary": true
+    },
+    {
       "name": "pitch-accent",
       "description": "Accent type and mora count per word, derived from UniDic's kana-accent lexicon. Shows where the pitch drop falls — something printed dictionaries usually omit even though it changes how a word is pronounced.",
       "license": "Inherits unidic-kana-accent-src: BSD-3-Clause, GPL or LGPL, at your choice (The UniDic Consortium; COPYING in the archive)",

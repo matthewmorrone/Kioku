@@ -98,7 +98,7 @@ extension DictionaryStore {
 
     // True when a table of the given name exists — lets JLPT reads degrade gracefully on a
     // dictionary built before the entry_jlpt_level migration. Caller must already hold the queue.
-    nonisolated private func tableExists(_ name: String) -> Bool {
+    nonisolated func tableExists(_ name: String) -> Bool {
         let sql = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1 LIMIT 1"
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
