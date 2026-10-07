@@ -245,10 +245,13 @@ extension DictionaryStore {
     // keep their as-written score, so the はこ-vs-箱 orthography distinction is untouched. Nouns
     // only: on kana2k, kana spellings of expressions and adverbs (しつがわるい, よこに) took the
     // fallback and swallowed their neighbours, while the noun cases (こくない, どうはい) all improved.
+    // The noun spellings and their entry ranks come precomputed (noun_kana_entry_rank, written by
+    // generate_db.py); a dictionary without that table runs the same query here.
     nonisolated private func addEntryFallbackScoresForUnlistedKana(into scoreBySurface: inout [String: Double]) throws {
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
-        try prepare(sql: """
+        let precomputed = tableExists("noun_kana_entry_rank")
+        try prepare(sql: precomputed ? "SELECT text, rank FROM noun_kana_entry_rank" : """
             WITH entry_rank AS (
                 SELECT entry_id, MIN(frequency_rank) AS rank
                 FROM word_frequency WHERE frequency_rank IS NOT NULL GROUP BY entry_id

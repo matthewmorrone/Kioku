@@ -2041,6 +2041,7 @@ def build_database():
         materialize_surface_readings(conn)
         materialize_word_frequency(conn)
         materialize_surface_frequency(conn)
+        materialize_noun_kana_entry_rank(conn)
 
     with phase("Estimating JLPT levels for unlabeled entries from frequency..."):
         estimate_jlpt_levels_from_frequency(conn)
@@ -2329,6 +2330,32 @@ def materialize_surface_frequency(conn):
     )
     count = conn.execute("SELECT COUNT(*) FROM surface_frequency").fetchone()[0]
     print(f"  Done: {count} surface_frequency rows materialized")
+
+
+# Every kana spelling of a noun entry with that entry's best frequency rank, the input to the app's
+# fallback score for kana spellings the frequency list never ranked (DictionaryStore+Frequency.swift,
+# addEntryFallbackScoresForUnlistedKana). The same query the app ran at launch, run once here:
+# about a third of a second on the Mac, more on a phone.
+def materialize_noun_kana_entry_rank(conn):
+    conn.execute("""
+        CREATE TABLE noun_kana_entry_rank (text TEXT PRIMARY KEY, rank INTEGER NOT NULL) WITHOUT ROWID
+    """)
+    conn.execute("""
+        INSERT INTO noun_kana_entry_rank (text, rank)
+        WITH entry_rank AS (
+            SELECT entry_id, MIN(frequency_rank) AS rank
+            FROM word_frequency WHERE frequency_rank IS NOT NULL GROUP BY entry_id
+        )
+        SELECT kf.text, MIN(er.rank)
+        FROM kana_forms kf JOIN entry_rank er ON er.entry_id = kf.entry_id
+        WHERE EXISTS (
+            SELECT 1 FROM senses s
+            WHERE s.entry_id = kf.entry_id AND ',' || s.pos || ',' GLOB '*,n,*'
+        )
+        GROUP BY kf.text
+    """)
+    count = conn.execute("SELECT COUNT(*) FROM noun_kana_entry_rank").fetchone()[0]
+    print(f"  {count} noun kana spellings with an entry rank")
 
 
 def materialize_canonical_entry_ids(conn):
