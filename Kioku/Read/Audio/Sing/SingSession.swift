@@ -48,6 +48,8 @@ final class SingSession: ObservableObject {
         noteText: String,
         highlightRanges: [NSRange?],
         segmentRanges: [NSRange],
+        furigana: [Int: String],
+        furiganaLengths: [Int: Int],
         romanize: @escaping @Sendable (String) -> [RomanizedSpan]
     ) async {
         guard isActive == false else { return }
@@ -63,7 +65,8 @@ final class SingSession: ObservableObject {
             let loaded = try await Task.detached(priority: .userInitiated) { try SingPhonemeModel(url: modelURL) }.value
             let planned = await Task.detached(priority: .userInitiated) {
                 SingWordPlanner.targets(cues: cues, noteText: noteText, highlightRanges: highlightRanges,
-                                        segmentRanges: segmentRanges, romanize: romanize)
+                                        segmentRanges: segmentRanges, furigana: furigana,
+                                        furiganaLengths: furiganaLengths, romanize: romanize)
             }.value
             model = loaded
             targets = planned

@@ -128,6 +128,8 @@ extension LyricsView {
                 noteText: noteText,
                 highlightRanges: highlightRanges,
                 segmentRanges: segmentRanges,
+                furigana: furiganaBySegmentLocation,
+                furiganaLengths: furiganaLengthBySegmentLocation,
                 romanize: singRomanize
             )
             guard singSession.isActive else { return }

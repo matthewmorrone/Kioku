@@ -3,7 +3,8 @@ import LyricAlignment
 
 // Turns a song note's aligned cues into the words Sing mode listens for: each word is a
 // segment of the note's segmentation inside a sung line, timed by the line's karaoke
-// checkpoints, with its phonemes from the same romanizer the aligner reads. Pure, and run off
+// checkpoints, with its phonemes from the note's own furigana (so an edited reading is what's
+// listened for) spelled by the romanizer the aligner reads. Pure, and run off
 // the main thread because romanizing a whole song takes a moment.
 nonisolated enum SingWordPlanner {
     // Words with fewer phonemes than this (を, a lone vowel) are too short to grade reliably.
@@ -11,11 +12,11 @@ nonisolated enum SingWordPlanner {
     // A held note can run long; the scorer's 4 s window has to fit the word plus slack.
     static let maximumWordSec = 2.4
     // Longest stretch (lead slack + word + tail slack) one word is graded over. A word is graded
-    // once that stretch has passed, so a longer one would put the word's onset at the very front
-    // of the 4 s model input, with its lead slack clipped and no audio before it, where the model
-    // misses sounds a singer clearly made. 4 s less SingSession's 0.4 s right context, its 0.5 s tick and
-    // 0.5 s of audio kept before the stretch. Only the tail slack is trimmed to fit.
-    static let maximumGradedSec = 2.6
+    // once that stretch has passed, so a longer one puts the word's onset near the front of the
+    // 4 s model input, where the model misses sounds it hears clearly when they sit further in.
+    // 4 s less SingSession's 0.4 s right context, its 0.5 s tick and 1.5 s of audio kept before
+    // the stretch. The tail slack is trimmed first, then the end of a long held word.
+    static let maximumGradedSec = 1.6
 
     // One SingWordTarget per gradeable word, keyed by the word's UTF-16 start in `noteText`.
     // `highlightRanges[i]` is cue i's range in the note (nil → found by substring search, as the
@@ -25,6 +26,8 @@ nonisolated enum SingWordPlanner {
         noteText: String,
         highlightRanges: [NSRange?],
         segmentRanges: [NSRange],
+        furigana: [Int: String],
+        furiganaLengths: [Int: Int],
         romanize: (String) -> [RomanizedSpan]
     ) -> [SingWordTarget] {
         let noteNS = noteText as NSString
@@ -52,13 +55,17 @@ nonisolated enum SingWordPlanner {
             for (w, word) in words.enumerated() {
                 let surface = (line as NSString).substring(with: NSRange(location: word.start, length: word.end - word.start))
                 let romaji = particleRomaji[surface].map { [$0] }
+                    ?? reading(ofNoteRange: cueStart + word.start, cueStart + word.end, noteNS: noteNS,
+                               furigana: furigana, furiganaLengths: furiganaLengths).map { romanize($0).map(\.romaji) }
                     ?? spans.filter { $0.charOffsetUTF16 >= word.start && $0.charOffsetUTF16 < word.end }.map(\.romaji)
                 let tokens = SingPhonemeScorer.tokens(fromRomaji: romaji)
                 guard tokens.count >= minimumTokens else { continue }
                 let start = starts[w]
                 let nextStart = w + 1 < words.count ? starts[w + 1] : Double(cue.endMs) / 1000
-                let end = min(max(nextStart, start + 0.1), start + maximumWordSec)
-                let lead = w == 0 ? SingPhonemeScorer.lineEdgeLeadSlackSec : SingPhonemeScorer.leadSlackSec
+                // A line's last word tends to be aligned late (its sound lands in the previous
+                // word's slot), so it gets the wide lead slack of a line's first word.
+                let lead = w == 0 || w == words.count - 1 ? SingPhonemeScorer.lineEdgeLeadSlackSec : SingPhonemeScorer.leadSlackSec
+                let end = min(max(nextStart, start + 0.1), start + maximumWordSec, start - lead + maximumGradedSec)
                 let tail = w == words.count - 1 ? SingPhonemeScorer.lineEdgeTailSlackSec : SingPhonemeScorer.tailSlackSec
                 targets.append(SingWordTarget(
                     id: cueStart + word.start, tokens: tokens, startSec: start, endSec: end,
@@ -68,6 +75,26 @@ nonisolated enum SingWordPlanner {
             }
         }
         return targets
+    }
+
+    // The word's reading in kana from the note's furigana (kanji runs replaced by their readings,
+    // kana kept), or nil when no furigana falls inside it, so the line's romanization stands.
+    private static func reading(ofNoteRange start: Int, _ end: Int, noteNS: NSString,
+                                furigana: [Int: String], furiganaLengths: [Int: Int]) -> String? {
+        guard furigana.keys.contains(where: { $0 >= start && $0 < end }) else { return nil }
+        var kana = ""
+        var offset = start
+        while offset < end {
+            if let reading = furigana[offset], let length = furiganaLengths[offset], length > 0, offset + length <= end {
+                kana += reading
+                offset += length
+            } else {
+                let composed = noteNS.rangeOfComposedCharacterSequence(at: offset)
+                kana += noteNS.substring(with: composed)
+                offset = NSMaxRange(composed)
+            }
+        }
+        return kana
     }
 
     // The particles は and へ are sung "wa" and "e", not as the romanizer spells the kana.
