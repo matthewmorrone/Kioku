@@ -7,6 +7,7 @@ import Foundation
 //   segcli run < sentences                         → the shipped path (bundled table, shipped weight)
 //   segcli helpers < surfaces                    → "surface<TAB>lemma + helper…": the words deinflection folds into each surface
 //   segcli compounds < surfaces                  → "surface<TAB>base + auxiliary" for each surface the lookup sheet names as a compound verb
+//   segcli nearties < sentences                  → per line, "line<TAB>start<TAB>end<TAB>chosen<TAB>alternative<TAB>margin" for every window (Segmenter.nearTies)
 //   segcli furigana < sentences                  → per sentence, a JSON list of [utf16Location, utf16Length, reading]: the Read view's furigana for dictionary words
 // Repo root: four levels up from this file (scripts/segmentation-eval/cli/main.swift), unless KIOKU_CHECKOUT says otherwise.
 let root = ProcessInfo.processInfo.environment["KIOKU_CHECKOUT"]
@@ -186,6 +187,19 @@ if mode == "furigana" {
         let furigana = resolver.build(for: line, edges: segmenter.longestMatchEdges(for: line), surfaceReadingData: readingData)
         let rows: [[Any]] = furigana.byLocation.keys.sorted().map { [$0, furigana.lengthByLocation[$0] ?? 0, furigana.byLocation[$0] ?? ""] }
         print(String(data: try JSONSerialization.data(withJSONObject: rows), encoding: .utf8)!)
+    }
+    exit(0)
+}
+
+if mode == "nearties" {
+    var lineNumber = 0
+    while let line = readLine() {
+        for tie in segmenter.nearTies(in: line) {
+            let start = line.distance(from: line.startIndex, to: tie.range.lowerBound)
+            let end = line.distance(from: line.startIndex, to: tie.range.upperBound)
+            print("\(lineNumber)\t\(start)\t\(end)\t\(tie.chosen.joined(separator: "|"))\t\(tie.alternative.joined(separator: "|"))\t\(tie.margin)")
+        }
+        lineNumber += 1
     }
     exit(0)
 }

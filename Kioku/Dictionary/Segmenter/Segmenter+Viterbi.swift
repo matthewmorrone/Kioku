@@ -23,7 +23,12 @@ extension Segmenter {
     // cover. The split editor shows these costs rather than scoring pieces itself, so it cannot
     // disagree with the segmentation. Nil for a candidate whose pieces don't spell the segment.
     func splitCosts(of range: Range<String.Index>, in text: String, candidates: [[String]]) -> [Int?] {
-        let lattice = buildLattice(for: text)
+        splitCosts(of: range, in: text, candidates: candidates, lattice: buildLattice(for: text))
+    }
+
+    // splitCosts over a lattice the caller already built for `text`, so pricing many segments of one
+    // line (Segmenter.nearTies) builds the lattice once.
+    func splitCosts(of range: Range<String.Index>, in text: String, candidates: [[String]], lattice: [LatticeEdge]) -> [Int?] {
         let outside = lattice.filter { $0.end <= range.lowerBound || $0.start >= range.upperBound }
         let segment = String(text[range])
         return candidates.map { pieces in
