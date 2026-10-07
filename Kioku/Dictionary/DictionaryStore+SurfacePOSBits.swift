@@ -8,7 +8,8 @@ import SQLite3
 extension DictionaryStore {
 
     // Runs a single SQL query that emits one (surface, raw_pos) row per (form, sense)
-    // pair, then reduces them in Swift into surface → UInt64 bits.
+    // pair, then reduces them in Swift into surface → UInt64 bits. The ~580k rows carry only a
+    // few hundred distinct pos strings, so each is parsed once (bitsByRawPOS) rather than per row.
     nonisolated func fetchSurfacePOSBitsMap() throws -> [String: UInt64] {
         try withSerializedDatabaseAccess {
             let sql = """
@@ -29,6 +30,7 @@ extension DictionaryStore {
 
             var map: [String: UInt64] = [:]
             map.reserveCapacity(500_000)
+            var bitsByRawPOS: [String: UInt64] = [:]
 
             var stepCode = sqlite3_step(statement)
             while stepCode == SQLITE_ROW {
@@ -38,8 +40,14 @@ extension DictionaryStore {
                 }
                 let surface = String(cString: surfacePtr)
                 let posPtr = sqlite3_column_text(statement, 1)
-                let raw = posPtr.map { String(cString: $0) }
-                let bits = PartOfSpeech.bits(from: raw)
+                let raw = posPtr.map { String(cString: $0) } ?? ""
+                let bits: UInt64
+                if let known = bitsByRawPOS[raw] {
+                    bits = known
+                } else {
+                    bits = PartOfSpeech.bits(from: raw)
+                    bitsByRawPOS[raw] = bits
+                }
                 if bits != 0 {
                     map[surface, default: 0] |= bits
                 }

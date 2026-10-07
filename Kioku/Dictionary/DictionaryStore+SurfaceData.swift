@@ -30,11 +30,19 @@ extension DictionaryStore {
                 GROUP BY entry_id
             """, statement: &posStatement)
 
+            // ~215k entries share a few thousand distinct POS strings, so each is parsed once.
+            var bitsByRawPOS: [String: UInt64] = [:]
             var posStep = sqlite3_step(posStatement)
             while posStep == SQLITE_ROW {
                 let entryID = Int(sqlite3_column_int64(posStatement, 0))
-                let posString = sqlite3_column_text(posStatement, 1).map { String(cString: $0) }
-                let bits = PartOfSpeech.bits(from: posString)
+                let posString = sqlite3_column_text(posStatement, 1).map { String(cString: $0) } ?? ""
+                let bits: UInt64
+                if let known = bitsByRawPOS[posString] {
+                    bits = known
+                } else {
+                    bits = PartOfSpeech.bits(from: posString)
+                    bitsByRawPOS[posString] = bits
+                }
                 if bits != 0 { posByEntryID[entryID] = bits }
                 posStep = sqlite3_step(posStatement)
             }
@@ -56,7 +64,9 @@ extension DictionaryStore {
             var records: [SurfaceRecord] = []
             records.reserveCapacity(500_000)
             var currentSurface: String?
-            var currentEntryIDs = Set<Int>()
+            // Rows arrive ordered by entry_id within a surface, so the IDs collect already sorted;
+            // a repeat (one entry listing the same text twice) is the previous ID.
+            var currentEntryIDs: [Int] = []
             var currentPOS: UInt64 = 0
 
             // Flush accumulator into the output record list.
@@ -64,7 +74,7 @@ extension DictionaryStore {
                 guard let surface = currentSurface else { return }
                 records.append(SurfaceRecord(
                     surface: surface,
-                    entryIDs: Array(currentEntryIDs).sorted(),
+                    entryIDs: currentEntryIDs,
                     partOfSpeech: currentPOS
                 ))
             }
@@ -85,7 +95,7 @@ extension DictionaryStore {
                     currentPOS = 0
                 }
 
-                currentEntryIDs.insert(entryID)
+                if currentEntryIDs.last != entryID { currentEntryIDs.append(entryID) }
                 currentPOS |= posByEntryID[entryID] ?? 0
 
                 step = sqlite3_step(surfaceStatement)
