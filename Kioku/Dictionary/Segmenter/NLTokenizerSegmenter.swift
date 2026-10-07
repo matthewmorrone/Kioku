@@ -58,6 +58,11 @@ nonisolated final class NLTokenizerSegmenter: TextSegmenting, @unchecked Sendabl
         nil
     }
 
+    // NLTokenizer has no name dictionary.
+    func nameReading(for surface: String) -> String? {
+        nil
+    }
+
     // No cost model here: the split editor shows its cuts without costs for this backend.
     func splitCosts(of range: Range<String.Index>, in text: String, candidates: [[String]]) -> [Int?] {
         candidates.map { _ in nil }

@@ -50,6 +50,10 @@ nonisolated struct SegmenterScoring {
     // Score assumed for a dictionary word with no frequency rank at all: rarer than any ranked word.
     static let unrankedDictionaryScore = 1.0
 
+    // Frequency score of a JMnedict name edge (Segmenter+Names.swift). Names carry no frequency, so
+    // one prices like an unranked word; measured 2026-10-07, 0.01 and 1.0 differ on one held2k line.
+    static let nameScore = unrankedDictionaryScore
+
     // Zipf units taken off a lone kana's score when it is neither a classed function word nor a
     // counter (Segmenter.buildLattice). 1.5 is the smallest that keeps まって whole, and 2.0 starts
     // losing kana-written 間 (ながいま → な|が|いま).

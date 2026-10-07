@@ -30,6 +30,16 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     var commonKanaSurfaces: Set<String>
     // Transition costs between adjacent word classes on a path; nil scores paths by word costs alone.
     var transitionTable: SegmenterTransitionTable?
+    // JMnedict spellings the lattice may use as one word where JMdict has none (田中, スティーヴン);
+    // see Segmenter+Names.swift. Empty when built without a dictionary store or with an older
+    // dictionary that has no name tables. Set through useNameSurfaces, which keeps
+    // longestNameSurface in step.
+    private(set) var nameSurfaces: Set<String> = []
+    // Length in characters of the longest name surface, so name edges are only probed that far.
+    private(set) var longestNameSurface = 0
+    // Reads a name's usual reading from the dictionary (DictionaryStore.lookupNames); nil without a
+    // store. Queried per furigana segment rather than held in memory beside nameSurfaces.
+    var nameReadingLookup: (@Sendable (String) -> String?)?
     // Set to true locally to print POS transition decisions during Viterbi runs.
     let shouldLogPOSTransitions = false
     // Shared set of characters that are always their own segment — single source of truth for
@@ -97,6 +107,21 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             commonKanaSurfaces: (try? dictionaryStore?.fetchCommonKanaSurfaces()) ?? [],
             transitionTable: SegmenterTransitionTable.bundled()
         )
+        do {
+            useNameSurfaces(try dictionaryStore?.fetchSegmenterNameSurfaces() ?? [])
+        } catch {
+            AppLog.error(.segmentation, "Name surfaces failed to load: \(error)")
+        }
+        if let dictionaryStore {
+            nameReadingLookup = { surface in
+                do {
+                    return try dictionaryStore.lookupNames(surface: surface).first?.reading
+                } catch {
+                    AppLog.error(.segmentation, "Name reading failed for \(surface): \(error)")
+                    return nil
+                }
+            }
+        }
     }
 
     // Swaps in fully-loaded dictionary data while preserving this instance's identity — see the
@@ -107,14 +132,25 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         partOfSpeechByEntryID: [Int: UInt64],
         frequencyScoreBySurface: [String: Double],
         commonKanaSurfaces: Set<String>,
-        transitionTable: SegmenterTransitionTable?
+        transitionTable: SegmenterTransitionTable?,
+        nameSurfaces: Set<String>,
+        nameReadingLookup: (@Sendable (String) -> String?)?
     ) {
+        useNameSurfaces(nameSurfaces)
+        self.nameReadingLookup = nameReadingLookup
         self.transitionTable = transitionTable
         self.commonKanaSurfaces = commonKanaSurfaces
         self.trie = trie
         self.deinflector = deinflector
         self.partOfSpeechByEntryID = partOfSpeechByEntryID
         self.frequencyScoreBySurface = frequencyScoreBySurface
+    }
+
+    // Installs the name spellings the lattice may use and the longest one's length, together, so
+    // the probe length can never disagree with the set (Swift skips didSet inside initializers).
+    func useNameSurfaces(_ surfaces: Set<String>) {
+        nameSurfaces = surfaces
+        longestNameSurface = surfaces.map(\.count).max() ?? 0
     }
 
     // Convenience for ContentView's startup sequence, which builds a brand-new Segmenter on a
@@ -127,7 +163,9 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             partOfSpeechByEntryID: other.partOfSpeechByEntryID,
             frequencyScoreBySurface: other.frequencyScoreBySurface,
             commonKanaSurfaces: other.commonKanaSurfaces,
-            transitionTable: other.transitionTable
+            transitionTable: other.transitionTable,
+            nameSurfaces: other.nameSurfaces,
+            nameReadingLookup: other.nameReadingLookup
         )
     }
 
@@ -300,6 +338,11 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     if characterLength > 1 { keptMultiCharacterMatch = true }
                 }
             }
+
+            // Names JMdict lacks (田中), so a name can come out as one word instead of known pieces.
+            let nameEdges = nameEdges(in: text, startingAt: index, alreadyEndingAt: Set(edges[positionEdgesStart...].map(\.end)))
+            edges += nameEdges
+            keptMatches += nameEdges.count
 
             // Ensures every character position has at least one outgoing edge.
             // Single-character fallback so the greedy walk lands on every position,

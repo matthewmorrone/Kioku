@@ -38,6 +38,17 @@ nonisolated struct FuriganaResolver {
                 continue
             }
 
+            // A name the dictionary has no word reading for (富良野) reads as one word, not kanji by
+            // kanji (とみ・りょう・の). Only all-kanji names: the reading then spans the whole segment.
+            if FuriganaResolver.listedReadings(segmentSurface, surfaceReadingData: surfaceReadingData) == nil,
+               segmentSurface.allSatisfy({ ScriptClassifier.containsKanji(String($0)) }),
+               let nameReading = segmenter.nameReading(for: segmentSurface) {
+                let nsRange = NSRange(segmentRange, in: sourceText)
+                resolvedFurigana[nsRange.location] = nameReading
+                resolvedFuriganaLengths[nsRange.location] = nsRange.length
+                continue
+            }
+
             let annotations = furiganaAnnotations(
                 for: segmentSurface,
                 segmentRange: segmentRange,
