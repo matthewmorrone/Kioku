@@ -9,14 +9,9 @@ import LyricAlignment
 nonisolated enum SingWordPlanner {
     // Words with fewer phonemes than this (を, a lone vowel) are too short to grade reliably.
     static let minimumTokens = 2
-    // A held note can run long; the scorer's 4 s window has to fit the word plus slack.
+    // A line's last word runs to the cue's end, which can be seconds of instrumental after the
+    // singing stops; past this a word is graded without waiting for the rest.
     static let maximumWordSec = 2.4
-    // Longest stretch (lead slack + word + tail slack) one word is graded over. A word is graded
-    // once that stretch has passed, so a longer one puts the word's onset near the front of the
-    // 4 s model input, where the model misses sounds it hears clearly when they sit further in.
-    // 4 s less SingSession's 0.4 s right context, its 0.5 s tick and 1.5 s of audio kept before
-    // the stretch. The tail slack is trimmed first, then the end of a long held word.
-    static let maximumGradedSec = 1.6
 
     // One SingWordTarget per gradeable word, keyed by the word's UTF-16 start in `noteText`.
     // `highlightRanges[i]` is cue i's range in the note (nil → found by substring search, as the
@@ -65,12 +60,12 @@ nonisolated enum SingWordPlanner {
                 // A line's last word tends to be aligned late (its sound lands in the previous
                 // word's slot), so it gets the wide lead slack of a line's first word.
                 let lead = w == 0 || w == words.count - 1 ? SingPhonemeScorer.lineEdgeLeadSlackSec : SingPhonemeScorer.leadSlackSec
-                let end = min(max(nextStart, start + 0.1), start + maximumWordSec, start - lead + maximumGradedSec)
+                let end = min(max(nextStart, start + 0.1), start + maximumWordSec)
                 let tail = w == words.count - 1 ? SingPhonemeScorer.lineEdgeTailSlackSec : SingPhonemeScorer.tailSlackSec
                 targets.append(SingWordTarget(
                     id: cueStart + word.start, tokens: tokens, startSec: start, endSec: end,
                     leadSlackSec: lead,
-                    tailSlackSec: max(0, min(tail, maximumGradedSec - lead - (end - start)))
+                    tailSlackSec: tail
                 ))
             }
         }

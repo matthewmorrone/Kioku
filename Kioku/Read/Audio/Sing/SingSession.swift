@@ -4,8 +4,9 @@ import Foundation
 import LyricAlignment
 
 // Sing mode's live loop: while the song plays, every half second it takes the last 4 s of
-// microphone audio, runs the short-window phoneme model over it, and grades each lyric word
-// whose time window has fully passed (with a little audio after it for context). Verdicts are
+// microphone audio, runs the short-window phoneme model over it, stitches the run's well-placed
+// middle into a song-time timeline (SingEmissionTimeline), and grades each lyric word whose time
+// window the timeline now fully covers. Verdicts are
 // keyed by the word's UTF-16 start in the note, so the lyrics card can colour them. In Line
 // mode it loops the current line, clearing that line's verdicts on every pass.
 @MainActor
@@ -27,14 +28,15 @@ final class SingSession: ObservableObject {
     var restoreAudioSource: LyricsAudioSource?
 
     private static let tickSec = 0.5
-    // Frames in the last stretch of a window lack right-hand context; never grade from them.
-    private static let rightContextSec = 0.4
 
     private let mic = SingMicCapture()
     private var model: SingPhonemeModel?
     private var targets: [SingWordTarget] = []
     private var loop: Task<Void, Never>?
     private var isScoring = false
+    private let timeline = SingEmissionTimeline()
+    // Bumped on every jump, so a model run that started before it can't stitch old audio in.
+    private var generation = 0
     private var lastSongSec: Double?
     private var loopCueIndex: Int?
     private weak var controller: AudioPlaybackController?
@@ -84,6 +86,8 @@ final class SingSession: ObservableObject {
         verdicts = [:]
         heard = [:]
         lastGradedID = nil
+        timeline.reset()
+        generation += 1
         resultsNoteText = noteText
         statusMessage = nil
         lastSongSec = nil
@@ -139,6 +143,8 @@ final class SingSession: ObservableObject {
         // A jump (seek, or the line loop) invalidates the buffered audio and re-opens the words ahead.
         if let last = lastSongSec, songNow < last - 0.3 || songNow > last + 2.0 {
             mic.ring.reset()
+            timeline.reset()
+            generation += 1
             verdicts = verdicts.filter { id, _ in targets.first { $0.id == id }.map { $0.startSec < songNow - 0.3 } ?? false }
             heard = heard.filter { id, _ in verdicts[id] != nil }
             if let last = lastGradedID, verdicts[last] == nil { lastGradedID = nil }
@@ -164,72 +170,71 @@ final class SingSession: ObservableObject {
         let newestSong = songNow - (hostNow - snapshot.newestHostSec)
         let windowStart = newestSong - SingPhonemeModel.windowSec
         let audioStart = newestSong - Double(snapshot.samples.count) / Double(SingAudioRing.sampleRate)
-        // Due once the word (plus its tail slack and some right context) has been heard and its
-        // start is inside the buffered audio; lead slack that falls before the buffer is clipped,
-        // so a long held word still gets graded instead of waiting for a moment it fits whole.
-        let due = targets.filter { t in
-            verdicts[t.id] == nil
-                && t.startSec >= audioStart + 0.05
-                && t.endSec + t.tailSlackSec <= newestSong - Self.rightContextSec
-        }
-        guard due.isEmpty == false else { return }
+        let samples = snapshot.samples
+        let runGeneration = generation
 
         isScoring = true
-        let samples = snapshot.samples
         Task { [weak self] in
-            let graded = await Task.detached(priority: .userInitiated) { () -> [(id: Int, score: Double, heard: String)] in
+            let run = await Task.detached(priority: .userInitiated) { () -> (values: [Float], frames: Int, frameSec: Double)? in
                 do {
-                    let lp = try model.logProbs(window: samples)
-                    let audioFirstFrame = max(0, Int(ceil((audioStart - windowStart) / lp.frameSec)))
-                    return due.map { t in
-                        let first = max(audioFirstFrame, Int(((t.startSec - t.leadSlackSec) - windowStart) / lp.frameSec))
-                        let last = min(lp.frames - 1, Int(((t.endSec + t.tailSlackSec) - windowStart) / lp.frameSec))
-                        let result = SingPhonemeScorer.scoreDetails(tokens: t.tokens, logProbs: lp.values, classes: SingPhonemeModel.classes,
-                                                                    firstFrame: first, lastFrame: last)
-                        // The heard line uses the word's own slot, without slack, so it doesn't pick up its neighbours.
-                        let slotFirst = min(last, max(first, Int((t.startSec - windowStart) / lp.frameSec)))
-                        let slotLast = max(slotFirst, min(last, Int((t.endSec - windowStart) / lp.frameSec)))
-                        let heard = SingHeardDecoder.kana(logProbs: lp.values, classes: SingPhonemeModel.classes,
-                                                          firstFrame: slotFirst, lastFrame: slotLast)
-                        Self.logDiagnostics(target: t, score: result.score, heard: heard, placements: result.placements, samples: samples,
-                                            windowStart: windowStart, frameSec: lp.frameSec, firstFrame: first, lastFrame: last)
-                        return (t.id, result.score, heard)
-                    }
+                    return try model.logProbs(window: samples)
                 } catch {
                     AppLog.error(.audioPlayback, "[Sing] model run failed: \(error.localizedDescription)")
-                    return []
+                    return nil
                 }
             }.value
             guard let self else { return }
             self.isScoring = false
-            guard self.isActive else { return }
-            for word in graded {
-                self.verdicts[word.id] = word.score >= SingPhonemeScorer.passFraction
-                self.heard[word.id] = word.heard
-            }
-            if let newest = graded.max(by: { $0.id < $1.id }) { self.lastGradedID = newest.id }
+            guard self.isActive, let run, runGeneration == self.generation else { return }
+            self.timeline.merge(logProbs: run.values, frames: run.frames, frameSec: run.frameSec, classes: SingPhonemeModel.classes,
+                                windowStartSec: windowStart, windowSec: SingPhonemeModel.windowSec, audioStartSec: audioStart)
+            self.gradeDueWords(samples: samples, audioStartSec: audioStart)
+        }
+    }
+
+    // Grades every word whose window (lead slack, word, tail slack) the timeline now covers and
+    // whose start it reaches; lead slack from before the timeline's first frame is clipped.
+    private func gradeDueWords(samples: [Float], audioStartSec: Double) {
+        guard let earliest = timeline.earliestSec else { return }
+        let due = targets.filter { t in
+            verdicts[t.id] == nil && t.startSec >= earliest && t.endSec + t.tailSlackSec <= timeline.coveredUntilSec
+        }
+        for t in due {
+            guard let window = timeline.slice(fromSec: t.startSec - t.leadSlackSec, toSec: t.endSec + t.tailSlackSec) else { continue }
+            let result = SingPhonemeScorer.scoreDetails(tokens: t.tokens, logProbs: window.values, classes: SingPhonemeModel.classes,
+                                                        firstFrame: 0, lastFrame: window.frames - 1)
+            // The heard line uses the word's own slot, without slack, so it doesn't pick up its neighbours.
+            let heard = timeline.slice(fromSec: t.startSec, toSec: t.endSec).map {
+                SingHeardDecoder.kana(logProbs: $0.values, classes: SingPhonemeModel.classes, firstFrame: 0, lastFrame: $0.frames - 1)
+            } ?? ""
+            Self.logDiagnostics(target: t, score: result.score, heard: heard, placements: result.placements,
+                                windowStartSec: window.startSec, windowFrames: window.frames, frameSec: timeline.frameSec,
+                                samples: samples, audioStartSec: audioStartSec)
+            verdicts[t.id] = result.score >= SingPhonemeScorer.passFraction
+            self.heard[t.id] = heard
+            lastGradedID = t.id
         }
     }
 
     // One log line per graded word, for tuning and for chasing false misses: the word's expected
     // window, where each expected sound was found (seconds from the word's aligned start) and how
     // sure the model was, and how loud the mic was over the window.
-    nonisolated private static func logDiagnostics(
+    private static func logDiagnostics(
         target t: SingWordTarget, score: Double, heard: String, placements: [(frame: Int, probability: Float)],
-        samples: [Float], windowStart: Double, frameSec: Double, firstFrame: Int, lastFrame: Int
+        windowStartSec: Double, windowFrames: Int, frameSec: Double, samples: [Float], audioStartSec: Double
     ) {
-        let padded = SingPhonemeModel.windowSamples - samples.count
-        let perFrame = Double(SingPhonemeModel.windowSamples) * frameSec / SingPhonemeModel.windowSec
-        let lo = max(0, Int(Double(firstFrame) * perFrame) - padded), hi = min(samples.count, Int(Double(lastFrame + 1) * perFrame) - padded)
+        let windowEndSec = windowStartSec + Double(windowFrames - 1) * frameSec
+        // Loudness over the part of the window still in the newest mic snapshot.
+        let rate = Double(SingAudioRing.sampleRate)
+        let lo = max(0, Int((windowStartSec - audioStartSec) * rate)), hi = min(samples.count, Int((windowEndSec - audioStartSec) * rate))
         var sum: Float = 0
         if hi > lo { for i in lo..<hi { sum += samples[i] * samples[i] } }
         let rmsDb = hi > lo ? 10 * log10(max(1e-10, sum / Float(hi - lo))) : -100
         let found = zip(t.tokens, placements).map { token, placement in
-            let offset = windowStart + Double(placement.frame) * frameSec - t.startSec
+            let offset = windowStartSec + Double(placement.frame) * frameSec - t.startSec
             return "\(SingPhonemeScorer.label(token))\(String(format: "%+.2f", offset)):\(String(format: "%.2f", placement.probability))"
         }.joined(separator: " ")
-        let from = windowStart + Double(firstFrame) * frameSec - t.startSec
-        let to = windowStart + Double(lastFrame) * frameSec - t.startSec
+        let from = windowStartSec - t.startSec, to = windowEndSec - t.startSec
         AppLog.debug(.audioPlayback, "[Sing] word@\(t.id) score \(String(format: "%.2f", score)) at \(String(format: "%.2f", t.startSec))s window \(String(format: "%+.2f", from))…\(String(format: "%+.2f", to)) rms \(String(format: "%.0f", rmsDb))dB heard「\(heard)」 [\(found)]")
     }
 }

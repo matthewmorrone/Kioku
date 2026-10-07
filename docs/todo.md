@@ -17,13 +17,14 @@ written so a new session can pick it up cold.
       pass (grilling) before building: question source (saved words? by JLPT/frequency?), distractor
       selection, timer/scoring model, round length, how it ties into `ReviewStore` (does a fast
       correct answer count as a review?). Sits alongside the existing MultipleChoiceView.
-- [ ] **Sing mode: check the 2026-10-07 retune on a real run** — a word passes when half its
-      vowels and half its consonants are heard (long-vowel う/い optional); a word's graded stretch
-      is capped at 1.6 s (tail slack trimmed first, then a held word's end) so its onset sits ≥1.5 s
-      into the 4 s input; a line's last word gets the 0.6 s lead slack (the aligner times it late:
-      the live "heard" line showed よ/ね/夢 landing in the previous word's slot); standalone は/へ
-      score as wa/e; readings come from the note's furigana. Sing a song and pull the log
-      (`heard「…」` per word) to compare line-final words before changing anything else.
+- [ ] **Sing mode: check the stitched timeline on a real run** — model runs every 0.5 s keep
+      only their middle (1.5 s in to 0.4 s before the end) and are stitched along song time
+      (`SingEmissionTimeline`), so words of any length grade from frames with context; replaced
+      a per-word length cap that cut long words (なつかしい, 何度も). Last run before it
+      (ムーンライト伝説 08:09): 90% passed, line-final 26/32. Also in this pass: half of vowels
+      and half of consonants must be heard (long-vowel う/い optional), line-final words get 0.6 s
+      lead slack, は/へ score as wa/e, readings come from the note's furigana. Pull the log
+      (`heard「…」` per word) after a run and compare.
 - [ ] **Lyric aligner reads the particle は as "ha"** — `LyricRomanizer` transliterates kana, so
       the forced aligner looks for h+a where the singer sings "wa" (へ: "he" for "e"). Sing mode's
       planner overrides standalone は/へ; the aligner doesn't. Needs a word-level particle signal
