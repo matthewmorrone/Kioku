@@ -71,12 +71,15 @@ extension DictionaryStore {
     //
     // Each surface retains up to maxReadingsPerSurface distinct readings; frequency data is populated
     // for any reading that has at least one frequency signal (frequency_rank or wordfreq_zipf).
+    // Rows come in rowid order: generate_db.py inserts surface_readings already sorted by surface,
+    // then reading preference (has_direct_rank DESC, best_rank, reading_order, wordfreq_zipf DESC,
+    // reading), so reading them back needs no sort (0.28 s → 0.05 s on the Mac).
     nonisolated func fetchSurfaceReadingData(maxReadingsPerSurface: Int = 8) throws -> [String: SurfaceReadingData] {
         try withSerializedDatabaseAccess {
             let sql = """
             SELECT surface, reading, frequency_rank, wordfreq_zipf
             FROM surface_readings
-            ORDER BY surface, has_direct_rank DESC, best_rank, reading_order, wordfreq_zipf DESC, reading
+            ORDER BY rowid
             """
 
             var statement: OpaquePointer?

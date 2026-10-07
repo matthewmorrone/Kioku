@@ -2229,6 +2229,8 @@ def materialize_surface_readings(conn):
         -- to alphabetical — SQLite sorts NULL first in ASC / last in DESC, so a reading with no
         -- real frequency signal (e.g. ににん) correctly loses to one that has it (ふたり) instead
         -- of winning-by-coincidence on kana ordering. See the branch-1 comment above.
+        -- Rows go in in display order, so their rowids are that order: the app reads them back
+        -- ORDER BY rowid (DictionaryStore.fetchSurfaceReadingData) instead of sorting at launch.
         ORDER BY surface ASC, MAX(has_direct_rank) DESC, MIN(best_rank) ASC, MIN(reading_order) ASC, MAX(wordfreq_zipf) DESC, reading ASC;
 
         CREATE INDEX idx_surface_readings_surface ON surface_readings(surface);
