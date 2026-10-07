@@ -179,6 +179,43 @@ extension LyricsView {
         return colored ? attributed : nil
     }
 
+    // While singing: under the active card, what the model heard for each graded word of the line
+    // it graded last (green heard, red missed, "–" when it heard nothing), above a live waveform
+    // of the mic so the singer can see they're being picked up.
+    @ViewBuilder
+    var singHeardPanel: some View {
+        if singSession.isActive {
+            VStack(spacing: 4) {
+                if let heardLine = singHeardLine {
+                    Text(heardLine)
+                        .scaledFont(size: 13)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .frame(maxWidth: .infinity)
+                }
+                SingWaveformView(levels: { singSession.recentLevels(bars: 48, seconds: 2.4) })
+                    .frame(height: 22)
+                    .padding(.horizontal, 24)
+            }
+        }
+    }
+
+    // The heard kana of the last graded word's line, one run per word, coloured by verdict.
+    private var singHeardLine: AttributedString? {
+        guard let last = singSession.lastGradedID,
+              let cueRange = highlightRanges.compactMap({ $0 }).first(where: { NSLocationInRange(last, $0) }) else { return nil }
+        let ids = singSession.heard.keys.filter { NSLocationInRange($0, cueRange) }.sorted()
+        var line = AttributedString()
+        for (i, id) in ids.enumerated() {
+            if i > 0 { line += AttributedString(" ") }
+            let kana = singSession.heard[id].flatMap { $0.isEmpty ? nil : $0 } ?? "–"
+            var run = AttributedString(kana)
+            run.foregroundColor = singSession.verdicts[id] == true ? Color(Self.singHeardColor) : Color(Self.singMissedColor)
+            line += run
+        }
+        return ids.isEmpty ? nil : line
+    }
+
     // The active card's highlight range, cue-local. While singing, the band steps mora by mora
     // straight from the cue's karaoke checkpoints (whatever the Line / Word setting), so the singer
     // can follow each syllable; otherwise it's the usual granularity-driven range.

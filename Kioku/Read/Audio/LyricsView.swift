@@ -418,6 +418,7 @@ struct LyricsView: View {
                         .frame(height: rendererHeight)
                         .clipped()
                     }
+                    singHeardPanel
                     if isTranslationVisible, let translation = displayedTranslation(for: displayIndex) {
                         Text(translation)
                             .scaledFont(size: 12)
