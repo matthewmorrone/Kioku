@@ -1315,6 +1315,43 @@ def import_names(conn):
     conn.execute("CREATE INDEX idx_name_forms_surface ON name_forms(surface)")
     print(f"  {len(entry_rows)} names, {len(form_rows)} written forms, "
           f"{sum(1 for row in form_rows if row[3] == 0)} with MeCab's usual reading")
+    materialize_segmenter_names(conn)
+
+
+# The name spellings the segmenter loads as lattice edges (Segmenter+Names.swift), filtered here once
+# instead of on every app launch: two or more characters, no hiragana, some kanji or all katakana.
+# Single characters (中, 森) and hiragana names (まこと) are nearly always ordinary words. A name that
+# splits into another name plus a dictionary suffix (森氏 = 森 + 氏) is left out unless one of its
+# readings is the usual one (name_forms.rank 0: 田中, 富良野市 stay), since in running text it is the
+# name and the suffix. The script tests match ScriptClassifier.swift (isKanjiScalar, isPureKatakana).
+def materialize_segmenter_names(conn):
+    def has_hiragana(text):
+        return any(0x3041 <= ord(ch) <= 0x309F for ch in text)
+
+    def has_kanji(text):
+        return any(0x4E00 <= ord(ch) <= 0x9FFF or 0x3400 <= ord(ch) <= 0x4DBF or 0xF900 <= ord(ch) <= 0xFAFF
+                   for ch in text)
+
+    def is_pure_katakana(text):
+        return bool(text) and all(0x30A0 <= ord(ch) <= 0x30FF for ch in text)
+
+    all_names = {row[0] for row in conn.execute("SELECT DISTINCT surface FROM name_forms")}
+    usual = {row[0] for row in conn.execute("SELECT DISTINCT surface FROM name_forms WHERE rank = 0")}
+    suffixes = {row[0] for row in conn.execute(
+        "SELECT DISTINCT k.text FROM kanji k JOIN senses s ON s.entry_id = k.entry_id WHERE s.pos LIKE '%suf%'")}
+
+    def is_name_plus_suffix(text):
+        return any(text[split:] in suffixes and text[:split] in all_names for split in range(1, len(text)))
+
+    kept = sorted(
+        surface for surface in all_names
+        if len(surface) >= 2 and not has_hiragana(surface)
+        and (has_kanji(surface) or is_pure_katakana(surface))
+        and (surface in usual or not is_name_plus_suffix(surface))
+    )
+    conn.execute("CREATE TABLE segmenter_names (surface TEXT PRIMARY KEY) WITHOUT ROWID")
+    conn.executemany("INSERT INTO segmenter_names VALUES (?)", ((surface,) for surface in kept))
+    print(f"  {len(kept)} name spellings for the segmenter")
 
 
 # The hiragana reading MeCab (IPA dictionary) gives each surface: its tokens' readings joined, or

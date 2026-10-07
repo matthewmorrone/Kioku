@@ -49,35 +49,12 @@ extension DictionaryStore {
         }
     }
 
-    // The name spellings the segmenter may use as words (Segmenter.nameSurfaces): two or more
-    // characters, no hiragana, and some kanji or all katakana. Single characters (中, 森) and
-    // hiragana names (まこと, あい) are nearly always ordinary words in running text, so they stay
-    // out. So does a name that splits into another name plus a dictionary suffix when none of its
-    // readings is the usual one (name_forms.rank): 森氏 is only もりうじ, but in running text it is
-    // 森 + 氏 (Mr. Mori). 田中 (田 + the suffix 中) and 富良野市 keep their usual reading, so they stay.
-    // Empty for a dictionary built before the name tables existed.
+    // The name spellings the segmenter may use as words (Segmenter.nameSurfaces), filtered at build
+    // time by generate_db.py's materialize_segmenter_names. Empty for a dictionary without the table.
     nonisolated func fetchSegmenterNameSurfaces() throws -> Set<String> {
         try withSerializedDatabaseAccess {
-            guard tableExists("name_forms") else { return [] }
-            let allNames = try fetchTextColumn(sql: "SELECT DISTINCT surface FROM name_forms")
-            let suffixes = try fetchTextColumn(sql: """
-                SELECT DISTINCT k.text FROM kanji k JOIN senses s ON s.entry_id = k.entry_id
-                WHERE s.pos LIKE '%suf%'
-                """)
-            let usualNames = try fetchTextColumn(sql: "SELECT DISTINCT surface FROM name_forms WHERE rank = 0")
-            // Whether `surface` splits into a name and a dictionary suffix (森 + 氏).
-            func isNamePlusSuffix(_ surface: String) -> Bool {
-                (1..<surface.count).contains { split in
-                    let cut = surface.index(surface.startIndex, offsetBy: split)
-                    return suffixes.contains(String(surface[cut...])) && allNames.contains(String(surface[..<cut]))
-                }
-            }
-            return allNames.filter { surface in
-                surface.count >= 2
-                    && surface.unicodeScalars.contains(where: { (0x3041...0x309F).contains($0.value) }) == false
-                    && (ScriptClassifier.containsKanji(surface) || ScriptClassifier.isPureKatakana(surface))
-                    && (usualNames.contains(surface) || isNamePlusSuffix(surface) == false)
-            }
+            guard tableExists("segmenter_names") else { return [] }
+            return try fetchTextColumn(sql: "SELECT surface FROM segmenter_names")
         }
     }
 
