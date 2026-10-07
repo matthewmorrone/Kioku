@@ -182,23 +182,15 @@ extension LyricsView {
     }
 
     // While singing: under the active card, what the model heard for each graded word of the line
-    // it graded last (green heard, red missed, "–" when it heard nothing), above a live waveform
-    // of the mic so the singer can see they're being picked up.
+    // it graded last (green heard, red missed, "–" when it heard nothing).
     @ViewBuilder
     var singHeardPanel: some View {
-        if singSession.isActive {
-            VStack(spacing: 4) {
-                if let heardLine = singHeardLine {
-                    Text(heardLine)
-                        .scaledFont(size: 13)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.6)
-                        .frame(maxWidth: .infinity)
-                }
-                SingWaveformView(levels: { singSession.recentLevels(bars: 48, seconds: 2.4) })
-                    .frame(height: 22)
-                    .padding(.horizontal, 24)
-            }
+        if singSession.isActive, let heardLine = singHeardLine {
+            Text(heardLine)
+                .scaledFont(size: 13)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .frame(maxWidth: .infinity)
         }
     }
 

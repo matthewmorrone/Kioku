@@ -127,24 +127,6 @@ final class SingSession: ObservableObject {
         verdicts.isEmpty == false && resultsNoteText == noteText
     }
 
-    // Loudness of the last `seconds` of mic audio in `bars` equal slices, each 0…1 (−50 dB … −10 dB),
-    // oldest first, for the live waveform. Silent bars pad the front until the buffer fills.
-    func recentLevels(bars: Int, seconds: Double) -> [Float] {
-        let perBar = max(1, Int(seconds * Double(SingAudioRing.sampleRate)) / bars)
-        let samples = mic.ring.snapshot(count: perBar * bars).samples
-        let missing = bars - samples.count / perBar
-        var levels = [Float](repeating: 0, count: max(0, missing))
-        var start = samples.count % perBar
-        while start + perBar <= samples.count {
-            var sum: Float = 0
-            for i in start..<(start + perBar) { sum += samples[i] * samples[i] }
-            let db = 10 * log10(max(1e-10, sum / Float(perBar)))
-            levels.append(min(1, max(0, (db + 50) / 40)))
-            start += perBar
-        }
-        return levels
-    }
-
     // One pass of the loop: follow pauses and seeks, loop the line in Line mode, and grade
     // whatever words the newest audio now covers.
     private func tick() {
