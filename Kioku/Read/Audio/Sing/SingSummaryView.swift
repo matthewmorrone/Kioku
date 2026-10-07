@@ -1,13 +1,17 @@
 import SwiftUI
 
-// The sheet Sing mode shows when the singer taps Stop: how many of the graded words were heard,
-// then each missed word once (in song order). Tapping a missed word opens its dictionary entry,
-// where it can be saved; nothing is saved or reviewed automatically.
+// The sheet Sing mode shows when the singer taps Stop: how many of the graded words were heard
+// (and how strictly), each missed word once (in song order), then the song's earlier sessions.
+// Tapping a missed word opens its dictionary entry, where it can be saved; nothing is saved or
+// reviewed automatically.
 struct SingSummaryView: View {
     let heardCount: Int
     let gradedCount: Int
+    let strictness: SingStrictness
     // Missed words in song order, one per distinct surface.
     let missedWords: [SingMissedWord]
+    // The song's sessions, newest first (this one included once saved).
+    let history: [SingSessionRecord]
     let onLookUp: (Int) -> Void
     let onDone: () -> Void
 
@@ -18,7 +22,7 @@ struct SingSummaryView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("\(heardCount) of \(gradedCount)")
                             .scaledFont(size: 34, weight: .bold)
-                        Text("words sung")
+                        Text("words sung · \(strictness.label)")
                             .scaledFont(size: 15)
                             .foregroundStyle(.secondary)
                     }
@@ -38,6 +42,25 @@ struct SingSummaryView: View {
                                     Image(systemName: "book")
                                         .foregroundStyle(.secondary)
                                 }
+                            }
+                        }
+                    }
+                }
+                if history.isEmpty == false {
+                    Section("Sessions") {
+                        ForEach(history, id: \.date) { session in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(session.date.formatted(date: .abbreviated, time: .shortened))
+                                        .scaledFont(size: 15)
+                                    Text("\(session.scope) · \(session.strictness.label)")
+                                        .scaledFont(size: 12)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text("\(session.heardCount)/\(session.gradedCount)")
+                                    .scaledFont(size: 15, weight: .semibold)
+                                    .monospacedDigit()
                             }
                         }
                     }

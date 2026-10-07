@@ -1,9 +1,10 @@
 import SwiftUI
 import UIKit
 
-// Sing mode's row just under the lyrics popup's top bar: the Sing capsule, the Line / Song capsule
-// while listening, and a short notice beside them (headphones advice, or why Sing couldn't start). The verdict colours themselves
-// are drawn by the active-cue card (LyricsView.swift) through its Saved Highlight slots.
+// Sing mode's row just under the lyrics popup's top bar: the Sing capsule, the options gear, the
+// Line / Song capsule while listening, and a short notice beside them (headphones advice, or why
+// Sing couldn't start). The verdict colours themselves are drawn by the active-cue card
+// (LyricsView.swift) through its Saved Highlight slots; hidden words are masked here.
 extension LyricsView {
     static let singHeardColor = UIColor.systemGreen
     static let singMissedColor = UIColor.systemRed
@@ -38,6 +39,20 @@ extension LyricsView {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(singSession.isActive ? "Stop singing" : "Sing along")
+
+        Button {
+            isShowingSingOptions = true
+        } label: {
+            Image(systemName: "slider.horizontal.3")
+                .scaledFont(size: 12, weight: .semibold)
+                .foregroundStyle(Color.secondary)
+                .padding(.horizontal, 12)
+                .frame(height: 28)
+                .background(Color.secondary.opacity(0.16))
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Sing options")
 
         if singSession.isActive == false, singSession.hasResults(for: noteText) {
             Button {
@@ -115,6 +130,7 @@ extension LyricsView {
             if let previous = singSession.restoreAudioSource { onSetAudioSource(previous) }
             singSession.stop()
             controller.pause()
+            saveSingSession()
             if singSession.verdicts.isEmpty == false { isShowingSingSummary = true }
             return
         }
@@ -130,6 +146,7 @@ extension LyricsView {
                 segmentRanges: segmentRanges,
                 furigana: furiganaBySegmentLocation,
                 furiganaLengths: furiganaLengthBySegmentLocation,
+                strictness: SingStrictness(rawValue: singStrictnessRaw) ?? .normal,
                 romanize: singRomanize
             )
             guard singSession.isActive else { return }
@@ -140,18 +157,12 @@ extension LyricsView {
 
     // The Stop summary: heard / graded counts and each missed word once, in song order.
     var singSummarySheet: some View {
-        let words = segmentationRanges.map { NSRange($0, in: noteText) }
-        let noteNS = noteText as NSString
-        var seen = Set<String>()
-        let missed: [SingMissedWord] = singMissedLocations.sorted().compactMap { location in
-            guard let range = words.first(where: { location >= $0.location && location < NSMaxRange($0) }) else { return nil }
-            let surface = noteNS.substring(with: NSRange(location: location, length: NSMaxRange(range) - location))
-            return seen.insert(surface).inserted ? SingMissedWord(location: location, surface: surface) : nil
-        }
-        return SingSummaryView(
+        SingSummaryView(
             heardCount: singHeardLocations.count,
             gradedCount: singSession.verdicts.count,
-            missedWords: missed,
+            strictness: singSession.strictness,
+            missedWords: singMissedWords,
+            history: noteID.map { SingHistoryStore.shared.sessions(for: $0) } ?? [],
             onLookUp: { location in
                 // The lookup sheet belongs to the Read view underneath; let this sheet go first.
                 isShowingSingSummary = false
@@ -161,24 +172,105 @@ extension LyricsView {
         )
     }
 
-    // An inactive row's text with Sing verdicts coloured in (green heard, red missed), or nil when
-    // the row has no verdicts or its text can't be matched to the note.
-    func singColoredText(forCueAt index: Int, text: String) -> AttributedString? {
-        guard isShowingSingResults, index < highlightRanges.count, let cueRange = highlightRanges[index] else { return nil }
+    // An inactive row's text with Sing applied: hidden words masked, graded words coloured
+    // (green heard, red missed). Plain when Sing has nothing to show or the row's text can't be
+    // matched to the note.
+    func singInactiveText(forCueAt index: Int, text: String) -> AttributedString {
+        guard isShowingSingResults, index < highlightRanges.count, let cueRange = highlightRanges[index] else { return AttributedString(text) }
         let noteNS = noteText as NSString
-        guard NSMaxRange(cueRange) <= noteNS.length, noteNS.substring(with: cueRange).hasPrefix(text) else { return nil }
-        let textNS = text as NSString
-        var attributed = AttributedString(text)
-        var colored = false
+        guard NSMaxRange(cueRange) <= noteNS.length, noteNS.substring(with: cueRange).hasPrefix(text) else { return AttributedString(text) }
+        let shown = singMasked(text, origin: cueRange.location)
+        let length = (shown as NSString).length
+        var attributed = AttributedString(shown)
         for range in segmentationRanges.map({ NSRange($0, in: noteText) }) {
-            let start = max(range.location, cueRange.location), end = min(NSMaxRange(range), cueRange.location + textNS.length)
+            let start = max(range.location, cueRange.location), end = min(NSMaxRange(range), cueRange.location + length)
             guard end > start, let heard = singSession.verdicts[start],
-                  let local = Range(NSRange(location: start - cueRange.location, length: end - start), in: text),
+                  let local = Range(NSRange(location: start - cueRange.location, length: end - start), in: shown),
                   let attributedRange = Range(local, in: attributed) else { continue }
             attributed[attributedRange].foregroundColor = heard ? Color(Self.singHeardColor) : Color(Self.singMissedColor)
-            colored = true
         }
-        return colored ? attributed : nil
+        return attributed
+    }
+
+    // The note ranges of the words the reveal option currently hides: every word Sing listens for
+    // that isn't graded yet, or all of them until Stop with "Reveal at end".
+    var singHiddenRanges: [NSRange] {
+        let reveal = SingReveal(rawValue: singRevealRaw) ?? .show
+        guard singSession.isActive, reveal != .show else { return [] }
+        let words = segmentationRanges.map { NSRange($0, in: noteText) }
+        return singSession.targetIDs.compactMap { id in
+            guard reveal == .atEnd || singSession.verdicts[id] == nil,
+                  let word = words.first(where: { NSLocationInRange(id, $0) }) else { return nil }
+            return NSRange(location: id, length: NSMaxRange(word) - id)
+        }
+    }
+
+    // `text`, which starts at note offset `origin`, with every hidden word replaced by 〇, one per
+    // UTF-16 unit so offsets into it still line up with the note.
+    func singMasked(_ text: String, origin: Int) -> String {
+        let hidden = singHiddenRanges
+        guard hidden.isEmpty == false else { return text }
+        let masked = NSMutableString(string: text)
+        for range in hidden {
+            let start = max(range.location, origin), end = min(NSMaxRange(range), origin + masked.length)
+            guard end > start else { continue }
+            masked.replaceCharacters(in: NSRange(location: start - origin, length: end - start), with: String(repeating: "〇", count: end - start))
+        }
+        return masked as String
+    }
+
+    // The active card's render input with hidden words masked and their furigana dropped, so
+    // neither spelling nor reading gives them away.
+    func singMasked(_ input: ActiveCueRenderInput, origin: Int) -> ActiveCueRenderInput {
+        let hidden = singHiddenRanges
+        guard hidden.isEmpty == false else { return input }
+        let isHidden: (Int) -> Bool = { local in hidden.contains { NSLocationInRange(origin + local, $0) } }
+        let text = singMasked(input.text, origin: origin)
+        // Segment ranges are String.Index ranges into the original text; rebuild them on the masked one.
+        let segments = input.segmentationRanges.compactMap { Range(NSRange($0, in: input.text), in: text) }
+        return ActiveCueRenderInput(
+            text: text,
+            furiganaBySegmentLocation: input.furiganaBySegmentLocation.filter { isHidden($0.key) == false },
+            furiganaLengthBySegmentLocation: input.furiganaLengthBySegmentLocation.filter { isHidden($0.key) == false },
+            segmentationRanges: segments
+        )
+    }
+
+    // Missed words in song order, one per distinct surface, for the summary and the history.
+    private var singMissedWords: [SingMissedWord] {
+        let words = segmentationRanges.map { NSRange($0, in: noteText) }
+        let noteNS = noteText as NSString
+        var seen = Set<String>()
+        return singMissedLocations.sorted().compactMap { location in
+            guard let range = words.first(where: { location >= $0.location && location < NSMaxRange($0) }) else { return nil }
+            let surface = noteNS.substring(with: NSRange(location: location, length: NSMaxRange(range) - location))
+            return seen.insert(surface).inserted ? SingMissedWord(location: location, surface: surface) : nil
+        }
+    }
+
+    // Records the session that just stopped in the song's Sing history.
+    private func saveSingSession() {
+        guard let noteID, singSession.verdicts.isEmpty == false else { return }
+        SingHistoryStore.shared.append(SingSessionRecord(
+            noteID: noteID,
+            date: singSession.startedAt ?? Date(),
+            scope: singSession.scope.rawValue,
+            strictness: singSession.strictness,
+            heardCount: singHeardLocations.count,
+            gradedCount: singSession.verdicts.count,
+            missedSurfaces: singMissedWords.map(\.surface)
+        ))
+    }
+
+    // The options sheet: reveal and strictness, kept across sessions. Strictness is fixed while
+    // a session runs so its words are all graded the same way.
+    var singOptionsSheet: some View {
+        SingOptionsView(
+            reveal: Binding(get: { SingReveal(rawValue: singRevealRaw) ?? .show }, set: { singRevealRaw = $0.rawValue }),
+            strictness: Binding(get: { SingStrictness(rawValue: singStrictnessRaw) ?? .normal }, set: { singStrictnessRaw = $0.rawValue }),
+            isStrictnessLocked: singSession.isActive,
+            onDone: { isShowingSingOptions = false }
+        )
     }
 
     // While singing: under the active card, what the model heard for each graded word of the line

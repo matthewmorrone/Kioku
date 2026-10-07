@@ -75,6 +75,10 @@ struct LyricsView: View {
     @ObservedObject var singSession: SingSession
     // The results sheet shown when the singer taps Stop (LyricsView+Sing.swift).
     @State var isShowingSingSummary = false
+    @State var isShowingSingOptions = false
+    // Sing options, kept across sessions (LyricsView+Sing.swift).
+    @AppStorage(SingReveal.storageKey) var singRevealRaw = SingReveal.show.rawValue
+    @AppStorage(SingStrictness.storageKey) var singStrictnessRaw = SingStrictness.normal.rawValue
 
     // Horizontal fine-scrub sensitivity. 5 ms per point means a full ~300 pt swipe across the
     // card covers ~1.5 s — coarse enough to travel, fine enough to settle on a boundary.
@@ -305,7 +309,7 @@ struct LyricsView: View {
                 // and clipped segmentation rebased to cue-local UTF-16 coords). The font is
                 // scaled down when the cue is too wide for the card to keep it on a single
                 // line, mirroring the inactive-cue scaling behavior.
-                let cueInput = activeCueRenderInput(for: displayIndex)
+                let unmaskedCueInput = activeCueRenderInput(for: displayIndex)
                 // Use the same noteText probe activeCueRenderInput uses so the override rebase
                 // lines up with the rendered cue position. If we used 0 here while the renderer
                 // found the cue at noteText offset N, the observer's override (in real noteText
@@ -322,6 +326,8 @@ struct LyricsView: View {
                     }
                     return 0
                 }()
+                // Sing's reveal option masks the words it's listening for.
+                let cueInput = singMasked(unmaskedCueInput, origin: cueOriginInNote)
                 // Width budget: the panel's width minus the card's horizontal padding.
                 // (Focus-card style adds 8pt each side; other styles 0pt — but inset 8pt of
                 // safety margin so glyph edges don't kiss the card.)
@@ -541,6 +547,7 @@ struct LyricsView: View {
             singSession.stop()
         }
         .sheet(isPresented: $isShowingSingSummary) { singSummarySheet }
+        .sheet(isPresented: $isShowingSingOptions) { singOptionsSheet }
     }
 
     // Returns the cue's raw SRT text — what the singer actually sang at that timecode.

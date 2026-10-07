@@ -19,6 +19,11 @@ final class SingSession: ObservableObject {
     @Published private(set) var lastGradedID: Int?
     @Published private(set) var statusMessage: String?
     @Published var scope: SingScope = .song
+    // Note locations of the words this session listens for, so the lyrics can hide them.
+    @Published private(set) var targetIDs: Set<Int> = []
+    // How strictly this session grades, and when it started, for the history record.
+    private(set) var strictness: SingStrictness = .normal
+    private(set) var startedAt: Date?
     // True for the first few seconds of a session, while the lyrics bar shows the headphones advice.
     @Published private(set) var isShowingHeadphonesNotice = false
     // The note text the current verdicts were graded against; they're shown only while the note
@@ -52,6 +57,7 @@ final class SingSession: ObservableObject {
         segmentRanges: [NSRange],
         furigana: [Int: String],
         furiganaLengths: [Int: Int],
+        strictness: SingStrictness,
         romanize: @escaping @Sendable (String) -> [RomanizedSpan]
     ) async {
         guard isActive == false else { return }
@@ -88,6 +94,9 @@ final class SingSession: ObservableObject {
         lastGradedID = nil
         timeline.reset()
         generation += 1
+        targetIDs = Set(targets.map(\.id))
+        self.strictness = strictness
+        startedAt = Date()
         resultsNoteText = noteText
         statusMessage = nil
         lastSongSec = nil
@@ -210,7 +219,7 @@ final class SingSession: ObservableObject {
             Self.logDiagnostics(target: t, score: result.score, heard: heard, placements: result.placements,
                                 windowStartSec: window.startSec, windowFrames: window.frames, frameSec: timeline.frameSec,
                                 samples: samples, audioStartSec: audioStartSec)
-            verdicts[t.id] = result.score >= SingPhonemeScorer.passFraction
+            verdicts[t.id] = result.score >= strictness.passFraction
             self.heard[t.id] = heard
             lastGradedID = t.id
         }
