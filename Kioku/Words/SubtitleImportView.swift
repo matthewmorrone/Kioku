@@ -230,11 +230,13 @@ struct SubtitleImportView: View {
         Button {
             performImport()
         } label: {
-            Text("Save \(selectedVocabIDs.count) Words")
+            // With no words chosen the button saves the note alone, so a subtitle can be read as a
+            // note without building a vocab list.
+            Text(selectedVocabIDs.isEmpty ? "Save as Note" : "Save \(selectedVocabIDs.count) Words")
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
-        .disabled(selectedVocabIDs.isEmpty || isProcessing)
+        .disabled(isProcessing || (selectedVocabIDs.isEmpty && (saveAsNote == false || assembledText.isEmpty)))
     }
 
     // Reads the picked subtitle file, parses it by format, assembles the note body, and runs vocab
@@ -341,8 +343,10 @@ struct SubtitleImportView: View {
     private func performImport() {
         // Only the chips the user left enabled get saved.
         let chosen = extracted.filter { selectedVocabIDs.contains($0.canonicalEntryID) }
-        guard chosen.isEmpty == false else { return }
-        let listIDs = resolveListIDs()
+        // An empty selection is a note-only import; without the note there is nothing to save.
+        guard chosen.isEmpty == false || (saveAsNote && assembledText.isEmpty == false) else { return }
+        // A note-only import must not create an empty list as a side effect.
+        let listIDs = chosen.isEmpty ? [] : resolveListIDs()
 
         // Create the note FIRST (when requested) so its id can attribute the saved words. Attribution
         // drives the Words tab's note filter and the note-deletion "associated words" cascade —
@@ -377,7 +381,9 @@ struct SubtitleImportView: View {
                 encounteredSurfaces: item.encounteredSurfaces.union([item.lemma])
             )
         }
-        wordsStore.add(words)
+        if words.isEmpty == false {
+            wordsStore.add(words)
+        }
 
         dismiss()
     }

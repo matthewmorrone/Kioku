@@ -12,18 +12,6 @@ written so a new session can pick it up cold.
 
 ## Features
 - [ ] Quiz on next and previous words/lines: points for consecutivity 
-- [ ] **Import a subtitle file straight to a note** — rewritten 2026-09-26 from an open design
-      question. Today the Words tab's subtitle import (`SubtitleImportView`, also reached from
-      Jimaku search via `SubtitleSearchView`) is a vocab-list flow: it segments the file, shows the
-      extracted vocab, and saves the chosen words to a list. "Keep as note" is a side option: the
-      note is only created when at least one word is saved (`performImport` returns early on an
-      empty selection), and cue timing is dropped (the note gets the text and precomputed
-      segments only). The feature: an "Import as note" choice that creates the note (title from
-      the file name, precomputed segmentation, as today) with no vocab step, so you read it and
-      save words with the normal tap / Extract sheet (which already uses the same
-      `SubtitleVocabExtractor`). Keep the vocab-list flow as the other choice. Out of scope:
-      pairing with audio. Notes → bulk import already pairs an audio file with its sibling
-      `.srt` (`BulkImportPlanner`).
 - [ ] **Real-time kanji-choice game mode** — pick the correct kanji as fast as possible; score
       on speed + accuracy in near-real-time (from app-usage backlog 2026-07-01). Needs a design
       pass (grilling) before building: question source (saved words? by JLPT/frequency?), distractor
