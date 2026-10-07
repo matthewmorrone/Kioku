@@ -90,6 +90,9 @@ struct WordDetailView: View {
     // under the whole-form meaning like the lookup sheet's. Empty for a single-word lemma line.
     @State var lemmaComponents: [(lemma: String, gloss: String?, entry: DictionaryEntry?)] = []
     @State var kanjiInfos: [KanjiInfo] = []
+    // JMnedict name readings of the surface (DictionaryStore.lookupNames), for the Names section.
+    // Not private: read by wordDetailMetadataSections.
+    @State var names: [DictionaryName] = []
     @State var relatedEntries: [DictionaryEntry] = []
     @State var loanwordSources: [LoanwordSource] = []
     @State var senseReferences: [SenseReference] = []

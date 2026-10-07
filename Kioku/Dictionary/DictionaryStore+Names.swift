@@ -9,16 +9,16 @@ extension DictionaryStore {
     nonisolated static let maxNamesPerSurface = 6
 
     // The name readings JMnedict gives for `surface` (and its spelling variants, as word lookup
-    // tries them), in JMnedict's order, so the lookup sheet can say "たなか · surname" for a word
+    // tries them), the usual reading first (name_forms.rank), so the lookup sheet can say "たなか · surname" for a word
     // JMdict doesn't have. Empty for a dictionary built before the name tables existed.
     nonisolated func lookupNames(surface: String) throws -> [DictionaryName] {
         try withSerializedDatabaseAccess {
             guard tableExists("name_forms") else { return [] }
             let sql = """
-                SELECT f.reading, e.types, e.gloss
+                SELECT f.reading, e.types, e.gloss, f.rank
                 FROM name_forms f JOIN name_entries e ON e.id = f.entry_id
                 WHERE f.surface = ?1
-                ORDER BY e.id
+                ORDER BY f.rank, e.id
                 LIMIT \(Self.maxNamesPerSurface)
                 """
             for candidate in lookupSurfaces(for: surface) {
@@ -35,7 +35,8 @@ extension DictionaryStore {
                     names.append(DictionaryName(
                         reading: reading,
                         types: types.split(separator: ",").map(String.init),
-                        gloss: gloss
+                        gloss: gloss,
+                        isUsualReading: sqlite3_column_int(statement, 3) == 0
                     ))
                     stepCode = sqlite3_step(statement)
                 }

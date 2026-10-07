@@ -7,4 +7,7 @@ nonisolated struct DictionaryName: Sendable, Equatable {
     let reading: String
     let types: [String]
     let gloss: String
+    // Whether this is the reading MeCab gives the surface, i.e. the usual reading of a common name
+    // (鈴木 すずき, not すすき). Only these show beside a word JMdict does have.
+    let isUsualReading: Bool
 }

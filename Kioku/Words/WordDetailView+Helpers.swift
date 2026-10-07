@@ -172,6 +172,12 @@ extension WordDetailView {
         allDisplayData = results
         readingVariants = variants
         hasAttemptedLoad = true
+        do {
+            names = try dictionaryStore.lookupNames(surface: surface)
+        } catch {
+            AppLog.error(.dictionary, "Name lookup failed for \(surface): \(error)")
+            names = []
+        }
 
         guard results.isEmpty == false else { return }
         let store = dictionaryStore

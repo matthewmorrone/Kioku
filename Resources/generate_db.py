@@ -1267,6 +1267,9 @@ def import_kanjidic2(conn):
 # reading the entry pairs (a reading restricted to some kanji pairs with those only; a kana-only name
 # is its own surface). Separate from entries/kanji/kana_forms on purpose: the trie, the segmenter and
 # every word lookup read those, and 743k names would merge ordinary text (中, あい) into names.
+# JMnedict carries no frequency, and its entry order puts rare readings first (鈴木 すすき before
+# すずき), so each form gets a rank: 0 when its reading is the one MeCab's IPA dictionary gives the
+# surface (the usual reading of a common name), 1 otherwise. The lookup sheet sorts on it.
 def import_names(conn):
     if not JMNEDICT_PATH.exists():
         print(f"  JMnedict file not found at {JMNEDICT_PATH} — skipping")
@@ -1281,7 +1284,8 @@ def import_names(conn):
         CREATE TABLE name_forms (
             surface TEXT NOT NULL,
             reading TEXT NOT NULL,
-            entry_id INTEGER NOT NULL REFERENCES name_entries(id)
+            entry_id INTEGER NOT NULL REFERENCES name_entries(id),
+            rank INTEGER NOT NULL
         );
         """
     )
@@ -1303,10 +1307,33 @@ def import_names(conn):
                 form_rows.append((surface, kana["text"], entry_id))
             if not kanji:
                 form_rows.append((kana["text"], kana["text"], entry_id))
+    usual = mecab_readings(sorted({surface for surface, _, _ in form_rows}))
+    form_rows = [(surface, reading, entry_id, 0 if usual.get(surface) == reading else 1)
+                 for surface, reading, entry_id in form_rows]
     conn.executemany("INSERT INTO name_entries VALUES (?, ?, ?)", entry_rows)
-    conn.executemany("INSERT INTO name_forms VALUES (?, ?, ?)", form_rows)
+    conn.executemany("INSERT INTO name_forms VALUES (?, ?, ?, ?)", form_rows)
     conn.execute("CREATE INDEX idx_name_forms_surface ON name_forms(surface)")
-    print(f"  {len(entry_rows)} names, {len(form_rows)} written forms")
+    print(f"  {len(entry_rows)} names, {len(form_rows)} written forms, "
+          f"{sum(1 for row in form_rows if row[3] == 0)} with MeCab's usual reading")
+
+
+# The hiragana reading MeCab (IPA dictionary) gives each surface: its tokens' readings joined, or
+# nothing when a token has no reading (unknown to MeCab). Used to rank JMnedict's readings.
+def mecab_readings(surfaces):
+    surfaces = [s for s in surfaces if s and "\n" not in s and "\t" not in s]
+    proc = subprocess.run(
+        [shutil.which("mecab"), "--node-format=%f[7]\n", "--unk-format=*\n", "--eos-format=__EOS__\n"],
+        input="\n".join(surfaces) + "\n", capture_output=True, text=True, check=True,
+    )
+    readings, pieces, index = {}, [], 0
+    for line in proc.stdout.splitlines():
+        if line == "__EOS__":
+            if pieces and "*" not in pieces and index < len(surfaces):
+                readings[surfaces[index]] = katakana_to_hiragana("".join(pieces))
+            pieces, index = [], index + 1
+        else:
+            pieces.append(line)
+    return readings
 
 
 def import_pitch_accent(conn):

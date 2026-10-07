@@ -180,6 +180,23 @@ extension SegmentLookupSheet {
         return list
     }
 
+    // "Also a name: もり · place, surname, female given name" — the one dim line under a word's
+    // senses when the word is also a common name.
+    func makeAlsoANameLabel(_ names: [DictionaryName]) -> UILabel {
+        let text = names.map { name in
+            ([name.reading] + [name.types.map(DictionaryStore.nameTypeLabel).joined(separator: ", ")])
+                .filter { $0.isEmpty == false }
+                .joined(separator: " · ")
+        }.joined(separator: "; ")
+        let label = UILabel()
+        label.text = "Also a name: \(text)"
+        label.font = .systemFont(ofSize: 12)
+        label.textColor = .tertiaryLabel
+        label.numberOfLines = 0
+        label.preferredMaxLayoutWidth = sheetContentWidth()
+        return label
+    }
+
     // Builds a body label for multi-line debug content.
     func makeSheetBodyLabel(_ text: String) -> UILabel {
         let label = UILabel()
@@ -298,6 +315,10 @@ extension SegmentLookupSheet {
             senseList.addArrangedSubview(moreLabel)
         }
         middleContentStack.addArrangedSubview(senseList)
+        // A word that is also a common name (森 もり, 光 ひかり): its usual name reading underneath.
+        if let surface, let usualNames = nameLookupProvider?(surface).filter(\.isUsualReading), usualNames.isEmpty == false {
+            middleContentStack.addArrangedSubview(makeAlsoANameLabel(usualNames))
+        }
         if showsComponents {
             middleContentStack.addArrangedSubview(makeComponentEquationRow(currentSheetCompoundComponents, parent: parent))
         }
