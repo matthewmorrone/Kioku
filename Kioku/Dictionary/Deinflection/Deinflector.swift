@@ -8,6 +8,12 @@ nonisolated final class Deinflector {
 
     private let rules: [DeinflectionRule]
     private let labeledRules: [(label: String, rule: DeinflectionRule)]
+    // Positions in labeledRules of the rules whose kanaIn ends in each character, in labeledRules
+    // order, and of the rules with an empty kanaIn (which match any surface). deinflectionPaths tries
+    // only the rules that can match a surface's last character: hasSuffix against all ~750 rules for
+    // every lattice substring was 96% of segmentation time.
+    private let ruleIndicesByLastCharacter: [Character: [Int]]
+    private let emptyInputRuleIndices: [Int]
     private let trie: DictionaryTrie
 
     // Godan verbs that end in -iru/-eru and are commonly mistaken for ichidan (the textbook
@@ -45,6 +51,7 @@ nonisolated final class Deinflector {
         self.labeledRules = self.rules.map { rule in
             (label: "rule", rule: rule)
         }
+        (self.ruleIndicesByLastCharacter, self.emptyInputRuleIndices) = Self.lastCharacterIndex(self.labeledRules)
         self.trie = trie
         self.knownNonIchidanRuVerbs = nonIchidanRuVerbs
         self.intermediateForms = intermediateForms
@@ -68,6 +75,7 @@ nonisolated final class Deinflector {
         self.rules = expandedLabeledRules.map { labeledRule in
             labeledRule.rule
         }
+        (self.ruleIndicesByLastCharacter, self.emptyInputRuleIndices) = Self.lastCharacterIndex(expandedLabeledRules)
         self.trie = trie
         self.knownNonIchidanRuVerbs = nonIchidanRuVerbs
         self.intermediateForms = intermediateForms
@@ -83,6 +91,30 @@ nonisolated final class Deinflector {
             nonIchidanRuVerbs: ruleSet.nonIchidanRuVerbs,
             intermediateForms: ruleSet.intermediateForms
         )
+    }
+
+    // Groups rule positions by the last character of kanaIn (see ruleIndicesByLastCharacter).
+    private static func lastCharacterIndex(
+        _ labeledRules: [(label: String, rule: DeinflectionRule)]
+    ) -> (byLastCharacter: [Character: [Int]], emptyInput: [Int]) {
+        var byLastCharacter: [Character: [Int]] = [:]
+        var emptyInput: [Int] = []
+        for (index, labeledRule) in labeledRules.enumerated() {
+            if let last = labeledRule.rule.kanaIn.last {
+                byLastCharacter[last, default: []].append(index)
+            } else {
+                emptyInput.append(index)
+            }
+        }
+        return (byLastCharacter, emptyInput)
+    }
+
+    // The positions of the rules that can match `surface`'s ending, in labeledRules order, so the
+    // traversal visits matching rules in exactly the order a scan of every rule would.
+    private func candidateRuleIndices(for surface: String) -> [Int] {
+        let byLast = surface.last.flatMap { ruleIndicesByLastCharacter[$0] } ?? []
+        if emptyInputRuleIndices.isEmpty { return byLast }
+        return (byLast + emptyInputRuleIndices).sorted()
     }
 
     // Returns ordered labeled rules so callers can perform inflection inversion without reloading rule resources.
@@ -131,7 +163,8 @@ nonisolated final class Deinflector {
                 pathsBySurface[item.surface, default: []].append((chain: item.chain, transitions: item.transitions))
             }
 
-            for labeledRule in labeledRules {
+            for ruleIndex in candidateRuleIndices(for: item.surface) {
+                let labeledRule = labeledRules[ruleIndex]
                 let rule = labeledRule.rule
                 if item.surface.hasSuffix(rule.kanaIn) == false {
                     continue
