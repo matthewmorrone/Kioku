@@ -70,6 +70,14 @@ nonisolated struct SegmenterScoring {
     // (ナカナイ|ヨ, 泣かない + よ written in katakana).
     static let katakanaPieceReadAsHiraganaPenalty = 1.5
 
+    // Rank above which a hiragana word is too rare to be what a katakana piece spells
+    // (Segmenter+KatakanaRuns.swift).
+    static let katakanaPieceMaxWordRank = 10_000
+    // Off: measured 2026-10-07, cut-offs of 5k, 10k and 20k left held2k, kana2k, named cases and
+    // lyrics unchanged, so the rank table isn't worth its load time. Turning it on loads
+    // bestWordRankByKana at segmenter build and drops rare-reading katakana pieces.
+    static let checksKatakanaPieceReadings = false
+
     // Unknown (non-dictionary) text: a flat word cost plus a steep per-character cost, in nats, so
     // stranding a fragment is always worse than any parse that covers it with real words.
     static let unknownBaseNats = 12.0

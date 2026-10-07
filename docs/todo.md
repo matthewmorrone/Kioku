@@ -57,15 +57,6 @@ written so a new session can pick it up cold.
       near-zero real-world risk that Japanese dictionary/user text is already NFC-precomposed.
       Not started; on hold until the user says go (2026-09-26). Measure cold start with
       `StartupTimer` before and after.
-- [ ] **Unknown katakana runs: option A vs B — the user hasn't chosen (2026-10-03).** B is
-      shipped (`68754dba`): a whole-run edge for unknown katakana, and hiragana-only pieces inside a
-      katakana run pay a penalty. It fixes ミンツ and keeps 11 held2k names whole, with no change to
-      held2k cut-throughs (79) or named cases (62/63). A drops those pieces outright: it also
-      fixes カステイラ and ウエファース and keeps 18 names whole, but held2k goes to 81
-      cut-throughs and the named case ナカナイ|ヨ breaks (katakana-for-effect speech becomes one
-      blob). Choosing A means updating that named case, which is a test change: ask first.
-      Possible C: A, but keep the pieces when every piece is a hiragana-read word (ミンツ slips
-      through). The uncertainty item below may make the choice unnecessary.
 - [ ] **Segment uncertainty, then AI correction of only the low-confidence spans** — planned
       2026-10-02. The segmenter's costs are centi-nats, so: (1) forward–backward over the existing
       lattice gives each segment a probability summed over all paths; (2) fit one temperature on

@@ -299,6 +299,27 @@ extension DictionaryStore {
         }
     }
 
+    // Each kana spelling's best word rank: the lowest frequency_rank of any entry written with that
+    // kana, whichever of the entry's spellings earned it (なく → 417 from 泣く). Read by
+    // Segmenter.isCommonHiraganaReading.
+    nonisolated func fetchBestWordRankByKana() throws -> [String: Int] {
+        try withSerializedDatabaseAccess {
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            try prepare(sql: """
+                SELECT f.text, MIN(wf.frequency_rank) FROM kana_forms f
+                JOIN word_frequency wf ON wf.entry_id = f.entry_id
+                WHERE wf.frequency_rank IS NOT NULL
+                GROUP BY f.text
+                """, statement: &statement)
+            let rows = try stepRows(statement: statement) { stmt -> (String, Int)? in
+                guard let text = sqlite3_column_text(stmt, 0) else { return nil }
+                return (String(cString: text), Int(sqlite3_column_int64(stmt, 1)))
+            }
+            return Dictionary(rows, uniquingKeysWith: min)
+        }
+    }
+
     // Fetches all unique dictionary surfaces from kanji and kana_forms tables.
     nonisolated public func fetchAllSurfaces() throws -> [String] {
         try withSerializedDatabaseAccess {

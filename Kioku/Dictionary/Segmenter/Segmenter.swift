@@ -37,6 +37,9 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     private(set) var nameSurfaces: Set<String> = []
     // Length in characters of the longest name surface, so name edges are only probed that far.
     private(set) var longestNameSurface = 0
+    // Kana spelling → frequency rank of the most common word written that way in any spelling
+    // (なく → 泣く's 417); see Segmenter+KatakanaRuns.swift. Empty without a dictionary store.
+    var bestWordRankByKana: [String: Int] = [:]
     // Reads a name's usual reading from the dictionary (DictionaryStore.lookupNames); nil without a
     // store. Queried per furigana segment rather than held in memory beside nameSurfaces.
     var nameReadingLookup: (@Sendable (String) -> String?)?
@@ -112,6 +115,13 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         } catch {
             AppLog.error(.segmentation, "Name surfaces failed to load: \(error)")
         }
+        do {
+            if SegmenterScoring.checksKatakanaPieceReadings {
+                bestWordRankByKana = try dictionaryStore?.fetchBestWordRankByKana() ?? [:]
+            }
+        } catch {
+            AppLog.error(.segmentation, "Word ranks by kana failed to load: \(error)")
+        }
         if let dictionaryStore {
             nameReadingLookup = { surface in
                 do {
@@ -134,8 +144,10 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         commonKanaSurfaces: Set<String>,
         transitionTable: SegmenterTransitionTable?,
         nameSurfaces: Set<String>,
-        nameReadingLookup: (@Sendable (String) -> String?)?
+        nameReadingLookup: (@Sendable (String) -> String?)?,
+        bestWordRankByKana: [String: Int]
     ) {
+        self.bestWordRankByKana = bestWordRankByKana
         useNameSurfaces(nameSurfaces)
         self.nameReadingLookup = nameReadingLookup
         self.transitionTable = transitionTable
@@ -165,7 +177,8 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             commonKanaSurfaces: other.commonKanaSurfaces,
             transitionTable: other.transitionTable,
             nameSurfaces: other.nameSurfaces,
-            nameReadingLookup: other.nameReadingLookup
+            nameReadingLookup: other.nameReadingLookup,
+            bestWordRankByKana: other.bestWordRankByKana
         )
     }
 
@@ -270,6 +283,12 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                 if ScriptClassifier.mixesHiraganaAndKatakana(surface) {
                     lemmas = lemmas.filter { ScriptClassifier.sharesKanaScriptSwitch($0, with: surface) }
                     if lemmas.isEmpty { continue }
+                }
+
+                // A katakana piece read as a rare hiragana word (イラ as いら) is not a reading; the run
+                // stays whole instead. See Segmenter+KatakanaRuns.swift.
+                if isKatakanaPieceReadAsHiragana, isCommonHiraganaReading(of: surface, lemmas: lemmas) == false {
+                    continue
                 }
 
                 if lemmas.isEmpty == false {
