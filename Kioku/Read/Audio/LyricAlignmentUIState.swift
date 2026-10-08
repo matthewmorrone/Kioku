@@ -9,6 +9,10 @@ import Observation
 // LLM-correction feature.
 @Observable
 final class LyricAlignmentUIState {
+    // The app's one instance: ReadView drives it, and the tab bar reads isAligning to spin the
+    // Read tab's icon while a song aligns, so you can leave the tab and still see it working.
+    static let shared = LyricAlignmentUIState()
+
     var isAligning = false
     var progressMessage = ""
     var errorMessage = ""
