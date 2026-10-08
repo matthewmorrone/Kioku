@@ -213,23 +213,12 @@ final class BulkImportRunner: ObservableObject {
         if let cues, cues.isEmpty == false {
             try NotesAudioStore.shared.saveCues(cues, attachmentID: attachmentID)
         }
-        // Bind TextGrid checkpoints whenever a .TextGrid is in the import. When the import
-        // also carried a fresh .srt the new cues are used; otherwise fall back to the cues
-        // already saved on the matched note's attachment — matching the TextGrid-only attach
-        // path. Without this fallback, dropping an .audio + .TextGrid pair onto a note that
-        // already has saved cues would silently skip binding even though the planner UI
-        // labeled the row "with karaoke timings." The bound checkpoints are folded into the
-        // cues and re-saved inline.
+        // Bind TextGrid checkpoints whenever a .TextGrid is in the import. Without the
+        // existing-cues fallback inside bindAndSaveTextGridCheckpoints, dropping an
+        // .audio + .TextGrid pair onto a note that already has saved cues would silently
+        // skip binding even though the planner UI labeled the row "with karaoke timings."
         if let textGridURL {
-            let cuesForBinding: [SubtitleCue] = {
-                if let cues, cues.isEmpty == false { return cues }
-                return NotesAudioStore.shared.loadCues(for: attachmentID)
-            }()
-            if cuesForBinding.isEmpty == false,
-               let timings = Self.bindTextGridCheckpoints(textGridURL: textGridURL, cues: cuesForBinding),
-               timings.isEmpty == false {
-                try NotesAudioStore.shared.saveCues(cuesForBinding.applyingCheckpoints(timings), attachmentID: attachmentID)
-            }
+            try bindAndSaveTextGridCheckpoints(textGridURL: textGridURL, cues: cues, attachmentID: attachmentID)
         }
         store.updateAudioAttachment(id: noteID, attachmentID: attachmentID)
     }
@@ -251,24 +240,28 @@ final class BulkImportRunner: ObservableObject {
             try NotesAudioStore.shared.saveCues(cues, attachmentID: attachmentID)
         }
 
-        // Bind TextGrid checkpoints against either the freshly-imported cues or, if
-        // none were supplied, the cues already saved on the matched note. Mirrors the
-        // fallback in attachAudioToExistingNote so a TextGrid in this branch never
-        // silently no-ops just because the SRT was the same one already on the note.
-        // Folded into the cues and re-saved inline.
+        // Mirrors the fallback in attachAudioToExistingNote so a TextGrid in this branch
+        // never silently no-ops just because the SRT was the same one already on the note.
         if let textGridURL {
-            let cuesForBinding: [SubtitleCue] = {
-                if let cues, cues.isEmpty == false { return cues }
-                return NotesAudioStore.shared.loadCues(for: attachmentID)
-            }()
-            if cuesForBinding.isEmpty == false,
-               let timings = Self.bindTextGridCheckpoints(textGridURL: textGridURL, cues: cuesForBinding),
-               timings.isEmpty == false {
-                try NotesAudioStore.shared.saveCues(cuesForBinding.applyingCheckpoints(timings), attachmentID: attachmentID)
-            }
+            try bindAndSaveTextGridCheckpoints(textGridURL: textGridURL, cues: cues, attachmentID: attachmentID)
         }
 
         store.updateAudioAttachment(id: noteID, attachmentID: attachmentID)
+    }
+
+    // Binds TextGrid checkpoints against the freshly-imported cues, or — when this import
+    // didn't carry fresh cues itself — the cues already saved on the attachment, then
+    // re-saves them inline. Shared by attachAudioToExistingNote and
+    // attachSubtitleToExistingNote, which otherwise duplicated this exact fallback.
+    private func bindAndSaveTextGridCheckpoints(textGridURL: URL, cues: [SubtitleCue]?, attachmentID: UUID) throws {
+        let cuesForBinding: [SubtitleCue] = {
+            if let cues, cues.isEmpty == false { return cues }
+            return NotesAudioStore.shared.loadCues(for: attachmentID)
+        }()
+        guard cuesForBinding.isEmpty == false,
+              let timings = Self.bindTextGridCheckpoints(textGridURL: textGridURL, cues: cuesForBinding),
+              timings.isEmpty == false else { return }
+        try NotesAudioStore.shared.saveCues(cuesForBinding.applyingCheckpoints(timings), attachmentID: attachmentID)
     }
 
     // Attaches TextGrid-derived checkpoints to an existing note's attachment.
