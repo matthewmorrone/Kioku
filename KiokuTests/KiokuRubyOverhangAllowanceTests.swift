@@ -4,8 +4,8 @@ import CoreText
 @testable import Kioku
 
 // Ruby wider than its kanji may reach over a neighbouring kana by KiokuRubyPadding.overhangAllowance
-// before any space is added — the same amount whether that kana is the word's own okurigana (戦う)
-// or the next word (涙は). These pin that every spacing rule reads the one value: the builder's
+// (zero: never) before space is added — the same amount whether that kana is the word's own
+// okurigana (戦う) or the next word (涙は). These pin that every spacing rule reads the one value: the builder's
 // okurigana kern, the builder's between-words kern, and the segment packer.
 @MainActor
 final class KiokuRubyOverhangAllowanceTests: XCTestCase {
@@ -60,9 +60,9 @@ final class KiokuRubyOverhangAllowanceTests: XCTestCase {
         string.attribute(.kern, at: index, effectiveRange: nil) as? CGFloat ?? 0
     }
 
-    // The allowance is half a ruby character.
-    func test_allowanceIsHalfARubyCharacter() {
-        XCTAssertEqual(KiokuRubyPadding.overhangAllowance(furiganaFont: furiganaFont), furiganaFont.pointSize / 2)
+    // The allowance is zero: ruby never overhangs a neighbouring kana.
+    func test_allowanceIsZero() {
+        XCTAssertEqual(KiokuRubyPadding.overhangAllowance(furiganaFont: furiganaFont), 0)
     }
 
     // Okurigana: 戦う with たたか — the kern after 戦 is its overhang beyond the allowance.
@@ -115,15 +115,13 @@ final class KiokuRubyOverhangAllowanceTests: XCTestCase {
         )).placements
     }
 
-    // Packed, 涙|は: は moves back over なみだ's right overhang by the allowance (never more than
-    // the overhang itself).
-    func test_packed_nextKanaPullsBackByAllowance() {
+    // Packed, 涙|は: は starts right after なみだ's right overhang; the ruby doesn't reach over it.
+    func test_packed_nextKanaClearsRightOverhang() {
         let placements = pack("涙は", furigana: [0: "なみだ"])
         XCTAssertEqual(placements.count, 2)
         let tear = placements[0]
         XCTAssertGreaterThan(tear.rightOverhang, 0)
-        let pullback = min(KiokuRubyPadding.overhangAllowance(furiganaFont: furiganaFont), tear.rightOverhang)
-        XCTAssertEqual(placements[1].originX, tear.originX + tear.footprintWidth - pullback, accuracy: 0.01)
+        XCTAssertEqual(placements[1].originX, tear.originX + tear.footprintWidth, accuracy: 0.01)
     }
 
     // Packed, 涙|瞳: both under ruby, so the second segment starts right after the first's footprint.
@@ -133,13 +131,12 @@ final class KiokuRubyOverhangAllowanceTests: XCTestCase {
         XCTAssertEqual(placements[1].originX, placements[0].originX + placements[0].footprintWidth, accuracy: 0.01)
     }
 
-    // Packed, は|涙: 涙's ruby reaches back over は by the allowance.
-    func test_packed_previousKanaAllowsLeftOverhang() {
+    // Packed, は|涙: 涙's ruby doesn't reach back over は; its footprint starts after は.
+    func test_packed_previousKanaClearsLeftOverhang() {
         let placements = pack("は涙", furigana: [1: "なみだ"])
         XCTAssertEqual(placements.count, 2)
         let tear = placements[1]
         XCTAssertGreaterThan(tear.leftOverhang, 0)
-        let pullback = min(KiokuRubyPadding.overhangAllowance(furiganaFont: furiganaFont), tear.leftOverhang)
-        XCTAssertEqual(tear.originX, placements[0].originX + placements[0].footprintWidth - pullback, accuracy: 0.01)
+        XCTAssertEqual(tear.originX, placements[0].originX + placements[0].footprintWidth, accuracy: 0.01)
     }
 }
