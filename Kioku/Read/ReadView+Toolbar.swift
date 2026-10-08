@@ -81,8 +81,9 @@ extension ReadView {
         .accessibilityHint(isCorrectionConfigured ? "" : "Set up an AI provider in Settings to use this")
     }
 
-    // Resets custom segment segmentation back to computed segmentation.
-    // While LLM changes are pending, shows a red X badge to signal "reject all AI changes".
+    // Opens Changes from Default, which lists how the note differs from Kioku's own segmentation
+    // and readings and holds the Reset that restores them. While LLM changes are pending, shows a
+    // red X badge and rejects all AI changes instead.
     var resetButton: some View {
         // Enabled only when the user has actually changed this note's segmentation or readings, the
         // note no longer matches what the segmenter produces (differsFromDefault — a segmenter
@@ -102,7 +103,7 @@ extension ReadView {
                 // without touching any manual segmentation edits made before it.
                 rejectAllPendingLLMChanges()
             } else {
-                resetSegmentationToComputed()
+                showChangesFromDefault()
             }
         } label: {
             Group {
@@ -130,7 +131,7 @@ extension ReadView {
         .buttonStyle(PlainButtonStyle())
         .disabled(!isEnabled)
         .opacity(isEnabled || isSegmenting ? 1.0 : 0.5)
-        .accessibilityLabel(llmCorrection.hasPendingLLMChanges ? "Reject AI Changes" : "Reset Segmentation")
+        .accessibilityLabel(llmCorrection.hasPendingLLMChanges ? "Reject AI Changes" : "Changes from Default")
     }
 
     // Title-row buttons. New-note + OCR migrated to the Notes tab; this row hosts the
@@ -170,14 +171,8 @@ extension ReadView {
             .onTapGesture {
                 readSheets.isShowingSegmentList = true
             }
-            .onLongPressGesture {
-                showChangesFromDefault()
-            }
             .accessibilityLabel("Extract Words")
             .accessibilityAddTraits(.isButton)
-            .accessibilityAction(named: "Changes from Default") {
-                showChangesFromDefault()
-            }
     }
 
     // Shows how the note's current segmentation and readings differ from the default.

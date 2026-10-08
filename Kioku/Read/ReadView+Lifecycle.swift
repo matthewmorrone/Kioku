@@ -47,8 +47,14 @@ extension ReadView {
             } message: {
                 Text("\(llmCorrection.pendingLLMChangedLocations.count) suggested change(s) are highlighted. Tap one to decide on it individually.")
             }
+            // The reset button opens this; Reset here is what restores Kioku's own segmentation.
             .alert("Changes from Default", isPresented: $readSheets.isShowingChangesFromDefault) {
-                Button("OK", role: .cancel) {}
+                if readSheets.changesFromDefault.isEmpty {
+                    Button("OK", role: .cancel) {}
+                } else {
+                    Button("Reset", role: .destructive) { resetSegmentationToComputed() }
+                    Button("Cancel", role: .cancel) {}
+                }
             } message: {
                 Text(readSheets.changesFromDefault.isEmpty ? "None" : readSheets.changesFromDefault.joined(separator: "\n"))
             }
