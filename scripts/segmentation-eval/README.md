@@ -39,7 +39,10 @@ files the CLI compiles — add whatever the compiler reports missing.
 
 Environment: `DB=<path>` another dictionary file · `STRATEGY=local` the greedy walk with its demotion list
 (held2k 2026-09-21: 80.23 / 3.13; never run two `segcli` at once — they share one UserDefaults domain) · `KIOKU_CHECKOUT=<path>`
-read `Resources/` from another checkout.
+read `Resources/` from another checkout · `NO_EXTRAS=1` skip the built-in Custom Words. By default segcli
+copies the dictionary to a temp file and writes `Resources/extras.json` into the copy with the app's
+`CustomWordApplier`, as the app does at runtime (the dictionary build no longer bakes them in); the
+source file is never written. Without them lyrics drop to 32/38 (シャイ|ニー, ユ|アラブ).
 
 ## What the columns mean
 
