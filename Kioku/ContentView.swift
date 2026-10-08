@@ -126,6 +126,7 @@ struct ContentView: View {
             LearnView(
                 dictionaryStore: readResources.dictionaryStore,
                 segmenter: readResources.segmenter,
+                lexicon: readResources.lexicon,
                 surfaceReadingData: readResources.surfaceReadingData,
                 kanjiReadingFallback: readResources.kanjiReadingFallback
             )
@@ -445,11 +446,8 @@ struct ContentView: View {
 
         wotdRefreshTask = Task.detached(priority: .utility) {
             if delayNanoseconds > 0 {
-                do {
-                    try await Task.sleep(nanoseconds: delayNanoseconds)
-                } catch {
-                    return
-                }
+                // Sleep only throws on cancellation, which the isCancelled check below handles.
+                try? await Task.sleep(nanoseconds: delayNanoseconds)
             }
 
             guard Task.isCancelled == false else { return }

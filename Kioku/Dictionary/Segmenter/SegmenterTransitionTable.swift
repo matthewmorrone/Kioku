@@ -52,7 +52,10 @@ nonisolated final class SegmenterTransitionTable: Sendable {
 
         for row in text.split(separator: "\n") {
             let fields = row.split(separator: "\t", omittingEmptySubsequences: false)
-            guard fields.count == 3, let pmi = Double(fields[2]) else { continue }
+            guard fields.count == 3, let pmi = Double(fields[2]) else {
+                AppLog.error(.segmentation, "segmenter-transitions.tsv: skipping malformed row \(row)")
+                continue
+            }
             let clamped = max(-clampNats, min(clampNats, pmi))
             costByPair[Self.key(intern(fields[0]), intern(fields[1]))] = Int((-weight * clamped * 100).rounded())
         }
@@ -69,9 +72,14 @@ nonisolated final class SegmenterTransitionTable: Sendable {
     static func bundled() -> SegmenterTransitionTable? {
         let besideThisFile = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("segmenter-transitions.tsv")
         let candidates = [Bundle.main.url(forResource: "segmenter-transitions", withExtension: "tsv"), besideThisFile]
-        for case let url? in candidates {
-            if let table = try? SegmenterTransitionTable(contentsOf: url) { return table }
+        for case let url? in candidates where FileManager.default.fileExists(atPath: url.path) {
+            do {
+                return try SegmenterTransitionTable(contentsOf: url)
+            } catch {
+                AppLog.error(.segmentation, "segmenter-transitions.tsv at \(url.path) unreadable: \(error)")
+            }
         }
+        AppLog.error(.segmentation, "segmenter-transitions.tsv not loaded; segmenting without transition costs")
         return nil
     }
 

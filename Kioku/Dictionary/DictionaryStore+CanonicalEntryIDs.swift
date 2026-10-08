@@ -38,7 +38,7 @@ extension DictionaryStore {
             }
 
             guard stepCode == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
+                throw DictionarySQLiteError.step(message: errorMessage()).logged()
             }
 
             return map
@@ -74,7 +74,7 @@ extension DictionaryStore {
                 stepCode = sqlite3_step(statement)
             }
             guard stepCode == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
+                throw DictionarySQLiteError.step(message: errorMessage()).logged()
             }
             return (byEntSeq, byEntryID)
         }

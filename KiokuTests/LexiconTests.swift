@@ -11,6 +11,12 @@ final class LexiconTests: XCTestCase {
         try SharedLexiconSurface.resources()
     }
 
+    // A Lexicon whose deinflector knows the dictionary's words, as the app's does: whole-word rules
+    // (して → する, 行った → 行く) only admit a lemma the trie contains, so re-inflection needs it.
+    private func reinflectionLexicon() throws -> Lexicon {
+        try SharedLexiconSurface.resourcesWithDictionaryTrie()
+    }
+
     // Verifies kana input remains unchanged when requesting reading.
     func testReadingReturnsKanaInputUnchanged() throws {
         let surface = try lexiconSurface()
@@ -239,12 +245,57 @@ final class LexiconTests: XCTestCase {
         XCTAssertTrue(characters.contains("食"))
     }
 
-    // Verifies inflection expansion returns at least lemma and common past form for an ichidan verb.
-    func testExpandInflectionReturnsGeneratedForms() throws {
-        let surface = try lexiconSurface()
+    // Cloze distractors: another ichidan verb takes 食べた's own past, a godan one doesn't qualify.
+    func testInflectLikeReplaysTheBlanksInflectionOnSameClassWords() throws {
+        let lexicon = try reinflectionLexicon()
 
-        let forms = surface.expandInflection("猫")
-        XCTAssertTrue(forms.contains("猫"))
+        let forms = lexicon.inflectLike(
+            surface: "食べなかった", lemma: "食べる",
+            candidates: [(text: "見る", posTags: ["v1"]), (text: "書く", posTags: ["v5k"])], limit: 5
+        )
+        XCTAssertEqual(forms, ["見なかった"])
+    }
+
+    // 行く (v5k-s) shares a grammar with 書く (v5k) but not its past, so it never becomes 行いた.
+    func testInflectLikeRequiresTheExactConjugationTag() throws {
+        let lexicon = try reinflectionLexicon()
+
+        let forms = lexicon.inflectLike(
+            surface: "書いた", lemma: "書く",
+            candidates: [(text: "行く", posTags: ["v5k-s"]), (text: "聞く", posTags: ["v5k"])], limit: 5
+        )
+        XCTAssertEqual(forms, ["聞いた"])
+    }
+
+    // する's own forms come from its own rules: して and しない, never the ichidan rule's すた.
+    func testOtherFormsOfSuruStayInItsClass() throws {
+        let lexicon = try reinflectionLexicon()
+
+        let forms = Set(lexicon.otherForms(of: "する", besides: "した", limit: 500))
+        XCTAssertTrue(forms.contains("して"))
+        XCTAssertTrue(forms.contains("しない"))
+        XCTAssertFalse(forms.contains("すた"))
+        XCTAssertFalse(forms.contains("した"))
+    }
+
+    // The most specific rule wins inside a form group: 行く's past is 行った, never the generic 行いた.
+    func testOtherFormsOfIkuUseItsIrregularPast() throws {
+        let lexicon = try reinflectionLexicon()
+
+        let forms = Set(lexicon.otherForms(of: "行く", besides: "行かない", limit: 500))
+        XCTAssertTrue(forms.contains("行った"))
+        XCTAssertFalse(forms.contains("行いた"))
+    }
+
+    // A katakana する-noun blank borrows its ending for other する-nouns; plain nouns are skipped.
+    func testSuruCompoundsLikeKeepsTheBlanksEnding() throws {
+        let lexicon = try reinflectionLexicon()
+
+        let forms = lexicon.suruCompoundsLike(
+            surface: "キスした",
+            candidates: [(text: "ダンス", posTags: ["n", "vs"]), (text: "ケーキ", posTags: ["n"])], limit: 5
+        )
+        XCTAssertEqual(forms, ["ダンスした"])
     }
 
     // 触れられない is the negative potential/passive of ichidan 触れる (ふれる). The deinflector also
@@ -458,6 +509,26 @@ private enum SharedLexiconSurface {
         )
 
         cached = lexicalSurface
+        return lexicalSurface
+    }
+
+    nonisolated(unsafe) private static var cachedWithDictionaryTrie: Lexicon?
+
+    // Same, but over TestReadResources' own deinflector, which is built on the real dictionary trie.
+    static func resourcesWithDictionaryTrie() throws -> Lexicon {
+        if let cachedWithDictionaryTrie {
+            return cachedWithDictionaryTrie
+        }
+
+        let baseResources = try TestReadResources.shared()
+        let lexicalSurface = Lexicon(
+            dictionaryStore: baseResources.dictionaryStore,
+            segmenter: baseResources.segmenter,
+            deinflector: baseResources.deinflector,
+            surfaceReadingData: try baseResources.dictionaryStore.fetchSurfaceReadingData()
+        )
+
+        cachedWithDictionaryTrie = lexicalSurface
         return lexicalSurface
     }
 

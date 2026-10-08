@@ -60,10 +60,7 @@ final class NotesAudioStore: NotesAttachmentDeleting {
     // `contentsEqual` compares size before bytes, so this stays cheap across a library.
     private func existingStoredTwin(ofSourceURL sourceURL: URL) -> URL? {
         let audioExts: Set<String> = ["mp3", "m4a", "aac", "wav", "caf"]
-        guard let files = try? FileManager.default.contentsOfDirectory(
-            at: audioDirectory, includingPropertiesForKeys: nil
-        ) else { return nil }
-        return files.first {
+        return OptionalFileRead.contents(of: audioDirectory, logAs: .storage).first {
             audioExts.contains($0.pathExtension.lowercased())
                 && FileManager.default.contentsEqual(atPath: sourceURL.path, andPath: $0.path)
         }
@@ -141,7 +138,7 @@ final class NotesAudioStore: NotesAttachmentDeleting {
     // Returns empty array on any failure.
     func loadCues(for attachmentID: UUID) -> [SubtitleCue] {
         let source = audioDirectory.appendingPathComponent(attachmentID.uuidString + ".cues.json")
-        guard let data = try? Data(contentsOf: source) else { return [] }
+        guard let data = OptionalFileRead.data(at: source, logAs: .audioAlignment) else { return [] }
         let cues: [SubtitleCue]
         do {
             cues = try JSONDecoder().decode([SubtitleCue].self, from: data)
@@ -160,7 +157,7 @@ final class NotesAudioStore: NotesAttachmentDeleting {
     // Returns nil if no audio file exists for the attachment (nothing to back up).
     func exportAttachment(for attachmentID: UUID) -> AudioAttachmentBackup? {
         guard let audioURL = audioURL(for: attachmentID) else { return nil }
-        guard let audioData = try? Data(contentsOf: audioURL) else { return nil }
+        guard let audioData = OptionalFileRead.data(at: audioURL, logAs: .backup) else { return nil }
         // Cues carry their checkpoints inline and are the single source of truth, so the backup
         // needs only the cue list. The SRT is regenerated from those cues purely so an older app
         // version (which restored a .srt sidecar) can still decode this backup; `timings` stays nil
@@ -238,13 +235,9 @@ final class NotesAudioStore: NotesAttachmentDeleting {
     // Removes all files associated with an attachment to keep storage clean after note deletion.
     func deleteAttachment(_ attachmentID: UUID) {
         let managedExtensions = ["mp3", "m4a", "aac", "wav", "caf", "srt"]
-        if let fileURLs = try? FileManager.default.contentsOfDirectory(
-            at: audioDirectory,
-            includingPropertiesForKeys: nil
-        ) {
-            for url in fileURLs where matchesAttachmentID(url, attachmentID: attachmentID, allowedExtensions: managedExtensions) {
-                try? FileManager.default.removeItem(at: url)
-            }
+        for url in OptionalFileRead.contents(of: audioDirectory, logAs: .storage)
+        where matchesAttachmentID(url, attachmentID: attachmentID, allowedExtensions: managedExtensions) {
+            try? FileManager.default.removeItem(at: url)
         }
 
         let legacyBase = audioDirectory.appendingPathComponent(attachmentID.uuidString)
@@ -267,13 +260,8 @@ final class NotesAudioStore: NotesAttachmentDeleting {
     // Supports "Reset All Data": orphaned files with no surviving note reference
     // would otherwise survive a store-level reset.
     func deleteAllStoredFiles() {
-        if let fileURLs = try? FileManager.default.contentsOfDirectory(
-            at: audioDirectory,
-            includingPropertiesForKeys: nil
-        ) {
-            for url in fileURLs {
-                try? FileManager.default.removeItem(at: url)
-            }
+        for url in OptionalFileRead.contents(of: audioDirectory, logAs: .storage) {
+            try? FileManager.default.removeItem(at: url)
         }
 
         let defaults = UserDefaults.standard
@@ -286,14 +274,7 @@ final class NotesAudioStore: NotesAttachmentDeleting {
     // Searches the audio directory for the first file that matches the attachment ID and an allowed extension.
     private func storedFileURL(for attachmentID: UUID, allowedExtensions: [String]) -> URL? {
         let allowed = Set(allowedExtensions.map { $0.lowercased() })
-        guard let fileURLs = try? FileManager.default.contentsOfDirectory(
-            at: audioDirectory,
-            includingPropertiesForKeys: nil
-        ) else {
-            return nil
-        }
-
-        return fileURLs.first { matchesAttachmentID($0, attachmentID: attachmentID, allowedExtensions: allowed) }
+        return OptionalFileRead.contents(of: audioDirectory, logAs: .storage).first { matchesAttachmentID($0, attachmentID: attachmentID, allowedExtensions: allowed) }
     }
 
     // Convenience overload that converts the array to a Set before delegating to the core implementation.

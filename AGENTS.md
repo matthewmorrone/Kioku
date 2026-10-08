@@ -24,6 +24,14 @@ For SQLite stepping use `while stepCode == SQLITE_ROW` and explicitly handle `SQ
 
 ### 2. Error Handling
 Empty `catch` blocks are not allowed. A catch must either handle the error meaningfully or rethrow it.
+The rule is about intent, not syntax: no failure may be swallowed without a trace. A fallback is fine
+("degrade gracefully" means the user isn't blocked), but it must log (`AppLog.error`) or return a typed
+unavailable result. That covers SQLite result codes checked with `guard`/`if`, `try?` on calls whose
+failure matters, and optional file reads (use `OptionalFileRead`: an absent file is quiet, an unreadable
+one is logged). `scripts/check_swallowed_failures.py` (run by `validate_invariants.sh`) fails on SQLite
+failure branches that neither throw nor log, `while sqlite3_step(...)` loops, catch blocks that are
+comment-only or only return a default (`catch is CancellationError` exempt), and SQL naming a table that
+`Resources/generate_db.py` never creates.
 
 ### 3. Type Organization
 Any type (struct, enum, class, actor, protocol) that contains methods, computed properties, or other logic must live in its own file named after the type. Pure data types — structs with only stored properties, enums with only cases — may be grouped with related types in the same file. Nested type declarations are not allowed.

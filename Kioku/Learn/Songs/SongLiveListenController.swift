@@ -141,7 +141,13 @@ final class SongLiveListenController: NSObject, ObservableObject {
         stemTrimURL = nil
         guard let sourceAudioURL else { return }
         Task.detached(priority: .userInitiated) {
-            guard let player = try? AVAudioPlayer(contentsOf: sourceAudioURL) else { return }
+            let player: AVAudioPlayer
+            do {
+                player = try AVAudioPlayer(contentsOf: sourceAudioURL)
+            } catch {
+                AppLog.error(.audioPlayback, "live-listen player could not open \(sourceAudioURL.lastPathComponent): \(error)")
+                return
+            }
             player.prepareToPlay()
             // Resolved here, off the main thread: VocalStemCache.playableStemURL does real file
             // I/O (hashing the source file's content) that would otherwise undercut this whole
@@ -420,7 +426,11 @@ final class SongLiveListenController: NSObject, ObservableObject {
         if let existing = clipPlayer {
             player = existing
         } else {
-            guard let loaded = try? AVAudioPlayer(contentsOf: sourceAudioURL) else {
+            let loaded: AVAudioPlayer
+            do {
+                loaded = try AVAudioPlayer(contentsOf: sourceAudioURL)
+            } catch {
+                AppLog.error(.audioPlayback, "live-listen clip could not open \(sourceAudioURL.lastPathComponent): \(error)")
                 completeCurrentStep()
                 return
             }
@@ -463,7 +473,13 @@ final class SongLiveListenController: NSObject, ObservableObject {
     // any read failure, or when there's nothing to trim toward (the whole span is at/under the
     // floor).
     private func tightenedClipRange(stemURL: URL, startMs: Int, endMs: Int) -> (startMs: Int, endMs: Int) {
-        guard let file = try? AVAudioFile(forReading: stemURL) else { return (startMs, endMs) }
+        let file: AVAudioFile
+        do {
+            file = try AVAudioFile(forReading: stemURL)
+        } catch {
+            AppLog.error(.audioPlayback, "vocal stem unreadable, clip left untrimmed: \(error)")
+            return (startMs, endMs)
+        }
         let sampleRate = file.processingFormat.sampleRate
         let startFrame = max(0, AVAudioFramePosition((Double(startMs) / 1000) * sampleRate))
         let endFrame = min(file.length, AVAudioFramePosition((Double(endMs) / 1000) * sampleRate))
@@ -473,10 +489,13 @@ final class SongLiveListenController: NSObject, ObservableObject {
             return (startMs, endMs)
         }
         file.framePosition = startFrame
-        guard (try? file.read(into: buffer, frameCount: frameCount)) != nil,
-              let channelData = buffer.floatChannelData else {
+        do {
+            try file.read(into: buffer, frameCount: frameCount)
+        } catch {
+            AppLog.error(.audioPlayback, "vocal stem read failed, clip left untrimmed: \(error)")
             return (startMs, endMs)
         }
+        guard let channelData = buffer.floatChannelData else { return (startMs, endMs) }
         let totalFrames = Int(buffer.frameLength)
         guard totalFrames > 0 else { return (startMs, endMs) }
         let channelCount = Int(buffer.format.channelCount)

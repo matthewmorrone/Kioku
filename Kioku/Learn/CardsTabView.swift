@@ -38,6 +38,8 @@ struct CardsStudySessionActivePreferenceKey: PreferenceKey {
 struct LearnPagerView: View {
     let dictionaryStore: DictionaryStore?
     let segmenter: (any TextSegmenting)?
+    // Cloze uses it to inflect distractors like the blank.
+    let lexicon: Lexicon?
     // Read-tab reading maps, forwarded to FlashcardsView → WordDetailView for example furigana.
     var surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap()
     var kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()
@@ -123,7 +125,7 @@ struct LearnPagerView: View {
                     .frame(width: width)
                     .onPreferenceChange(CardsPageDotsHiddenPreferenceKey.self) { dotsHiddenByPage[.fillInBlank] = $0 }
                     .onPreferenceChange(CardsStudySessionActivePreferenceKey.self) { sessionActiveByPage[.fillInBlank] = $0 }
-                ClozeStudyHomeView()
+                ClozeStudyHomeView(dictionaryStore: dictionaryStore, segmenter: segmenter, lexicon: lexicon)
                     .frame(width: width)
                 KanaChartView()
                     .frame(width: width)

@@ -7,7 +7,13 @@ import AVFoundation
 enum AudioFileDuration {
     // Returns the file's length in seconds, or nil when it can't be opened or reports no rate.
     static func seconds(of url: URL) -> TimeInterval? {
-        guard let file = try? AVAudioFile(forReading: url) else { return nil }
+        let file: AVAudioFile
+        do {
+            file = try AVAudioFile(forReading: url)
+        } catch {
+            AppLog.error(.audioPlayback, "\(url.lastPathComponent) duration unreadable: \(error)")
+            return nil
+        }
         let sampleRate = file.processingFormat.sampleRate
         guard sampleRate > 0, file.length > 0 else { return nil }
         return Double(file.length) / sampleRate

@@ -157,6 +157,19 @@ report_group_matches "Found empty catch block(s) on a single line." "$empty_catc
 empty_catch_multiline=$(search_swift_files 'catch[[:space:]]*\{[[:space:]\n]*\}' true)
 report_group_matches "Found empty catch block(s) in multiline form." "$empty_catch_multiline"
 
+# Invariant 2 (continued): failures swallowed without a trace — SQLite failure branches that
+# neither throw nor log, `while sqlite3_step(...)` loops that drop the final step code, catch blocks
+# that are comment-only or only return a default, and SQL naming tables generate_db.py never
+# creates. See scripts/check_swallowed_failures.py.
+swallow_args=()
+if (( ${#SCOPED_FILES[@]} > 0 )); then
+  while IFS= read -r f; do swallow_args+=("$f"); done < <(list_swift_files)
+fi
+if (( ${#SCOPED_FILES[@]} == 0 || ${#swallow_args[@]} > 0 )); then
+  swallow_matches=$(python3 scripts/check_swallowed_failures.py ${swallow_args[@]+"${swallow_args[@]}"} || true)
+  report_group_matches "Found failure(s) swallowed without a trace." "$swallow_matches"
+fi
+
 # Invariant 6: Every function needs an intent comment immediately above it (ignoring blank/attribute lines).
 while IFS= read -r file_path; do
   awk -v file_path="$file_path" '

@@ -2,27 +2,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 import LyricAlignment
 
-// Thread-safe cancellation flag for alignment. The @Observable Bool drives UI; this token is
-// what we hand to the @Sendable cancellationCheck closure so the aligner can poll it from
-// inference threads without crossing actor isolation. cancelAlignment() flips both.
-nonisolated final class AlignmentCancellationToken: @unchecked Sendable {
-    private let lock = NSLock()
-    private var _isCancelled = false
-    // Thread-safe read of the cancellation flag, polled from the aligner's background work.
-    var isCancelled: Bool {
-        lock.lock(); defer { lock.unlock() }
-        return _isCancelled
-    }
-    // Signals cancellation so the aligner's next cancellation check returns true.
-    func cancel() {
-        lock.lock(); _isCancelled = true; lock.unlock()
-    }
-    // Clears the flag before starting a new alignment run.
-    func reset() {
-        lock.lock(); _isCancelled = false; lock.unlock()
-    }
-}
-
 // Hosts the note-level lyric-alignment flow: force-aligns the note's lines to its audio on-device
 // (WholeSongAlignment) and saves the resulting cues.
 extension ReadView {
@@ -222,10 +201,10 @@ extension ReadView {
             // Optional karaoke checkpoints from a paired TextGrid, folded into the cues before saving.
             // Best-effort: a TextGrid that doesn't bind (wrong format, no matching intervals) just
             // means no per-character timing, never a failed import — so it's gated on a non-empty
-            // result and uses `try?` for the read/bind.
+            // result, and read/parse failures are logged rather than thrown.
             var cuesToSave = cues
             if let textGridURL,
-               let content = try? SubtitleSourceLoader.readText(from: textGridURL),
+               let content = Self.readOptionalSubtitleSource(textGridURL),
                let timings = SubtitleSourceLoader.bindCheckpoints(textGridContent: content, cues: cues),
                timings.isEmpty == false {
                 cuesToSave = cues.applyingCheckpoints(timings)
@@ -441,10 +420,17 @@ extension ReadView {
         //   3. Neither → fall through to on-device forced alignment using the note text as lyrics.
         let resolvedSRT: String?
         if let subtitleURL = subtitleImport.pendingSubtitleFileURL {
-            resolvedSRT = try? SubtitleSourceLoader.readText(from: subtitleURL)
+            // The picked subtitle file is authoritative: if it can't be read, say so rather than
+            // quietly aligning against the note text instead.
+            do {
+                resolvedSRT = try SubtitleSourceLoader.readText(from: subtitleURL)
+            } catch {
+                AppLog.error(.audioAlignment, "\(subtitleURL.lastPathComponent) unreadable: \(error)")
+                lyricAlignment.errorMessage = "Couldn't read \(subtitleURL.lastPathComponent)."
+                return
+            }
         } else if let textGridURL = subtitleImport.pendingSubtitleTextGridURL,
-                  let content = try? SubtitleSourceLoader.readText(from: textGridURL),
-                  let cues = try? SubtitleSourceLoader.deriveCues(fromTextGrid: content),
+                  let cues = Self.textGridLineCues(textGridURL),
                   cues.isEmpty == false {
             resolvedSRT = SubtitleParser.formatSRT(from: cues)
         } else {
@@ -497,4 +483,25 @@ extension ReadView {
         clearPendingSubtitleTextGridSelection()
     }
 
+    // Reads a companion subtitle/TextGrid file the import can do without; nil (logged) when unreadable.
+    static func readOptionalSubtitleSource(_ url: URL) -> String? {
+        do {
+            return try SubtitleSourceLoader.readText(from: url)
+        } catch {
+            AppLog.error(.audioAlignment, "\(url.lastPathComponent) unreadable; importing without it — \(error)")
+            return nil
+        }
+    }
+
+    // Line cues from a TextGrid standing in for an SRT; nil (logged) when it can't be read or parsed,
+    // so the import falls through to forced alignment.
+    static func textGridLineCues(_ url: URL) -> [SubtitleCue]? {
+        guard let content = readOptionalSubtitleSource(url) else { return nil }
+        do {
+            return try SubtitleSourceLoader.deriveCues(fromTextGrid: content)
+        } catch {
+            AppLog.error(.audioAlignment, "\(url.lastPathComponent) did not parse; aligning instead — \(error)")
+            return nil
+        }
+    }
 }

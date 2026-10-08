@@ -3,10 +3,10 @@ import Foundation
 // Exposes UI-oriented lexical data methods by composing dictionary lookup, deinflection, and segmentation primitives.
 nonisolated public final class Lexicon {
     let dictionaryStore: DictionaryStore?
-    private let segmenter: any TextSegmenting
+    // Internal so Lexicon+Reinflection can reuse its noun+する compound check.
+    let segmenter: any TextSegmenting
     let deinflector: Deinflector
     private let surfaceReadingData: [String: SurfaceReadingData]
-    private let maxDepth = 4
 
     // Creates a lexical UI surface from already-initialized dictionary, deinflection, and segmentation dependencies.
     init(
@@ -323,50 +323,6 @@ nonisolated public final class Lexicon {
             }
     }
 
-    // Expands one lemma into inflected forms by inverting grouped deinflection rules and validating results.
-    // Uses deinflectionPaths directly instead of lemma(surface:) to skip the segmenter admission checks —
-    // the target lemma is already known valid, so we only need to confirm the reverse path exists.
-    public func expandInflection(_ lemma: String) -> [String] {
-        let trimmedLemma = lemma.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmedLemma.isEmpty == false else {
-            return []
-        }
-
-        var visited = Set<String>([trimmedLemma])
-        var queue: [(surface: String, depth: Int)] = [(surface: trimmedLemma, depth: 0)]
-        var cursor = 0
-
-        while cursor < queue.count {
-            let item = queue[cursor]
-            cursor += 1
-
-            if item.depth >= maxDepth {
-                continue
-            }
-
-            for labeledRule in deinflector.labeledRulesForExpansion() {
-                let rule = labeledRule.rule
-                guard item.surface.hasSuffix(rule.kanaOut) else {
-                    continue
-                }
-
-                let stem = item.surface.dropLast(rule.kanaOut.count)
-                let inflectedSurface = String(stem) + rule.kanaIn
-                if visited.contains(inflectedSurface) {
-                    continue
-                }
-
-                let paths = deinflector.deinflectionPaths(for: inflectedSurface)
-                if paths[trimmedLemma] != nil {
-                    visited.insert(inflectedSurface)
-                    queue.append((surface: inflectedSurface, depth: item.depth + 1))
-                }
-            }
-        }
-
-        return visited.sorted()
-    }
-
     // Returns grouped-rule labels describing the preferred deinflection chain for one surface.
     public func inflectionChain(surface: String) -> [String] {
         // Compute paths once; extract chain without a second traversal inside deinflector.inflectionChain.
@@ -450,7 +406,8 @@ nonisolated public final class Lexicon {
     }
 
     // Applies inverse deinflection transitions in reverse order to project lemma reading back to surface reading.
-    private func applySurfaceTransitions(
+    // Internal so Lexicon+Reinflection can replay one word's inflection onto another.
+    func applySurfaceTransitions(
         to lemmaReading: String,
         transitions: [(label: String, kanaIn: String, kanaOut: String)]
     ) -> String? {

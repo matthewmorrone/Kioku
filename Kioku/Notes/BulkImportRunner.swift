@@ -117,9 +117,12 @@ final class BulkImportRunner: ObservableObject {
         // file already encodes line boundaries; transcription is only necessary when nothing else
         // supplies cues (BulkImportPlanner's requiresTranscription check matches).
         if cues == nil, let textGridURL = item.textGridURL {
-            if let derived = try? Self.readDerivedCuesFromTextGrid(at: textGridURL) {
+            do {
+                let derived = try Self.readDerivedCuesFromTextGrid(at: textGridURL)
                 cues = derived
                 bodyContent = bodyContent ?? SubtitleParser.assembleNoteContent(from: derived)
+            } catch {
+                AppLog.error(.notesImport, "\(textGridURL.lastPathComponent) gave no cues; transcribing instead — \(error)")
             }
         }
 
@@ -322,13 +325,17 @@ final class BulkImportRunner: ObservableObject {
         return (rawText, cues)
     }
 
-    // Parses a TextGrid file and binds checkpoints against the supplied cues. Returns nil only
-    // when the file is unreadable or unparseable so callers can silently skip — TextGrid is an
-    // optional companion, never a hard requirement.
+    // Parses a TextGrid file and binds checkpoints against the supplied cues. Returns nil (logged)
+    // when the file is unreadable or unparseable so callers can skip it — TextGrid is an optional
+    // companion, never a hard requirement.
     private nonisolated static func bindTextGridCheckpoints(textGridURL: URL, cues: [SubtitleCue]) -> CueCharTimings? {
-        guard let content = try? readText(from: textGridURL) else { return nil }
-        guard let document = try? TextGridParser.parse(content) else { return nil }
-        return TextGridBinder.bindCheckpoints(document: document, cues: cues)
+        do {
+            let document = try TextGridParser.parse(try readText(from: textGridURL))
+            return TextGridBinder.bindCheckpoints(document: document, cues: cues)
+        } catch {
+            AppLog.error(.notesImport, "\(textGridURL.lastPathComponent) unusable; skipping karaoke checkpoints — \(error)")
+            return nil
+        }
     }
 
     // Derives line-level SubtitleCues from a TextGrid's lowest-resolution IntervalTier so a user

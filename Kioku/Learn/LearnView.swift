@@ -5,6 +5,8 @@ import SwiftUI
 struct LearnView: View {
     let dictionaryStore: DictionaryStore?
     let segmenter: (any TextSegmenting)?
+    // Cloze uses it to inflect distractors like the blank.
+    let lexicon: Lexicon?
     // Read-tab reading maps, forwarded down to WordDetailView for example-sentence furigana.
     var surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap()
     var kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()
@@ -13,6 +15,7 @@ struct LearnView: View {
         LearnPagerView(
             dictionaryStore: dictionaryStore,
             segmenter: segmenter,
+            lexicon: lexicon,
             surfaceReadingData: surfaceReadingData,
             kanjiReadingFallback: kanjiReadingFallback
         )

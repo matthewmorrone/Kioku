@@ -520,8 +520,8 @@ final class NotesStore: ObservableObject {
     // Best-effort recovery for a note-write pass that failed partway: restores previous content
     // for notes that existed before this pass, and deletes newly-created files for notes that
     // didn't, so a thrown write leaves disk consistent with the untouched _index.json rather
-    // than a mix of old and new note content. Errors here are swallowed since this already runs
-    // from a failure path and the original error is what propagates.
+    // than a mix of old and new note content. Errors here are logged but not thrown, since this
+    // already runs from a failure path and the original error is what propagates.
     private static func rollbackPartialWrite(
         writtenNoteIDs: [UUID],
         previousSnapshot: [UUID: Note],
@@ -531,10 +531,14 @@ final class NotesStore: ObservableObject {
     ) {
         for id in writtenNoteIDs {
             let url = directory.appendingPathComponent("\(id.uuidString).json", isDirectory: false)
-            if let previousNote = previousSnapshot[id], let data = try? encoder.encode(previousNote) {
-                try? fileWriter.write(data, to: url)
-            } else {
-                try? fileWriter.removeItem(at: url)
+            do {
+                if let previousNote = previousSnapshot[id] {
+                    try fileWriter.write(try encoder.encode(previousNote), to: url)
+                } else {
+                    try fileWriter.removeItem(at: url)
+                }
+            } catch {
+                AppLog.error(.storage, "[NotesStore] rollback of note \(id) failed: \(error)")
             }
         }
     }
@@ -554,10 +558,13 @@ final class NotesStore: ObservableObject {
         decoder.dateDecodingStrategy = .iso8601
 
         // Discover all note JSON files (excluding the index itself).
-        let contents = (try? fileManager.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: nil
-        )) ?? []
+        let contents: [URL]
+        do {
+            contents = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        } catch {
+            AppLog.error(.storage, "[NotesStore] could not list notes directory: \(error)")
+            return []
+        }
         let noteFileURLs = contents.filter { url in
             url.pathExtension == "json" && url.lastPathComponent != "_index.json"
         }
@@ -566,12 +573,11 @@ final class NotesStore: ObservableObject {
         for url in noteFileURLs {
             let basename = url.deletingPathExtension().lastPathComponent
             guard let id = UUID(uuidString: basename) else { continue }
-            guard let data = try? Data(contentsOf: url) else { continue }
             do {
-                let note = try decoder.decode(Note.self, from: data)
+                let note = try decoder.decode(Note.self, from: try Data(contentsOf: url))
                 notesByID[id] = note
             } catch {
-                // Single-note decode failure is loud but non-destructive: file stays on
+                // Single-note read/decode failure is loud but non-destructive: file stays on
                 // disk for a future build to interpret; the rest of the collection loads.
                 AppLog.error(.storage, "[NotesStore] could not decode note \(id): \(error)")
             }
@@ -582,9 +588,13 @@ final class NotesStore: ObservableObject {
         // Apply the index ordering. Notes present on disk but missing from the index
         // tail-append in UUID order (deterministic so users see a stable list).
         var orderedIDs: [UUID] = []
-        if let indexData = try? Data(contentsOf: indexURL),
-           let raw = try? decoder.decode([String].self, from: indexData) {
-            orderedIDs = raw.compactMap { UUID(uuidString: $0) }
+        if fileManager.fileExists(atPath: indexURL.path) {
+            do {
+                let raw = try decoder.decode([String].self, from: try Data(contentsOf: indexURL))
+                orderedIDs = raw.compactMap { UUID(uuidString: $0) }
+            } catch {
+                AppLog.error(.storage, "[NotesStore] note index unreadable, falling back to UUID order: \(error)")
+            }
         }
         let seen = Set(orderedIDs)
         let tail = notesByID.keys.filter { seen.contains($0) == false }
@@ -607,14 +617,18 @@ final class NotesStore: ObservableObject {
     // Resolves the per-app Application Support root. Falls back to the temp directory on
     // permission failure so the app keeps running rather than crashing on init.
     nonisolated private static func applicationSupportDirectory(fileManager: FileManager) -> URL {
-        if let url = try? fileManager.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        ) {
-            return url
+        do {
+            return try fileManager.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            )
+        } catch {
+            // Degrades to the temp directory so the app keeps running, but loudly: anything
+            // written there is purgeable.
+            AppLog.error(.storage, "[NotesStore] Application Support unavailable, using temp directory: \(error)")
+            return fileManager.temporaryDirectory
         }
-        return fileManager.temporaryDirectory
     }
 }

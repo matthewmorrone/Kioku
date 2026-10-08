@@ -44,6 +44,6 @@ nonisolated struct HistoryEntry: Codable, Identifiable {
         canonicalEntryID = try container.decode(Int64.self, forKey: .canonicalEntryID)
         surface = try container.decode(String.self, forKey: .surface)
         lookedUpAt = try container.decode(Date.self, forKey: .lookedUpAt)
-        kind = (try? container.decode(Kind.self, forKey: .kind)) ?? .entry
+        kind = try container.decodeIfPresent(Kind.self, forKey: .kind) ?? .entry
     }
 }

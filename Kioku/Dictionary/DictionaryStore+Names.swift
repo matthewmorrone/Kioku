@@ -41,7 +41,7 @@ extension DictionaryStore {
                     stepCode = sqlite3_step(statement)
                 }
                 guard stepCode == SQLITE_DONE else {
-                    throw DictionarySQLiteError.step(message: errorMessage())
+                    throw DictionarySQLiteError.step(message: errorMessage()).logged()
                 }
                 if names.isEmpty == false { return names }
             }
@@ -72,7 +72,7 @@ extension DictionaryStore {
             stepCode = sqlite3_step(statement)
         }
         guard stepCode == SQLITE_DONE else {
-            throw DictionarySQLiteError.step(message: errorMessage())
+            throw DictionarySQLiteError.step(message: errorMessage()).logged()
         }
         return values
     }

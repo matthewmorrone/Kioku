@@ -166,10 +166,8 @@ final class SongBreakdownStore: ObservableObject {
         diskMemoCache = [:]
         knownNoteIDsOnDisk = []
 
-        if let fileURLs = try? fileManager.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil) {
-            for url in fileURLs {
-                try? fileManager.removeItem(at: url)
-            }
+        for url in OptionalFileRead.contents(of: directoryURL, logAs: .storage) {
+            try? fileManager.removeItem(at: url)
         }
     }
 
@@ -314,8 +312,7 @@ final class SongBreakdownStore: ObservableObject {
     // Lists existing files in the directory and parses their basenames as UUIDs so the store
     // knows which notes have on-disk breakdowns without paying for full JSON decoding.
     private func scanDirectoryForNoteIDs() -> Set<UUID> {
-        guard fileManager.fileExists(atPath: directoryURL.path) else { return [] }
-        let contents = (try? fileManager.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)) ?? []
+        let contents = OptionalFileRead.contents(of: directoryURL, logAs: .storage)
         var ids: Set<UUID> = []
         for url in contents where url.pathExtension == "json" {
             let basename = url.deletingPathExtension().lastPathComponent
@@ -330,7 +327,7 @@ final class SongBreakdownStore: ObservableObject {
     // failure so the caller can fall through to "never generated" without crashing.
     private func readFromDisk(noteID: UUID) -> SongBreakdown? {
         let url = fileURL(for: noteID)
-        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard let data = OptionalFileRead.data(at: url, logAs: .storage) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         do {
@@ -346,16 +343,19 @@ final class SongBreakdownStore: ObservableObject {
     // other derived data (audio attachments, lyric translations).
 
     nonisolated private static func applicationSupportDirectory(fileManager: FileManager) -> URL {
-        if let url = try? fileManager.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        ) {
-            return url
+        do {
+            return try fileManager.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            )
+        } catch {
+            // Degrades to the temp directory so the app keeps running, but loudly: anything
+            // written there is purgeable.
+            AppLog.error(.storage, "[SongBreakdownStore] Application Support unavailable, using temp directory: \(error)")
+            return fileManager.temporaryDirectory
         }
-        // Fallback to a temp directory so the app degrades gracefully on a permission failure.
-        return fileManager.temporaryDirectory
     }
 }
 

@@ -156,7 +156,7 @@ extension DictionaryStore {
         }
 
         guard stepCode == SQLITE_DONE else {
-            throw DictionarySQLiteError.step(message: errorMessage())
+            throw DictionarySQLiteError.step(message: errorMessage()).logged()
         }
 
         return items
@@ -185,7 +185,7 @@ extension DictionaryStore {
         }
 
         guard stepCode == SQLITE_ROW else {
-            throw DictionarySQLiteError.step(message: errorMessage())
+            throw DictionarySQLiteError.step(message: errorMessage()).logged()
         }
 
         let resolvedEntryID = sqlite3_column_int64(statement, 0)
@@ -198,7 +198,7 @@ extension DictionaryStore {
 
         let completionCode = sqlite3_step(statement)
         guard completionCode == SQLITE_DONE else {
-            throw DictionarySQLiteError.step(message: errorMessage())
+            throw DictionarySQLiteError.step(message: errorMessage()).logged()
         }
 
         return (entryID: resolvedEntryID, frequencyRank: frequencyRank, wordfreqZipf: wordfreqZipf)
@@ -244,7 +244,7 @@ extension DictionaryStore {
         }
 
         guard stepCode == SQLITE_DONE else {
-            throw DictionarySQLiteError.step(message: errorMessage())
+            throw DictionarySQLiteError.step(message: errorMessage()).logged()
         }
 
         return items
@@ -291,7 +291,7 @@ extension DictionaryStore {
         }
 
         guard stepCode == SQLITE_DONE else {
-            throw DictionarySQLiteError.step(message: errorMessage())
+            throw DictionarySQLiteError.step(message: errorMessage()).logged()
         }
 
         return items
@@ -332,7 +332,7 @@ extension DictionaryStore {
             stepCode = sqlite3_step(statement)
         }
         guard stepCode == SQLITE_DONE else {
-            throw DictionarySQLiteError.step(message: errorMessage())
+            throw DictionarySQLiteError.step(message: errorMessage()).logged()
         }
         return map
     }
@@ -410,7 +410,7 @@ extension DictionaryStore {
         }
 
         guard stepCode == SQLITE_DONE else {
-            throw DictionarySQLiteError.step(message: errorMessage())
+            throw DictionarySQLiteError.step(message: errorMessage()).logged()
         }
 
         // Flush the final grouped sense after stepping completes.

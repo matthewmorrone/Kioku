@@ -16,8 +16,14 @@ extension DictionaryStore {
                 AppLog.error(.dictionary, "Custom word signature unreadable: \(error)")
                 return nil
             }
-            guard sqlite3_step(statement) == SQLITE_ROW, let text = sqlite3_column_text(statement, 0) else { return nil }
-            return String(cString: text)
+            let stepCode = sqlite3_step(statement)
+            guard stepCode == SQLITE_ROW else {
+                if stepCode != SQLITE_DONE {
+                    AppLog.error(.dictionary, "Custom word signature unreadable: \(errorMessage())")
+                }
+                return nil
+            }
+            return sqlite3_column_text(statement, 0).map { String(cString: $0) }
         }
     }
 }

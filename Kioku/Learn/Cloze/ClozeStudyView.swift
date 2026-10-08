@@ -15,12 +15,18 @@ struct ClozeStudyView: View {
     // Stores the note and initial config so StateObject can be initialised in init.
     init(
         note: Note,
+        dictionaryStore: DictionaryStore?,
+        segmenter: (any TextSegmenting)?,
+        lexicon: Lexicon?,
         initialMode: ClozeMode = .random,
         initialBlanksPerSentence: Int = 1,
         excludeDuplicateLines: Bool = true
     ) {
         _model = StateObject(wrappedValue: ClozeStudyViewModel(
             note: note,
+            dictionaryStore: dictionaryStore,
+            segmenter: segmenter,
+            lexicon: lexicon,
             initialMode: initialMode,
             initialBlanksPerSentence: initialBlanksPerSentence,
             excludeDuplicateLines: excludeDuplicateLines

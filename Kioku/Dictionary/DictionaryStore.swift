@@ -71,7 +71,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
         guard code == SQLITE_OK, let connection else {
             let message = connection.map { String(cString: sqlite3_errmsg($0)) } ?? "Unknown sqlite open error"
             sqlite3_close(connection)
-            throw DictionarySQLiteError.openDatabase(message: message)
+            throw DictionarySQLiteError.openDatabase(message: message).logged()
         }
 
         db = connection
@@ -298,7 +298,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
             }
 
             guard stepCode == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
+                throw DictionarySQLiteError.step(message: errorMessage()).logged()
             }
 
             // Build DictionaryEntry list in the order the caller requested.
@@ -463,7 +463,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
             stepCode = sqlite3_step(statement)
         }
         guard stepCode == SQLITE_DONE else {
-            throw DictionarySQLiteError.step(message: errorMessage())
+            throw DictionarySQLiteError.step(message: errorMessage()).logged()
         }
         return results
     }
@@ -473,7 +473,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
     func prepare(sql: String, statement: inout OpaquePointer?) throws {
         let code = sqlite3_prepare_v2(db, sql, -1, &statement, nil)
         guard code == SQLITE_OK else {
-            throw DictionarySQLiteError.prepareStatement(sql: sql, message: errorMessage())
+            throw DictionarySQLiteError.prepareStatement(sql: sql, message: errorMessage()).logged()
         }
     }
 
@@ -482,7 +482,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
     func bindText(_ text: String, index: Int32, statement: OpaquePointer?) throws {
         let code = sqlite3_bind_text(statement, index, text, -1, sqliteTransient)
         guard code == SQLITE_OK else {
-            throw DictionarySQLiteError.bindParameter(message: errorMessage())
+            throw DictionarySQLiteError.bindParameter(message: errorMessage()).logged()
         }
     }
 
@@ -491,7 +491,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
     func bindInt64(_ value: Int64, index: Int32, statement: OpaquePointer?) throws {
         let code = sqlite3_bind_int64(statement, index, value)
         guard code == SQLITE_OK else {
-            throw DictionarySQLiteError.bindParameter(message: errorMessage())
+            throw DictionarySQLiteError.bindParameter(message: errorMessage()).logged()
         }
     }
 

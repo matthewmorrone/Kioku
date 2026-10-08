@@ -39,7 +39,7 @@ extension DictionaryStore {
                 else {
                     throw DictionarySQLiteError.corruptRow(
                         message: "NULL accent or morae in pitch_accent for word=\(word), kana=\(kana)"
-                    )
+                    ).logged()
                 }
 
                 return PitchAccent(
@@ -328,6 +328,9 @@ extension DictionaryStore {
 
             let charStep = sqlite3_step(charStatement)
             guard charStep == SQLITE_ROW else {
+                if charStep != SQLITE_DONE {
+                    throw DictionarySQLiteError.step(message: errorMessage()).logged()
+                }
                 return nil
             }
 

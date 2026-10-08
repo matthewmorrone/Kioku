@@ -146,8 +146,8 @@ enum LearnWordPool {
         return items
     }
 
-    // A broad, dictionary-wide supplement to `resolveItems`'s saved-word candidates — Multiple
-    // Choice's own distractor pool is limited to words the learner has actually saved, which is
+    // A broad, dictionary-wide supplement to `resolveItems`'s saved-word candidates (and Cloze's
+    // headword blanks' only dictionary source) — Multiple Choice's own distractor pool is limited to words the learner has actually saved, which is
     // often too thin (or too grammatically homogeneous) to rank a genuinely convincing wrong
     // answer against. This is independent of any particular session's word selection, so it's
     // fetched once per session start and merged into the local pool rather than replacing it.

@@ -295,8 +295,8 @@ final class WordsStore: ObservableObject {
     // further — for new installs and for anyone who's already been through this once (the keys
     // are gone by then). `static` so it can run before `self` is fully initialized.
     private static func mergingLegacyReviewStoreData(into words: [SavedWord], userDefaults: UserDefaults) -> [SavedWord] {
-        guard let statsData = userDefaults.data(forKey: "kioku.review.stats.v1") else { return words }
-        let legacyStats: [Int64: ReviewWordStats] = (try? JSONDecoder().decode([String: ReviewWordStats].self, from: statsData))
+        guard userDefaults.object(forKey: "kioku.review.stats.v1") != nil else { return words }
+        let legacyStats: [Int64: ReviewWordStats] = UserDefaultsJSON.load([String: ReviewWordStats].self, forKey: "kioku.review.stats.v1", from: userDefaults, logAs: .storage)
             .map { decoded in
                 decoded.reduce(into: [Int64: ReviewWordStats]()) { result, pair in
                     if let id = Int64(pair.key) { result[id] = pair.value }
