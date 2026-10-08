@@ -244,39 +244,28 @@ enum KiokuCoreTextAttributedStringBuilder {
                     reading: reading
                 ))
 
-                // Intra-segment spacing, in both layout modes: ruby wider than its kanji never
-                // overhangs kana of its own segment. The padding is measured ink to ink — the ruby's
-                // outer glyph against the neighbouring kana — so the glyphs' own side bearings
-                // aren't added on top of it. Kern on the character before the run pushes the kanji
-                // right; kern on the run's last character pushes the following kana away; ruby
-                // centring discounts it (KiokuRubyPadding.kanjiSpan).
+                // Intra-segment spacing, in both layout modes: ruby wider than its kanji overhangs
+                // kana of its own segment by at most half a ruby character (the usual typesetting
+                // allowance, so 戦う with たたか needs no gap and 憤り with いきどお only a little).
+                // Kern on the character before the run pushes the kanji right; kern on the run's
+                // last character pushes the following kana away; ruby centring discounts it
+                // (KiokuRubyPadding.kanjiSpan).
                 if inputs.isRubySpacingEnabled,
                    let containing = segmentNSRanges.first(where: { NSLocationInRange(kanjiLoc, $0) }) {
                     let kanjiW = ceil((kanjiText as NSString).size(withAttributes: [.font: baseFont]).width)
                     let rubyW = ceil((reading as NSString).size(withAttributes: [.font: furiganaFont]).width)
-                    let overhang = max(0, (rubyW - kanjiW) / 2)
+                    let allowance = furiganaFont.pointSize / 2
+                    let overhang = max(0, ceil((rubyW - kanjiW) / 2 - allowance))
                     if overhang > 0.5 {
-                        let nsText = result.string as NSString
-                        let readingNS = reading as NSString
                         let runLastIdx = kanjiLoc + kanjiLen - 1
                         if runLastIdx < containing.location + containing.length - 1 {
-                            let rubyBearing = KiokuRubyPadding.sideBearings(of: readingNS.character(at: readingNS.length - 1), font: furiganaFont).right
-                            let kanaBearing = KiokuRubyPadding.sideBearings(of: nsText.character(at: runLastIdx + 1), font: baseFont).left
-                            let padding = ceil(max(0, overhang - rubyBearing - kanaBearing))
-                            if padding > 0.5 {
-                                let kern = (result.attribute(.kern, at: runLastIdx, effectiveRange: nil) as? CGFloat) ?? inputs.kerning
-                                result.addAttribute(.kern, value: kern + padding, range: NSRange(location: runLastIdx, length: 1))
-                            }
+                            let kern = (result.attribute(.kern, at: runLastIdx, effectiveRange: nil) as? CGFloat) ?? inputs.kerning
+                            result.addAttribute(.kern, value: kern + overhang, range: NSRange(location: runLastIdx, length: 1))
                         }
                         if kanjiLoc > containing.location {
                             let beforeIdx = kanjiLoc - 1
-                            let rubyBearing = KiokuRubyPadding.sideBearings(of: readingNS.character(at: 0), font: furiganaFont).left
-                            let kanaBearing = KiokuRubyPadding.sideBearings(of: nsText.character(at: beforeIdx), font: baseFont).right
-                            let padding = ceil(max(0, overhang - rubyBearing - kanaBearing))
-                            if padding > 0.5 {
-                                let kern = (result.attribute(.kern, at: beforeIdx, effectiveRange: nil) as? CGFloat) ?? inputs.kerning
-                                result.addAttribute(.kern, value: kern + padding, range: NSRange(location: beforeIdx, length: 1))
-                            }
+                            let kern = (result.attribute(.kern, at: beforeIdx, effectiveRange: nil) as? CGFloat) ?? inputs.kerning
+                            result.addAttribute(.kern, value: kern + overhang, range: NSRange(location: beforeIdx, length: 1))
                         }
                     }
                 }
