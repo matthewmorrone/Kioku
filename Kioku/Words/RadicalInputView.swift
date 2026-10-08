@@ -82,7 +82,11 @@ struct RadicalInputView: View {
             ProgressView().controlSize(.large)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if allRadicals.isEmpty {
-            ContentUnavailableView("Radical data unavailable", systemImage: "square.grid.3x3")
+            ContentUnavailableView(
+                "Radical data unavailable",
+                systemImage: "square.grid.3x3",
+                description: Text("Radicals come with the dictionary. Try again once it has finished downloading.")
+            )
         } else {
             VStack(spacing: 0) {
                 // Reserve a fixed slot for the result strip so populating the kanji-results and

@@ -32,6 +32,8 @@ struct TypographySettingsSheet: View {
                     sliderRow("Line Spacing", value: $lineSpacing, range: TypographySettings.lineSpacingRange, step: 1, format: "%.0f")
                     sliderRow("Furigana Spacing", value: $furiganaGap, range: TypographySettings.furiganaGapRange, step: 0.5, format: "%.1f")
                     sliderRow("Kerning", value: $kerning, range: TypographySettings.kerningRange, step: 1, format: "%.1f")
+                } footer: {
+                    Text("Auto Furigana Size keeps furigana in proportion to the text; turn it off to set it yourself. Furigana Spacing is the gap between the furigana and its word.")
                 }
             }
             .scrollContentBackground(.hidden)

@@ -130,7 +130,11 @@ extension WordDetailView {
             // resolves because the dictionary was rebuilt after the notification was baked
             // (see loadDisplayData in WordDetailView+Helpers.swift). Without this, the sheet
             // would stay silently blank below the header forever.
-            ContentUnavailableView("Couldn't load this word", systemImage: "exclamationmark.triangle")
+            ContentUnavailableView(
+                "Couldn't load this word",
+                systemImage: "exclamationmark.triangle",
+                description: Text("It may have changed in a dictionary update. Search for it again from the Words tab.")
+            )
             Button("Retry") {
                 Task { await loadDisplayData() }
             }

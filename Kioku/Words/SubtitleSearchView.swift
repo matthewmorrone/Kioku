@@ -129,7 +129,11 @@ struct SubtitleSearchView: View {
     private var resultsList: some View {
         if results.isEmpty {
             if hasSearched && isSearching == false {
-                ContentUnavailableView("No subtitles found", systemImage: "magnifyingglass")
+                ContentUnavailableView(
+                    "No subtitles found",
+                    systemImage: "magnifyingglass",
+                    description: Text("Try the title in English, romaji or Japanese, or leave out the episode number.")
+                )
             } else {
                 Spacer()
             }
