@@ -5,7 +5,7 @@ import Foundation
 // one dictionary file by `dictionaryKey`; any other key, version or a malformed file restores nil and
 // the caller rebuilds. Layout, little-endian: magic, version, key, counts, the entry-id pool, then
 // every node depth-first (flags, pool handle, POS bits, child count, each child's scalar and node).
-extension DictionaryTrie {
+nonisolated extension DictionaryTrie {
     private static let snapshotMagic: UInt32 = 0x4B545249  // "KTRI"
     // Bump when insert, Node or EntryIDPool change what a built trie holds, so older files are rebuilt.
     private static let snapshotVersion: UInt32 = 1
