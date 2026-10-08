@@ -58,7 +58,7 @@ struct ContentView: View {
     @State private var wotdRefreshTask: Task<Void, Never>?
 
     // Read tab's alignment state (shared with ReadView) and the spinner frame its icon shows.
-    private var lyricAlignment: LyricAlignmentUIState { LyricAlignmentUIState.shared }
+    @State private var lyricAlignment = LyricAlignmentUIState.shared
     @State private var alignmentSpinnerPhase = 0.0
 
     // Initializes the selected tab so previews and deep links can choose an initial section.
@@ -67,6 +67,9 @@ struct ContentView: View {
     }
 
     var body: some View {
+        // Read here, in body itself, so a change to it re-renders the tab bar: reads inside the
+        // tab item's own closure aren't tracked.
+        let isAligning = lyricAlignment.isAligning
         TabView(selection: $selectedTab) {
             // Renders the Read tab screen and keeps last-active note tracking in sync.
             ReadView(
@@ -89,7 +92,7 @@ struct ContentView: View {
             .tag(ContentTab.read)
             .tabItem {
                 // A spinner while a song aligns, so it shows from any tab.
-                if lyricAlignment.isAligning {
+                if isAligning {
                     Label {
                         Text("Read")
                     } icon: {
@@ -164,7 +167,7 @@ struct ContentView: View {
         .overlay { TourOverlay() }
         // Steps the Read tab's spinner while a song aligns; tab bar icons don't run symbol
         // animations, so the frame advances here (progress.indicator's spokes, eight to a turn).
-        .task(id: lyricAlignment.isAligning) {
+        .task(id: isAligning) {
             while lyricAlignment.isAligning && Task.isCancelled == false {
                 do {
                     try await Task.sleep(for: .milliseconds(100))
