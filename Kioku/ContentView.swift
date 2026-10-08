@@ -193,10 +193,7 @@ struct ContentView: View {
             // A notification launch has no in-app origin, so closing this detail should leave the
             // user in Words — drop any return tab an earlier Read-tab lookup left behind.
             wordDetailReturnTab = nil
-            selectedTab = .words
-            DispatchQueue.main.async {
-                pendingWordsRoute = .detail(entryID: target.entryID, surface: target.surface)
-            }
+            routeToWords(.detail(entryID: target.entryID, surface: target.surface))
             wotdNavigation.pendingTarget = nil
         }
         // Tapping a source-note name in Word Detail's "Saved" section routes through here — see
@@ -297,9 +294,16 @@ struct ContentView: View {
     // Reads the pasteboard, switches to Words, and populates the search field with the clipboard content.
     private func handleClipboardLookup() {
         guard let content = clipboardCoordinator.consumeClipboard() else { return }
+        routeToWords(.search(content))
+    }
+
+    // Switches to Words and arms pendingWordsRoute, deferred one runloop tick so the tab
+    // switch's own view update lands before WordsView's onChange(of: pendingRoute) fires —
+    // the three call sites that route into Words all need this same ordering.
+    private func routeToWords(_ route: WordsRoute) {
         selectedTab = .words
         DispatchQueue.main.async {
-            pendingWordsRoute = .search(content)
+            pendingWordsRoute = route
         }
     }
 
@@ -312,10 +316,7 @@ struct ContentView: View {
     // Open-word-detail callback from ReadView: switch to Words and push a detail route.
     private func handleOpenWordDetail(entryID: Int64, surface: String, reading: String?, sublatticePaths: [[String]]) {
         wordDetailReturnTab = selectedTab
-        selectedTab = .words
-        DispatchQueue.main.async {
-            pendingWordsRoute = .detail(entryID: entryID, surface: surface, reading: reading, sublatticePaths: sublatticePaths)
-        }
+        routeToWords(.detail(entryID: entryID, surface: surface, reading: reading, sublatticePaths: sublatticePaths))
     }
 
     // A routed word detail closed: hop back to the tab that opened it (Read), since the user
