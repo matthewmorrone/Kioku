@@ -305,6 +305,8 @@ struct SubtitleImportView: View {
             // Segment the body ONCE: the same selected edges drive vocab extraction AND the note's
             // persisted segmentation+furigana. Resolving furigana here too means the saved note opens
             // with ZERO recomputation — segmentation and readings are both restored, not recomputed.
+            // These edges are saved into the note, so they must come from the loaded dictionary.
+            await segmenter?.waitUntilLoaded()
             let edges = segmenter?.longestMatchEdges(for: body) ?? []
             let vocab = SubtitleVocabExtractor.extract(fromEdges: edges, dictionaryStore: store)
             var furiganaByLocation: [Int: String] = [:]

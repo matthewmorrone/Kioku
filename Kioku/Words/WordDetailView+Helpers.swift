@@ -195,6 +195,8 @@ extension WordDetailView {
 
         // Fetch components and sublattice paths via segmenter when available.
         if let segmenter {
+            // Opened from a notification at launch, the dictionary may not have loaded yet.
+            await segmenter.waitUntilLoaded()
             let result = segmenter.longestMatchResult(for: surface)
             // Per-position lemmas of the chosen path, reused for compound-verb derivation
             // detection. edge.lemma is only ever populated by SegmentListView's own display

@@ -373,6 +373,8 @@ final class ClozeStudyViewModel: ObservableObject {
     // one (off the main actor; whole inflected words, each with its lemma), else with NLTokenizer.
     private func tokenize(_ sentenceText: String) async -> [ClozeTokenPick] {
         guard let segmenter else { return Self.nlTokens(sentenceText) }
+        // Blanks picked from an unloaded segmenter would be single characters.
+        await segmenter.waitUntilLoaded()
         let tokens = await Task.detached(priority: .userInitiated) {
             segmenter.longestMatchEdges(for: sentenceText).map { edge in
                 ClozeTokenPick(

@@ -45,6 +45,8 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     // Reads a name's usual reading from the dictionary (DictionaryStore.lookupNames); nil without a
     // store. Queried per furigana segment rather than held in memory beside nameSurfaces.
     var nameReadingLookup: (@Sendable (String) -> String?)?
+    // Open once the trie holds a dictionary; see SegmenterLoadGate and TextSegmenting.waitUntilLoaded.
+    let loadGate: SegmenterLoadGate
     // Set to true locally to print POS transition decisions during Viterbi runs.
     let shouldLogPOSTransitions = false
     // Shared set of characters that are always their own segment — single source of truth for
@@ -91,6 +93,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         self.frequencyScoreBySurface = frequencyScoreBySurface
         self.commonKanaSurfaces = commonKanaSurfaces
         self.transitionTable = transitionTable
+        self.loadGate = SegmenterLoadGate(loaded: trie.surfaceCount > 0)
     }
 
     // Builds the production segmenter for a loaded dictionary, fetching the cost model's frequency
@@ -137,53 +140,11 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         }
     }
 
-    // Swaps in fully-loaded dictionary data while preserving this instance's identity — see the
-    // property-group comment above for why identity stability matters more than a fresh init here.
-    func reconfigure(
-        trie: DictionaryTrie,
-        deinflector: Deinflector?,
-        partOfSpeechByEntryID: [Int: UInt64],
-        frequencyScoreBySurface: [String: Double],
-        commonKanaSurfaces: Set<String>,
-        transitionTable: SegmenterTransitionTable?,
-        nameSurfaces: Set<String>,
-        nameReadingLookup: (@Sendable (String) -> String?)?,
-        bestWordRankByKana: [String: Int]
-    ) {
-        self.bestWordRankByKana = bestWordRankByKana
-        useNameSurfaces(nameSurfaces)
-        self.nameReadingLookup = nameReadingLookup
-        self.transitionTable = transitionTable
-        self.commonKanaSurfaces = commonKanaSurfaces
-        self.trie = trie
-        self.deinflector = deinflector
-        self.partOfSpeechByEntryID = partOfSpeechByEntryID
-        self.frequencyScoreBySurface = frequencyScoreBySurface
-    }
-
     // Installs the name spellings the lattice may use and the longest one's length, together, so
     // the probe length can never disagree with the set (Swift skips didSet inside initializers).
     func useNameSurfaces(_ surfaces: Set<String>) {
         nameSurfaces = surfaces
         longestNameSurface = surfaces.map(\.count).max() ?? 0
-    }
-
-    // Convenience for ContentView's startup sequence, which builds a brand-new Segmenter on a
-    // background thread and needs to fold its data into the already-published placeholder
-    // instance rather than replacing it — see the property-group comment above.
-    func reconfigure(from other: Segmenter) {
-        reconfigure(
-            trie: other.trie,
-            deinflector: other.deinflector,
-            partOfSpeechByEntryID: other.partOfSpeechByEntryID,
-            frequencyScoreBySurface: other.frequencyScoreBySurface,
-            commonKanaSurfaces: other.commonKanaSurfaces,
-            transitionTable: other.transitionTable,
-            nameSurfaces: other.nameSurfaces,
-            nameReadingLookup: other.nameReadingLookup,
-            bestWordRankByKana: other.bestWordRankByKana
-        )
-        boundaryModel = other.boundaryModel
     }
 
     // Generates all dictionary-backed lattice edges for every start position in the input text.

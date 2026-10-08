@@ -189,6 +189,8 @@ extension ReadView {
     // changed while it ran. The one comparison behind both "Changes from Default" and
     // differsFromDefault, so the reset button and the list agree.
     func changesFromDefault() async -> [String]? {
+        // Before the dictionary lands, the "default" would be one-character pieces with no readings.
+        await segmenter.waitUntilLoaded()
         let text = document.text
         let currentEdges = document.segmentEdges
         let currentFurigana = (
