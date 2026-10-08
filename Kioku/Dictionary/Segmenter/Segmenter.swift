@@ -592,7 +592,8 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     // the local walk absorbs inline: small kana and the prolonged sound mark always; small tsu only
     // when it is not followed by kana (って/った are legitimate segment heads). A bound character
     // with no preceding segment, or one directly after a boundary character, is left alone.
-    private func absorbingBoundCharacters(in path: [LatticeEdge], of text: String) -> [LatticeEdge] {
+    // Internal (not private): Segmenter+BoundaryModel reads the same absorbed path the search returns.
+    func absorbingBoundCharacters(in path: [LatticeEdge], of text: String) -> [LatticeEdge] {
         var result: [LatticeEdge] = []
         result.reserveCapacity(path.count)
 
