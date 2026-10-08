@@ -14,15 +14,46 @@ nonisolated struct SurfaceReadingData: Sendable {
 // to share across threads — e.g. captured by the subtitle importer's detached furigana-precompute task.
 nonisolated final class SurfaceReadingDataMap: Equatable, @unchecked Sendable {
     let data: [String: SurfaceReadingData]
+    // How a kanji word reads right after の, taken from JMdict's own の-expressions (の様に のように
+    // → 様 よう, の度に → 度 たび). See readingsAfterNo(in:).
+    let readingAfterNo: [String: String]
 
     // Creates an empty map for initial state before resources are loaded.
     init() {
         data = [:]
+        readingAfterNo = [:]
     }
 
     // Wraps a fully populated map produced by fetchSurfaceReadingData().
     init(_ data: [String: SurfaceReadingData]) {
         self.data = data
+        readingAfterNo = Self.readingsAfterNo(in: data)
+    }
+
+    // For each dictionary spelling の + kanji + kana (の様に), the kanji's reading there: the
+    // spelling's top reading without its の and kana ending (のように → よう). A kanji is kept only
+    // when every such expression agrees and the reading is one the kanji has on its own (様 lists
+    // よう), so a reading that is part of a longer word (余 あま, from の余り あまり) is left out.
+    private static func readingsAfterNo(in data: [String: SurfaceReadingData]) -> [String: String] {
+        var readings: [String: Set<String>] = [:]
+        for (surface, entry) in data where surface.hasPrefix("の") {
+            guard let reading = entry.readings.first, reading.hasPrefix("の") else { continue }
+            let body = surface.dropFirst()
+            let kanji = body.prefix { ScriptClassifier.containsKanji(String($0)) }
+            let ending = body.dropFirst(kanji.count)
+            guard kanji.isEmpty == false, ending.allSatisfy({ ScriptClassifier.isPureHiragana(String($0)) }) else { continue }
+            let rest = reading.dropFirst()
+            guard rest.hasSuffix(ending) else { continue }
+            let kanjiReading = String(rest.dropLast(ending.count))
+            guard kanjiReading.isEmpty == false else { continue }
+            readings[String(kanji), default: []].insert(kanjiReading)
+        }
+        var agreed: [String: String] = [:]
+        for (kanji, candidates) in readings where candidates.count == 1 {
+            guard let reading = candidates.first, data[kanji]?.readings.contains(reading) == true else { continue }
+            agreed[kanji] = reading
+        }
+        return agreed
     }
 
     // Identity-based equality so SwiftUI skips diffing the dictionary contents.

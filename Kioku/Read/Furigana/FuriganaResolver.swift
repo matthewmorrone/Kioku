@@ -30,11 +30,24 @@ nonisolated struct FuriganaResolver {
         var resolvedFurigana: [Int: String] = [:]
         var resolvedFuriganaLengths: [Int: Int] = [:]
 
+        var previousSurface: String?
         for edge in edges {
             let segmentRange = edge.start..<edge.end
             let segmentSurface = edge.surface
+            defer { previousSurface = segmentSurface }
             // Skip non-kanji segments to avoid redundant ruby annotations.
             guard ScriptClassifier.containsKanji(segmentSurface) else {
+                continue
+            }
+
+            // A kanji word right after の reads as JMdict's の-expressions read it (様 after の is
+            // よう, not the more common さま; SurfaceReadingDataMap.readingAfterNo).
+            if previousSurface == "の",
+               segmentSurface.allSatisfy({ ScriptClassifier.containsKanji(String($0)) }),
+               let reading = surfaceReadingData.readingAfterNo[segmentSurface] {
+                let nsRange = NSRange(segmentRange, in: sourceText)
+                resolvedFurigana[nsRange.location] = reading
+                resolvedFuriganaLengths[nsRange.location] = nsRange.length
                 continue
             }
 
