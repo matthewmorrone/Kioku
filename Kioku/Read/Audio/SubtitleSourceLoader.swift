@@ -59,11 +59,15 @@ nonisolated enum SubtitleSourceLoader {
     }
 
     // Parses a TextGrid and binds per-cue character checkpoints against the supplied cues. Returns
-    // nil when the file is unreadable/unparseable so callers can silently skip — a TextGrid is an
-    // optional karaoke companion, never a hard requirement.
+    // nil (logged) when the file is unparseable so callers can skip it — a TextGrid is an optional
+    // karaoke companion, never a hard requirement.
     static func bindCheckpoints(textGridContent content: String, cues: [SubtitleCue]) -> CueCharTimings? {
-        guard let document = try? TextGridParser.parse(content) else { return nil }
-        return TextGridBinder.bindCheckpoints(document: document, cues: cues)
+        do {
+            return TextGridBinder.bindCheckpoints(document: try TextGridParser.parse(content), cues: cues)
+        } catch {
+            AppLog.error(.audioAlignment, "TextGrid did not parse; skipping karaoke checkpoints — \(error)")
+            return nil
+        }
     }
 }
 

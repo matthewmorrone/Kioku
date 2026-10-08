@@ -78,12 +78,12 @@ nonisolated struct AppBackupPayload: Codable {
         history = try c.decode([HistoryEntry].self, forKey: .history)
         reviewStats = try c.decode([AppBackupReviewStats].self, forKey: .reviewStats)
         markedWrong = try c.decode([Int64].self, forKey: .markedWrong)
-        learned = (try? c.decode([Int64].self, forKey: .learned)) ?? []
-        notLearned = (try? c.decode([Int64].self, forKey: .notLearned)) ?? []
-        mastered = (try? c.decode([Int64].self, forKey: .mastered)) ?? []
+        learned = try c.decodeIfPresent([Int64].self, forKey: .learned) ?? []
+        notLearned = try c.decodeIfPresent([Int64].self, forKey: .notLearned) ?? []
+        mastered = try c.decodeIfPresent([Int64].self, forKey: .mastered) ?? []
         lifetimeCorrect = try c.decode(Int.self, forKey: .lifetimeCorrect)
         lifetimeAgain = try c.decode(Int.self, forKey: .lifetimeAgain)
-        audioAttachments = (try? c.decode([AudioAttachmentBackup].self, forKey: .audioAttachments)) ?? []
-        customWords = try? c.decode(CustomWordStoreState.self, forKey: .customWords)
+        audioAttachments = try c.decodeIfPresent([AudioAttachmentBackup].self, forKey: .audioAttachments) ?? []
+        customWords = try c.decodeIfPresent(CustomWordStoreState.self, forKey: .customWords)
     }
 }

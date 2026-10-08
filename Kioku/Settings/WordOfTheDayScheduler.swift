@@ -513,7 +513,12 @@ enum WordOfTheDayScheduler {
     // Decodes the rich detail JSON string from a notification's userInfo.
     private nonisolated static func decodeDetail(_ json: String?) -> WordOfTheDayDetail? {
         guard let json, let data = json.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(WordOfTheDayDetail.self, from: data)
+        do {
+            return try JSONDecoder().decode(WordOfTheDayDetail.self, from: data)
+        } catch {
+            AppLog.error(.wordOfTheDay, "notification detail did not decode — \(error.localizedDescription)")
+            return nil
+        }
     }
 
     // Fetches the kana reading and first gloss for each unique entry ID.
@@ -581,10 +586,7 @@ enum WordOfTheDayScheduler {
 
     // Loads cached dictionary-derived notification content keyed by entry id.
     private static func loadCachedLiveContent() -> [Int64: WordOfTheDayCachedContent] {
-        guard
-            let data = UserDefaults.standard.data(forKey: liveContentCacheKey),
-            let decoded = try? JSONDecoder().decode([String: WordOfTheDayCachedContent].self, from: data)
-        else {
+        guard let decoded = UserDefaultsJSON.load([String: WordOfTheDayCachedContent].self, forKey: liveContentCacheKey, logAs: .wordOfTheDay) else {
             return [:]
         }
 

@@ -149,6 +149,7 @@ nonisolated enum LLMStreamingClient {
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 // A malformed event line is skipped rather than fatal — the stream's final
                 // message_stop / [DONE] still arrives and the accumulated text is what matters.
+                AppLog.debug(.llmCorrection, "skipping malformed stream event: \(payload)")
                 continue
             }
             if let fragment = try extract(json), fragment.isEmpty == false {

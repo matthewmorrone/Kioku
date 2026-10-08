@@ -74,11 +74,8 @@ struct SentenceSearchView: View {
         isLoading = true
         let store = dictionaryStore
         searchTask = Task {
-            do {
-                try await Task.sleep(nanoseconds: 250_000_000)
-            } catch {
-                return
-            }
+            // Sleep only throws on cancellation, which the isCancelled check below handles.
+            try? await Task.sleep(nanoseconds: 250_000_000)
             guard Task.isCancelled == false else { return }
 
             let loaded: [SentencePair] = await Task.detached(priority: .userInitiated) {

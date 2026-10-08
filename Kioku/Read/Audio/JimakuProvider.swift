@@ -42,7 +42,12 @@ actor JimakuProvider: SubtitleProvider {
             if let episode {
                 fileComponents.queryItems = [URLQueryItem(name: "episode", value: String(episode))]
             }
-            guard let files = try? await get([JimakuProviderFileEntry].self, url: fileComponents.url!, apiKey: apiKey) else {
+            let files: [JimakuProviderFileEntry]
+            do {
+                files = try await get([JimakuProviderFileEntry].self, url: fileComponents.url!, apiKey: apiKey)
+            } catch {
+                // One show's file list failing shouldn't sink the others' results.
+                AppLog.error(.audioAlignment, "Jimaku files for entry \(entry.id) failed: \(error)")
                 continue
             }
             for file in files {

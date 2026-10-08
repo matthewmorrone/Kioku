@@ -223,11 +223,9 @@ struct CustomWordEditorView: View {
             results = []
             return
         }
-        do {
-            try await Task.sleep(nanoseconds: 250_000_000)
-        } catch {
-            return
-        }
+        // Sleep only throws on cancellation, which the isCancelled check below handles.
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        guard Task.isCancelled == false else { return }
         do {
             var found: [DictionaryEntry] = []
             if ScriptClassifier.containsJapanese(term) {
@@ -255,11 +253,9 @@ struct CustomWordEditorView: View {
             suggestions = []
             return
         }
-        do {
-            try await Task.sleep(nanoseconds: 250_000_000)
-        } catch {
-            return
-        }
+        // Sleep only throws on cancellation, which the isCancelled check below handles.
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        guard Task.isCancelled == false else { return }
         do {
             suggestions = try dictionaryStore.spellingSuggestions(for: spelling)
         } catch {

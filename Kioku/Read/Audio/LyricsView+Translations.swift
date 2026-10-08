@@ -25,6 +25,7 @@ extension LyricsView {
         do {
             try await session.prepareTranslation()
         } catch {
+            AppLog.error(.audioPlayback, "lyric translation unavailable: \(error)")
             return
         }
         for index in cues.indices {
@@ -39,6 +40,7 @@ extension LyricsView {
                 await MainActor.run { translationCache.store(text: text, result: response.targetText) }
             } catch {
                 // Individual cue failure is non-fatal — skip and continue.
+                AppLog.error(.audioPlayback, "lyric translation failed for cue \(index): \(error)")
             }
         }
     }
