@@ -795,6 +795,9 @@ def insert_entry(conn, entry, ent_seq):
 
         for g_idx, gloss in enumerate(sense.get("gloss", [])):
             text = gloss.get("text", "") if isinstance(gloss, dict) else gloss
+            # JMdict marks the slot a gloss attaches to with "..." ("to continue ..." after
+            # 流れて); a blank reads as that slot rather than as text cut off.
+            text = text.replace("...", "___")
             conn.execute(
                 "INSERT INTO glosses (sense_id, order_index, gloss) VALUES (?, ?, ?)",
                 (sense_id, g_idx, text),
