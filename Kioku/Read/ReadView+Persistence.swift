@@ -123,7 +123,7 @@ extension ReadView {
         // When segments are already persisted, apply them directly without running the segmenter.
         // If furigana annotations are present on the segments, restore them directly too.
         // The trie is still loaded in the background for lookup and new notes.
-        if let loadedSegments {
+        if let loadedSegments, SegmentRange.isFullySegmented(loadedSegments) {
             // Cached segmentation exists (validated by normalizedSegmentRanges) — no segmenter run
             // needed. BUT applying it (setting segmentEdges/segmentRanges + restoring furigana) forces
             // a full enhanced CoreText re-typeset (per-segment colors + ruby). Doing that inline lands
@@ -176,6 +176,14 @@ extension ReadView {
             document.furiganaBySegmentLocation = [:]
             document.furiganaLengthBySegmentLocation = [:]
             document.chosenEntryIDBySegmentLocation = [:]
+            // Segments an edit left half-done (stubs, e.g. the app quit in edit mode) still carry the
+            // untouched segments' readings and word picks; the segmenter only fills in the stubs.
+            if let loadedSegments {
+                let restoredFurigana = furiganaFromSegmentRanges(loadedSegments)
+                document.furiganaBySegmentLocation = restoredFurigana.byLocation
+                document.furiganaLengthBySegmentLocation = restoredFurigana.lengthByLocation
+                document.chosenEntryIDBySegmentLocation = chosenEntryIDsFromSegmentRanges(loadedSegments)
+            }
             // Defer the segmentation kickoff by one main-actor turn so SwiftUI can
             // commit the plain-text frame FIRST. The CoreText builder already draws
             // base text without segmentation (build() emits the full string before its

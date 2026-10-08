@@ -166,7 +166,8 @@ extension ReadView {
     func refreshSegmentationRanges(reason: String = #function) {
         guard document.text.isEmpty == false else { return }
 
-        if let segments = document.segments, let edges = edgesFromSegmentRanges(segments, in: document.text) {
+        if let segments = document.segments, SegmentRange.isFullySegmented(segments),
+           let edges = edgesFromSegmentRanges(segments, in: document.text) {
             document.segmentEdges = edges
             document.segmentRanges = edges.map { $0.start..<$0.end }
             document.unknownSegmentLocations = []
@@ -186,7 +187,8 @@ extension ReadView {
         document.segmentationRefreshTask?.cancel()
         document.segmentationRefreshTask = nil
 
-        if let segments = document.segments, let edges = edgesFromSegmentRanges(segments, in: document.text) {
+        if let segments = document.segments, SegmentRange.isFullySegmented(segments),
+           let edges = edgesFromSegmentRanges(segments, in: document.text) {
             document.segmentEdges = edges
             document.segmentRanges = edges.map { $0.start..<$0.end }
             document.unknownSegmentLocations = []
@@ -247,7 +249,14 @@ extension ReadView {
                 document.segmentLatticeEdges = segmentationResult.latticeEdges
                 let baseEdges = segmentationResult.selectedEdges
                 let refreshedEdges: [LatticeEdge]
-                if let persistedSegments,
+                var persistsSplicedSegments = false
+                if let persistedSegments, SegmentRange.isFullySegmented(persistedSegments) == false {
+                    // An edit left stubs: fill them in from this whole-text pass, keep the rest.
+                    let spliced = segmentsAfterEdit(persistedSegments, computedEdges: baseEdges, in: sourceText)
+                    refreshedEdges = spliced.flatMap { edgesFromSegmentRanges($0, in: sourceText) } ?? baseEdges
+                    document.chosenEntryIDBySegmentLocation = spliced.map(chosenEntryIDsFromSegmentRanges) ?? [:]
+                    persistsSplicedSegments = true
+                } else if let persistedSegments,
                    let overriddenEdges = edgesFromSegmentRanges(persistedSegments, in: sourceText) {
                     if shouldDiscardPersistedSegmentOverride(overriddenEdges: overriddenEdges, computedEdges: baseEdges) {
                         self.document.segments = nil
@@ -270,6 +279,9 @@ extension ReadView {
                 }
                 document.unknownSegmentLocations = unknownSegmentLocations(for: refreshedEdges)
                 recordRuntimeSegmentationSnapshot(for: refreshedEdges)
+                if persistsSplicedSegments {
+                    rebuildAndPersistSegments()
+                }
 
                 // Clears stale selection if the tapped segment no longer exists after recomputing ranges.
                 if let selectedSegmentLocation = segmentSelection.selectedSegmentLocation {

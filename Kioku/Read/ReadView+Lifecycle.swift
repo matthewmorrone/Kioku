@@ -119,8 +119,8 @@ extension ReadView {
                 if editModeScroll.isEditMode {
                     // Preserve user customizations (splits/merges/furigana) in segments whose
                     // surfaces still match a prefix/suffix of the edited content. Only the
-                    // diverging middle becomes an unsegmented stub; the segmenter will revisit
-                    // it when edit mode exits.
+                    // diverging middle becomes an unsegmented stub — a string comparison, no
+                    // segmenter — which the segmenter fills in when edit mode exits.
                     let reconciled: [SegmentRange]?
                     if let existing = document.segments {
                         reconciled = reconcileSegments(existing, to: newText)
@@ -242,7 +242,7 @@ extension ReadView {
                 // range entries survive (user pins, prior-correct annotations) while
                 // fragmented narrow entries get superseded by wider compound spans.
                 // Otherwise (no persisted segments) recompute full segmentation.
-                if document.segments != nil {
+                if let segments = document.segments, SegmentRange.isFullySegmented(segments) {
                     StartupTimer.mark("scheduling furigana now that surfaceReadingData is ready")
                     scheduleFuriganaGeneration(for: document.text, edges: document.segmentEdges)
                 } else {

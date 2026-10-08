@@ -259,36 +259,22 @@ extension ReadView {
         if suffixStartInNew > prefixOffset {
             let startIndex = String.Index(utf16Offset: prefixOffset, in: newContent)
             let endIndex = String.Index(utf16Offset: suffixStartInNew, in: newContent)
-            let middleSurface = String(newContent[startIndex..<endIndex])
-            // Retokenize the diverging middle in isolation so newly-typed text still gets
-            // lattice-based segmentation; customizations on either side remain pinned by the
-            // surrounding preserved segments. Context-sensitive merges across the splice are
-            // intentionally suppressed — neighbors are user-customized and must not shift.
-            let middleSegments = tokenizeSurfaceForReconcile(middleSurface)
-            reconciled.append(contentsOf: middleSegments)
+            // The changed middle stays one raw stub; the segmenter fills it in with the whole
+            // text's context when the note is next shown (segmentsAfterEdit).
+            reconciled.append(SegmentRange(surface: String(newContent[startIndex..<endIndex]), needsSegmentation: true))
         }
         reconciled.append(contentsOf: existing.suffix(suffixCount))
 
-        return reconciled.isEmpty ? nil : reconciled
-    }
-
-    // Runs the active segmenter against a substring and maps the resulting edges into
-    // order-only segment ranges. Falls back to a single-segment wrapper when the segmenter
-    // yields nothing usable (e.g. resources not ready), so concat-equals-content still holds.
-    private func tokenizeSurfaceForReconcile(_ surface: String) -> [SegmentRange] {
-        guard surface.isEmpty == false else { return [] }
-        let edges = segmenter.longestMatchEdges(for: surface)
-        guard edges.isEmpty == false else {
-            return [SegmentRange(surface: surface)]
+        // Stubs left by earlier keystrokes next to this one join it, so one edited stretch is one stub.
+        var coalesced: [SegmentRange] = []
+        for segment in reconciled {
+            if segment.needsSegmentation == true, coalesced.last?.needsSegmentation == true {
+                coalesced[coalesced.count - 1].surface += segment.surface
+            } else {
+                coalesced.append(segment)
+            }
         }
-
-        let produced = edges.map { SegmentRange(surface: $0.surface) }
-        // Guard against a segmenter that fails to cover the full substring — preserve the
-        // original surface as one segment rather than corrupt the concat invariant.
-        guard produced.map(\.surface).joined() == surface else {
-            return [SegmentRange(surface: surface)]
-        }
-        return produced
+        return coalesced.isEmpty ? nil : coalesced
     }
 
     // Resolves segmentation edges to (UTF-16 NSRange, surface) pairs in sourceText, skipping
