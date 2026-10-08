@@ -450,7 +450,8 @@ nonisolated public final class Lexicon {
     }
 
     // Applies inverse deinflection transitions in reverse order to project lemma reading back to surface reading.
-    private func applySurfaceTransitions(
+    // Internal so Lexicon+Reinflection can replay one word's inflection onto another.
+    func applySurfaceTransitions(
         to lemmaReading: String,
         transitions: [(label: String, kanaIn: String, kanaOut: String)]
     ) -> String? {

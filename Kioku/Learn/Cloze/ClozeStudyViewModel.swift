@@ -2,10 +2,12 @@ import Foundation
 import NaturalLanguage
 import Combine
 
-// Private token representation used only during question construction.
-private struct ClozeTokenPick {
+// Private token representation used only during question construction. `lemma` is the segmenter's
+// dictionary form for the token, nil when it had none or the sentence was split without a segmenter.
+nonisolated private struct ClozeTokenPick: Sendable {
     let range: NSRange
     let surface: String
+    let lemma: String?
 }
 
 // Drives a cloze study session for one note: builds questions, tracks score, and auto-advances.
@@ -14,8 +16,14 @@ private struct ClozeTokenPick {
 final class ClozeStudyViewModel: ObservableObject {
     let note: Note
     private let dictionaryStore: DictionaryStore?
+    // The Read tab's segmenter, so blanks are whole words (食べた, not 食べ + た); NLTokenizer without it.
+    private let segmenter: (any TextSegmenting)?
+    // Inflects verb and adjective distractors the way the blank is inflected.
+    private let lexicon: Lexicon?
     // The dictionary-wide distractor pool Multiple Choice also uses, fetched on first need.
     private var dictionaryPool: [StudyField: [DistractorCandidate]]?
+    // The same pool's raw rows that conjugate, with their POS tags, for inflected blanks.
+    private var conjugatingPoolRows: [DictionaryDistractorRow]?
 
     @Published var mode: ClozeMode
     @Published private(set) var sentenceCount: Int = 0
@@ -38,6 +46,8 @@ final class ClozeStudyViewModel: ObservableObject {
     init(
         note: Note,
         dictionaryStore: DictionaryStore?,
+        segmenter: (any TextSegmenting)?,
+        lexicon: Lexicon?,
         numberOfChoices: Int = 5,
         initialMode: ClozeMode = .random,
         initialBlanksPerSentence: Int = 1,
@@ -45,6 +55,8 @@ final class ClozeStudyViewModel: ObservableObject {
     ) {
         self.note = note
         self.dictionaryStore = dictionaryStore
+        self.segmenter = segmenter
+        self.lexicon = lexicon
         self.numberOfChoices = max(2, min(8, numberOfChoices))
         self.mode = initialMode
         self.blanksPerSentence = max(1, initialBlanksPerSentence)
@@ -173,7 +185,8 @@ final class ClozeStudyViewModel: ObservableObject {
         let trimmed = sentenceText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { return nil }
 
-        let candidates = pickTargetTokens(sentenceText: trimmed)
+        let tokens = await tokenize(trimmed)
+        let candidates = blankCandidates(from: tokens)
         let wordCount = candidates.count
         guard wordCount >= 2 else { return nil }
 
@@ -185,7 +198,7 @@ final class ClozeStudyViewModel: ObservableObject {
         var blanksByLocation: [Int: ClozeBlank] = [:]
         for idx in chosen {
             let correct = candidates[idx].surface
-            let options = await buildOptions(correct: correct, contextSentence: trimmed)
+            let options = await buildOptions(for: candidates[idx], sentenceCandidates: candidates)
             guard options.count >= 2 else { return nil }
             blanksByLocation[candidates[idx].range.location] = ClozeBlank(
                 id: UUID(), correct: correct, options: options
@@ -193,7 +206,7 @@ final class ClozeStudyViewModel: ObservableObject {
         }
 
         let ns = trimmed as NSString
-        let tokenRanges = allTokenRanges(sentenceText: trimmed)
+        let tokenRanges = tokens
         guard tokenRanges.isEmpty == false else { return nil }
 
         var segments: [ClozeSegment] = []
@@ -239,17 +252,22 @@ final class ClozeStudyViewModel: ObservableObject {
         )
     }
 
-    // Gathers distractor options: dictionary words of the same script ranked by word class when the
-    // blank is a dictionary headword, topped up with the sentence's other tokens.
-    private func buildOptions(correct: String, contextSentence: String) async -> [String] {
+    // Gathers distractor options: for an inflected verb or adjective, dictionary words of its exact
+    // conjugation class inflected the same way; for a dictionary headword, same-script dictionary
+    // words ranked by word class; topped up with the sentence's other words either way.
+    private func buildOptions(for blank: ClozeTokenPick, sentenceCandidates: [ClozeTokenPick]) async -> [String] {
+        let correct = blank.surface
         var choices: [String] = [correct]
         choices.reserveCapacity(numberOfChoices)
 
-        for w in await dictionaryDistractors(for: correct, count: numberOfChoices - 1)
-        where choices.contains(w) == false {
+        var dictionaryOptions = await inflectedDistractors(for: blank, count: numberOfChoices - 1)
+        if dictionaryOptions.isEmpty {
+            dictionaryOptions = await dictionaryDistractors(for: correct, count: numberOfChoices - 1)
+        }
+        for w in dictionaryOptions where choices.contains(w) == false {
             choices.append(w)
         }
-        for w in fallbackDistractors(from: contextSentence, excluding: Set(choices)) {
+        for w in fallbackDistractors(from: sentenceCandidates, excluding: Set(choices)) {
             if choices.count >= numberOfChoices { break }
             choices.append(w)
         }
@@ -267,6 +285,26 @@ final class ClozeStudyViewModel: ObservableObject {
             else { choices[0] = correct; choices.shuffle() }
         }
         return choices
+    }
+
+    // Dictionary verbs/adjectives of the blank's exact conjugation class, inflected along the blank's
+    // own rule path (食べた → 見た, 寝た). Empty when the blank isn't an inflected form or no lexicon.
+    private func inflectedDistractors(for blank: ClozeTokenPick, count: Int) async -> [String] {
+        guard let lexicon, let lemma = blank.lemma, lemma != blank.surface, count > 0 else { return [] }
+        if conjugatingPoolRows == nil, let store = dictionaryStore {
+            conjugatingPoolRows = await Task.detached(priority: .utility) {
+                // fetchDistractorPool logs its own failures; an empty pool falls back to sentence words.
+                ((try? store.fetchDistractorPool()) ?? []).filter {
+                    ConjugationClass.conjugatingTags(in: $0.posTags).isEmpty == false
+                }
+            }.value
+        }
+        let useKanji = ScriptClassifier.containsKanji(blank.surface)
+        let candidates = (conjugatingPoolRows ?? []).compactMap { row -> (text: String, posTags: [String])? in
+            guard let text = useKanji ? row.kanji : row.kana else { return nil }
+            return (text: text, posTags: row.posTags)
+        }.shuffled()
+        return lexicon.inflectLike(surface: blank.surface, lemma: lemma, candidates: candidates, limit: count)
     }
 
     // Same-script words from the dictionary-wide pool, ranked toward the blank's word class as
@@ -307,11 +345,11 @@ final class ClozeStudyViewModel: ObservableObject {
         return WordClass.from(posTags: posTags)
     }
 
-    // Returns up to 12 unique tokens from the sentence as distractors.
-    private func fallbackDistractors(from sentenceText: String, excluding: Set<String>) -> [String] {
+    // Returns up to 12 unique words from the sentence as distractors.
+    private func fallbackDistractors(from sentenceCandidates: [ClozeTokenPick], excluding: Set<String>) -> [String] {
         var unique: [String] = []
         var seen: Set<String> = []
-        for t in pickTargetTokens(sentenceText: sentenceText).map(\.surface).shuffled() {
+        for t in sentenceCandidates.map(\.surface).shuffled() {
             if excluding.contains(t) || seen.contains(t) { continue }
             seen.insert(t)
             unique.append(t)
@@ -320,29 +358,24 @@ final class ClozeStudyViewModel: ObservableObject {
         return unique
     }
 
-    // Returns Japanese-preferring tokens suitable for blanking; skips pure punctuation.
-    private func pickTargetTokens(sentenceText: String) -> [ClozeTokenPick] {
-        let tokenizer = NLTokenizer(unit: .word)
-        tokenizer.string = sentenceText
-        tokenizer.setLanguage(.japanese)
-
-        var picks: [ClozeTokenPick] = []
-        tokenizer.enumerateTokens(in: sentenceText.startIndex..<sentenceText.endIndex) { range, _ in
-            let nsRange = NSRange(range, in: sentenceText)
-            guard nsRange.length > 0 else { return true }
-            let surface = (sentenceText as NSString).substring(with: nsRange)
-            let trimmed = surface.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard trimmed.isEmpty == false, isMostlyPunctuation(trimmed) == false else { return true }
-            picks.append(ClozeTokenPick(range: nsRange, surface: surface))
-            return true
-        }
-
-        let japanese = picks.filter { containsJapanese($0.surface) }
-        return japanese.isEmpty ? picks : japanese
+    // Splits a sentence into words in document order: with the Read tab's segmenter when there is
+    // one (off the main actor; whole inflected words, each with its lemma), else with NLTokenizer.
+    private func tokenize(_ sentenceText: String) async -> [ClozeTokenPick] {
+        guard let segmenter else { return Self.nlTokens(sentenceText) }
+        let tokens = await Task.detached(priority: .userInitiated) {
+            segmenter.longestMatchEdges(for: sentenceText).map { edge in
+                ClozeTokenPick(
+                    range: NSRange(edge.start..<edge.end, in: sentenceText),
+                    surface: edge.surface,
+                    lemma: edge.lemma.isEmpty ? nil : edge.lemma
+                )
+            }
+        }.value
+        return tokens.sorted { $0.range.location < $1.range.location }
     }
 
-    // Returns all token ranges in document order, used for segment construction.
-    private func allTokenRanges(sentenceText: String) -> [ClozeTokenPick] {
+    // NLTokenizer's word split, for when the dictionary (and so the segmenter) isn't installed.
+    private static func nlTokens(_ sentenceText: String) -> [ClozeTokenPick] {
         let tokenizer = NLTokenizer(unit: .word)
         tokenizer.string = sentenceText
         tokenizer.setLanguage(.japanese)
@@ -353,11 +386,23 @@ final class ClozeStudyViewModel: ObservableObject {
             guard nsRange.length > 0 else { return true }
             tokens.append(ClozeTokenPick(
                 range: nsRange,
-                surface: (sentenceText as NSString).substring(with: nsRange)
+                surface: (sentenceText as NSString).substring(with: nsRange),
+                lemma: nil
             ))
             return true
         }
         return tokens.sorted { $0.range.location < $1.range.location }
+    }
+
+    // The words worth blanking: no whitespace- or punctuation-only tokens, and Japanese ones when
+    // the sentence has any.
+    private func blankCandidates(from tokens: [ClozeTokenPick]) -> [ClozeTokenPick] {
+        let picks = tokens.filter { token in
+            let trimmed = token.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty == false && isMostlyPunctuation(trimmed) == false
+        }
+        let japanese = picks.filter { containsJapanese($0.surface) }
+        return japanese.isEmpty ? picks : japanese
     }
 
     // Filters out punctuation-only tokens so they are never chosen as cloze blanks.

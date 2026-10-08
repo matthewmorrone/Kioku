@@ -5,6 +5,8 @@ import SwiftUI
 struct ClozeStudyHomeView: View {
     @EnvironmentObject private var notesStore: NotesStore
     let dictionaryStore: DictionaryStore?
+    let segmenter: (any TextSegmenting)?
+    let lexicon: Lexicon?
 
     @State private var mode: ClozeMode = .random
     @State private var blanksPerSentence: Int = 1
@@ -64,6 +66,8 @@ struct ClozeStudyHomeView: View {
                 ClozeStudyView(
                     note: note,
                     dictionaryStore: dictionaryStore,
+                    segmenter: segmenter,
+                    lexicon: lexicon,
                     initialMode: mode,
                     initialBlanksPerSentence: blanksPerSentence,
                     excludeDuplicateLines: excludeDuplicateLines

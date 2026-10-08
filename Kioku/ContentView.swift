@@ -126,6 +126,7 @@ struct ContentView: View {
             LearnView(
                 dictionaryStore: readResources.dictionaryStore,
                 segmenter: readResources.segmenter,
+                lexicon: readResources.lexicon,
                 surfaceReadingData: readResources.surfaceReadingData,
                 kanjiReadingFallback: readResources.kanjiReadingFallback
             )
