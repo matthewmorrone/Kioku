@@ -4,6 +4,7 @@ import SwiftUI
 // Major sections: mode/blanks/dedup options, note source picker, start button.
 struct ClozeStudyHomeView: View {
     @EnvironmentObject private var notesStore: NotesStore
+    let dictionaryStore: DictionaryStore?
 
     @State private var mode: ClozeMode = .random
     @State private var blanksPerSentence: Int = 1
@@ -62,6 +63,7 @@ struct ClozeStudyHomeView: View {
             .navigationDestination(item: $activeNote) { note in
                 ClozeStudyView(
                     note: note,
+                    dictionaryStore: dictionaryStore,
                     initialMode: mode,
                     initialBlanksPerSentence: blanksPerSentence,
                     excludeDuplicateLines: excludeDuplicateLines

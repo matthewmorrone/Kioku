@@ -13,6 +13,9 @@ private struct ClozeTokenPick {
 @MainActor
 final class ClozeStudyViewModel: ObservableObject {
     let note: Note
+    private let dictionaryStore: DictionaryStore?
+    // The dictionary-wide distractor pool Multiple Choice also uses, fetched on first need.
+    private var dictionaryPool: [StudyField: [DistractorCandidate]]?
 
     @Published var mode: ClozeMode
     @Published private(set) var sentenceCount: Int = 0
@@ -34,12 +37,14 @@ final class ClozeStudyViewModel: ObservableObject {
     // Initialises a session for the given note with configurable blank count and ordering.
     init(
         note: Note,
+        dictionaryStore: DictionaryStore?,
         numberOfChoices: Int = 5,
         initialMode: ClozeMode = .random,
         initialBlanksPerSentence: Int = 1,
         excludeDuplicateLines: Bool = true
     ) {
         self.note = note
+        self.dictionaryStore = dictionaryStore
         self.numberOfChoices = max(2, min(8, numberOfChoices))
         self.mode = initialMode
         self.blanksPerSentence = max(1, initialBlanksPerSentence)
@@ -163,7 +168,7 @@ final class ClozeStudyViewModel: ObservableObject {
     }
 
     // Constructs a ClozeQuestion for one sentence: tokenises, picks blank targets,
-    // gathers distractors from the sentence's other tokens, and assembles the segment list.
+    // gathers distractors (see buildOptions), and assembles the segment list.
     private func buildQuestion(sentenceIndex: Int, sentenceText: String) async -> ClozeQuestion? {
         let trimmed = sentenceText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { return nil }
@@ -180,7 +185,7 @@ final class ClozeStudyViewModel: ObservableObject {
         var blanksByLocation: [Int: ClozeBlank] = [:]
         for idx in chosen {
             let correct = candidates[idx].surface
-            let options = buildOptions(correct: correct, contextSentence: trimmed)
+            let options = await buildOptions(correct: correct, contextSentence: trimmed)
             guard options.count >= 2 else { return nil }
             blanksByLocation[candidates[idx].range.location] = ClozeBlank(
                 id: UUID(), correct: correct, options: options
@@ -234,11 +239,16 @@ final class ClozeStudyViewModel: ObservableObject {
         )
     }
 
-    // Gathers distractor options from the sentence's other tokens.
-    private func buildOptions(correct: String, contextSentence: String) -> [String] {
+    // Gathers distractor options: dictionary words of the same script ranked by word class when the
+    // blank is a dictionary headword, topped up with the sentence's other tokens.
+    private func buildOptions(correct: String, contextSentence: String) async -> [String] {
         var choices: [String] = [correct]
         choices.reserveCapacity(numberOfChoices)
 
+        for w in await dictionaryDistractors(for: correct, count: numberOfChoices - 1)
+        where choices.contains(w) == false {
+            choices.append(w)
+        }
         for w in fallbackDistractors(from: contextSentence, excluding: Set(choices)) {
             if choices.count >= numberOfChoices { break }
             choices.append(w)
@@ -257,6 +267,44 @@ final class ClozeStudyViewModel: ObservableObject {
             else { choices[0] = correct; choices.shuffle() }
         }
         return choices
+    }
+
+    // Same-script words from the dictionary-wide pool, ranked toward the blank's word class as
+    // Multiple Choice ranks them. Only for a blank that is itself a headword: an inflected or partial
+    // token (食べ, なかった) would stand out against dictionary-form rivals, so it gets none.
+    private func dictionaryDistractors(for surface: String, count: Int) async -> [String] {
+        guard let store = dictionaryStore, count > 0 else { return [] }
+        let trimmed = surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let wordClass = await Task.detached(priority: .userInitiated, operation: {
+            Self.headwordClass(of: trimmed, store: store)
+        }).value else { return [] }
+        if dictionaryPool == nil {
+            dictionaryPool = await LearnWordPool.fetchDictionaryDistractorPool(dictionaryStore: store)
+        }
+        let field: StudyField = ScriptClassifier.containsKanji(trimmed) ? .kanji : .kana
+        let pool = (dictionaryPool?[field] ?? []).filter { $0.text != trimmed }.shuffled()
+        return DistractorSelector.choose(
+            from: pool,
+            answer: DistractorCandidate(text: trimmed, wordClass: wordClass),
+            prompt: "",
+            count: count
+        )
+    }
+
+    // The word class of the entry listing `surface` verbatim as a kanji or kana form, or nil when no
+    // entry does (lookup's variant expansion would otherwise admit near-spellings).
+    private nonisolated static func headwordClass(of surface: String, store: DictionaryStore) -> WordClass? {
+        guard surface.isEmpty == false,
+              let entries = try? store.lookup(surface: surface, mode: .kanjiAndKana),
+              let entry = entries.first(where: { entry in
+                  entry.kanjiForms.contains { $0.text == surface } || entry.kanaForms.contains { $0.text == surface }
+              }) else { return nil }
+        let posTags = entry.senses
+            .compactMap(\.pos)
+            .flatMap { $0.components(separatedBy: ",") }
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.isEmpty == false }
+        return WordClass.from(posTags: posTags)
     }
 
     // Returns up to 12 unique tokens from the sentence as distractors.

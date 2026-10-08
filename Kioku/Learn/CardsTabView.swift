@@ -123,7 +123,7 @@ struct LearnPagerView: View {
                     .frame(width: width)
                     .onPreferenceChange(CardsPageDotsHiddenPreferenceKey.self) { dotsHiddenByPage[.fillInBlank] = $0 }
                     .onPreferenceChange(CardsStudySessionActivePreferenceKey.self) { sessionActiveByPage[.fillInBlank] = $0 }
-                ClozeStudyHomeView()
+                ClozeStudyHomeView(dictionaryStore: dictionaryStore)
                     .frame(width: width)
                 KanaChartView()
                     .frame(width: width)
