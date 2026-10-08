@@ -239,12 +239,57 @@ final class LexiconTests: XCTestCase {
         XCTAssertTrue(characters.contains("食"))
     }
 
-    // Verifies inflection expansion returns at least lemma and common past form for an ichidan verb.
-    func testExpandInflectionReturnsGeneratedForms() throws {
-        let surface = try lexiconSurface()
+    // Cloze distractors: another ichidan verb takes 食べた's own past, a godan one doesn't qualify.
+    func testInflectLikeReplaysTheBlanksInflectionOnSameClassWords() throws {
+        let lexicon = try lexiconSurface()
 
-        let forms = surface.expandInflection("猫")
-        XCTAssertTrue(forms.contains("猫"))
+        let forms = lexicon.inflectLike(
+            surface: "食べなかった", lemma: "食べる",
+            candidates: [(text: "見る", posTags: ["v1"]), (text: "書く", posTags: ["v5k"])], limit: 5
+        )
+        XCTAssertEqual(forms, ["見なかった"])
+    }
+
+    // 行く (v5k-s) shares a grammar with 書く (v5k) but not its past, so it never becomes 行いた.
+    func testInflectLikeRequiresTheExactConjugationTag() throws {
+        let lexicon = try lexiconSurface()
+
+        let forms = lexicon.inflectLike(
+            surface: "書いた", lemma: "書く",
+            candidates: [(text: "行く", posTags: ["v5k-s"]), (text: "聞く", posTags: ["v5k"])], limit: 5
+        )
+        XCTAssertEqual(forms, ["聞いた"])
+    }
+
+    // する's own forms come from its own rules: して and しない, never the ichidan rule's すた.
+    func testOtherFormsOfSuruStayInItsClass() throws {
+        let lexicon = try lexiconSurface()
+
+        let forms = Set(lexicon.otherForms(of: "する", besides: "した", limit: 500))
+        XCTAssertTrue(forms.contains("して"))
+        XCTAssertTrue(forms.contains("しない"))
+        XCTAssertFalse(forms.contains("すた"))
+        XCTAssertFalse(forms.contains("した"))
+    }
+
+    // The most specific rule wins inside a form group: 行く's past is 行った, never the generic 行いた.
+    func testOtherFormsOfIkuUseItsIrregularPast() throws {
+        let lexicon = try lexiconSurface()
+
+        let forms = Set(lexicon.otherForms(of: "行く", besides: "行かない", limit: 500))
+        XCTAssertTrue(forms.contains("行った"))
+        XCTAssertFalse(forms.contains("行いた"))
+    }
+
+    // A katakana する-noun blank borrows its ending for other する-nouns; plain nouns are skipped.
+    func testSuruCompoundsLikeKeepsTheBlanksEnding() throws {
+        let lexicon = try lexiconSurface()
+
+        let forms = lexicon.suruCompoundsLike(
+            surface: "キスした",
+            candidates: [(text: "ダンス", posTags: ["n", "vs"]), (text: "ケーキ", posTags: ["n"])], limit: 5
+        )
+        XCTAssertEqual(forms, ["ダンスした"])
     }
 
     // 触れられない is the negative potential/passive of ichidan 触れる (ふれる). The deinflector also

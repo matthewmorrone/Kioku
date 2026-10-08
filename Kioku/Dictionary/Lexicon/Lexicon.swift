@@ -7,7 +7,6 @@ nonisolated public final class Lexicon {
     let segmenter: any TextSegmenting
     let deinflector: Deinflector
     private let surfaceReadingData: [String: SurfaceReadingData]
-    private let maxDepth = 4
 
     // Creates a lexical UI surface from already-initialized dictionary, deinflection, and segmentation dependencies.
     init(
@@ -322,50 +321,6 @@ nonisolated public final class Lexicon {
 
                 return lhs.lexeme < rhs.lexeme
             }
-    }
-
-    // Expands one lemma into inflected forms by inverting grouped deinflection rules and validating results.
-    // Uses deinflectionPaths directly instead of lemma(surface:) to skip the segmenter admission checks —
-    // the target lemma is already known valid, so we only need to confirm the reverse path exists.
-    public func expandInflection(_ lemma: String) -> [String] {
-        let trimmedLemma = lemma.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmedLemma.isEmpty == false else {
-            return []
-        }
-
-        var visited = Set<String>([trimmedLemma])
-        var queue: [(surface: String, depth: Int)] = [(surface: trimmedLemma, depth: 0)]
-        var cursor = 0
-
-        while cursor < queue.count {
-            let item = queue[cursor]
-            cursor += 1
-
-            if item.depth >= maxDepth {
-                continue
-            }
-
-            for labeledRule in deinflector.labeledRulesForExpansion() {
-                let rule = labeledRule.rule
-                guard item.surface.hasSuffix(rule.kanaOut) else {
-                    continue
-                }
-
-                let stem = item.surface.dropLast(rule.kanaOut.count)
-                let inflectedSurface = String(stem) + rule.kanaIn
-                if visited.contains(inflectedSurface) {
-                    continue
-                }
-
-                let paths = deinflector.deinflectionPaths(for: inflectedSurface)
-                if paths[trimmedLemma] != nil {
-                    visited.insert(inflectedSurface)
-                    queue.append((surface: inflectedSurface, depth: item.depth + 1))
-                }
-            }
-        }
-
-        return visited.sorted()
     }
 
     // Returns grouped-rule labels describing the preferred deinflection chain for one surface.
