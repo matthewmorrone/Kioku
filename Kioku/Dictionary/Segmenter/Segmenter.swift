@@ -30,6 +30,8 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     var commonKanaSurfaces: Set<String>
     // Transition costs between adjacent word classes on a path; nil scores paths by word costs alone.
     var transitionTable: SegmenterTransitionTable?
+    // The boundary model (Segmenter+BoundaryModel.swift); nil scores paths without it.
+    var boundaryModel: BoundaryModel?
     // JMnedict spellings the lattice may use as one word where JMdict has none (田中, スティーヴン);
     // see Segmenter+Names.swift. Empty when built without a dictionary store or with an older
     // dictionary that has no name tables. Set through useNameSurfaces, which keeps
@@ -92,7 +94,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     }
 
     // Builds the production segmenter for a loaded dictionary, fetching the cost model's frequency
-    // map and loading its transition table itself. The app (ContentView) and the test harness (TestReadResources) both come through
+    // map and loading its transition table and boundary model itself. The app (ContentView) and the test harness (TestReadResources) both come through
     // here, so the two cannot be wired to different frequency sources — which is what once let the
     // tests pass on surface_frequency while the app still ran on the per-entry propagated ranks.
     // A store whose frequency table can't be read yields an empty map (every word unranked).
@@ -110,6 +112,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             commonKanaSurfaces: (try? dictionaryStore?.fetchCommonKanaSurfaces()) ?? [],
             transitionTable: SegmenterTransitionTable.bundled()
         )
+        boundaryModel = BoundaryModel.bundled()
         do {
             useNameSurfaces(try dictionaryStore?.fetchSegmenterNameSurfaces() ?? [])
         } catch {
@@ -180,6 +183,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             nameReadingLookup: other.nameReadingLookup,
             bestWordRankByKana: other.bestWordRankByKana
         )
+        boundaryModel = other.boundaryModel
     }
 
     // Generates all dictionary-backed lattice edges for every start position in the input text.
@@ -493,7 +497,8 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         let latticeEdges = buildLattice(for: text)
 
         if SegmenterSettings.usesGlobalLongestMatch {
-            let (annotatedEdges, path, _) = viterbiSelect(from: latticeEdges, in: text)
+            let costs = boundaryCosts(lattice: latticeEdges, in: text)
+            let (annotatedEdges, path, _) = viterbiSelect(from: latticeEdges, in: text, boundaryCosts: costs)
             // If Viterbi fails to terminate (no path reaches text.endIndex), fall through to greedy
             // so we never return a partial / empty segmentation. This keeps the flag safe to flip.
             if !path.isEmpty {

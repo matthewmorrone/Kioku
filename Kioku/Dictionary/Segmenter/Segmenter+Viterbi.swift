@@ -24,6 +24,7 @@ extension Segmenter {
     // disagree with the segmentation. Nil for a candidate whose pieces don't spell the segment.
     func splitCosts(of range: Range<String.Index>, in text: String, candidates: [[String]]) -> [Int?] {
         let lattice = buildLattice(for: text)
+        let costs = boundaryCosts(lattice: lattice, in: text)
         let outside = lattice.filter { $0.end <= range.lowerBound || $0.start >= range.upperBound }
         let segment = String(text[range])
         return candidates.map { pieces in
@@ -36,7 +37,7 @@ extension Segmenter {
                 edges += matches.isEmpty ? [LatticeEdge(start: start, end: end, surface: piece)] : matches
                 start = end
             }
-            return viterbiSelect(from: edges, in: text).cost
+            return viterbiSelect(from: edges, in: text, boundaryCosts: costs).cost
         }
     }
 

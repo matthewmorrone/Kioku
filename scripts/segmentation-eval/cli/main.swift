@@ -10,6 +10,7 @@ import Foundation
 //   segcli compounds < surfaces                  → "surface<TAB>base + auxiliary" for each surface the lookup sheet names as a compound verb
 //   segcli furigana < sentences                  → per sentence, a JSON list of [utf16Location, utf16Length, reading]: the Read view's furigana for dictionary words
 // NO_EXTRAS=1                                  → skip the built-in Custom Words (Resources/extras.json)
+// NO_BOUNDARY_MODEL=1                          → the path search without the boundary model
 // Repo root: four levels up from this file (scripts/segmentation-eval/cli/main.swift), unless KIOKU_CHECKOUT says otherwise.
 let root = ProcessInfo.processInfo.environment["KIOKU_CHECKOUT"]
     ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path
@@ -57,6 +58,9 @@ let segmenter = Segmenter(
     partOfSpeechByEntryID: surfaceData.partOfSpeechByEntryID,
     frequenciesFrom: store
 )
+// NO_BOUNDARY_MODEL=1 measures the path search without the boundary model (Segmenter+BoundaryModel.swift).
+if ProcessInfo.processInfo.environment["NO_BOUNDARY_MODEL"] == "1" { segmenter.boundaryModel = nil }
+FileHandle.standardError.write("boundary model loaded: \(segmenter.boundaryModel != nil)\n".data(using: .utf8)!)
 // NO_NAMES=1 measures the same dictionary without JMnedict name edges (Segmenter+Names.swift).
 if ProcessInfo.processInfo.environment["NO_NAMES"] == "1" { segmenter.useNameSurfaces([]) }
 UserDefaults.standard.removeObject(forKey: SegmenterSettings.strategyKey)
