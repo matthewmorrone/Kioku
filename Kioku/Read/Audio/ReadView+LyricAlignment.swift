@@ -410,6 +410,10 @@ extension ReadView {
     // or triggers on-device alignment using the note text as lyrics.
     @MainActor
     func submitPendingSubtitleSelection() async {
+        // An alignment already in flight is still writing toward its own saveAlignedSubtitles call;
+        // running this one alongside it would race that write (see generateAlignedSRT's own guard).
+        guard lyricAlignment.isAligning == false else { return }
+
         lyricAlignment.errorMessage = ""
 
         guard let audioURL = subtitleImport.pendingSubtitleAudioURL else {

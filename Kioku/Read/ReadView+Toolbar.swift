@@ -146,17 +146,20 @@ extension ReadView {
         let isAligned = audioPlayback.audioAttachmentCues.contains { SubtitleParser.isNonSpeechCue($0.text.trimmingCharacters(in: .whitespacesAndNewlines)) == false }
         return Group {
             if lyricAlignment.isAligning {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(width: 36, height: 36)
-                    .background(Capsule().fill(ReadToggleAppearance.background))
-                    .contentShape(Rectangle())
+                titleActionLabel {
+                    ProgressView()
+                        .controlSize(.small)
+                }
             } else {
                 titleActionLabel(systemImage: "music.note", foreground: ReadToggleAppearance.foreground(isOn: isAligned || audioPlayback.isShowingLyricsView))
             }
         }
             .contentShape(Capsule())
             .onTapGesture {
+                // While a song aligns there's nothing useful a tap can do yet — the attachment
+                // this note will get doesn't exist until the alignment finishes — so the spinner
+                // ignores taps rather than reopening the media picker underneath it.
+                guard lyricAlignment.isAligning == false else { return }
                 // Nothing attached yet → the lyric view would be empty, so jump straight to the
                 // media picker (mp3 / srt / textgrid) instead of toggling a blank overlay. Once an
                 // attachment exists, the tap reverts to its normal show/hide-lyrics behavior; opening
@@ -170,7 +173,7 @@ extension ReadView {
                     DispatchQueue.main.async { StartupTimer.mark("lyrics toggle: main thread free") }
                 }
             }
-            .accessibilityLabel(audioPlayback.isShowingLyricsView ? "Hide Lyrics" : "Show Lyrics")
+            .accessibilityLabel(lyricAlignment.isAligning ? "Aligning Lyrics" : (audioPlayback.isShowingLyricsView ? "Hide Lyrics" : "Show Lyrics"))
             .accessibilityAddTraits(.isButton)
     }
 
@@ -288,9 +291,17 @@ extension ReadView {
     // reused by ReadView+MiniPlayer.swift's inline play/pause button so it matches the other
     // title-row icons exactly.
     func titleActionLabel(systemImage: String, foreground: Color) -> some View {
-        Image(systemName: systemImage)
-            .scaledFont(size: 16, weight: .semibold)
-            .foregroundStyle(foreground)
+        titleActionLabel {
+            Image(systemName: systemImage)
+                .scaledFont(size: 16, weight: .semibold)
+                .foregroundStyle(foreground)
+        }
+    }
+
+    // Same frame/background/hit-area as above, around arbitrary content — lets a busy state
+    // (e.g. titleLyricsButton's spinner while a song aligns) share the box without duplicating it.
+    func titleActionLabel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
             .frame(width: 36, height: 36)
             .background(Capsule().fill(ReadToggleAppearance.background))
             .contentShape(Rectangle())
