@@ -368,6 +368,14 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                 if duplicatesSingleKanaMatch == false {
                     edges.append(fallbackEdge)
                 }
+                // A hiragana run spans to its end, so with no word starting here (an emphatic っ in
+                // かんっぜん, an unknown でっき) the run alone would swallow every word after it. One
+                // unknown character lets the path step over it and pick the words back up.
+                let next = text.index(after: index)
+                if keptMatches == 0, next < fallbackRange.upperBound,
+                   ScriptClassifier.unknownGrouping(for: text[index]) == "hiragana" {
+                    edges.append(LatticeEdge(start: index, end: next, surface: String(text[index])))
+                }
             }
 
             index = text.index(after: index)
@@ -551,8 +559,9 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     // Folds bound characters at the head of a selected edge into the segment before it, so no
     // segment of the global path starts with a glyph that can never begin a word. Same two classes
     // the local walk absorbs inline: small kana and the prolonged sound mark always; small tsu only
-    // when it is not followed by kana (って/った are legitimate segment heads). A bound character
-    // with no preceding segment, or one directly after a boundary character, is left alone.
+    // when it is not followed by kana (って/った are legitimate segment heads), or when the path chose
+    // it as an unknown segment of its own (かん|っ|ぜん → かんっ|ぜん: a bare っ is never a word). A
+    // bound character with no preceding segment, or one directly after a boundary character, is left alone.
     // Internal (not private): Segmenter+BoundaryModel reads the same absorbed path the search returns.
     func absorbingBoundCharacters(in path: [LatticeEdge], of text: String) -> [LatticeEdge] {
         var result: [LatticeEdge] = []
@@ -564,7 +573,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             while start < edge.end, edge.isDictionaryMatch == false,
                   let last = result.last,
                   !(last.surface.count == 1 && isSpanBreak(last.surface.first!)),
-                  isBoundCharacter(at: start, in: text) {
+                  isBoundCharacter(at: start, in: text) || Self.isLoneSmallTsu(edge) {
                 let next = text.index(after: start)
                 result[result.count - 1] = LatticeEdge(
                     start: last.start,
@@ -582,6 +591,11 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         }
 
         return result
+    }
+
+    // True for an unknown edge that is a small tsu and nothing else.
+    private static func isLoneSmallTsu(_ edge: LatticeEdge) -> Bool {
+        edge.isDictionaryMatch == false && (edge.surface == "っ" || edge.surface == "ッ")
     }
 
     // True when the character at this index can never begin a segment: a never-initial kana, or a
