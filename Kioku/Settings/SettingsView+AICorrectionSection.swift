@@ -51,6 +51,8 @@ extension SettingsView {
             }
         } header: {
             Text("AI")
+        } footer: {
+            Text("Used for song breakdowns, AI corrections to a note's word splits and readings, and meanings for words the dictionary doesn't have. Requests are billed to your own API key, which stays in the Keychain.")
         }
     }
 

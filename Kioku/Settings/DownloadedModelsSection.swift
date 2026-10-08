@@ -79,6 +79,8 @@ struct DownloadedModelsSection: View {
                 }
             } header: {
                 Text("Downloaded")
+            } footer: {
+                Text("Models for lyric transcription, timing and vocal isolation download the first time a song needs them.")
             }
             Section {
                 // Rows are grouped by what they are, not where they live: the stems sit in
@@ -132,6 +134,8 @@ struct DownloadedModelsSection: View {
                 .disabled(isClearingCaches || cachesBytes == 0)
             } header: {
                 Text("Caches")
+            } footer: {
+                Text("Cached files are rebuilt when needed. Swipe a row to delete just that item.")
             }
         }
         .alert("Delete Everything Downloaded?", isPresented: $isShowingDeleteDownloadedConfirmation) {

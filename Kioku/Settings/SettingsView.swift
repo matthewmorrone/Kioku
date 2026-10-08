@@ -126,6 +126,8 @@ struct SettingsView: View {
                         .listRowBackground(Color.clear)
                 } header: {
                     Text("Typography")
+                } footer: {
+                    Text("Tap the preview to adjust text size, furigana and spacing in notes.")
                 }
 
                 // MARK: Theme — the swatch picker, then the row opening the Customize Colors
@@ -146,6 +148,8 @@ struct SettingsView: View {
                     }
                 } header: {
                     Text("Theme")
+                } footer: {
+                    Text("Customize Colors overrides the theme's interface colors and the colors used to mark saved and learned words.")
                 }
 
                 // MARK: Lookup — how the word popover behaves, and clipboard pickup.
@@ -163,6 +167,8 @@ struct SettingsView: View {
                     }
                 } header: {
                     Text("Lookup")
+                } footer: {
+                    Text("Tapping a word opens a small popover with its meaning; its chevron opens the full lookup. Turn off Show Japanese to hide the word itself behind a speaker button. With Auto-detect on, Kioku offers to look up Japanese you've copied when you return to the app. Custom Words are entries you add to the dictionary yourself.")
                 }
 
                 // MARK: AI — body lives in SettingsView+AICorrectionSection.swift
@@ -176,7 +182,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Learning")
                 } footer: {
-                    Text("Skip Learned Words leaves words marked learned or mastered out of Learn activities. With Auto-mark as Learned on, a word is automatically marked learned once every kind of question about it has been answered right. You can always mark words by hand by long-pressing any star.")
+                    Text("Auto-mark marks a word learned once you've answered every kind of question about it correctly. Long-press any star to mark words by hand.")
                 }
 
                 // MARK: Word of the Day — daily notification time and permission.
@@ -209,6 +215,8 @@ struct SettingsView: View {
                     }
                 } header: {
                     Text("Word of the Day")
+                } footer: {
+                    Text("A daily notification with one of your saved words.")
                 }
                 .task {
                     await refreshWotdStatus()
@@ -233,6 +241,8 @@ struct SettingsView: View {
                     }
                 } header: {
                     Text("Data")
+                } footer: {
+                    Text("Export saves your notes, saved words, lists, history, review progress, audio and custom words to one file. Import replaces everything with a file's contents. Reset erases it all; settings are kept.")
                 }
 
                 // MARK: Diagnostics and debug sections. See engineSettings.
@@ -262,6 +272,8 @@ struct SettingsView: View {
                     } label: {
                         Label("About", systemImage: "info.circle")
                     }
+                } footer: {
+                    Text("Replay Tours shows each tab's walkthrough again the next time you open it.")
                 }
 
             }
