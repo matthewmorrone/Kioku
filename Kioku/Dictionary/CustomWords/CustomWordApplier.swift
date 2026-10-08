@@ -97,7 +97,10 @@ nonisolated enum CustomWordApplier {
     // MARK: - Removal
 
     // Deletes whole entries (the build's extras) from every table that refers to them. Surface rows
-    // go only for surfaces no remaining form has, so a JMdict word sharing a spelling keeps its own.
+    // go only for surfaces no remaining form has, so a JMdict word sharing a spelling keeps its own;
+    // a reading row goes when no remaining entry with that spelling has the reading, so a deleted
+    // extra reading (愛人 あいひと) doesn't linger beside the JMdict word's (愛人 あいじん) as a reading
+    // the lookup sheet offers but can't resolve.
     private static func deleteEntries(_ db: OpaquePointer, entryIDs: [Int64]) throws {
         guard entryIDs.isEmpty == false else { return }
         let ids = entryIDs.map(String.init).joined(separator: ",")
@@ -129,6 +132,12 @@ nonisolated enum CustomWordApplier {
             if stillUsed.isEmpty {
                 try run(db, "DELETE FROM surface_readings WHERE surface = ?", [.text(surface)])
                 try run(db, "DELETE FROM surface_frequency WHERE surface = ?", [.text(surface)])
+            } else {
+                try run(db, """
+                    DELETE FROM surface_readings WHERE surface = ?1 AND reading NOT IN (
+                        SELECT kf.text FROM kana_forms kf WHERE kf.entry_id IN (
+                            SELECT entry_id FROM kanji WHERE text = ?1 UNION SELECT entry_id FROM kana_forms WHERE text = ?1))
+                    """, [.text(surface)])
             }
         }
     }
