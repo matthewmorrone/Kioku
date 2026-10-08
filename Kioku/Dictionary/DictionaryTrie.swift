@@ -1,4 +1,6 @@
-nonisolated public final class DictionaryTrie {
+// @unchecked Sendable: built once at startup (or restored from its snapshot) and only read after
+// that, by the segmenter on its threads and by the background snapshot save.
+nonisolated public final class DictionaryTrie: @unchecked Sendable {
     // Internal, not private: DictionaryTrie+Snapshot.swift writes and restores them.
     var root = Node()
     var entryIDPool = EntryIDPool()
