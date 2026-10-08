@@ -73,9 +73,10 @@ struct WordsFilterView: View {
                 }
 
                 Section {
-                    Toggle("Show Kanji", isOn: $showKanji)
-                } footer: {
-                    Text("Includes the single kanji you've saved alongside your words.")
+                    Toggle(isOn: $showKanji) {
+                        Text("Show Kanji")
+                            .infoButton("Include the single kanji you've saved alongside your words.")
+                    }
                 }
             }
             .navigationTitle("Show")

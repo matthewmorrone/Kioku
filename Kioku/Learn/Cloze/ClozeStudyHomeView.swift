@@ -37,9 +37,12 @@ struct ClozeStudyHomeView: View {
                         step: 1
                     )
 
-                    Toggle("Exclude duplicate lines", isOn: $excludeDuplicateLines)
+                    Toggle(isOn: $excludeDuplicateLines) {
+                        Text("Exclude duplicate lines")
+                            .infoButton("Ask each repeated line, like a song's chorus, only once.")
+                    }
                 } footer: {
-                    Text("Each sentence of the note comes up with words replaced by dropdowns; pick the word that fits. Excluding duplicates skips repeated lines, like a song's chorus.")
+                    Text("Each sentence of the note comes up with words replaced by dropdowns; pick the word that fits.")
                 }
 
                 Section {
