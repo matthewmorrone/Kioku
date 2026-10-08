@@ -26,6 +26,8 @@ struct LearnActivityHome: View {
                     supported: activity.supportedDirections,
                     selection: $options.directions
                 )
+            } footer: {
+                Text("Draws from your saved words; Any studies all of them.")
             }
 
             Section {
@@ -35,6 +37,8 @@ struct LearnActivityHome: View {
                     }
                 }
                 .pickerStyle(.segmented)
+            } footer: {
+                Text("Due narrows to words scheduled for review, Wrong to words you've marked wrong.")
             }
 
             countsSection
@@ -54,6 +58,12 @@ struct LearnActivityHome: View {
                     .foregroundStyle(pool.words.count < activity.minimumPoolSize ? .red : .primary)
             }
             LearnCountPicker(label: activity.unitLabel, count: $options.count)
+        } footer: {
+            if pool.words.count < activity.minimumPoolSize {
+                Text(activity.minimumPoolSize == 1
+                     ? "No saved words match. Widen the filters or save more words."
+                     : "This activity needs at least \(activity.minimumPoolSize) words. Widen the filters or save more words.")
+            }
         }
     }
 }
@@ -73,6 +83,7 @@ struct LearnDirectionPicker: View {
     var body: some View {
         HStack {
             Text("Directions")
+            InfoButton(text: "What a question shows and what you answer with. Recognition goes from the Japanese to its meaning or reading; Production goes the other way.")
             Spacer()
             Button(summary) { isPresented = true }
         }

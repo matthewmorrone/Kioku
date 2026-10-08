@@ -44,9 +44,13 @@ struct CustomWordEditorView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Spelling") {
+                Section {
                     TextField("Kanji", text: $kanjiText)
                     TextField("Kana", text: $kanaText)
+                } header: {
+                    Text("Spelling")
+                } footer: {
+                    Text("Separate several spellings with commas.")
                 }
                 Section {
                     Picker("Kind", selection: $mode) {
@@ -54,6 +58,10 @@ struct CustomWordEditorView: View {
                         Text("New Word").tag(CustomWordEditorMode.newWord)
                     }
                     .pickerStyle(.segmented)
+                } footer: {
+                    Text(mode == .sameWord
+                         ? "Treat this spelling as another way of writing a dictionary word, so it looks up as that word."
+                         : "Make a word the dictionary doesn't have, with your own meanings. It needs a kana spelling.")
                 }
                 switch mode {
                 case .sameWord:
@@ -87,6 +95,8 @@ struct CustomWordEditorView: View {
                         Button("Add Meaning") {
                             senses.append(CustomWordSenseDraft(glosses: "", partOfSpeech: "", misc: ""))
                         }
+                    } footer: {
+                        Text("Separate translations of one meaning with semicolons, and parts of speech or tags with commas.")
                     }
                 }
             }

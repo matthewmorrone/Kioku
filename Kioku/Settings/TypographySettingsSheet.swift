@@ -25,13 +25,16 @@ struct TypographySettingsSheet: View {
                 }
                 Section {
                     sliderRow("Text Size", value: $textSize, range: TypographySettings.textSizeRange, step: 1, format: "%.0f")
-                    Toggle("Auto Furigana Size", isOn: autoFuriganaSizeBinding)
+                    Toggle(isOn: autoFuriganaSizeBinding) {
+                        Text("Auto Furigana Size")
+                            .infoButton("Keep furigana at half the text size. Turn it off to set the size yourself.")
+                    }
                     if customFuriganaSizeEnabled {
                         sliderRow("Furigana Size", value: $furiganaSize, range: TypographySettings.furiganaSizeRange, step: 1, format: "%.0f")
                     }
                     sliderRow("Line Spacing", value: $lineSpacing, range: TypographySettings.lineSpacingRange, step: 1, format: "%.0f")
-                    sliderRow("Furigana Spacing", value: $furiganaGap, range: TypographySettings.furiganaGapRange, step: 0.5, format: "%.1f")
-                    sliderRow("Kerning", value: $kerning, range: TypographySettings.kerningRange, step: 1, format: "%.1f")
+                    sliderRow("Furigana Spacing", info: "The gap between the furigana and the word under it.", value: $furiganaGap, range: TypographySettings.furiganaGapRange, step: 0.5, format: "%.1f")
+                    sliderRow("Kerning", info: "Extra space between the characters of the text.", value: $kerning, range: TypographySettings.kerningRange, step: 1, format: "%.1f")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -47,8 +50,10 @@ struct TypographySettingsSheet: View {
     }
 
     // One labelled slider with its current value on the right — the shape every row here shares.
+    // `info`, when given, adds an ⓘ popover after the title.
     private func sliderRow(
         _ title: String,
+        info: String? = nil,
         value: Binding<Double>,
         range: ClosedRange<Double>,
         step: Double,
@@ -57,6 +62,9 @@ struct TypographySettingsSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(title)
+                if let info {
+                    InfoButton(text: info)
+                }
                 Spacer()
                 Text(String(format: format, value.wrappedValue))
                     .foregroundStyle(.secondary)

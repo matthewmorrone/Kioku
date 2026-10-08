@@ -136,7 +136,7 @@ enum KiokuSegmentPackedLayout {
         for (rubyLoc, rubyLen) in inputs.furiganaLengthByLocation where inputs.furiganaByLocation[rubyLoc]?.isEmpty == false {
             rubyCovered.formUnion(rubyLoc..<(rubyLoc + rubyLen))
         }
-        let overhangAllowance = KiokuRubyPadding.overhangAllowance(furiganaFont: inputs.furiganaFont)
+        let overhangAllowance = KiokuRubyPadding.wordBoundaryOverhangAllowance(furiganaFont: inputs.furiganaFont)
 
         for segRange in inputs.segmentNSRanges {
             guard segRange.location != NSNotFound, segRange.length > 0 else { continue }
@@ -187,7 +187,7 @@ enum KiokuSegmentPackedLayout {
             let footprintWidth = headwordWidth + overhang.left + overhang.right
 
             // Ruby may reach over the previous segment's last kana, or the previous segment's ruby
-            // over this one's first kana, by the same allowance it has over its own kana: this
+            // over this one's first kana, by KiokuRubyPadding.wordBoundaryOverhangAllowance: this
             // segment moves back by that much, never further than the overhang being absorbed.
             var pullback: CGFloat = 0
             if cursorX > inputs.leftInset, let previous = placements.last, previous.lineIndex == lineIndex {

@@ -36,10 +36,16 @@ struct WordsFilterView: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
+                } footer: {
+                    Text("History is every word you've looked up; Saved is the words you've starred.")
                 }
 
                 Section { reviewStatusRow }
-                Section { jlptLevelRow }
+                Section {
+                    jlptLevelRow
+                } footer: {
+                    Text("JLPT levels are estimates; words without one are hidden while a level is picked.")
+                }
                 if notesWithSavedWords.isEmpty == false {
                     Section { noteRow }
                 }
@@ -51,6 +57,8 @@ struct WordsFilterView: View {
                             showSavedWords: $showSavedWords
                         )
                     }
+                } footer: {
+                    Text("Show only the words in the lists you pick. Manage Lists creates, renames and deletes lists.")
                 }
 
                 Section {
@@ -65,7 +73,10 @@ struct WordsFilterView: View {
                 }
 
                 Section {
-                    Toggle("Show Kanji", isOn: $showKanji)
+                    Toggle(isOn: $showKanji) {
+                        Text("Show Kanji")
+                            .infoButton("Include the single kanji you've saved alongside your words.")
+                    }
                 }
             }
             .navigationTitle("Show")

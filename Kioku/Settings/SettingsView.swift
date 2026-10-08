@@ -126,6 +126,8 @@ struct SettingsView: View {
                         .listRowBackground(Color.clear)
                 } header: {
                     Text("Typography")
+                } footer: {
+                    Text("Tap the preview to adjust text size, furigana and spacing in notes.")
                 }
 
                 // MARK: Theme — the swatch picker, then the row opening the Customize Colors
@@ -133,33 +135,48 @@ struct SettingsView: View {
                 Section {
                     ThemeSwatchPicker(themeIDRaw: $themeIDRaw)
                         .padding(.vertical, 4)
-                    Button {
-                        isShowingThemeCustomizeSheet = true
-                    } label: {
-                        HStack {
+                    // The ⓘ sits beside the row's button, not inside its label, so it gets its own tap.
+                    HStack {
+                        Button {
+                            isShowingThemeCustomizeSheet = true
+                        } label: {
                             Text("Customize Colors").foregroundStyle(.primary)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .imageScale(.small)
-                                .foregroundStyle(.tertiary)
                         }
+                        .buttonStyle(.borderless)
+                        InfoButton(text: "Replace the theme's interface colors, and the colors used to show word splits and saved and learned words.")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .imageScale(.small)
+                            .foregroundStyle(.tertiary)
                     }
+                    .contentShape(Rectangle())
+                    .onTapGesture { isShowingThemeCustomizeSheet = true }
                 } header: {
                     Text("Theme")
                 }
 
                 // MARK: Lookup — how the word popover behaves, and clipboard pickup.
                 Section {
-                    Toggle("Open Full Lookup on Tap", isOn: $prefersSheetDirectSegmentActions)
+                    Toggle(isOn: $prefersSheetDirectSegmentActions) {
+                        Text("Open Full Lookup on Tap")
+                            .infoButton("Off, tapping a word opens a small popover with its meaning, and its chevron opens the full lookup. On, a tap goes straight to the full lookup.")
+                    }
                     // Only meaningful while taps open the popover; with full lookup on tap there is none.
                     if prefersSheetDirectSegmentActions == false {
-                        Toggle("Show Japanese in Popover", isOn: $showJapaneseInPopover)
+                        Toggle(isOn: $showJapaneseInPopover) {
+                            Text("Show Japanese in Popover")
+                                .infoButton("Off, the popover hides the word itself behind a speaker button, so it doesn't give the word away. Tap the button to hear it.")
+                        }
                     }
-                    Toggle("Auto-detect Japanese in Clipboard", isOn: $clipboardAutoDetect)
+                    Toggle(isOn: $clipboardAutoDetect) {
+                        Text("Auto-detect Japanese in Clipboard")
+                            .infoButton("When you come back to Kioku with Japanese text copied, offer to look it up.")
+                    }
                     NavigationLink {
                         CustomWordsView(dictionaryStore: dictionaryStore)
                     } label: {
                         Text("Custom Words")
+                            .infoButton("Words you add to the dictionary yourself: other spellings of known words, or words it doesn't have.")
                     }
                 } header: {
                     Text("Lookup")
@@ -171,12 +188,16 @@ struct SettingsView: View {
                 // MARK: Learning — auto-mark words as learned once every kind of question about
                 // them has been answered right, and whether the Learn tab keeps drilling them.
                 Section {
-                    Toggle("Skip Learned Words", isOn: $excludeLearnedInStudy)
-                    Toggle("Auto-mark as Learned", isOn: $autoLearnEnabled)
+                    Toggle(isOn: $excludeLearnedInStudy) {
+                        Text("Skip Learned Words")
+                            .infoButton("Leave words marked learned or mastered out of Learn activities.")
+                    }
+                    Toggle(isOn: $autoLearnEnabled) {
+                        Text("Auto-mark as Learned")
+                            .infoButton("Mark a word learned once you've answered every kind of question about it correctly. Long-press any star to mark words by hand.")
+                    }
                 } header: {
                     Text("Learning")
-                } footer: {
-                    Text("Skip Learned Words leaves words marked learned or mastered out of Learn activities. With Auto-mark as Learned on, a word is automatically marked learned once every kind of question about it has been answered right. You can always mark words by hand by long-pressing any star.")
                 }
 
                 // MARK: Word of the Day — daily notification time and permission.
@@ -209,6 +230,8 @@ struct SettingsView: View {
                     }
                 } header: {
                     Text("Word of the Day")
+                } footer: {
+                    Text("A daily notification with one of your saved words.")
                 }
                 .task {
                     await refreshWotdStatus()
@@ -216,20 +239,37 @@ struct SettingsView: View {
 
                 // MARK: Data transfer
                 Section {
-                    Button {
-                        beginAppExport()
-                    } label: {
-                        Label("Export", systemImage: "square.and.arrow.up")
+                    // Each row's own button is borderless too: two default-style buttons in one row
+                    // would both fire on any tap.
+                    HStack {
+                        Button {
+                            beginAppExport()
+                        } label: {
+                            Label("Export", systemImage: "square.and.arrow.up")
+                        }
+                        .buttonStyle(.borderless)
+                        Spacer()
+                        InfoButton(text: "Save your notes, saved words, lists, history, review progress, audio and custom words to one file.")
                     }
-                    Button {
-                        isShowingImporter = true
-                    } label: {
-                        Label("Import", systemImage: "square.and.arrow.down")
+                    HStack {
+                        Button {
+                            isShowingImporter = true
+                        } label: {
+                            Label("Import", systemImage: "square.and.arrow.down")
+                        }
+                        .buttonStyle(.borderless)
+                        Spacer()
+                        InfoButton(text: "Replace everything with the contents of an exported file. You're asked to confirm first.")
                     }
-                    Button(role: .destructive) {
-                        isShowingResetConfirmation = true
-                    } label: {
-                        Label("Reset", systemImage: "trash")
+                    HStack {
+                        Button(role: .destructive) {
+                            isShowingResetConfirmation = true
+                        } label: {
+                            Label("Reset", systemImage: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                        Spacer()
+                        InfoButton(text: "Erase all your notes, words and progress. Settings are kept.")
                     }
                 } header: {
                     Text("Data")
@@ -249,14 +289,19 @@ struct SettingsView: View {
 
                 Section {
                     // Clears the tours' seen flags; each tab's tour then shows on its next visit.
-                    Button {
-                        TourCoordinator.shared.resetAll()
-                        hasResetTours = true
-                    } label: {
-                        Label(hasResetTours ? "Tours Will Replay" : "Replay Tours",
-                              systemImage: hasResetTours ? "checkmark.circle" : "questionmark.circle")
+                    HStack {
+                        Button {
+                            TourCoordinator.shared.resetAll()
+                            hasResetTours = true
+                        } label: {
+                            Label(hasResetTours ? "Tours Will Replay" : "Replay Tours",
+                                  systemImage: hasResetTours ? "checkmark.circle" : "questionmark.circle")
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(hasResetTours)
+                        Spacer()
+                        InfoButton(text: "Show each tab's walkthrough again the next time you open it.")
                     }
-                    .disabled(hasResetTours)
                     NavigationLink {
                         AboutView()
                     } label: {

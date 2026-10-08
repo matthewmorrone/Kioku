@@ -39,11 +39,18 @@ nonisolated enum KiokuRubyPadding {
         return (start, end)
     }
 
-    // How far ruby may reach over a neighbouring kana before space is added: half a ruby
-    // character. The one value behind every ruby spacing rule (a word's own okurigana, the next
-    // word's kana, the segment packer), so they can't drift apart.
-    static func overhangAllowance(furiganaFont: UIFont) -> CGFloat {
+    // How far ruby may reach over its own word's kana (戦う's う) before space is added: half a ruby
+    // character, the usual typesetting allowance. Kept beside wordBoundaryOverhangAllowance so every
+    // ruby spacing rule reads one of these two values.
+    static func okuriganaOverhangAllowance(furiganaFont: UIFont) -> CGFloat {
         furiganaFont.pointSize / 2
+    }
+
+    // How far ruby may reach over the next or previous word's kana (涙は's は) before space is
+    // added: none, so the gap between words stays clear of ruby. Read by the builder's
+    // between-words kern and the segment packer.
+    static func wordBoundaryOverhangAllowance(furiganaFont: UIFont) -> CGFloat {
+        0
     }
 
     // The .kern on the character at `index`, 0 when none.
