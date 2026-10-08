@@ -376,11 +376,7 @@ final class KiokuCoreTextView: UIView {
 
             // Foreground color: read the kanji's foregroundColor attribute so the ruby
             // matches its kanji's segment-alternation color. Falls back to `.label`.
-            let fgColor: UIColor = {
-                let attrs = layoutEngine.attributedString.attributes(at: range.location, effectiveRange: nil)
-                if let color = attrs[.foregroundColor] as? UIColor { return color }
-                return .label
-            }()
+            let fgColor = rubyForegroundColor(at: range.location)
 
             // Build the ruby line. Attributes mirror the base build except sized to the ruby
             // font; no paragraph style needed for a single-line CTLine.
