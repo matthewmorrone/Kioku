@@ -34,7 +34,8 @@ final class CoreLoopUITests: XCTestCase {
 
         // The note segments once the dictionary has loaded; until then a tap has no word under
         // it. Tap the first word (top-left, below its ruby) until the lookup sheet answers.
-        let save = app.buttons["Save"]
+        // The lookup sheet's star; its label says whether the word is saved.
+        let save = app.buttons["lookupSaveStar"]
         let firstWord = text.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 24, dy: 30))
         var attempts = 0
         while save.exists == false && attempts < 10 {
@@ -42,9 +43,11 @@ final class CoreLoopUITests: XCTestCase {
             _ = save.waitForExistence(timeout: 6)
             attempts += 1
         }
-        XCTAssertTrue(save.exists, "lookup sheet with a Save button never appeared")
+        XCTAssertTrue(save.exists, "lookup sheet's save star never appeared")
+        XCTAssertEqual(save.label, "Save", "word was already saved")
         save.tap()
-        XCTAssertTrue(app.buttons["Unsave"].waitForExistence(timeout: 5), "word didn't save")
+        let saved = NSPredicate(format: "label == %@", "Unsave")
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: saved, evaluatedWith: save)], timeout: 5), .completed, "word didn't save")
 
         app.swipeDown()
         app.tabBars.buttons["Words"].tap()

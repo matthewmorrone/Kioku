@@ -585,6 +585,8 @@ final class SurfaceSheetViewController: UIViewController {
         saveButton.setImage(UIImage(systemName: icon), for: .normal)
         saveButton.tintColor = (learnedState != .unmarked || isSaved) ? .systemYellow : .secondaryLabel
         saveButton.accessibilityLabel = isSaved ? "Unsave" : "Save"
+        // KiokuUITests finds the star by this; "Save" alone also matches other buttons on screen.
+        saveButton.accessibilityIdentifier = "lookupSaveStar"
         // A form that is several words with none picked yet has no word to save: greyed out
         // until one of the possibilities is tapped.
         let isAwaitingPick = sheet?.isAwaitingLookupCandidatePick ?? false

@@ -321,6 +321,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         popoverStarButton?.setImage(UIImage(systemName: icon), for: .normal)
         popoverStarButton?.tintColor = (learnedState != .unmarked || isSaved) ? .systemYellow : .secondaryLabel
         popoverStarButton?.accessibilityLabel = isSaved ? "Unsave" : "Save"
+        // KiokuUITests finds the star by this; "Save" alone also matches other buttons on screen.
+        popoverStarButton?.accessibilityIdentifier = "lookupSaveStar"
         // Greyed out while a form that is several words has none picked: nothing to save yet.
         popoverStarButton?.isEnabled = isAwaitingLookupCandidatePick == false
         popoverStarButton?.alpha = isAwaitingLookupCandidatePick ? 0.45 : 1
