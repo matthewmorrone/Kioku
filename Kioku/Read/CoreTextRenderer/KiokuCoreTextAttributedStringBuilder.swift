@@ -245,27 +245,30 @@ enum KiokuCoreTextAttributedStringBuilder {
                 ))
 
                 // Intra-segment spacing, in both layout modes: ruby wider than its kanji overhangs
-                // kana of its own segment by at most KiokuRubyPadding.overhangAllowance; space is
-                // added for the rest (戦う with たたか, 憤り with いきどお).
+                // kana of its own segment by at most KiokuRubyPadding.overhangAllowance (戦う with
+                // たたか, 憤り with いきどお). The kern between the kanji and the kana is the larger of
+                // the reader's spacing and the overhang, not their sum: the reader's spacing already
+                // keeps that much of the ruby clear, so okurigana gets the same gap the packer leaves
+                // before the next word. Measured unrounded, as the packer measures.
                 // Kern on the character before the run pushes the kanji right; kern on the run's
                 // last character pushes the following kana away; ruby centring discounts it
                 // (KiokuRubyPadding.kanjiSpan).
                 if inputs.isRubySpacingEnabled,
                    let containing = segmentNSRanges.first(where: { NSLocationInRange(kanjiLoc, $0) }) {
-                    let kanjiW = ceil((kanjiText as NSString).size(withAttributes: [.font: baseFont]).width)
-                    let rubyW = ceil((reading as NSString).size(withAttributes: [.font: furiganaFont]).width)
+                    let kanjiW = (kanjiText as NSString).size(withAttributes: [.font: baseFont]).width
+                    let rubyW = (reading as NSString).size(withAttributes: [.font: furiganaFont]).width
                     let allowance = KiokuRubyPadding.overhangAllowance(furiganaFont: furiganaFont)
-                    let overhang = max(0, ceil((rubyW - kanjiW) / 2 - allowance))
-                    if overhang > 0.5 {
+                    let overhang = max(0, (rubyW - kanjiW) / 2 - allowance)
+                    if overhang > 0 {
                         let runLastIdx = kanjiLoc + kanjiLen - 1
                         if runLastIdx < containing.location + containing.length - 1 {
                             let kern = (result.attribute(.kern, at: runLastIdx, effectiveRange: nil) as? CGFloat) ?? inputs.kerning
-                            result.addAttribute(.kern, value: kern + overhang, range: NSRange(location: runLastIdx, length: 1))
+                            result.addAttribute(.kern, value: max(kern, overhang), range: NSRange(location: runLastIdx, length: 1))
                         }
                         if kanjiLoc > containing.location {
                             let beforeIdx = kanjiLoc - 1
                             let kern = (result.attribute(.kern, at: beforeIdx, effectiveRange: nil) as? CGFloat) ?? inputs.kerning
-                            result.addAttribute(.kern, value: kern + overhang, range: NSRange(location: beforeIdx, length: 1))
+                            result.addAttribute(.kern, value: max(kern, overhang), range: NSRange(location: beforeIdx, length: 1))
                         }
                     }
                 }

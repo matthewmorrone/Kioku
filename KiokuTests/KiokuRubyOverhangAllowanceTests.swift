@@ -23,13 +23,23 @@ final class KiokuRubyOverhangAllowanceTests: XCTestCase {
         return max(0, ceil((rubyW - kanjiW) / 2 - allowance))
     }
 
+    // The same overhang beyond the allowance, unrounded, as the okurigana rule and the packer
+    // measure it.
+    private func okuriganaOverhang(kanji: String, reading: String) -> CGFloat {
+        let kanjiW = (kanji as NSString).size(withAttributes: [.font: baseFont]).width
+        let rubyW = (reading as NSString).size(withAttributes: [.font: furiganaFont]).width
+        let allowance = KiokuRubyPadding.overhangAllowance(furiganaFont: furiganaFont)
+        return max(0, (rubyW - kanjiW) / 2 - allowance)
+    }
+
     // Builder output for `text` split into `segments`, with readings keyed by kanji-run location.
     private func build(
         _ text: String,
         segments: [String],
         furigana: [Int: String],
         furiganaLength: [Int: Int],
-        isSegmentPacked: Bool
+        isSegmentPacked: Bool,
+        kerning: CGFloat = 0
     ) -> NSAttributedString {
         var ranges: [Range<String.Index>] = []
         var start = text.startIndex
@@ -45,7 +55,7 @@ final class KiokuRubyOverhangAllowanceTests: XCTestCase {
             furiganaLengthBySegmentLocation: furiganaLength,
             textSize: textSize,
             lineSpacing: 4,
-            kerning: 0,
+            kerning: kerning,
             isVisualEnhancementsEnabled: true,
             isColorAlternationEnabled: true,
             isFuriganaVisible: true,
@@ -68,13 +78,24 @@ final class KiokuRubyOverhangAllowanceTests: XCTestCase {
     // Okurigana: 戦う with たたか — the kern after 戦 is its overhang beyond the allowance.
     func test_okurigana_kernIsOverhangBeyondAllowance() {
         let attributed = build("戦う", segments: ["戦う"], furigana: [0: "たたか"], furiganaLength: [0: 1], isSegmentPacked: true)
-        XCTAssertEqual(kern(attributed, at: 0), expectedPadding(kanji: "戦", reading: "たたか"), accuracy: 0.01)
+        XCTAssertEqual(kern(attributed, at: 0), okuriganaOverhang(kanji: "戦", reading: "たたか"), accuracy: 0.01)
+    }
+
+    // Okurigana with the reader's spacing: the kern after 戦 is the larger of the spacing and the
+    // overhang, not their sum, matching the gap the packer leaves before the next word.
+    func test_okurigana_kernIsLargerOfSpacingAndOverhang() {
+        let overhang = okuriganaOverhang(kanji: "戦", reading: "たたか")
+        XCTAssertGreaterThan(overhang, 0)
+        for spacing: CGFloat in [1, overhang + 2] {
+            let attributed = build("戦う", segments: ["戦う"], furigana: [0: "たたか"], furiganaLength: [0: 1], isSegmentPacked: true, kerning: spacing)
+            XCTAssertEqual(kern(attributed, at: 0), max(spacing, overhang), accuracy: 0.01)
+        }
     }
 
     // A reading long enough to exceed the allowance still pushes its okurigana away: 憤り with いきどお.
     func test_okurigana_longReadingStillAddsSpace() {
         let attributed = build("憤り", segments: ["憤り"], furigana: [0: "いきどお"], furiganaLength: [0: 1], isSegmentPacked: true)
-        let padding = expectedPadding(kanji: "憤", reading: "いきどお")
+        let padding = okuriganaOverhang(kanji: "憤", reading: "いきどお")
         XCTAssertGreaterThan(padding, 0)
         XCTAssertEqual(kern(attributed, at: 0), padding, accuracy: 0.01)
     }
