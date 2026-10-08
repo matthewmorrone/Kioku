@@ -80,6 +80,14 @@ final class CoreLoopUITests: XCTestCase {
             tabTaps += 1
         }
         record(app, "words tab")
+
+        // Words opens on History; saved words are under Saved, chosen in the filter sheet.
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "filter by Note or List")).firstMatch.tap()
+        let savedSegment = app.segmentedControls.buttons["Saved"].firstMatch
+        XCTAssertTrue(savedSegment.waitForExistence(timeout: 5), "filter sheet didn't open")
+        savedSegment.tap()
+        app.swipeDown()
+        record(app, "saved list")
         XCTAssertTrue(app.staticTexts["キャラメル"].firstMatch.waitForExistence(timeout: 15), "saved word missing from Words")
     }
 }
