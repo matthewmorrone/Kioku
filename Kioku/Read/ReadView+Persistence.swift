@@ -134,13 +134,7 @@ extension ReadView {
             // with zero segmenter cost. Edges are rebuilt inside the task so their String.Index values
             // are bound to the current `text`.
             StartupTimer.mark("loadSelectedNoteIfNeeded deferring persisted-segment restore")
-            document.segmentEdges = []
-            document.segmentRanges = []
-            document.segmentLatticeEdges = []
-            document.unknownSegmentLocations = []
-            document.furiganaBySegmentLocation = [:]
-            document.furiganaLengthBySegmentLocation = [:]
-            document.chosenEntryIDBySegmentLocation = [:]
+            clearSegmentRenderState()
             let deferredNoteID = noteToLoad.id
             let deferredContent = noteToLoad.content
             Task { @MainActor in
@@ -169,13 +163,7 @@ extension ReadView {
             // already the new note's content but `segmentRanges` still references the
             // old. Resetting prevents downstream consumers (renderer, sheet) from
             // seeing the mismatched pair.
-            document.segmentEdges = []
-            document.segmentRanges = []
-            document.segmentLatticeEdges = []
-            document.unknownSegmentLocations = []
-            document.furiganaBySegmentLocation = [:]
-            document.furiganaLengthBySegmentLocation = [:]
-            document.chosenEntryIDBySegmentLocation = [:]
+            clearSegmentRenderState()
             // Segments an edit left half-done (stubs, e.g. the app quit in edit mode) still carry the
             // untouched segments' readings and word picks; the segmenter only fills in the stubs.
             if let loadedSegments {
@@ -207,6 +195,21 @@ extension ReadView {
         self.selectedNote = nil
         document.isLoadingSelectedNote = false
         StartupTimer.mark("loadSelectedNoteIfNeeded finished")
+    }
+
+    // Clears the segment-derived render state (edges, ranges, furigana maps). Shared by
+    // loadSelectedNoteIfNeeded's two load paths (cached-segmentation restore and fresh
+    // segmenter run), both of which need the previous note's segment state gone before
+    // building the new note's — otherwise a stale Range<String.Index> bound to the old
+    // text would trap the next NSRange(range, in: text) conversion.
+    private func clearSegmentRenderState() {
+        document.segmentEdges = []
+        document.segmentRanges = []
+        document.segmentLatticeEdges = []
+        document.unknownSegmentLocations = []
+        document.furiganaBySegmentLocation = [:]
+        document.furiganaLengthBySegmentLocation = [:]
+        document.chosenEntryIDBySegmentLocation = [:]
     }
 
     // Saves the in-memory editor state to storage and maintains active note identity.

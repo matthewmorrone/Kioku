@@ -8,10 +8,6 @@ struct RichTextEditor: UIViewRepresentable {
     let segmentationRanges: [Range<String.Index>]
     let furiganaBySegmentLocation: [Int: String]
     let furiganaLengthBySegmentLocation: [Int: Int]
-    let isVisualEnhancementsEnabled: Bool
-    let isColorAlternationEnabled: Bool
-    let isHighlightUnknownEnabled: Bool
-    let segmenter: any TextSegmenting
     let isEditMode: Bool
     let externalContentOffsetY: CGFloat
     let onScrollOffsetYChanged: (CGFloat) -> Void
@@ -226,16 +222,5 @@ struct RichTextEditor: UIViewRepresentable {
             width: isLineWrappingEnabled ? availableWidth : CGFloat.greatestFiniteMagnitude,
             height: CGFloat.greatestFiniteMagnitude
         )
-    }
-
-    // Identifies ranges that should not affect segment color parity (spacing and punctuation only).
-    private func shouldIgnoreSegmentForAlternation(_ segmentText: String) -> Bool {
-        let ignoredScalars = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
-        return segmentText.unicodeScalars.allSatisfy { ignoredScalars.contains($0) }
-    }
-
-    // Checks whether a segment resolves through the segmenter's trie plus deinflection path.
-    private func isSegmentInDictionary(_ surface: String) -> Bool {
-        segmenter.resolvesSurface(surface)
     }
 }

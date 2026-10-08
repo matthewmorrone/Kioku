@@ -264,11 +264,10 @@ extension ReadView {
             readSheets.isShowingBreakdownSheet = true
         } label: {
             if isBreakdownGeneratingForActiveNote {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(width: 36, height: 36)
-                    .background(Capsule().fill(ReadToggleAppearance.background))
-                    .contentShape(Rectangle())
+                titleActionLabel {
+                    ProgressView()
+                        .controlSize(.small)
+                }
             } else {
                 // Accent (blue) once the note has a breakdown, secondary before — as the ♪ button does
                 // for an alignment.

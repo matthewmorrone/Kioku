@@ -170,17 +170,9 @@ struct AudioCueHighlightObserver: View {
         }
     }
 
-    // Returns the latest checkpoint whose timeMs is <= the given playback time, or nil if none.
-    private func lastCheckpoint(before timeMs: Int, in checkpoints: [CueCharTiming]) -> CueCharTiming? {
-        var match: CueCharTiming? = nil
-        for cp in checkpoints {
-            if cp.timeMs <= timeMs { match = cp } else { break }
-        }
-        return match
-    }
-
-    // Index variant of `lastCheckpoint` — needed so the caller can also read the NEXT checkpoint's
-    // time to bound a token's playback window when sub-dividing it across note segments.
+    // Returns the index of the latest checkpoint whose timeMs is <= the given playback time, or
+    // nil if none — the caller also reads the NEXT checkpoint's time (checkpoints[index + 1]) to
+    // bound a token's playback window when sub-dividing it across note segments.
     private func lastCheckpointIndex(before timeMs: Int, in checkpoints: [CueCharTiming]) -> Int? {
         var match: Int? = nil
         for (i, cp) in checkpoints.enumerated() {
@@ -238,76 +230,4 @@ struct AudioCueHighlightObserver: View {
         }
         return nil
     }
-
-    // Returns the start of the character-class run containing `charOffset` in `text`'s UTF-16
-    // view. Mirror of `characterClassChunkEnd` — together they give the [start, end) bounds of
-    // the active chunk used by the linear-time fallback when noteText segmentation isn't
-    // available. Returns 0 if `charOffset` is at or past the text end.
-    private func characterClassChunkStart(in text: String, atCharOffset charOffset: Int) -> Int {
-        let scalars = Array(text.unicodeScalars)
-        var u16Counter = 0
-        var scalarIndex = 0
-        while scalarIndex < scalars.count && u16Counter < charOffset {
-            u16Counter += UTF16.width(scalars[scalarIndex])
-            scalarIndex += 1
-        }
-        guard scalarIndex < scalars.count else { return 0 }
-        let startClass = characterClass(of: scalars[scalarIndex])
-        var startU16 = u16Counter
-        var i = scalarIndex - 1
-        while i >= 0, characterClass(of: scalars[i]) == startClass {
-            startU16 -= UTF16.width(scalars[i])
-            i -= 1
-        }
-        return max(0, startU16)
-    }
-
-    // Returns the end of the character-class run containing `charOffset` in `text`'s UTF-16 view.
-    // Used as a last-resort segmentation when the noteText segmentationRanges don't enclose the
-    // playback position (synthetic cue range / cue ran past available note lines). Treats kanji,
-    // hiragana, katakana, latin, and other as distinct classes so the dim frontier jumps one
-    // "word-ish" chunk at a time instead of one mora at a time.
-    private func characterClassChunkEnd(in text: String, atCharOffset charOffset: Int) -> Int {
-        let utf16 = text.utf16
-        let length = utf16.count
-        guard charOffset < length else { return length }
-        let scalars = Array(text.unicodeScalars)
-        // Map the UTF-16 offset to a scalar index by walking scalars and counting UTF-16 units.
-        var u16Counter = 0
-        var scalarIndex = 0
-        while scalarIndex < scalars.count && u16Counter < charOffset {
-            u16Counter += UTF16.width(scalars[scalarIndex])
-            scalarIndex += 1
-        }
-        guard scalarIndex < scalars.count else { return length }
-        let startClass = characterClass(of: scalars[scalarIndex])
-        var endU16 = u16Counter + UTF16.width(scalars[scalarIndex])
-        var i = scalarIndex + 1
-        while i < scalars.count, characterClass(of: scalars[i]) == startClass {
-            endU16 += UTF16.width(scalars[i])
-            i += 1
-        }
-        return min(length, endU16)
-    }
-
-    // Classifies a single scalar into one of the coarse buckets above by checking against
-    // the relevant Unicode blocks. Whitespace falls through to a CharacterSet check; anything
-    // else (punctuation, symbols) becomes .other so a punctuation run is treated as one chunk.
-    private func characterClass(of scalar: Unicode.Scalar) -> AudioCueCharClass {
-        if ScriptClassifier.isKanjiScalar(scalar) { return .kanji }
-        if ScriptClassifier.isHiraganaScalar(scalar) { return .hiragana }
-        if ScriptClassifier.isKatakanaScalar(scalar) || ScriptClassifier.isHalfWidthKatakanaScalar(scalar) { return .katakana }
-        switch scalar.value {
-        case 0x0030...0x0039, 0xFF10...0xFF19: return .digit
-        case 0x0041...0x005A, 0x0061...0x007A: return .latin
-        default:
-            if CharacterSet.whitespacesAndNewlines.contains(scalar) { return .whitespace }
-            return .other
-        }
-    }
 }
-
-// Coarse character classification for chunking — enough to keep kanji runs together and
-// separate them from kana / latin / punctuation. Not a tokenizer; just a tie-breaker for
-// the linear-time fallback when no real segmentation is available.
-private enum AudioCueCharClass { case kanji, hiragana, katakana, latin, digit, whitespace, other }

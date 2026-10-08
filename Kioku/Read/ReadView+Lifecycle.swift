@@ -134,19 +134,7 @@ extension ReadView {
                         reconciled = nil
                     }
                     document.segments = reconciled
-                    segmentSelection.illegalMergeBoundaryLocation = nil
-                    segmentSelection.illegalMergeFlashTask?.cancel()
-                    document.segmentationRefreshTask?.cancel()
-                    document.segmentationRefreshTask = nil
-                    document.furiganaComputationTask?.cancel()
-                    document.furiganaComputationTask = nil
-                    document.segmentLatticeEdges = []
-                    document.segmentEdges = []
-                    document.segmentRanges = []
-                    segmentSelection.selectedSegmentLocation = nil
-                    segmentSelection.selectedHighlightRangeOverride = nil
-                    segmentSelection.selectedBounds = nil
-                    SegmentLookupSheet.shared.dismissPopover()
+                    clearTransientSegmentationState()
                     // Rebuild the runtime furigana map from the reconciled segments so annotations
                     // in surviving regions are not dropped and their absolute offsets reflect any
                     // shift caused by length changes in the edited region.
@@ -207,19 +195,7 @@ extension ReadView {
                     // doesn't read the map during editing, and keeping the user's chosen
                     // readings in memory means we never have to "restore" them on exit.
                     // onChange(of: text) handles real text edits via reconcileSegments.
-                    segmentSelection.illegalMergeBoundaryLocation = nil
-                    segmentSelection.illegalMergeFlashTask?.cancel()
-                    document.segmentationRefreshTask?.cancel()
-                    document.segmentationRefreshTask = nil
-                    document.furiganaComputationTask?.cancel()
-                    document.furiganaComputationTask = nil
-                    document.segmentLatticeEdges = []
-                    document.segmentEdges = []
-                    document.segmentRanges = []
-                    segmentSelection.selectedSegmentLocation = nil
-                    segmentSelection.selectedHighlightRangeOverride = nil
-                    segmentSelection.selectedBounds = nil
-                    SegmentLookupSheet.shared.dismissPopover()
+                    clearTransientSegmentationState()
                 } else {
                     // Always flush pending edits when leaving edit mode so no changes are lost.
                     flushPendingNotePersistenceIfNeeded()
@@ -280,6 +256,25 @@ extension ReadView {
                     )
                 }
             }
+    }
+
+    // Cancels in-flight segmentation/furigana work and clears transient selection state —
+    // shared by the two moments that invalidate it: a text edit while already in edit mode,
+    // and the transition into edit mode itself.
+    private func clearTransientSegmentationState() {
+        segmentSelection.illegalMergeBoundaryLocation = nil
+        segmentSelection.illegalMergeFlashTask?.cancel()
+        document.segmentationRefreshTask?.cancel()
+        document.segmentationRefreshTask = nil
+        document.furiganaComputationTask?.cancel()
+        document.furiganaComputationTask = nil
+        document.segmentLatticeEdges = []
+        document.segmentEdges = []
+        document.segmentRanges = []
+        segmentSelection.selectedSegmentLocation = nil
+        segmentSelection.selectedHighlightRangeOverride = nil
+        segmentSelection.selectedBounds = nil
+        SegmentLookupSheet.shared.dismissPopover()
     }
 
     var presentedReadView: some View {

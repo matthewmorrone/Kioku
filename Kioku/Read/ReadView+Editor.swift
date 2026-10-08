@@ -428,10 +428,6 @@ extension ReadView {
                     segmentationRanges: document.segmentRanges,
                     furiganaBySegmentLocation: displayedFuriganaBySegmentLocation,
                     furiganaLengthBySegmentLocation: displayedFuriganaLengthBySegmentLocation,
-                    isVisualEnhancementsEnabled: readResourcesReady || hasRendererSegmentation,
-                    isColorAlternationEnabled: isColorAlternationEnabled,
-                    isHighlightUnknownEnabled: isHighlightUnknownEnabled,
-                    segmenter: segmenter,
                     isEditMode: editModeScroll.isEditMode,
                     externalContentOffsetY: editModeScroll.sharedScrollOffsetY,
                     onScrollOffsetYChanged: { newOffsetY in
