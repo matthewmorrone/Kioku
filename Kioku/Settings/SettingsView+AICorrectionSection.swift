@@ -9,12 +9,20 @@ extension SettingsView {
     @ViewBuilder
     var aiCorrectionSection: some View {
         Section {
-            Picker("Provider", selection: $llmProviderRaw) {
-                ForEach(LLMProvider.allCases, id: \.rawValue) { provider in
-                    if isProviderSelectable(provider) {
-                        Text(provider.displayName).tag(provider.rawValue)
+            // Label, ⓘ and picker laid out by hand: inside a menu picker's own label the ⓘ would
+            // open the menu instead of its popover.
+            HStack {
+                Text("Provider")
+                InfoButton(text: "The AI service Kioku sends these requests to. With None, song breakdowns and AI corrections are off. OpenAI needs your own API key from platform.openai.com: requests are billed to that account, and the key stays on this device in the Keychain.")
+                Spacer()
+                Picker("Provider", selection: $llmProviderRaw) {
+                    ForEach(LLMProvider.allCases, id: \.rawValue) { provider in
+                        if isProviderSelectable(provider) {
+                            Text(provider.displayName).tag(provider.rawValue)
+                        }
                     }
                 }
+                .labelsHidden()
             }
             // The key field for the selected provider only; edits write through to the Keychain.
             // A persistent leading label, not just the SecureField's own placeholder text — a
@@ -52,7 +60,7 @@ extension SettingsView {
         } header: {
             Text("AI")
         } footer: {
-            Text("Used for song breakdowns, AI corrections to a note's word splits and readings, and meanings for words the dictionary doesn't have. Requests are billed to your own API key, which stays in the Keychain.")
+            Text("Used for song breakdowns, AI corrections to a note's word splits and readings, and meanings for words the dictionary doesn't have.")
         }
     }
 
