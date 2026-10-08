@@ -2,22 +2,30 @@ import UIKit
 
 // The list of possible words at the top of the lookup sheet: a form like いった is 言う, 行く or 要る
 // with the same kana, so the reading arrows can't reach the others. Each row shows the word's
-// headword, reading and first meaning. When only one of them is a word in common use
-// (Lexicon.preferredLookupCandidate: 消して → 消す, not the literary 消する) it is shown straight away;
-// otherwise nothing is picked for the user — with no context to decide, the sheet shows the
+// headword, reading and first meaning. When exactly one of them is read the way the sheet shows the
+// segment (its furigana: 様 after の is よう, so 様 よう "appearing"), or only one is a word in common
+// use (Lexicon.preferredLookupCandidate: 消して → 消す, not the literary 消する), it is shown straight
+// away; otherwise nothing is picked for the user — with no context to decide, the sheet shows the
 // possibilities alone (no meaning, blank lemma line, no star or word detail) until one is tapped.
 // A tapped pick is then the word the sheet shows and is saved with the segment.
 // The list and its order come from Lexicon.lookupCandidates.
 extension SegmentLookupSheet {
     // Stores the candidates for the current segment. When the form is several words, the shown word
-    // is the user's saved pick if it is still one of them, else the only common one, else nothing.
+    // is the user's saved pick if it is still one of them, else the only one with the displayed
+    // reading, else the only common one, else nothing.
     func adoptLookupCandidates(_ result: (candidates: [LookupCandidate], chosenEntryID: Int64?)?) {
         let candidates = result?.candidates ?? []
         currentSheetLookupCandidates = candidates
         currentSheetLookupBaseLemmaInfo = currentSheetLemmaInfo
         guard candidates.count > 1 else { return }
+        let displayedReading = activeReadingOverrideProvider?() ?? currentSheetUniqueReadings.first
+        let readingMatches = candidates.filter { candidate in
+            candidate.entry.kanaForms.contains { $0.text == displayedReading }
+        }
         if let chosen = candidates.first(where: { $0.entry.entryId == result?.chosenEntryID }) {
             applyLookupCandidate(chosen)
+        } else if readingMatches.count == 1, let match = readingMatches.first {
+            applyLookupCandidate(match)
         } else if let preferred = Lexicon.preferredLookupCandidate(among: candidates) {
             applyLookupCandidate(preferred)
         } else {
