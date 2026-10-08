@@ -20,8 +20,15 @@ extension SegmentLookupSheet {
                 plus.setContentCompressionResistancePriority(.required, for: .horizontal)
                 views.append(plus)
             }
-            views.append(makeComponentColumn(component, maxWidth: columnWidth, parent: parent))
+            let column = makeComponentColumn(component, maxWidth: columnWidth, parent: parent)
+            column.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+            views.append(column)
         }
+        // The row spans the sheet; this takes the leftover width so the words sit together on the
+        // left instead of the first column stretching and pushing the rest to the right edge.
+        let trailingSpace = UIView()
+        trailingSpace.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        views.append(trailingSpace)
         let row = UIStackView(arrangedSubviews: views)
         row.axis = .horizontal
         row.spacing = 10
