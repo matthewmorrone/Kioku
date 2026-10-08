@@ -8,8 +8,6 @@ import Foundation
 // answer-sized cap. Haiku 4.5 predates effort and rejects the parameter, so it keeps the plain
 // shape.
 nonisolated enum ClaudeRequestParameters {
-    // Room for low-effort reasoning on top of the visible answer's cap.
-    static let reasoningHeadroomTokens = 8192
     static let effort = "low"
 
     // True for models that take `output_config.effort` (everything current except Haiku 4.5).
@@ -20,7 +18,7 @@ nonisolated enum ClaudeRequestParameters {
     // Adds max_tokens (and, where supported, low effort with reasoning headroom) to a request body.
     static func apply(to body: inout [String: Any], model: String, maxTokens: Int) {
         if supportsEffort(model) {
-            body["max_tokens"] = maxTokens + reasoningHeadroomTokens
+            body["max_tokens"] = maxTokens + LLMReasoningHeadroom.tokens
             body["output_config"] = ["effort": effort]
         } else {
             body["max_tokens"] = maxTokens

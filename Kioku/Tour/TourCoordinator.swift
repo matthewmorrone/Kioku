@@ -73,11 +73,7 @@ final class TourCoordinator: ObservableObject {
     func advance() {
         guard let activeTab else { return }
         let steps = TourCatalog.steps(for: activeTab)
-        var next = stepIndex + 1
-        while next < steps.count, isVisible(steps[next].target) == false {
-            next += 1
-        }
-        guard next < steps.count else {
+        guard let next = nextVisibleStepIndex(after: stepIndex, in: steps) else {
             // Nothing was ever shown: leave the tab unseen so the tour can run on a later visit.
             if stepIndex < 0 {
                 withAnimation(.easeOut(duration: 0.25)) {
@@ -90,25 +86,42 @@ final class TourCoordinator: ObservableObject {
             finish()
             return
         }
-        withAnimation(.easeInOut(duration: 0.3)) {
-            stepIndex = next
-            currentTargetFrame = framesByTarget[steps[next].target]
-        }
+        moveTo(next, in: steps)
     }
 
     // Moves back to the previous step whose target is on screen; does nothing on the first one.
     func goBack() {
         guard let activeTab else { return }
         let steps = TourCatalog.steps(for: activeTab)
+        guard let previous = nextVisibleStepIndex(before: stepIndex, in: steps) else { return }
+        moveTo(previous, in: steps)
+    }
+
+    // Shared cursor move for advance/goBack: updates stepIndex + currentTargetFrame together
+    // under one animation so the callout and its arrow never show a half-updated frame.
+    private func moveTo(_ index: Int, in steps: [TourStep]) {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            stepIndex = index
+            currentTargetFrame = framesByTarget[steps[index].target]
+        }
+    }
+
+    // Scans forward from the step after `stepIndex` for the next one whose target is on screen.
+    private func nextVisibleStepIndex(after stepIndex: Int, in steps: [TourStep]) -> Int? {
+        var next = stepIndex + 1
+        while next < steps.count, isVisible(steps[next].target) == false {
+            next += 1
+        }
+        return next < steps.count ? next : nil
+    }
+
+    // Scans backward from the step before `stepIndex` for the previous one whose target is on screen.
+    private func nextVisibleStepIndex(before stepIndex: Int, in steps: [TourStep]) -> Int? {
         var previous = stepIndex - 1
         while previous >= 0, isVisible(steps[previous].target) == false {
             previous -= 1
         }
-        guard previous >= 0 else { return }
-        withAnimation(.easeInOut(duration: 0.3)) {
-            stepIndex = previous
-            currentTargetFrame = framesByTarget[steps[previous].target]
-        }
+        return previous >= 0 ? previous : nil
     }
 
     // Whether any earlier step is on screen to go back to, so the card can dim its back arrow.
