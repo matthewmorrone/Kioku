@@ -18,6 +18,19 @@ final class CoreLoopUITests: XCTestCase {
         return app
     }
 
+    // Keeps a screenshot and the element tree with the result, so a CI failure can be read
+    // without a simulator: what was on screen, and what the test could see of it.
+    private func record(_ app: XCUIApplication, _ name: String) {
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = name
+        shot.lifetime = .keepAlways
+        add(shot)
+        let tree = XCTAttachment(string: app.debugDescription)
+        tree.name = "\(name) — elements"
+        tree.lifetime = .keepAlways
+        add(tree)
+    }
+
     // Opens the first sample note, taps its first word (キャラメル), saves it from the lookup sheet
     // and checks the Words tab lists it.
     func testLookUpSaveAndListAWord() {
@@ -34,22 +47,26 @@ final class CoreLoopUITests: XCTestCase {
         XCTAssertTrue(text.waitForExistence(timeout: 60), "note didn't open in the reader")
 
         // The note segments once the dictionary has loaded; until then a tap has no word under
-        // it. Tap the first word (top-left, below its ruby) until the lookup sheet answers.
+        // it. Tap points across the first line (below its ruby) until the lookup sheet answers.
         // The lookup sheet's star; its label says whether the word is saved.
         let save = app.buttons["lookupSaveStar"].firstMatch
-        let firstWord = text.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 24, dy: 30))
-        var attempts = 0
-        while save.exists == false && attempts < 10 {
-            firstWord.tap()
-            _ = save.waitForExistence(timeout: 6)
-            attempts += 1
+        record(app, "reader opened")
+        let points = [(20, 28), (40, 28), (60, 40), (20, 50), (80, 50), (40, 70)]
+        var attempt = 0
+        while save.exists == false && attempt < points.count * 2 {
+            let (x, y) = points[attempt % points.count]
+            text.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: x, dy: y)).tap()
+            _ = save.waitForExistence(timeout: 5)
+            attempt += 1
         }
+        if save.exists == false { record(app, "no lookup sheet") }
         XCTAssertTrue(save.exists, "lookup sheet's save star never appeared")
         XCTAssertEqual(save.label, "Save", "word was already saved")
         save.tap()
         let saved = NSPredicate(format: "label == %@", "Unsave")
         XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: saved, evaluatedWith: save)], timeout: 5), .completed, "word didn't save")
 
+        record(app, "saved")
         app.swipeDown()
         app.tabBars.buttons["Words"].tap()
         XCTAssertTrue(app.staticTexts["キャラメル"].firstMatch.waitForExistence(timeout: 15), "saved word missing from Words")
