@@ -25,10 +25,15 @@ nonisolated enum TrieSnapshotCache {
     // The trie saved under `key`, or nil when there is none for it (first launch, a new dictionary,
     // changed Custom Words, a purged cache).
     static func load(key: String) -> DictionaryTrie? {
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            StartupTimer.mark("trie snapshot: none saved")
+            return nil
+        }
         do {
             let data = try Data(contentsOf: fileURL, options: .alwaysMapped)
-            return DictionaryTrie.restored(from: data, dictionaryKey: key)
+            let trie = DictionaryTrie.restored(from: data, dictionaryKey: key)
+            if trie == nil { StartupTimer.mark("trie snapshot: rejected for key \(key)") }
+            return trie
         } catch {
             AppLog.error(.dictionary, "Trie snapshot unreadable: \(error)")
             return nil
