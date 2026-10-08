@@ -33,6 +33,28 @@ extension Lexicon {
         return results
     }
 
+    // Up to `limit` other katakana する-nouns (JMdict `vs`) carrying the blank's own する ending, in
+    // candidate order: キスした → ダンスした, テストした. Empty unless `surface` is a katakana noun+する
+    // compound by the segmenter's own check (kanji ones segment as noun | する and need none of this).
+    func suruCompoundsLike(
+        surface: String,
+        candidates: [(text: String, posTags: [String])],
+        limit: Int
+    ) -> [String] {
+        guard limit > 0, let prefix = segmenter.suruCompoundPrefix(for: surface) else { return [] }
+        let ending = String(surface.dropFirst(prefix.count))
+        var results: [String] = []
+        var seen: Set<String> = [surface]
+        for candidate in candidates where candidate.text != prefix && ScriptClassifier.isPureKatakana(candidate.text) {
+            guard candidate.posTags.contains("vs") else { continue }
+            let compound = candidate.text + ending
+            guard seen.insert(compound).inserted else { continue }
+            results.append(compound)
+            if results.count >= limit { break }
+        }
+        return results
+    }
+
     // The exact conjugating JMdict tags of the entries that spell `lemma` verbatim.
     private func conjugationTags(ofLemma lemma: String) -> Set<String> {
         let posTags = lookupEntries(for: lemma)

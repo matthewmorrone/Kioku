@@ -288,9 +288,10 @@ final class ClozeStudyViewModel: ObservableObject {
     }
 
     // Dictionary verbs/adjectives of the blank's exact conjugation class, inflected along the blank's
-    // own rule path (食べた → 見た, 寝た). Empty when the blank isn't an inflected form or no lexicon.
+    // own rule path (食べた → 見た, 寝た), or for a katakana noun+する blank other する-nouns with its
+    // ending (キスした → ダンスした). Empty when the blank is neither, or without a lexicon.
     private func inflectedDistractors(for blank: ClozeTokenPick, count: Int) async -> [String] {
-        guard let lexicon, let lemma = blank.lemma, lemma != blank.surface, count > 0 else { return [] }
+        guard let lexicon, count > 0 else { return [] }
         if conjugatingPoolRows == nil, let store = dictionaryStore {
             conjugatingPoolRows = await Task.detached(priority: .utility) {
                 // fetchDistractorPool logs its own failures; an empty pool falls back to sentence words.
@@ -304,7 +305,11 @@ final class ClozeStudyViewModel: ObservableObject {
             guard let text = useKanji ? row.kanji : row.kana else { return nil }
             return (text: text, posTags: row.posTags)
         }.shuffled()
-        return lexicon.inflectLike(surface: blank.surface, lemma: lemma, candidates: candidates, limit: count)
+        if let lemma = blank.lemma, lemma != blank.surface {
+            let inflected = lexicon.inflectLike(surface: blank.surface, lemma: lemma, candidates: candidates, limit: count)
+            if inflected.isEmpty == false { return inflected }
+        }
+        return lexicon.suruCompoundsLike(surface: blank.surface, candidates: candidates, limit: count)
     }
 
     // Same-script words from the dictionary-wide pool, ranked toward the blank's word class as
