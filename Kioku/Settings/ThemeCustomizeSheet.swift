@@ -48,6 +48,8 @@ struct ThemeCustomizeSheet: View {
                     }
                 } header: {
                     Text("Interface")
+                } footer: {
+                    Text("Replace the theme's background, surface, text and accent colors with your own.")
                 }
                 Section {
                     Toggle("Custom Colors", isOn: $customTextColorsEnabled)
@@ -66,6 +68,8 @@ struct ThemeCustomizeSheet: View {
                     }
                 } header: {
                     Text("Text")
+                } footer: {
+                    Text("Primary and Secondary alternate from word to word to show where the text is split. Saved, Learned and Not Learned color the words you've saved.")
                 }
             }
             .washiBackground()

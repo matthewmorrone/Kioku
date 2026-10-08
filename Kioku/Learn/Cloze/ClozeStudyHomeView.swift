@@ -38,6 +38,8 @@ struct ClozeStudyHomeView: View {
                     )
 
                     Toggle("Exclude duplicate lines", isOn: $excludeDuplicateLines)
+                } footer: {
+                    Text("Each sentence of the note comes up with words replaced by dropdowns; pick the word that fits. Excluding duplicates skips repeated lines, like a song's chorus.")
                 }
 
                 Section {
@@ -56,6 +58,8 @@ struct ClozeStudyHomeView: View {
                     }
                 } header: {
                     Text("Source")
+                } footer: {
+                    Text("Cloze uses a note's own text, so any note works, not just saved words.")
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
