@@ -37,6 +37,7 @@ Dictionary/Segmenter/Segmenter.swift
 Dictionary/Segmenter/Segmenter+Viterbi.swift
 Dictionary/Segmenter/Segmenter+Names.swift
 Dictionary/Segmenter/Segmenter+KatakanaRuns.swift
+Dictionary/Segmenter/Segmenter+KatakanaPlurals.swift
 Dictionary/DictionaryStore+Names.swift
 Dictionary/DictionaryName.swift
 Dictionary/Segmenter/SegmenterConfig.swift

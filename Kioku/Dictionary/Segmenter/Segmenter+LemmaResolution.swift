@@ -150,6 +150,10 @@ extension Segmenter {
                 }
             }
         }
+        // A plural reached its singular in one step outside the rule graph (katakanaPluralLemma).
+        if fewestSteps == nil, let singular = katakanaPluralLemma(for: surface), lemmas.contains(singular) {
+            fewestSteps = 1
+        }
         return (lemmas, fewestSteps ?? 0)
     }
 
@@ -229,6 +233,11 @@ extension Segmenter {
         var trusted = matchedTrieLemmas(for: surface)
         var deinflected = Set<String>()
         let hasExactSurfaceMatch = trie.contains(surface)
+
+        // A katakana plural (スターズ) resolves to its singular (スター); see Segmenter+KatakanaPlurals.
+        if let singular = katakanaPluralLemma(for: surface) {
+            trusted.insert(singular)
+        }
 
         // Expand iteration marks (e.g. 人々→人人) so reduplicated forms resolve through the trie.
         let expandedCandidates = ScriptClassifier.iterationExpandedCandidates(for: surface)
