@@ -33,9 +33,11 @@ extension WordDetailView {
 
     // The reading the user picked with the switcher on some earlier visit, read off the live saved
     // card for whichever entry is active now (so a re-point this session can't surface the previous
-    // entry's reading). Nil when the word isn't saved or was never switched.
+    // entry's reading). An unsaved word falls back to the reading on its History row. Nil when
+    // neither has one.
     var savedChosenReading: String? {
         wordsStore.words.first { $0.canonicalEntryID == activeEntryID }?.selectedReading
+            ?? historyStore.reading(for: activeEntryID)
     }
 
     // The reading of the text occurrence this view was opened from (the lookup sheet's header), when
@@ -135,12 +137,12 @@ extension WordDetailView {
         scrollTargetEntryID = nil
     }
 
-    // Writes the switcher's pick onto the saved card. Stores the target's PLAIN dictionary reading,
+    // Writes the switcher's pick onto the saved card and the word's History row. Stores the target's PLAIN dictionary reading,
     // not the inflected projection shown in the header (いだかれ → だかれ): the card's stored surface
     // is the lemma, so every other reader — the Words list row, the study cards — needs the lemma's
-    // reading to pair with it. A no-op when the entry isn't saved (the detail view also opens for
-    // unsaved search results and nested related-word lookups); nothing to record there.
+    // reading to pair with it. Each write is a no-op where the entry has no card or no History row.
     func persistChosenReading(_ reading: String) {
         wordsStore.setReading(id: activeEntryID, reading: reading)
+        historyStore.setReading(canonicalEntryID: activeEntryID, reading: reading)
     }
 }

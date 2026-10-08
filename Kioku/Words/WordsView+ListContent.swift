@@ -29,8 +29,8 @@ extension WordsView {
     // The single row used for search results, saved words, and history entries. `entry` is
     // the materialized DictionaryEntry; while it's still being fetched it's nil and we fall
     // back to showing `surface`. `gloss` lets search results show the query-matched sense.
-    // `chosenReading` is the reading the user pinned with the detail view's reading switcher —
-    // only saved-word rows have one, so it defaults to nil for search-result and history rows.
+    // `chosenReading` is the reading the user pinned (the detail view's reading switcher, or a
+    // note's furigana for history rows); nil for search-result rows.
     func wordRow(
         entryID: Int64,
         surface: String,
@@ -554,6 +554,8 @@ extension WordsView {
                         surface: entry.surface,
                         entry: materialized,
                         gloss: materialized?.senses.first?.glosses.first,
+                        chosenReading: wordsStore.words.first { $0.canonicalEntryID == entry.canonicalEntryID }?.selectedReading
+                            ?? entry.reading,
                         onTap: {
                             selectedDetailWord = wordForHistory(entry)
                             // Recording moves this row to the top of the newest-first list, which is

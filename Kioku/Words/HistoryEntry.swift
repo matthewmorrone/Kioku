@@ -19,6 +19,10 @@ nonisolated struct HistoryEntry: Codable, Identifiable {
     let surface: String
     let lookedUpAt: Date
     let kind: Kind
+    // The kana reading the user last saw or picked for this entry (a note's pinned furigana, or the
+    // detail view's reading switcher). Lets an unsaved word's row keep the reading the user chose
+    // (瞬き → またたき) instead of the entry's first kana form. Nil for .query rows.
+    let reading: String?
 
     // Composite identifier so .entry rows dedupe by entry id and .query rows dedupe by
     // their text. Without this, every .query row would collide on canonicalEntryID=0.
@@ -29,11 +33,12 @@ nonisolated struct HistoryEntry: Codable, Identifiable {
         }
     }
 
-    init(canonicalEntryID: Int64, surface: String, lookedUpAt: Date, kind: Kind = .entry) {
+    init(canonicalEntryID: Int64, surface: String, lookedUpAt: Date, kind: Kind = .entry, reading: String? = nil) {
         self.canonicalEntryID = canonicalEntryID
         self.surface = surface
         self.lookedUpAt = lookedUpAt
         self.kind = kind
+        self.reading = reading
     }
 
     // V1 history entries (pre-kind discriminator) decode as .entry. Without the explicit
@@ -45,5 +50,6 @@ nonisolated struct HistoryEntry: Codable, Identifiable {
         surface = try container.decode(String.self, forKey: .surface)
         lookedUpAt = try container.decode(Date.self, forKey: .lookedUpAt)
         kind = try container.decodeIfPresent(Kind.self, forKey: .kind) ?? .entry
+        reading = try container.decodeIfPresent(String.self, forKey: .reading)
     }
 }

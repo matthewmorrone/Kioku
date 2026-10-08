@@ -18,10 +18,14 @@ final class HistoryStore: ObservableObject {
     }
 
     // Records a per-entry lookup, moving it to the front. Dedupes by canonical_entry_id.
-    func record(canonicalEntryID: Int64, surface: String) {
+    // A nil reading keeps the row's previous one, so re-opening the word from a list that doesn't
+    // know the reading can't wipe the reading a note or the reading switcher recorded.
+    func record(canonicalEntryID: Int64, surface: String, reading: String? = nil) {
+        let previousReading = self.reading(for: canonicalEntryID)
         entries.removeAll { $0.kind == .entry && $0.canonicalEntryID == canonicalEntryID }
         entries.insert(
-            HistoryEntry(canonicalEntryID: canonicalEntryID, surface: surface, lookedUpAt: Date(), kind: .entry),
+            HistoryEntry(canonicalEntryID: canonicalEntryID, surface: surface, lookedUpAt: Date(),
+                         kind: .entry, reading: reading ?? previousReading),
             at: 0
         )
         trimAndPersist()
@@ -40,6 +44,22 @@ final class HistoryStore: ObservableObject {
             at: 0
         )
         trimAndPersist()
+    }
+
+    // The reading recorded on an entry's history row, if any.
+    func reading(for canonicalEntryID: Int64) -> String? {
+        entries.first { $0.kind == .entry && $0.canonicalEntryID == canonicalEntryID }?.reading
+    }
+
+    // Records the reading the user picked for an entry already in history, keeping the row's
+    // position and timestamp. A no-op when the entry has no history row.
+    func setReading(canonicalEntryID: Int64, reading: String) {
+        guard let index = entries.firstIndex(where: { $0.kind == .entry && $0.canonicalEntryID == canonicalEntryID }),
+              entries[index].reading != reading else { return }
+        let old = entries[index]
+        entries[index] = HistoryEntry(canonicalEntryID: old.canonicalEntryID, surface: old.surface,
+                                      lookedUpAt: old.lookedUpAt, kind: .entry, reading: reading)
+        persist()
     }
 
     // Re-points a per-entry history row to a different dictionary entry, keeping its position
