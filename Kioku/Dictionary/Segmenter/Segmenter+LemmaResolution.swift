@@ -220,6 +220,34 @@ extension Segmenter {
         return (lemmaScore, inflectionSteps, lemmaBits)
     }
 
+    // The reading pricedReading did not choose, for a surface that is both a dictionary word and an
+    // inflected form of another (くれ: 暮れ, and the imperative of くれる). buildLattice offers it as a
+    // second edge so the path search can pick it from context: after a て-form, くれ is くれる's.
+    // Nil when the surface has only one reading.
+    func unchosenReading(
+        of surface: String,
+        lemmas: Set<String>,
+        inflectionSteps: Int,
+        chosen: (score: Double, inflectionSteps: Int, lemmaPartOfSpeech: UInt64)
+    ) -> (score: Double, inflectionSteps: Int, lemmaPartOfSpeech: UInt64, isLemma: Bool)? {
+        guard trie.contains(surface), inflectionSteps > 0 else { return nil }
+        var lemmaScore = 0.0
+        var pricedLemma: String?
+        for lemma in lemmas.sorted() where lemma != surface {
+            let score = frequencyScore(of: lemma)
+            if pricedLemma == nil || score > lemmaScore {
+                lemmaScore = score
+                pricedLemma = lemma
+            }
+        }
+        guard let pricedLemma, lemmaScore > 0 else { return nil }
+        if chosen.inflectionSteps == 0 {
+            return (lemmaScore, inflectionSteps, trie.partOfSpeech(for: pricedLemma), true)
+        }
+        let ownScore = frequencyScore(of: surface)
+        return ownScore > 0 ? (ownScore, 0, 0, false) : nil
+    }
+
     // Same resolution as resolvedTrieLemmas, but split by source so lemmaCandidates can gate only
     // genuine deinflection guesses: `trusted` holds exact trie hits, iteration-mark expansions, and
     // kana-script normalization (katakana↔hiragana) — script/notation equivalences that hold
