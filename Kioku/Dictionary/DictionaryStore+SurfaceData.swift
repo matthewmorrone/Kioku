@@ -18,12 +18,22 @@ extension DictionaryStore {
     // Total memory: a [Int: UInt64] POS map (~16 MB) + result records. No multiplicative blow-up
     // from the sense-row JOIN that the previous implementation triggered.
     nonisolated public func fetchSurfaceData() throws -> DictionarySurfaceData {
-        return try withSerializedDatabaseAccess {
-            // Pass 1: entry_id → OR-merged POS bits, materialized once.
+        let posByEntryID = try fetchPartOfSpeechByEntryID()
+        return DictionarySurfaceData(
+            surfaceRecords: try surfaceRecords(posByEntryID: posByEntryID),
+            partOfSpeechByEntryID: posByEntryID
+        )
+    }
+
+    // Each entry's OR-merged POS bits (pass 1 of fetchSurfaceData), on its own for a launch that
+    // restores the trie from its snapshot and so needs no surface records.
+    nonisolated public func fetchPartOfSpeechByEntryID() throws -> [Int: UInt64] {
+        try withSerializedDatabaseAccess {
             var posByEntryID: [Int: UInt64] = [:]
             posByEntryID.reserveCapacity(600_000)
 
             var posStatement: OpaquePointer?
+            defer { sqlite3_finalize(posStatement) }
             try prepare(sql: """
                 SELECT entry_id, GROUP_CONCAT(pos || CASE WHEN ',' || COALESCE(misc, '') || ',' LIKE '%,on-mim,%' THEN ',on-mim' ELSE '' END, ',')
                 FROM senses
@@ -46,12 +56,17 @@ extension DictionaryStore {
                 if bits != 0 { posByEntryID[entryID] = bits }
                 posStep = sqlite3_step(posStatement)
             }
-            sqlite3_finalize(posStatement)
             guard posStep == SQLITE_DONE else {
                 throw DictionarySQLiteError.step(message: errorMessage())
             }
+            return posByEntryID
+        }
+    }
 
-            // Pass 2: surface rows, grouped by surface text.
+    // Pass 2 of fetchSurfaceData: surface rows, grouped by surface text, each surface's POS
+    // OR-merged from `posByEntryID`.
+    nonisolated private func surfaceRecords(posByEntryID: [Int: UInt64]) throws -> [SurfaceRecord] {
+        try withSerializedDatabaseAccess {
             var surfaceStatement: OpaquePointer?
             try prepare(sql: """
                 SELECT text, entry_id FROM kana_forms
@@ -106,10 +121,7 @@ extension DictionaryStore {
             }
 
             flushCurrentSurface()
-            return DictionarySurfaceData(
-                surfaceRecords: records,
-                partOfSpeechByEntryID: posByEntryID
-            )
+            return records
         }
     }
 }

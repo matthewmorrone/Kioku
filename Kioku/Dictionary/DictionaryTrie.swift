@@ -1,8 +1,9 @@
 nonisolated public final class DictionaryTrie {
-    private let root = Node()
-    private let entryIDPool = EntryIDPool()
-    public private(set) var surfaceCount: Int = 0
-    public private(set) var maxSurfaceLength: Int = 0
+    // Internal, not private: DictionaryTrie+Snapshot.swift writes and restores them.
+    var root = Node()
+    var entryIDPool = EntryIDPool()
+    public internal(set) var surfaceCount: Int = 0
+    public internal(set) var maxSurfaceLength: Int = 0
 
     // Creates an empty trie for dictionary surface indexing.
     public init() {}

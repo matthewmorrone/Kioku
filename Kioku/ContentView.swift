@@ -555,7 +555,7 @@ struct ContentView: View {
         StartupTimer.mark("makeReadResources started")
         let overallStart = CFAbsoluteTimeGetCurrent()
 
-        let trie = DictionaryTrie()
+        var trie = DictionaryTrie()
         var dictionaryStore: DictionaryStore?
         var lexicon: Lexicon?
         var surfaceReadingData: [String: SurfaceReadingData] = [:]
@@ -625,16 +625,33 @@ struct ContentView: View {
             }} catch { AppLog.error(.dictionary, "fetchKanjiReadingFallbackMap failed: \(error)") }
 
             do {
-                // SurfaceRecords carry the POS bits the path search classes each word by
-                // (TransitionClass). The fetch path aggregates
-                // POS per entry in a first pass (small) and join in-memory against surface rows
-                // in a second pass — avoids the JOIN-explosion that OOM-killed the app earlier.
-                let surfaceData = try StartupTimer.measure("fetchSurfaceData") {
-                    try store.fetchSurfaceData()
-                }
-                partOfSpeechByEntryID = surfaceData.partOfSpeechByEntryID
-                StartupTimer.measure("trie population (\(surfaceData.surfaceRecords.count) records)") {
-                    for record in surfaceData.surfaceRecords { trie.insert(record) }
+                // The trie saved on an earlier launch for this exact dictionary file, when there is
+                // one: it only needs the per-entry POS bits beside it, not the 456k surface records.
+                let databaseURL = DictionaryDownloadManager.installedDatabaseURL
+                if let restored = StartupTimer.measure("trie snapshot load", block: { TrieSnapshotCache.load(forDatabaseAt: databaseURL) }) {
+                    trie = restored
+                    partOfSpeechByEntryID = try StartupTimer.measure("fetchPartOfSpeechByEntryID") {
+                        try store.fetchPartOfSpeechByEntryID()
+                    }
+                } else {
+                    // SurfaceRecords carry the POS bits the path search classes each word by
+                    // (TransitionClass). The fetch path aggregates
+                    // POS per entry in a first pass (small) and join in-memory against surface rows
+                    // in a second pass — avoids the JOIN-explosion that OOM-killed the app earlier.
+                    let surfaceData = try StartupTimer.measure("fetchSurfaceData") {
+                        try store.fetchSurfaceData()
+                    }
+                    partOfSpeechByEntryID = surfaceData.partOfSpeechByEntryID
+                    StartupTimer.measure("trie population (\(surfaceData.surfaceRecords.count) records)") {
+                        for record in surfaceData.surfaceRecords { trie.insert(record) }
+                    }
+                    // Saved for the next launch, off the startup path; the trie is only read from here on.
+                    let builtTrie = trie
+                    Task.detached(priority: .utility) {
+                        StartupTimer.measure("trie snapshot save") {
+                            TrieSnapshotCache.save(builtTrie, forDatabaseAt: databaseURL)
+                        }
+                    }
                 }
             } catch { AppLog.error(.dictionary, "fetchSurfaceData failed: \(error)") }
 

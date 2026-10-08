@@ -13,11 +13,24 @@ let root = ProcessInfo.processInfo.environment["KIOKU_CHECKOUT"]
     ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path
 let store = try DictionaryStore(databaseURL: URL(fileURLWithPath: ProcessInfo.processInfo.environment["DB"] ?? "\(root)/Resources/dictionary.sqlite"))
 try store.populateSurfacePOSBitsMap()
-let trie = DictionaryTrie()
+var trie = DictionaryTrie()
 let surfaceData = try store.fetchSurfaceData()
 let trieBuildStart = Date()
 for record in surfaceData.surfaceRecords { trie.insert(record) }
 FileHandle.standardError.write("trie: \(surfaceData.surfaceRecords.count) records in \(String(format: "%.3f", Date().timeIntervalSince(trieBuildStart))) s\n".data(using: .utf8)!)
+// SNAPSHOT=<path> saves the trie there (DictionaryTrie+Snapshot), reloads it and segments with the
+// reloaded copy, timing both: a check that a snapshot round-trips to the same segmentation.
+if let snapshotPath = ProcessInfo.processInfo.environment["SNAPSHOT"] {
+    var t = Date()
+    let bytes = trie.snapshotData(dictionaryKey: "k")
+    try bytes.write(to: URL(fileURLWithPath: snapshotPath))
+    FileHandle.standardError.write("snapshot write: \(bytes.count / 1_000_000) MB in \(Int(Date().timeIntervalSince(t) * 1000)) ms\n".data(using: .utf8)!)
+    t = Date()
+    let read = try Data(contentsOf: URL(fileURLWithPath: snapshotPath), options: .alwaysMapped)
+    guard let restored = DictionaryTrie.restored(from: read, dictionaryKey: "k") else { fatalError("restore failed") }
+    FileHandle.standardError.write("snapshot load: \(Int(Date().timeIntervalSince(t) * 1000)) ms\n".data(using: .utf8)!)
+    trie = restored
+}
 let deinflector = Deinflector(ruleSet: try store.fetchDeinflectionRuleSet(), trie: trie)
 let segmenter = Segmenter(
     trie: trie,

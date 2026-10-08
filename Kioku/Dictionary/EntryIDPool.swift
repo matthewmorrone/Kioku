@@ -3,9 +3,28 @@ import Foundation
 nonisolated public final class EntryIDPool {
     private var pool: [[Int]] = []
     private var handlesByKey: [String: Int] = [:]
+    // False after restoring a saved pool, until the first intern rebuilds the key index; a trie
+    // loaded from a snapshot rarely interns again, so the index isn't built up front.
+    private var handlesByKeyIsCurrent = true
+
+    // An empty pool.
+    public init() {}
+
+    // A pool holding exactly `slices`, each at the handle it had when saved (DictionaryTrie+Snapshot).
+    init(restoring slices: [[Int]]) {
+        pool = slices
+        handlesByKeyIsCurrent = false
+    }
+
+    // Every interned slice in handle order, for DictionaryTrie+Snapshot.
+    var slices: [[Int]] { pool }
 
     // Interns one entry-id slice and returns a compact reusable handle.
     public func intern(_ ids: [Int]) -> Int {
+        if handlesByKeyIsCurrent == false {
+            handlesByKey = Dictionary(pool.enumerated().map { (keyForIDs($0.element), $0.offset) }, uniquingKeysWith: { first, _ in first })
+            handlesByKeyIsCurrent = true
+        }
         let normalizedIDs = normalized(ids)
         let key = keyForIDs(normalizedIDs)
         if let existingHandle = handlesByKey[key] { return existingHandle }
