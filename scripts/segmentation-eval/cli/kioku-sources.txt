@@ -42,6 +42,8 @@ Dictionary/DictionaryStore+Names.swift
 Dictionary/DictionaryName.swift
 Dictionary/Segmenter/SegmenterConfig.swift
 Dictionary/Segmenter/SegmenterScoring.swift
+Dictionary/Segmenter/BoundaryFeatures.swift
+Dictionary/Segmenter/BoundaryCosts.swift
 Dictionary/Segmenter/TextSegmenting.swift
 Dictionary/SenseReference.swift
 Dictionary/SenseRestriction.swift

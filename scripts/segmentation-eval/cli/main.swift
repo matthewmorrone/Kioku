@@ -4,6 +4,7 @@ import Foundation
 //   segcli fit <pairs.tsv> <configs> <outdir> < sentences   configs: "WEIGHT CLAMP"; lattice once, DP per config
 //   segcli lemmas < surfaces                     → what each surface resolves to, with each lemma's score (the audit's input)
 //   segcli oracle < gold.jsonl                   → per cut-through: is the gold parse in the lattice, and by how much does it lose
+//   segcli features < gold.jsonl                → per sentence: characters, gold gap labels, shipped cuts, lattice gap features (boundary model input)
 //   segcli run < sentences                         → the shipped path (bundled table, shipped weight)
 //   segcli helpers < surfaces                    → "surface<TAB>lemma + helper…": the words deinflection folds into each surface
 //   segcli compounds < surfaces                  → "surface<TAB>base + auxiliary" for each surface the lookup sheet names as a compound verb
@@ -222,6 +223,80 @@ if mode == "furigana" {
         let rows: [[Any]] = furigana.byLocation.keys.sorted().map { [$0, furigana.lengthByLocation[$0] ?? 0, furigana.byLocation[$0] ?? ""] }
         print(String(data: try JSONSerialization.data(withJSONObject: rows), encoding: .utf8)!)
     }
+    exit(0)
+}
+
+if mode == "features" {
+    // segcli features < gold.jsonl — training input for the boundary model (scripts/segmentation-eval/boundary),
+    // taken from the real lattice so the model trains on exactly what the app computes. One JSON line per
+    // sentence; offsets are Characters, the unit the path search uses. Position i (1..<n) is the gap
+    // before character i:
+    //   c  characters            k  script class per character (BoundaryFeatures.scriptClass)
+    //   y  gold label per gap: 1 a gold token starts or ends there, 0 inside a gold token, -1 outside gold
+    //   b  1 where the shipped path cuts
+    //   f  per gap: BoundaryFeatures.gapFeatures
+    while let line = readLine() {
+        guard let data = line.data(using: .utf8),
+              let record = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let sentence = record["s"] as? String, let gold = record["g"] as? [[Any]] else {
+            fatalError("features: unreadable gold line: \(line.prefix(80))")
+        }
+        let characters = Array(sentence)
+        let n = characters.count
+        // Gold spans count unicode scalars; map each scalar offset to the Character it falls in.
+        var scalarToCharacter: [Int] = []
+        for (offset, character) in characters.enumerated() {
+            scalarToCharacter += Array(repeating: offset, count: character.unicodeScalars.count)
+        }
+        scalarToCharacter.append(n)
+        var labels = [Int](repeating: -1, count: n + 1)
+        for token in gold {
+            guard let a = token[0] as? Int, let b = token[1] as? Int, a < b, b < scalarToCharacter.count else {
+                fatalError("features: bad gold span in \(sentence)")
+            }
+            let start = scalarToCharacter[a], end = scalarToCharacter[b]
+            for i in (start + 1)..<max(start + 1, end) where labels[i] != 1 { labels[i] = 0 }
+            labels[start] = 1
+            labels[end] = 1
+        }
+        let lattice = segmenter.buildLattice(for: sentence)
+        let path = segmenter.absorbingBoundCharacters(in: segmenter.viterbiSelect(from: lattice, in: sentence).path, of: sentence)
+        let row: [String: Any] = [
+            "c": characters.map(String.init),
+            "k": characters.map(BoundaryFeatures.scriptClass),
+            "y": Array(labels[1..<max(1, n)]),
+            "b": BoundaryFeatures.pathCuts(path, in: sentence),
+            "f": BoundaryFeatures.gapFeatures(lattice: lattice, in: sentence),
+        ]
+        print(String(data: try JSONSerialization.data(withJSONObject: row), encoding: .utf8)!)
+    }
+    exit(0)
+}
+
+if mode == "rescore" {
+    // segcli rescore <probabilities> <weights> <outdir> < sentences — the shipped path search with the
+    // boundary model's costs added (BoundaryCosts), once per weight: lattice once per sentence, outdir/cfgN.txt
+    // per weight in `run`'s format. <probabilities>: one JSON array of P(cut) per gap per sentence line.
+    let probabilityLines = try String(contentsOfFile: CommandLine.arguments[2], encoding: .utf8).split(separator: "\n", omittingEmptySubsequences: false)
+    let weights = try String(contentsOfFile: CommandLine.arguments[3], encoding: .utf8).split(separator: "\n").compactMap { Double($0) }
+    let outDir = CommandLine.arguments[4]
+    var outputs = [String](repeating: "", count: weights.count)
+    var lineNumber = 0
+    while let line = readLine() {
+        guard lineNumber < probabilityLines.count,
+              let probabilities = try JSONSerialization.jsonObject(with: Data(probabilityLines[lineNumber].utf8)) as? [Double],
+              probabilities.count == max(0, line.count - 1) else {
+            fatalError("rescore: line \(lineNumber + 1) has no matching probabilities")
+        }
+        lineNumber += 1
+        let lattice = segmenter.buildLattice(for: line)
+        for (i, weight) in weights.enumerated() {
+            let costs = weight == 0 ? nil : BoundaryCosts(cutProbabilities: probabilities, weight: weight)
+            let path = segmenter.absorbingBoundCharacters(in: segmenter.viterbiSelect(from: lattice, in: line, boundaryCosts: costs).path, of: line)
+            outputs[i] += path.map { $0.surface }.joined(separator: separator) + "\n"
+        }
+    }
+    for (i, text) in outputs.enumerated() { try text.write(toFile: "\(outDir)/cfg\(i).txt", atomically: true, encoding: .utf8) }
     exit(0)
 }
 

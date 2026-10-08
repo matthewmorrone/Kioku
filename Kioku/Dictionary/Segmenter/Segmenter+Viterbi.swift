@@ -44,7 +44,13 @@ extension Segmenter {
     // per-edge score / predecessor metadata for the diagnostic overlay), the chosen path, and its
     // total cost (nil when no path spans the text).
     // Pulled out of viterbiBestPath so longestMatchResult can share its lattice instead of rebuilding.
-    func viterbiSelect(from inputEdges: [LatticeEdge], in text: String) -> (edges: [LatticeEdge], path: [LatticeEdge], cost: Int?) {
+    // boundaryCosts, when given, adds the boundary model's per-gap charges (BoundaryCosts) to every
+    // segment's cost.
+    func viterbiSelect(
+        from inputEdges: [LatticeEdge],
+        in text: String,
+        boundaryCosts: BoundaryCosts? = nil
+    ) -> (edges: [LatticeEdge], path: [LatticeEdge], cost: Int?) {
         var edges = inputEdges
         guard !edges.isEmpty else { return (edges: [], path: [], cost: nil) }
 
@@ -100,6 +106,7 @@ extension Segmenter {
         for i in sortedIndices {
             let edge = edges[i]
             let nodeCost = SegmenterScoring.edgeCost(edge)
+                + (boundaryCosts?.cost(start: startOffsets[i], end: endOffsets[i], absorbed: edge.isAbsorbedBoundCharacter) ?? 0)
 
             if edge.start == text.startIndex {
                 let startCost = nodeCost + transitionCost(nil, i)

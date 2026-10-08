@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Runs `segcli run` over a sentence file on several cores and prints the output in input order.
   run_parallel.py work/data/held2k.txt > work/held2k.out        (env such as STRATEGY passes through)
+  MODE=features run_parallel.py work/data/train.jsonl > work/train.features   (any one-line-in, one-line-out mode)
 Three workers by default (WORKERS=n to change); each is its own process with its own copy of the
 dictionary in memory. All workers must share one configuration: segcli keeps its settings
 in one UserDefaults domain, so never run two different configurations at the same time."""
@@ -11,7 +12,7 @@ if lines and lines[-1] == "": lines.pop()
 workers = max(1, min(int(os.environ.get("WORKERS", "3")), len(lines)))
 size = -(-len(lines) // workers)
 chunks = [lines[i:i + size] for i in range(0, len(lines), size)]
-procs = [subprocess.Popen([os.path.join(here, "work", "segcli"), "run"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+procs = [subprocess.Popen([os.path.join(here, "work", "segcli"), os.environ.get("MODE", "run")], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                           stderr=subprocess.DEVNULL, text=True, encoding="utf-8") for _ in chunks]
 outs = [None] * len(chunks)
 def feed(i):
