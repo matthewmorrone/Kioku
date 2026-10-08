@@ -39,6 +39,22 @@ nonisolated enum KiokuRubyPadding {
         return (start, end)
     }
 
+    // Blank space on each side of a character's glyph (advance minus ink), so ruby padding can butt
+    // ink against ink instead of advance box against advance box. 0 for a character the font has no
+    // glyph for, or one without ink, which keeps the padding at its full advance-based amount.
+    static func sideBearings(of character: unichar, font: UIFont) -> (left: CGFloat, right: CGFloat) {
+        let ctFont = font as CTFont
+        var utf16 = character
+        var glyph: CGGlyph = 0
+        guard CTFontGetGlyphsForCharacters(ctFont, &utf16, &glyph, 1) else { return (0, 0) }
+        var bounds = CGRect.zero
+        CTFontGetBoundingRectsForGlyphs(ctFont, .horizontal, &glyph, &bounds, 1)
+        var advance = CGSize.zero
+        CTFontGetAdvancesForGlyphs(ctFont, .horizontal, &glyph, &advance, 1)
+        guard bounds.isEmpty == false else { return (0, 0) }
+        return (max(0, bounds.minX), max(0, advance.width - bounds.maxX))
+    }
+
     // The .kern on the character at `index`, 0 when none.
     private static func kern(in segment: NSAttributedString, at index: Int) -> CGFloat {
         guard index >= 0, index < segment.length else { return 0 }
