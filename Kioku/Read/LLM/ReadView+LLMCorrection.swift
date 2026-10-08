@@ -501,10 +501,7 @@ extension ReadView {
     // confirm/reject.
     func confirmLLMChange(at location: Int) {
         // All siblings sharing the same change description are confirmed together.
-        let description = llmCorrection.pendingLLMChangesByLocation[location]
-        let siblingLocations: [Int] = description.map { desc in
-            llmCorrection.pendingLLMChangesByLocation.filter { $0.value == desc }.map(\.key)
-        } ?? [location]
+        let siblingLocations = pendingSiblingLocations(of: location)
         let groupStart = siblingLocations.min() ?? location
         // Estimate group end from the rightmost sibling's current (still-baseline, or
         // previously-confirmed) segment boundary — the span actually on screen right now.
@@ -559,37 +556,32 @@ extension ReadView {
                 .llmCorrection,
                 "confirmLLMChange: splice failed to validate for group at \(location) — dropping this pending change"
             )
-            for loc in siblingLocations {
-                llmCorrection.pendingLLMChangedLocations.remove(loc)
-                llmCorrection.pendingLLMChangedReadingLocations.remove(loc)
-                llmCorrection.pendingLLMChangesByLocation.removeValue(forKey: loc)
-            }
-            if llmCorrection.pendingLLMChangedLocations.isEmpty {
-                clearPendingLLMCorrectionState()
-            }
+            removePendingLocations(siblingLocations)
             return
         }
 
         applyPendingSegmentation(edges: splicedEdges, entries: fullEntries, originalText: document.text)
-
-        for loc in siblingLocations {
-            llmCorrection.pendingLLMChangedLocations.remove(loc)
-            llmCorrection.pendingLLMChangedReadingLocations.remove(loc)
-            llmCorrection.pendingLLMChangesByLocation.removeValue(forKey: loc)
-        }
-        if llmCorrection.pendingLLMChangedLocations.isEmpty {
-            clearPendingLLMCorrectionState()
-        }
+        removePendingLocations(siblingLocations)
     }
 
     // Rejects a single pending change at the given location. Nothing was ever written to the
     // document for it, so rejecting is just dropping it from the pending state.
     func rejectLLMChange(at location: Int) {
-        let description = llmCorrection.pendingLLMChangesByLocation[location]
-        let siblingLocations: [Int] = description.map { desc in
-            llmCorrection.pendingLLMChangesByLocation.filter { $0.value == desc }.map(\.key)
-        } ?? [location]
-        for loc in siblingLocations {
+        removePendingLocations(pendingSiblingLocations(of: location))
+    }
+
+    // Locations sharing `location`'s pending-change description (a split/merge group confirms
+    // or rejects together), or just `location` itself when it has no recorded description.
+    private func pendingSiblingLocations(of location: Int) -> [Int] {
+        guard let description = llmCorrection.pendingLLMChangesByLocation[location] else { return [location] }
+        return llmCorrection.pendingLLMChangesByLocation.filter { $0.value == description }.map(\.key)
+    }
+
+    // Drops the given locations from every pending-change collection, then clears the whole
+    // pending-correction state once nothing is left. Shared by confirmLLMChange's splice-failure
+    // bailout, its success path, and rejectLLMChange.
+    private func removePendingLocations(_ locations: [Int]) {
+        for loc in locations {
             llmCorrection.pendingLLMChangedLocations.remove(loc)
             llmCorrection.pendingLLMChangedReadingLocations.remove(loc)
             llmCorrection.pendingLLMChangesByLocation.removeValue(forKey: loc)
@@ -598,6 +590,7 @@ extension ReadView {
             clearPendingLLMCorrectionState()
         }
     }
+
     // Surfaces errors as alerts; successful corrections store changed locations for UI highlighting.
     private func handleLLMCorrectionResult(_ result: LLMCorrectionResult) {
         switch result {
