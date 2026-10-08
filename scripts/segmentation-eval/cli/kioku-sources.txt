@@ -18,7 +18,6 @@ Dictionary/DictionaryTrie.swift
 Dictionary/DictionaryTrie+Snapshot.swift
 Dictionary/SnapshotWriter.swift
 Dictionary/SnapshotReader.swift
-Dictionary/TrieSnapshotCache.swift
 Dictionary/FrequencyData.swift
 Dictionary/KanaData.swift
 Dictionary/KanaForm.swift

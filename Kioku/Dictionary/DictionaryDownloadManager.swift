@@ -113,7 +113,7 @@ final class DictionaryDownloadManager {
     }
 
     // The marker file's contents: the release tag, plus the checksum for a dev-channel install.
-    nonisolated private static var installedMarker: String? {
+    nonisolated static var installedMarker: String? {
         try? String(contentsOf: installedReleaseMarkerURL, encoding: .utf8)
     }
 

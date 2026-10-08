@@ -627,8 +627,8 @@ struct ContentView: View {
             do {
                 // The trie saved on an earlier launch for this exact dictionary file, when there is
                 // one: it only needs the per-entry POS bits beside it, not the 456k surface records.
-                let databaseURL = DictionaryDownloadManager.installedDatabaseURL
-                if let restored = StartupTimer.measure("trie snapshot load", block: { TrieSnapshotCache.load(forDatabaseAt: databaseURL) }) {
+                let snapshotKey = TrieSnapshotCache.key(store: store)
+                if let snapshotKey, let restored = StartupTimer.measure("trie snapshot load", block: { TrieSnapshotCache.load(key: snapshotKey) }) {
                     trie = restored
                     partOfSpeechByEntryID = try StartupTimer.measure("fetchPartOfSpeechByEntryID") {
                         try store.fetchPartOfSpeechByEntryID()
@@ -646,10 +646,12 @@ struct ContentView: View {
                         for record in surfaceData.surfaceRecords { trie.insert(record) }
                     }
                     // Saved for the next launch, off the startup path; the trie is only read from here on.
-                    let builtTrie = trie
-                    Task.detached(priority: .utility) {
-                        StartupTimer.measure("trie snapshot save") {
-                            TrieSnapshotCache.save(builtTrie, forDatabaseAt: databaseURL)
+                    if let snapshotKey {
+                        let builtTrie = trie
+                        Task.detached(priority: .utility) {
+                            StartupTimer.measure("trie snapshot save") {
+                                TrieSnapshotCache.save(builtTrie, key: snapshotKey)
+                            }
                         }
                     }
                 }

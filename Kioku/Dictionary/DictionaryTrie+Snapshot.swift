@@ -2,22 +2,13 @@ import Foundation
 
 // Saves a built trie to a compact binary file and restores it, so a launch can skip rebuilding the
 // trie from the dictionary's 456k surface records (about a second on a phone). The file is tied to
-// one dictionary file by `dictionaryKey`; any other key, version or a malformed file restores nil and
-// the caller rebuilds. Layout, little-endian: magic, version, key, counts, the entry-id pool, then
+// what the trie was built from by `dictionaryKey` (TrieSnapshotCache.key); any other key, version
+// or a malformed file restores nil and the caller rebuilds. Layout, little-endian: magic, version, key, counts, the entry-id pool, then
 // every node depth-first (flags, pool handle, POS bits, child count, each child's scalar and node).
 nonisolated extension DictionaryTrie {
     private static let snapshotMagic: UInt32 = 0x4B545249  // "KTRI"
     // Bump when insert, Node or EntryIDPool change what a built trie holds, so older files are rebuilt.
     private static let snapshotVersion: UInt32 = 1
-
-    // A key identifying `databaseURL`'s exact file: its size and modification time. A replaced or
-    // re-downloaded dictionary gets a new key, so an old snapshot is never used against it.
-    static func snapshotKey(forDatabaseAt databaseURL: URL) -> String? {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: databaseURL.path),
-              let size = attributes[.size] as? NSNumber,
-              let modified = attributes[.modificationDate] as? Date else { return nil }
-        return "\(size.int64Value)-\(Int64(modified.timeIntervalSince1970 * 1000))"
-    }
 
     // The trie as snapshot bytes, tagged with `dictionaryKey`.
     func snapshotData(dictionaryKey: String) -> Data {
