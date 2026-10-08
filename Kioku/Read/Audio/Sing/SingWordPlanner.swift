@@ -49,7 +49,7 @@ nonisolated enum SingWordPlanner {
             let starts = words.map { startSec(ofWordAt: $0.start, cue: cue, lineLength: line.utf16.count) }
             for (w, word) in words.enumerated() {
                 let surface = (line as NSString).substring(with: NSRange(location: word.start, length: word.end - word.start))
-                let romaji = particleRomaji[surface].map { [$0] }
+                let romaji = LyricRomanizer.particleRomaji[surface].map { [$0] }
                     ?? reading(ofNoteRange: cueStart + word.start, cueStart + word.end, noteNS: noteNS,
                                furigana: furigana, furiganaLengths: furiganaLengths).map { romanize($0).map(\.romaji) }
                     ?? spans.filter { $0.charOffsetUTF16 >= word.start && $0.charOffsetUTF16 < word.end }.map(\.romaji)
@@ -91,9 +91,6 @@ nonisolated enum SingWordPlanner {
         }
         return kana
     }
-
-    // The particles は and へ are sung "wa" and "e", not as the romanizer spells the kana.
-    private static let particleRomaji: [String: String] = ["は": "wa", "へ": "e"]
 
     // When the word at cue-local `offset` starts: the first karaoke checkpoint at or after it
     // (checkpoints mark mora groups); without checkpoints, its share of the line's duration.

@@ -7,7 +7,7 @@ import Foundation
 // Usage: replay <dump dir> <stem key> <note.txt> [--phone <cues.json>] [--no-deaf] [--deaf=THR,MINRUN] [--tokens]
 //   --phone     mark each line = / ≠ against the phone's saved cue start (within 10 ms)
 //   --no-deaf   turn deaf fill off (it is on in the app); --deaf=… overrides its two thresholds
-//   --tokens    also print the first four lines' checkpoint times
+//   --tokens    also print the first four lines' checkpoint times (--all-tokens: every line's)
 // Output: one line per lyric line, "start end [phone …] text", after the aligner's breadcrumbs.
 
 let args = CommandLine.arguments
@@ -66,7 +66,7 @@ var used: [String: Int] = [:]
 for (li, l) in out.lines.enumerated() {
     let k = used[l.text, default: 0]; used[l.text] = k + 1
     let p = phone[l.text].flatMap { k < $0.count ? $0[k] : nil }
-    if args.contains("--tokens"), li < 4 {
+    if args.contains("--all-tokens") || (args.contains("--tokens") && li < 4) {
         print("        tokens:", out.lineTokens[li].map { String(format: "%.2f", $0.start) }.joined(separator: " "))
     }
     let mark = p.map { String(format: "phone %7.2f %@", $0, abs($0 - l.start) < 0.011 ? "=" : "≠") } ?? ""

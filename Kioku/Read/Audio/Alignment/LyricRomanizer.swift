@@ -69,8 +69,20 @@ nonisolated struct LyricRomanizer: Sendable {
             }
         }
 
+        // Where a segment that is the particle は or へ starts (UTF-16): sung "wa" and "e", not as
+        // the kana spells them.
+        var particleOffsets: [Int: String] = [:]
+        for edge in edges {
+            if let sung = Self.particleRomaji[edge.surface] {
+                particleOffsets[edge.start.utf16Offset(in: line)] = sung
+            }
+        }
+
         // Romanize with the context っ and ー need from their neighbours.
         var romaji = morae.map { Self.romanize($0.kana) }
+        for i in morae.indices {
+            if let sung = particleOffsets[morae[i].offsetUTF16], morae[i].lengthUTF16 == 1 { romaji[i] = sung }
+        }
         for i in romaji.indices {
             if morae[i].kana == "っ" {
                 let next = i + 1 < romaji.count ? romaji[i + 1] : ""
@@ -84,6 +96,10 @@ nonisolated struct LyricRomanizer: Sendable {
             r.isEmpty ? nil : RomanizedSpan(romaji: r, charOffsetUTF16: mora.offsetUTF16, charLengthUTF16: mora.lengthUTF16)
         }
     }
+
+    // The particles は and へ as they are sung, keyed by a segment's whole surface; Sing mode's
+    // planner reads the same table, so the aligner and the grader expect the same sounds.
+    static let particleRomaji: [String: String] = ["は": "wa", "へ": "e"]
 
     private static let vowels: Set<Character> = ["a", "i", "u", "e", "o"]
     private static let smallKana: Set<String> = ["ゃ", "ゅ", "ょ", "ぁ", "ぃ", "ぅ", "ぇ", "ぉ"]

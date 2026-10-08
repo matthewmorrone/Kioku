@@ -40,11 +40,6 @@ written so a new session can pick it up cold.
       and half of consonants must be heard (long-vowel う/い optional), line-final words get 0.6 s
       lead slack, は/へ score as wa/e, readings come from the note's furigana. Pull the log
       (`heard「…」` per word) after a run and compare.
-- [ ] **Lyric aligner reads the particle は as "ha"** — `LyricRomanizer` transliterates kana, so
-      the forced aligner looks for h+a where the singer sings "wa" (へ: "he" for "e"). Sing mode's
-      planner overrides standalone は/へ; the aligner doesn't. Needs a word-level particle signal
-      (segmentation POS) in the romanizer and an alignment-replay run before and after.
-
 ## Segmentation & Lookup
 - [ ] **Segment uncertainty, then AI correction of only the low-confidence spans** — planned
       2026-10-02. The segmenter's costs are centi-nats, so: (1) forward–backward over the existing
