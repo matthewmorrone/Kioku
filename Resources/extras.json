@@ -22,16 +22,8 @@
 			]
 		},
 		{
-			"kana": "スターズ",
-			"gloss": "stars"
-		},
-		{
 			"kana": "プレイヤーズ",
 			"gloss": "prayers"
-		},
-		{
-			"kana": "ティアーズ",
-			"gloss": "tears"
 		},
 		{
 			"kana": "シャイニー",
@@ -107,14 +99,6 @@
 		{
 			"kana": "ウエファース",
 			"gloss": "wafer (old spelling of ウエハース)"
-		},
-		{
-			"kana": "ミンツ",
-			"gloss": "mints (peppermint sweets)"
-		},
-		{
-			"kana": "ドロップス",
-			"gloss": "drops (hard candy)"
 		}
 	]
 }
