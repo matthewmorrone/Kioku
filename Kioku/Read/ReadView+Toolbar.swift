@@ -294,7 +294,8 @@ extension ReadView {
             displayOptionRow(
                 title: "Apply Changes Globally",
                 systemImage: "arrow.triangle.branch",
-                isEnabled: shouldApplyChangesGlobally
+                isEnabled: shouldApplyChangesGlobally,
+                info: "When you merge or split a word, make the same change everywhere that word appears in the note."
             ) {
                 shouldApplyChangesGlobally.toggle()
             }
@@ -303,7 +304,8 @@ extension ReadView {
                 title: "Furigana",
                 image: Image(isFuriganaVisible ? "furigana.on" : "furigana.off")
                     .renderingMode(.template),
-                isEnabled: isFuriganaVisible
+                isEnabled: isFuriganaVisible,
+                info: "Show readings above words with kanji."
             ) {
                 isFuriganaVisible.toggle()
             }
@@ -311,7 +313,8 @@ extension ReadView {
             displayOptionRow(
                 title: "Hide Known Furigana",
                 systemImage: isFuriganaHiddenForKnownWords ? "eye.slash.circle.fill" : "eye.slash.circle",
-                isEnabled: isFuriganaHiddenForKnownWords
+                isEnabled: isFuriganaHiddenForKnownWords,
+                info: "Drop the furigana from words you've marked learned or mastered."
             ) {
                 isFuriganaHiddenForKnownWords.toggle()
             }
@@ -322,7 +325,8 @@ extension ReadView {
             displayOptionRow(
                 title: "Line Wrapping",
                 systemImage: isLineWrappingEnabled ? "text.alignleft" : "arrow.right.to.line.compact",
-                isEnabled: isLineWrappingEnabled
+                isEnabled: isLineWrappingEnabled,
+                info: "Wrap long lines to fit the screen. Off, each line of the note stays on one line."
             ) {
                 isLineWrappingEnabled.toggle()
             }
@@ -330,7 +334,8 @@ extension ReadView {
             displayOptionRow(
                 title: "Ruby Spacing",
                 systemImage: isRubySpacingEnabled ? "arrow.left.and.right.text.vertical" : "arrow.left.and.right",
-                isEnabled: isRubySpacingEnabled
+                isEnabled: isRubySpacingEnabled,
+                info: "Space words out so each word's furigana fits above it without running into its neighbors."
             ) {
                 isRubySpacingEnabled.toggle()
             }
@@ -338,7 +343,8 @@ extension ReadView {
             displayOptionRow(
                 title: "Segment Colors",
                 systemImage: isColorAlternationEnabled ? "paintpalette.fill" : "paintpalette",
-                isEnabled: isColorAlternationEnabled
+                isEnabled: isColorAlternationEnabled,
+                info: "Alternate the text color from word to word, to show where Kioku split the text."
             ) {
                 isColorAlternationEnabled.toggle()
             }
@@ -349,7 +355,8 @@ extension ReadView {
             displayOptionRow(
                 title: "Cleanup",
                 systemImage: "character.book.closed.ja",
-                isEnabled: false
+                isEnabled: false,
+                info: "Suggest fixes for the note's text: English words turned into katakana, and half-width kana or full-width digits normalized. You review each change first."
             ) {
                 startCleanup()
             }
@@ -396,6 +403,8 @@ extension ReadView {
             }
             .buttonStyle(.plain)
 
+            InfoButton(text: "Color the words you've saved. The chevron picks which kinds: saved, learned or not learned.")
+
             Button {
                 readSheets.isShowingSavedHighlightCategories = true
             } label: {
@@ -428,7 +437,10 @@ extension ReadView {
             Toggle("Learned", isOn: $isSavedHighlightShowingLearned)
             Toggle("Not Learned", isOn: $isSavedHighlightShowingNotLearned)
             Divider()
-            Toggle("Highlight Unknown", isOn: $isHighlightUnknownEnabled)
+            Toggle(isOn: $isHighlightUnknownEnabled) {
+                Text("Highlight Unknown")
+                    .infoButton("Color words the dictionary doesn't recognize.")
+            }
         }
         .padding(16)
         .frame(width: 200)
@@ -441,12 +453,14 @@ extension ReadView {
         title: String,
         systemImage: String,
         isEnabled: Bool,
+        info: String? = nil,
         action: @escaping () -> Void
     ) -> some View {
         displayOptionRow(
             title: title,
             image: Image(systemName: systemImage),
             isEnabled: isEnabled,
+            info: info,
             action: action
         )
     }
@@ -455,42 +469,51 @@ extension ReadView {
     // asset rather than an SF Symbol — e.g. the furigana glyph, which is a project
     // asset, not a system symbol. Shares all other styling with the systemImage variant
     // so the popover keeps a single visual language.
+    // `info`, when given, adds an ⓘ popover beside the row's button (not inside it, so it takes
+    // its own tap), within the same rounded background.
     func displayOptionRow(
         title: String,
         image: Image,
         isEnabled: Bool,
+        info: String? = nil,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                image
-                    .scaledFont(size: 15, weight: .semibold)
-                    .foregroundStyle(ReadToggleAppearance.foreground(isOn: isEnabled))
-                    .frame(width: 20)
-
-                Text(title)
-                    .scaledFont(size: 12, weight: .semibold)
-                    .foregroundStyle(ReadToggleAppearance.foreground(isOn: isEnabled))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    .allowsTightening(true)
-
-                Spacer(minLength: 0)
-
-                if isEnabled {
-                    Image(systemName: "checkmark")
-                        .scaledFont(size: 12, weight: .bold)
-                        .foregroundStyle(Color.accentColor)
+        HStack(spacing: 4) {
+            Button(action: action) {
+                HStack(spacing: 10) {
+                    image
+                        .scaledFont(size: 15, weight: .semibold)
+                        .foregroundStyle(ReadToggleAppearance.foreground(isOn: isEnabled))
+                        .frame(width: 20)
+    
+                    Text(title)
+                        .scaledFont(size: 12, weight: .semibold)
+                        .foregroundStyle(ReadToggleAppearance.foreground(isOn: isEnabled))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .allowsTightening(true)
+    
+                    Spacer(minLength: 0)
+    
+                    if isEnabled {
+                        Image(systemName: "checkmark")
+                            .scaledFont(size: 12, weight: .bold)
+                            .foregroundStyle(Color.accentColor)
+                    }
                 }
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(ReadToggleAppearance.background)
-            )
+            .buttonStyle(.plain)
+            if let info {
+                InfoButton(text: info)
+            }
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(ReadToggleAppearance.background)
+        )
     }
 
     // One icon button whose visual treatment reflects active edit state. Tap toggles
