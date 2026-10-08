@@ -3,7 +3,9 @@ import Foundation
 
 // The boundary model (SegmentBoundaryNet.mlpackage beside this file, trained by
 // scripts/segmentation-eval/boundary): P(cut) at every gap between two characters, from the
-// characters around it and the lattice's evidence there. The path search adds its verdict as
+// characters around it and the lattice's evidence there. It averages two networks: one trained on
+// Tatoeba's segmentation, one on the same data relabelled to Kioku's word convention (泣きたく,
+// キスして as one word); each fixes cases the other gets wrong. The path search adds its verdict as
 // BoundaryCosts, so it only decides between paths the lattice already priced close. It runs on the
 // CPU in float32 and its costs are rounded to whole centi-nats, so every device segments alike.
 nonisolated final class BoundaryModel: @unchecked Sendable {

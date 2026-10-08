@@ -5,9 +5,8 @@ import Foundation
 // prices (splitCosts) take their costs from here, so the two can't disagree.
 extension Segmenter {
     // How strongly the model's verdict counts against the word and transition costs: chosen on
-    // train2k where cut-throughs bottom out (scripts/segmentation-eval/boundary); higher weights
-    // start trading cut-throughs for Tatoeba's split conventions (と|いう).
-    static let boundaryModelWeight = 3.0
+    // train2k and its kana copies where cut-throughs bottom out (scripts/segmentation-eval/boundary).
+    static let boundaryModelWeight = 4.0
 
     // The model's costs for text over this lattice, or nil when there is no model, nothing to
     // decide (one character), or no path to read its input from. The model is given the path the

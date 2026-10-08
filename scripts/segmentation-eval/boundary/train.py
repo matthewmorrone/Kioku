@@ -21,9 +21,12 @@ ap.add_argument("--epochs", type=int, default=3)
 ap.add_argument("--batch", type=int, default=256)
 ap.add_argument("--seed", type=int, default=0)
 ap.add_argument("--extra", action="append", default=[], help="more features files to fit on (e.g. kana copies); never a held-out set")
+ap.add_argument("--resume", type=int, default=0, help="continue <outdir>/model.pt after this many finished epochs")
+ap.add_argument("--threads", type=int, default=3, help="CPU threads (the Mac is a fanless Air: 3 by default)")
 args = ap.parse_args()
 random.seed(args.seed)
 torch.manual_seed(args.seed)
+torch.set_num_threads(args.threads)
 os.makedirs(args.outdir, exist_ok=True)
 
 rows = load_features(args.features)
@@ -42,7 +45,10 @@ print(f"fit {len(fit)} val {len(val)} vocab {len(vocab)} path-feature {use_path}
 
 model = BoundaryModel(len(vocab) + 2)
 print(f"parameters {sum(p.numel() for p in model.parameters())}", flush=True)
-opt = torch.optim.AdamW(model.parameters(), lr=4e-3, weight_decay=1e-4)
+if args.resume:
+    model.load_state_dict(torch.load(os.path.join(args.outdir, "model.pt")))
+# The learning rate decays by 0.6 per epoch; a resumed run starts where the stopped one left off.
+opt = torch.optim.AdamW(model.parameters(), lr=4e-3 * 0.6 ** args.resume, weight_decay=1e-4)
 loss_fn = nn.BCEWithLogitsLoss(reduction="sum")
 
 
@@ -75,7 +81,7 @@ def evaluate(data):
 
 
 started = time.time()
-for epoch in range(args.epochs):
+for epoch in range(args.resume, args.epochs):
     seen = 0
     random.shuffle(fit_batches)
     for chars, scripts, gaps, labels, path in fit_batches:
