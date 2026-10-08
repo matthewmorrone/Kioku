@@ -245,8 +245,8 @@ enum KiokuCoreTextAttributedStringBuilder {
                 ))
 
                 // Intra-segment spacing, in both layout modes: ruby wider than its kanji overhangs
-                // kana of its own segment by at most half a ruby character (the usual typesetting
-                // allowance, so 戦う with たたか needs no gap and 憤り with いきどお only a little).
+                // kana of its own segment by at most KiokuRubyPadding.overhangAllowance (so 戦う with
+                // たたか needs no gap and 憤り with いきどお only a little).
                 // Kern on the character before the run pushes the kanji right; kern on the run's
                 // last character pushes the following kana away; ruby centring discounts it
                 // (KiokuRubyPadding.kanjiSpan).
@@ -254,7 +254,7 @@ enum KiokuCoreTextAttributedStringBuilder {
                    let containing = segmentNSRanges.first(where: { NSLocationInRange(kanjiLoc, $0) }) {
                     let kanjiW = ceil((kanjiText as NSString).size(withAttributes: [.font: baseFont]).width)
                     let rubyW = ceil((reading as NSString).size(withAttributes: [.font: furiganaFont]).width)
-                    let allowance = furiganaFont.pointSize / 2
+                    let allowance = KiokuRubyPadding.overhangAllowance(furiganaFont: furiganaFont)
                     let overhang = max(0, ceil((rubyW - kanjiW) / 2 - allowance))
                     if overhang > 0.5 {
                         let runLastIdx = kanjiLoc + kanjiLen - 1
@@ -278,14 +278,28 @@ enum KiokuCoreTextAttributedStringBuilder {
                 //     (visible only when the kanji sits at the start of its segment, so the
                 //     ruby's left tail actually crosses the segment boundary)
                 //
+                // Ruby reaches over a neighbouring kana by KiokuRubyPadding.overhangAllowance, as
+                // it does over its own; a neighbour under ruby of its own gets the full overhang.
+                //
                 // SKIPPED in segment-packed mode: the packer handles inter-segment spacing
                 // via per-segment footprint placement, so adding kern here would inflate
                 // the measured CTLine advance and break the packer's footprint math.
                 if inputs.isRubySpacingEnabled && inputs.isSegmentPacked == false {
                     let kanjiW = ceil((kanjiText as NSString).size(withAttributes: [.font: baseFont]).width)
                     let rubyW = ceil((reading as NSString).size(withAttributes: [.font: furiganaFont]).width)
-                    let overhang = max(0, ceil((rubyW - kanjiW) / 2))
-                    if overhang > 0.5, let containingIdx = segmentNSRanges.firstIndex(where: { NSLocationInRange(kanjiLoc, $0) }) {
+                    let allowance = KiokuRubyPadding.overhangAllowance(furiganaFont: furiganaFont)
+                    let fullOverhang = max(0, ceil((rubyW - kanjiW) / 2))
+                    let isUnderRuby: (Int) -> Bool = { index in
+                        inputs.furiganaBySegmentLocation.contains { loc, reading in
+                            reading.isEmpty == false
+                                && index >= loc
+                                && index < loc + (inputs.furiganaLengthBySegmentLocation[loc] ?? 0)
+                        }
+                    }
+                    let padding: (Int) -> CGFloat = { neighbour in
+                        isUnderRuby(neighbour) ? fullOverhang : max(0, ceil((rubyW - kanjiW) / 2 - allowance))
+                    }
+                    if fullOverhang > 0.5, let containingIdx = segmentNSRanges.firstIndex(where: { NSLocationInRange(kanjiLoc, $0) }) {
                         let containing = segmentNSRanges[containingIdx]
                         // Right side: bump .kern at the containing segment's tail ONLY
                         // when there's a meaningful next segment to push away from. When
@@ -310,7 +324,7 @@ enum KiokuCoreTextAttributedStringBuilder {
                         if hasMeaningfulFollower, kanjiLoc + kanjiLen == containing.location + containing.length {
                             let tailRange = NSRange(location: tailIdx, length: 1)
                             let tailKern = (result.attribute(.kern, at: tailIdx, effectiveRange: nil) as? CGFloat) ?? inputs.kerning
-                            result.addAttribute(.kern, value: tailKern + overhang, range: tailRange)
+                            result.addAttribute(.kern, value: tailKern + padding(tailIdx + 1), range: tailRange)
                         }
 
                         // Left side: when this kanji starts the containing segment, the
@@ -332,7 +346,7 @@ enum KiokuCoreTextAttributedStringBuilder {
                                 let priorTailRange = NSRange(location: priorTailIdx, length: 1)
                                 let priorKern = (result.attribute(.kern, at: priorTailIdx, effectiveRange: nil) as? CGFloat)
                                     ?? inputs.kerning
-                                result.addAttribute(.kern, value: priorKern + overhang, range: priorTailRange)
+                                result.addAttribute(.kern, value: priorKern + padding(priorTailIdx), range: priorTailRange)
                             }
                         }
                     }

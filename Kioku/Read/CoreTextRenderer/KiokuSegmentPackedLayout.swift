@@ -130,6 +130,14 @@ enum KiokuSegmentPackedLayout {
             lineOriginY += lineHeight + inputs.interLineGap
         }
 
+        // Every UTF-16 index that sits under ruby, so the overhang allowance below can tell a
+        // neighbouring kana (ruby may reach over it) from a neighbouring kanji with its own ruby.
+        var rubyCovered = Set<Int>()
+        for (rubyLoc, rubyLen) in inputs.furiganaLengthByLocation where inputs.furiganaByLocation[rubyLoc]?.isEmpty == false {
+            rubyCovered.formUnion(rubyLoc..<(rubyLoc + rubyLen))
+        }
+        let overhangAllowance = KiokuRubyPadding.overhangAllowance(furiganaFont: inputs.furiganaFont)
+
         for segRange in inputs.segmentNSRanges {
             guard segRange.location != NSNotFound, segRange.length > 0 else { continue }
             guard segRange.location + segRange.length <= nsString.length else { continue }
@@ -178,12 +186,25 @@ enum KiokuSegmentPackedLayout {
             let rubyWidth = overhang.widestRubyWidth
             let footprintWidth = headwordWidth + overhang.left + overhang.right
 
+            // Ruby may reach over the previous segment's last kana, or the previous segment's ruby
+            // over this one's first kana, by the same allowance it has over its own kana: this
+            // segment moves back by that much, never further than the overhang being absorbed.
+            var pullback: CGFloat = 0
+            if cursorX > inputs.leftInset, let previous = placements.last, previous.lineIndex == lineIndex {
+                if rubyCovered.contains(segRange.location) == false {
+                    pullback += min(overhangAllowance, previous.rightOverhang)
+                }
+                if rubyCovered.contains(previous.location + previous.length - 1) == false {
+                    pullback += min(overhangAllowance, overhang.left)
+                }
+            }
+
             // Wrap if this segment won't fit on the current line. First segment on any
             // line is always placed even when it overflows — otherwise an oversized
             // single segment would loop forever. Wrapping is gated by isLineWrappingEnabled
             // so single-line cards (LyricsView active card) get overflow + clip instead.
             if inputs.isLineWrappingEnabled,
-               cursorX > inputs.leftInset && cursorX + footprintWidth > inputs.leftInset + inputs.availableWidth {
+               cursorX > inputs.leftInset && cursorX - pullback + footprintWidth > inputs.leftInset + inputs.availableWidth {
                 // Kinsoku: a mark that may not start a line (、。」 …) takes the segment
                 // before it down to the new line, so the line ends short instead.
                 let carried = isLineStartProhibited(surface)
@@ -204,6 +225,8 @@ enum KiokuSegmentPackedLayout {
                     ))
                     cursorX += moved.footprintWidth
                 }
+            } else {
+                cursorX -= pullback
             }
 
             placements.append(Placement(
