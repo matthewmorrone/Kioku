@@ -1,24 +1,21 @@
 {
 	"entries": [
 		{
-			"kanji": "夕映",
-			"kana": "ゆうばえ",
-			"sense": [
-				{
-					"partOfSpeech": ["n"],
-					"gloss": ["evening glow; afterglow of sunset"]
-				}
-			]
+			"sameAs": 1542680,
+			"kanji": ["夕映"]
 		},
 		{
+			"ent_seq": -711639582,
 			"kana": "プレイヤーズ",
 			"gloss": "prayers"
 		},
 		{
+			"ent_seq": -325507138,
 			"kana": "シャイニー",
 			"gloss": "shiny"
 		},
 		{
+			"ent_seq": -420655091,
 			"kana": [
 				"ピッ"
 			],
@@ -42,26 +39,32 @@
 			]
 		},
 		{
+			"ent_seq": -758924456,
 			"kana": "オーロール",
 			"gloss": "aurora; dawn (from French 'aurore')"
 		},
 		{
+			"ent_seq": -247194387,
 			"kana": "シェノン",
 			"gloss": "link (in a chain) (from French 'chaînon')"
 		},
 		{
+			"ent_seq": -890438944,
 			"kana": "リュミエール",
 			"gloss": "light (from French 'lumière')"
 		},
 		{
+			"ent_seq": -303651084,
 			"kana": "ユア",
 			"gloss": "your"
 		},
 		{
+			"ent_seq": -136212510,
 			"kana": "ラララ",
 			"gloss": "la la la (sung vocalization)"
 		},
 		{
+			"ent_seq": -476205217,
 			"kanji": "の様",
 			"kana": "のよう",
 			"sense": [
@@ -72,6 +75,7 @@
 			]
 		},
 		{
+			"ent_seq": -515400617,
 			"kanji": "西郷玉",
 			"kana": "さいごうだま",
 			"sense": [
@@ -82,12 +86,12 @@
 			]
 		},
 		{
-			"kana": "カステイラ",
-			"gloss": "castella (sponge cake) (old spelling of カステラ)"
+			"sameAs": 1037370,
+			"kana": ["カステイラ"]
 		},
 		{
-			"kana": "ウエファース",
-			"gloss": "wafer (old spelling of ウエハース)"
+			"sameAs": 1026280,
+			"kana": ["ウエファース"]
 		}
 	]
 }

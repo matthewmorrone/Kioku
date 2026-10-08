@@ -1,17 +1,17 @@
 import Combine
 import Foundation
 
-// Owns the user's Custom Words list (CustomWord): the dictionary's extras.json defaults plus the
-// user's own additions and edits. Persisted as JSON in UserDefaults; included in backups. ContentView
-// rebuilds the read resources when `words` changes, which writes the list into the dictionary
-// (CustomWordApplier) and reports any defaults a newer dictionary brought, added here by addDefaults.
+// Owns the user's Custom Words list (CustomWord): the built-in defaults the app ships
+// (Resources/extras.json, bundledDefaults) plus the user's own additions and edits. Persisted as JSON
+// in UserDefaults; included in backups. ContentView syncs the built-ins at launch and rebuilds the
+// read resources when `words` changes, which writes the list into the dictionary (CustomWordApplier).
 @MainActor
 final class CustomWordStore: ObservableObject {
     static let defaultStorageKey = "kioku.customWords.v1"
 
     @Published private(set) var words: [CustomWord] = []
-    // Defaults already offered, by headword, as first seen: a default the user deleted or edited is
-    // never re-added by a later dictionary, and Restore Defaults brings back these originals.
+    // The built-ins this app ships, by key (headword, or "sameAs <ent_seq> <spelling>" for a link):
+    // a default the user deleted is never re-added, and Restore Defaults resets to these.
     @Published private(set) var offeredDefaults: [String: CustomWord] = [:]
 
     private let defaults: UserDefaults
@@ -51,22 +51,50 @@ final class CustomWordStore: ObservableObject {
         persist()
     }
 
-    // Adds defaults a dictionary carried that haven't been offered before, remembering them so a
-    // later deletion sticks.
-    func addDefaults(_ newDefaults: [CustomWord]) {
-        var added = false
-        for word in newDefaults {
-            guard let key = word.defaultKey, offeredDefaults[key] == nil else { continue }
-            offeredDefaults[key] = word
-            words.append(word)
-            added = true
+    // The built-in Custom Words shipped in the app bundle (Resources/extras.json), keyed: a word by
+    // its headword, a "same word as" spelling by its target and spelling. Empty, logged, when the
+    // file is missing or unreadable.
+    nonisolated static func bundledDefaults(bundle: Bundle = .main) -> [CustomWord] {
+        guard let url = bundle.url(forResource: "extras", withExtension: "json") else {
+            AppLog.error(.dictionary, "Built-in Custom Words: extras.json not in the bundle")
+            return []
         }
-        if added { persist() }
+        do {
+            return try CustomWordsExtrasCodec.decode(Data(contentsOf: url)).map { word in
+                var word = word
+                if let sameAs = word.sameAsEntSeq {
+                    word.defaultKey = "sameAs \(sameAs) \(CustomWordIdentity.headword(of: word))"
+                } else {
+                    word.defaultKey = CustomWordIdentity.headword(of: word)
+                }
+                return word
+            }
+        } catch {
+            AppLog.error(.dictionary, "Built-in Custom Words unreadable: \(error)")
+            return []
+        }
     }
 
-    // Brings back every offered default the list no longer has in its original form: deleted ones
-    // are re-added, edited ones reset.
+    // Makes the offered defaults exactly `builtIns`: ones never offered are added to the list, ones
+    // no longer built in are forgotten as defaults (Restore Defaults then removes them), and the
+    // rest keep whatever the user did with them.
+    func syncBuiltIns(_ builtIns: [CustomWord]) {
+        var byKey: [String: CustomWord] = [:]
+        for word in builtIns {
+            if let key = word.defaultKey, byKey[key] == nil { byKey[key] = word }
+        }
+        for (key, word) in byKey.sorted(by: { $0.key < $1.key }) where offeredDefaults[key] == nil {
+            words.append(word)
+        }
+        guard byKey != offeredDefaults else { return }
+        offeredDefaults = byKey
+        persist()
+    }
+
+    // Resets the list to the built-ins: deleted ones re-added, edited ones reset, and words from
+    // built-ins the app no longer ships removed. The user's own words stay.
     func restoreDefaults() {
+        words.removeAll { word in word.defaultKey.map { offeredDefaults[$0] == nil } ?? false }
         for (key, original) in offeredDefaults.sorted(by: { $0.key < $1.key }) {
             if let index = words.firstIndex(where: { $0.defaultKey == key }) {
                 words[index] = original

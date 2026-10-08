@@ -35,7 +35,6 @@ MANIFEST_PATH = RESOURCES_DIR / "data-manifest.json"
 # once extracted (UniDic lex.csv, Tatoeba links.csv) are streamed straight out of their archives.
 WORK_DIR = None
 JMDICT_PATH = None
-EXTRAS_PATH = RESOURCES_DIR / "extras.json"
 # The deinflection rules are generated from UniDic (the same archive as pitch accent), this grammar
 # table and these hand-added exceptions; see scripts/deinflection/generate_rules.py.
 DEINFLECTION_GRAMMAR_PATH = RESOURCES_DIR / "deinflection-grammar.json"
@@ -696,88 +695,6 @@ def load_jmdict_entries():
     raise ValueError("Unexpected JMdict JSON structure")
 
 
-def load_extras_json():
-    # Top level is either a bare list of entries or { entries?: [ ...same entry shape... ] }.
-    if not EXTRAS_PATH.exists():
-        return []
-
-    with open(EXTRAS_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    if isinstance(data, list):
-        return data
-    if isinstance(data, dict):
-        return data.get("entries", [])
-
-    raise ValueError("Unexpected extras JSON structure")
-
-
-def load_extra_entries():
-    # [
-    #   {
-    #     ent_seq?: integer,
-    #     kanji?: [ string | { text: string, tags?: [string] } ],
-    #     kana?: [ string | { text: string, tags?: [string], appliesToKanji?: [string] } ],
-    #     sense?: [
-    #       {
-    #         partOfSpeech?: [string],
-    #         misc?: [string],
-    #         field?: [string],
-    #         dialect?: [string],
-    #         gloss?: [ string | { text: string } ]
-    #       }
-    #     ],
-    #     gloss?: string | { text: string } | [ string | { text: string } ]
-    #       # shorthand allowed only when sense is omitted;
-    #       # normalizes to sense: [{ gloss: [...] }]
-    #     sameAs?: integer
-    #       # ent_seq of an existing entry: kanji/kana are added to it as extra spellings
-    #       # (insert_extra_spelling) instead of making a new entry
-    #   }
-    # ]
-    entries = load_extras_json()
-    return [normalize_extra_entry(entry, i) for i, entry in enumerate(entries)]
-
-
-def normalize_extra_entry(entry, entry_index):
-    if not isinstance(entry, dict):
-        raise ValueError(f"extras.json entry {entry_index} must be an object")
-
-    normalized = dict(entry)
-
-    for form_key in ("kanji", "kana"):
-        val = normalized.get(form_key)
-        if isinstance(val, str):
-            normalized[form_key] = [val]
-        elif val is not None and not isinstance(val, list):
-            raise ValueError(
-                f"extras.json entry {entry_index} field '{form_key}' must be a string or array"
-            )
-
-    shorthand_gloss = normalized.pop("gloss", None)
-    existing_sense = normalized.get("sense")
-
-    if shorthand_gloss is not None and existing_sense is not None:
-        raise ValueError(
-            f"extras.json entry {entry_index} cannot specify both 'gloss' shorthand and 'sense'"
-        )
-
-    if isinstance(existing_sense, str):
-        normalized["sense"] = [{"gloss": [existing_sense]}]
-    elif isinstance(existing_sense, dict):
-        normalized["sense"] = [existing_sense]
-    elif existing_sense is not None and not isinstance(existing_sense, list):
-        raise ValueError(
-            f"extras.json entry {entry_index} field 'sense' must be a string, object, or array"
-        )
-
-    if shorthand_gloss is not None:
-        gloss_list = shorthand_gloss if isinstance(shorthand_gloss, list) else [shorthand_gloss]
-        normalized["sense"] = [{"gloss": gloss_list}]
-
-    return normalized
-
-
 def join_reference_target(parts):
     # Rebuilds JMdict's canonical xref string — word, word・reading, or word・reading・senseNum —
     # from the array jmdict-simplified splits it into. SenseReference.target on the Swift side
@@ -924,59 +841,6 @@ def insert_entry(conn, entry, ent_seq):
                 "INSERT INTO lsource (sense_id, lang, ls_wasei, ls_type, content) VALUES (?, ?, ?, ?, ?)",
                 (sense_id, lang, wasei, ls_type, content),
             )
-
-
-def insert_extra_spelling(conn, entry, entry_index):
-    # { sameAs: ent_seq, kanji?: [...], kana?: [...] }: more spellings of an existing entry rather
-    # than a word of its own (ウエファース for ウエハース). The app's Custom Words exports these
-    # for spellings taught with Learn Spelling. Kanji spellings link to the entry's first reading.
-    row = conn.execute("SELECT id FROM entries WHERE ent_seq = ?", (int(entry["sameAs"]),)).fetchone()
-    if row is None:
-        raise ValueError(f"extras.json entry {entry_index}: sameAs {entry['sameAs']} is not an entry")
-    entry_id = row[0]
-    first_kana = conn.execute(
-        "SELECT id FROM kana_forms WHERE entry_id = ? ORDER BY id LIMIT 1", (entry_id,)
-    ).fetchone()
-    for text in entry.get("kanji", []):
-        text = text["text"] if isinstance(text, dict) else text
-        kanji_id = conn.execute(
-            "INSERT INTO kanji (text, entry_id) VALUES (?, ?)", (text, entry_id)
-        ).lastrowid
-        if first_kana is not None:
-            conn.execute(
-                "INSERT INTO kanji_kana_links (kanji_id, kana_id) VALUES (?, ?)", (kanji_id, first_kana[0])
-            )
-    for text in entry.get("kana", []):
-        text = text["text"] if isinstance(text, dict) else text
-        conn.execute("INSERT INTO kana_forms (text, entry_id, re_nokanji) VALUES (?, ?, 0)", (text, entry_id))
-
-
-def resolve_extra_ent_seq(entry, entry_index, used_ent_seqs):
-    # An extra entry's ent_seq is the STABLE key saved words anchor to, so it must not depend on
-    # the entry's position in extras.json. Prefer an explicit ent_seq; otherwise derive one
-    # deterministically from the entry's surface forms. The previous scheme assigned sequential
-    # negatives by file order, so reordering or inserting an entry silently re-keyed every entry
-    # after it.
-    explicit_ent_seq = entry.get("ent_seq")
-    if explicit_ent_seq is not None:
-        ent_seq = int(explicit_ent_seq)
-        if ent_seq in used_ent_seqs:
-            raise ValueError(
-                f"extras.json entry {entry_index} specifies ent_seq {ent_seq}, but that ent_seq is already in use"
-            )
-        return ent_seq
-
-    # Content-derived negative ent_seq (JMdict sequences are positive), in a wide band to keep
-    # collisions rare. Identity is the set of surface forms; on the rare collision, probe downward.
-    kanji = entry.get("kanji") or []
-    kana = entry.get("kana") or []
-    key = "k:" + "|".join(kanji) + ";r:" + "|".join(kana)
-    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()
-    ent_seq = -(int(digest[:12], 16) % 900_000_000) - 100_000_000
-    while ent_seq in used_ent_seqs:
-        ent_seq -= 1
-
-    return ent_seq
 
 
 def import_wordfreq(conn):
@@ -1970,27 +1834,14 @@ def build_database():
     with phase("Creating schema..."):
         create_schema(conn)
 
-    with phase("Loading and inserting JMdict + extra entries..."):
+    with phase("Loading and inserting JMdict entries..."):
         PRIORITY_BY_FORM.clear()
         PRIORITY_BY_FORM.update(load_jmdict_priorities())
         print(f"  {len(PRIORITY_BY_FORM)} JMdict forms carry priority tags")
-        entries = load_jmdict_entries()
-        extra_entries = load_extra_entries()
-
-        used_ent_seqs = set()
-
-        for entry in entries:
-            ent_seq = int(entry.get("id"))
-            insert_entry(conn, entry, ent_seq)
-            used_ent_seqs.add(ent_seq)
-
-        for entry_index, entry in enumerate(extra_entries):
-            if entry.get("sameAs") is not None:
-                insert_extra_spelling(conn, entry, entry_index)
-                continue
-            ent_seq = resolve_extra_ent_seq(entry, entry_index, used_ent_seqs)
-            insert_entry(conn, entry, ent_seq)
-            used_ent_seqs.add(ent_seq)
+        # extras.json is not built in: the app ships it and writes it in at runtime as the
+        # Custom Words defaults (CustomWordStore, CustomWordApplier).
+        for entry in load_jmdict_entries():
+            insert_entry(conn, entry, int(entry.get("id")))
 
     with phase("Importing frequency data..."):
         import_wordfreq(conn)
@@ -2085,7 +1936,7 @@ def record_build_provenance(conn):
 
 
 # The non-download inputs of this build: the commit, uncommitted changes, the local files the
-# generator reads (extras.json, the manifest, ScriptClassifier.swift's kana ranges, the deinflection
+# generator reads (the manifest, ScriptClassifier.swift's kana ranges, the deinflection
 # grammar, exceptions and generator, itself) and the tool versions (wordfreq ranks and MeCab splits
 # both land in the database).
 def build_info():
@@ -2107,7 +1958,7 @@ def build_info():
         "wordfreq": wordfreq_version,
         "mecab": run("mecab", "--version"),
     }
-    for local in (EXTRAS_PATH, MANIFEST_PATH, SCRIPT_CLASSIFIER_SWIFT_PATH, DEINFLECTION_GRAMMAR_PATH,
+    for local in (MANIFEST_PATH, SCRIPT_CLASSIFIER_SWIFT_PATH, DEINFLECTION_GRAMMAR_PATH,
                   DEINFLECTION_EXTRAS_PATH, DEINFLECTION_GENERATOR_PATH, Path(__file__).resolve()):
         if local.exists():
             info[f"sha256 {local.relative_to(PROJECT_ROOT)}"] = sha256_of_file(local)
@@ -2496,10 +2347,6 @@ def build(start):
     print("Building dictionary.sqlite...")
     print(f"JMdict SHA256: {sha256_of_file(JMDICT_PATH)}")
     print(f"Frequency ranks: {FREQUENCY_PATH.name} ({sha256_of_file(FREQUENCY_PATH)})")
-    if EXTRAS_PATH.exists():
-        print(f"Extras SHA256: {sha256_of_file(EXTRAS_PATH)}")
-    else:
-        print("Extras SHA256: (missing; no supplemental entries loaded)")
 
     build_database()
     print("Sources used:")

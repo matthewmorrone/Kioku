@@ -6,20 +6,20 @@ import SQLite3
 // senses and glosses, or extra forms on an existing entry. Every read path (trie, deinflection,
 // furigana, lookup, search, saved-word identity) then sees the list without knowing it's custom.
 //
-// Runs before every resource rebuild. A fresh download still carries the build's extras entries:
-// those are read back as CustomWords (returned, so the store can offer the ones it hasn't seen),
-// then deleted, so the list alone decides what's there — a deleted default stays deleted. Each row
-// this writes is recorded in `custom_word_rows` and removed before the next write;
-// `custom_word_state` holds the applied list so an unchanged list costs one read.
+// Runs before every resource rebuild. The list includes the built-in defaults the app ships
+// (CustomWordStore.bundledDefaults); the dictionary build no longer bakes extras.json in, but an
+// older file (the pinned release) still carries those entries, so they are deleted first and the
+// list alone decides what's there. Each row this writes is recorded in `custom_word_rows` and
+// removed before the next write; `custom_word_state` holds the applied list so an unchanged list
+// costs one read.
 nonisolated enum CustomWordApplier {
     // Part of the applied-list signature: bump when the rows written for a word change, so a phone
     // whose list is unchanged still rewrites them under the new rules.
     static let rowFormatVersion = 2
 
-    // Brings the dictionary at `url` in line with `words`. Returns the build's extras entries whose
-    // headword isn't in `offeredDefaultKeys`, written in along with `words`. Throws on SQLite
-    // failure; the caller logs it and builds resources from whatever the file holds.
-    static func apply(_ words: [CustomWord], offeredDefaultKeys: Set<String>, toDatabaseAt url: URL) throws -> [CustomWord] {
+    // Brings the dictionary at `url` in line with `words`. Throws on SQLite failure; the caller logs
+    // it and builds resources from whatever the file holds.
+    static func apply(_ words: [CustomWord], toDatabaseAt url: URL) throws {
         var connection: OpaquePointer?
         guard sqlite3_open_v2(url.path, &connection, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK, let db = connection else {
             let message = connection.map { String(cString: sqlite3_errmsg($0)) } ?? "unknown"
@@ -38,17 +38,14 @@ nonisolated enum CustomWordApplier {
             SELECT id FROM entries WHERE ent_seq < 0 AND ent_seq > ?
             AND id NOT IN (SELECT row_id FROM custom_word_rows WHERE table_name = 'entries')
             """, [.int(CustomWordIdentity.newWordEntSeqBase)])
-        let builtIns = try builtInEntryIDs.map { try readEntry(db, entryID: $0) }
-        let newDefaults = builtIns.filter { offeredDefaultKeys.contains($0.defaultKey ?? "") == false }
-
-        let wordsToWrite = words + newDefaults
+        let wordsToWrite = words
         // Sorted keys: JSONEncoder's key order otherwise varies between launches, so an unchanged
         // list read as changed and was rewritten on every launch (which also invalidated the trie
         // snapshot keyed on this signature).
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let signature = "v\(rowFormatVersion):" + String(decoding: try encoder.encode(wordsToWrite), as: UTF8.self)
-        if builtInEntryIDs.isEmpty, try appliedSignature(db) == signature { return [] }
+        if builtInEntryIDs.isEmpty, try appliedSignature(db) == signature { return }
 
         try execute(db, "BEGIN IMMEDIATE")
         do {
@@ -64,34 +61,6 @@ nonisolated enum CustomWordApplier {
             try? execute(db, "ROLLBACK")
             throw error
         }
-        return newDefaults
-    }
-
-    // MARK: - Reading the build's extras entries
-
-    // One baked-in extras entry as a CustomWord default, keeping its ent_seq so saved words that
-    // point at it still resolve.
-    private static func readEntry(_ db: OpaquePointer, entryID: Int64) throws -> CustomWord {
-        let entSeq = try queryInts(db, "SELECT ent_seq FROM entries WHERE id = ?", [.int(entryID)]).first
-        let kanji = try queryTexts(db, "SELECT text FROM kanji WHERE entry_id = ? ORDER BY id", [.int(entryID)])
-        let kana = try queryTexts(db, "SELECT text FROM kana_forms WHERE entry_id = ? ORDER BY id", [.int(entryID)])
-        var senses: [CustomWordSense] = []
-        for senseRow in try queryRows(db, "SELECT id, coalesce(pos, ''), coalesce(misc, '') FROM senses WHERE entry_id = ? ORDER BY order_index", [.int(entryID)]) {
-            let glosses = try queryTexts(db, "SELECT gloss FROM glosses WHERE sense_id = ? ORDER BY order_index", [.int(Int64(senseRow[0]) ?? 0)])
-            senses.append(CustomWordSense(
-                partOfSpeech: codes(senseRow[1]),
-                misc: codes(senseRow[2]),
-                glosses: glosses
-            ))
-        }
-        var word = CustomWord(id: UUID(), entSeq: entSeq, sameAsEntSeq: nil, kanji: kanji, kana: kana, senses: senses, defaultKey: nil)
-        word.defaultKey = CustomWordIdentity.headword(of: word)
-        return word
-    }
-
-    // Splits a comma-joined code column (the builder's format) into its codes.
-    private static func codes(_ joined: String) -> [String] {
-        joined.split(separator: ",").map(String.init).filter { $0.isEmpty == false }
     }
 
     // MARK: - Removal

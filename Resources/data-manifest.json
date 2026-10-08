@@ -42,7 +42,7 @@
     },
     {
       "name": "extras",
-      "description": "Hand-written entries for words JMdict does not carry, mostly katakana fragments (ユア) the segmenter needs in order to split compounds. Merged into the same tables as JMdict so lookup and segmentation cannot tell them apart.",
+      "description": "Built-in Custom Words: hand-written entries for words JMdict does not carry (リュミエール, 西郷玉) and spellings of words it does (カステイラ for カステラ). Shipped in the app bundle, not built into the dictionary: CustomWordStore offers them as the Custom Words defaults and CustomWordApplier writes the list into the downloaded dictionary at runtime.",
       "license": "Project-maintained (Kioku)",
       "type": "supplemental-dictionary",
       "path": "Resources/extras.json",
@@ -51,7 +51,7 @@
       "url": null,
       "sha256": null,
       "provenance": "project-maintained supplemental dictionary entries",
-      "feedsDictionary": true
+      "feedsDictionary": false
     },
     {
       "name": "jiten-frequency-global",

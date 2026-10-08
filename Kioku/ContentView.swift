@@ -166,6 +166,8 @@ struct ContentView: View {
         .environmentObject(readNoteNavigation)
         .onAppear {
             StartupTimer.mark("onAppear fired")
+            // The built-in Custom Words this build ships; new ones join the list before it is applied.
+            customWordStore.syncBuiltIns(CustomWordStore.bundledDefaults())
             if let firstSample = SampleNote.seedIfNeeded(into: notesStore).first {
                 lastActiveNoteID = firstSample.id.uuidString
             }
@@ -471,18 +473,13 @@ struct ContentView: View {
     private func rebuildReadResources() {
         let currentRevision = readResources.segmenterRevision
         let customWords = customWordStore.words
-        let offeredDefaultKeys = Set(customWordStore.offeredDefaults.keys)
         Task.detached(priority: .userInitiated) {
-            // Custom Words go into the dictionary file before anything reads it, replacing the
-            // build's extras entries; defaults a newer dictionary brought go back to the store. A
-            // failure leaves the file as it was: lookups and segmentation work, minus the list.
+            // Custom Words go into the dictionary file before anything reads it. A failure leaves
+            // the file as it was: lookups and segmentation work, minus the list.
             if DictionaryDownloadManager.isInstalled {
                 do {
-                    let newDefaults = try StartupTimer.measure("CustomWordApplier.apply") {
-                        try CustomWordApplier.apply(customWords, offeredDefaultKeys: offeredDefaultKeys, toDatabaseAt: DictionaryDownloadManager.installedDatabaseURL)
-                    }
-                    if newDefaults.isEmpty == false {
-                        await MainActor.run { customWordStore.addDefaults(newDefaults) }
+                    try StartupTimer.measure("CustomWordApplier.apply") {
+                        try CustomWordApplier.apply(customWords, toDatabaseAt: DictionaryDownloadManager.installedDatabaseURL)
                     }
                 } catch {
                     AppLog.error(.dictionary, "applying custom words failed: \(error)")

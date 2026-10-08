@@ -62,17 +62,17 @@ final class CustomWordStoreTests: XCTestCase {
     // A default is offered once: deleting it survives a later dictionary reporting it again.
     func testDeletedDefaultIsNotReAdded() throws {
         let store = makeStore()
-        store.addDefaults([word("ラララ", defaultKey: "ラララ", entSeq: -136_212_510)])
+        store.syncBuiltIns([word("ラララ", defaultKey: "ラララ", entSeq: -136_212_510)])
         let id = try XCTUnwrap(store.words.first?.id)
         store.remove(id: id)
-        store.addDefaults([word("ラララ", defaultKey: "ラララ", entSeq: -136_212_510)])
+        store.syncBuiltIns([word("ラララ", defaultKey: "ラララ", entSeq: -136_212_510)])
         XCTAssertTrue(store.words.isEmpty)
     }
 
     // Restore Defaults brings a deleted default back and resets an edited one.
     func testRestoreDefaults() throws {
         let store = makeStore()
-        store.addDefaults([word("ラララ", gloss: "la la la", defaultKey: "ラララ"), word("ユア", gloss: "your", defaultKey: "ユア")])
+        store.syncBuiltIns([word("ラララ", gloss: "la la la", defaultKey: "ラララ"), word("ユア", gloss: "your", defaultKey: "ユア")])
         var edited = try XCTUnwrap(store.words.first { $0.defaultKey == "ユア" })
         edited.senses = [CustomWordSense(partOfSpeech: [], misc: [], glosses: ["changed"])]
         store.save(edited)
@@ -82,10 +82,20 @@ final class CustomWordStoreTests: XCTestCase {
         XCTAssertEqual(Set(store.words.compactMap { $0.senses.first?.glosses.first }), ["la la la", "your"])
     }
 
+    // A built-in the app stops shipping leaves the defaults, and Restore Defaults removes it.
+    func testRestoreDefaultsRemovesRetiredBuiltIns() {
+        let store = makeStore()
+        store.syncBuiltIns([word("ラララ", defaultKey: "ラララ"), word("ミンツ", defaultKey: "ミンツ")])
+        store.save(word("カステイラ"))
+        store.syncBuiltIns([word("ラララ", defaultKey: "ラララ")])
+        store.restoreDefaults()
+        XCTAssertEqual(Set(store.words.compactMap { $0.kana.first }), ["ラララ", "カステイラ"])
+    }
+
     // Reset leaves exactly the defaults; the user's own words go.
     func testResetToDefaults() {
         let store = makeStore()
-        store.addDefaults([word("ラララ", defaultKey: "ラララ")])
+        store.syncBuiltIns([word("ラララ", defaultKey: "ラララ")])
         store.save(word("ミンツ"))
         store.resetToDefaults()
         XCTAssertEqual(store.words.map(\.defaultKey), ["ラララ"])
@@ -94,17 +104,17 @@ final class CustomWordStoreTests: XCTestCase {
     // An import replaces the list and keeps the offered defaults, so ones it leaves out stay gone.
     func testReplaceWordsKeepsOfferedDefaults() {
         let store = makeStore()
-        store.addDefaults([word("ラララ", defaultKey: "ラララ")])
+        store.syncBuiltIns([word("ラララ", defaultKey: "ラララ")])
         store.replaceWords(with: [word("ドロップス")])
         XCTAssertEqual(store.words.map { $0.kana.first }, ["ドロップス"])
-        store.addDefaults([word("ラララ", defaultKey: "ラララ")])
+        store.syncBuiltIns([word("ラララ", defaultKey: "ラララ")])
         XCTAssertEqual(store.words.count, 1)
     }
 
     // The list and offered defaults survive a new store instance.
     func testPersistsAcrossInstances() {
         let store = makeStore()
-        store.addDefaults([word("ラララ", defaultKey: "ラララ")])
+        store.syncBuiltIns([word("ラララ", defaultKey: "ラララ")])
         store.save(word("カステイラ"))
 
         let reloaded = makeStore()
