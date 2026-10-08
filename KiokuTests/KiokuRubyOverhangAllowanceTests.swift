@@ -3,11 +3,10 @@ import UIKit
 import CoreText
 @testable import Kioku
 
-// Ruby wider than its kanji may reach over its own word's okurigana (戦う) by
-// KiokuRubyPadding.okuriganaOverhangAllowance, and over the next word's kana (涙は) by
-// KiokuRubyPadding.wordBoundaryOverhangAllowance, before space is added. These pin which value each
-// spacing rule reads: the builder's okurigana kern, the builder's between-words kern, and the
-// segment packer.
+// Ruby wider than its kanji may reach over a neighbouring kana by KiokuRubyPadding.overhangAllowance
+// (zero: never) before space is added — the same amount whether that kana is the word's own
+// okurigana (戦う) or the next word (涙は). These pin that every spacing rule reads the one value: the builder's
+// okurigana kern, the builder's between-words kern, and the segment packer.
 @MainActor
 final class KiokuRubyOverhangAllowanceTests: XCTestCase {
 
@@ -15,16 +14,14 @@ final class KiokuRubyOverhangAllowanceTests: XCTestCase {
     private var baseFont: UIFont { UIFont.systemFont(ofSize: textSize) }
     private var furiganaFont: UIFont { UIFont.systemFont(ofSize: textSize * TypographySettings.furiganaSizeFactor) }
 
-    // The space an allowance leaves after a kanji run: its overhang on one side beyond the
+    // The space the allowance leaves after a kanji run: its overhang on one side beyond the
     // allowance, rounded up the way the builder rounds it.
-    private func expectedPadding(kanji: String, reading: String, allowance: CGFloat) -> CGFloat {
+    private func expectedPadding(kanji: String, reading: String) -> CGFloat {
         let kanjiW = ceil((kanji as NSString).size(withAttributes: [.font: baseFont]).width)
         let rubyW = ceil((reading as NSString).size(withAttributes: [.font: furiganaFont]).width)
+        let allowance = KiokuRubyPadding.overhangAllowance(furiganaFont: furiganaFont)
         return max(0, ceil((rubyW - kanjiW) / 2 - allowance))
     }
-
-    private var okuriganaAllowance: CGFloat { KiokuRubyPadding.okuriganaOverhangAllowance(furiganaFont: furiganaFont) }
-    private var wordBoundaryAllowance: CGFloat { KiokuRubyPadding.wordBoundaryOverhangAllowance(furiganaFont: furiganaFont) }
 
     // Builder output for `text` split into `segments`, with readings keyed by kanji-run location.
     private func build(
@@ -63,30 +60,29 @@ final class KiokuRubyOverhangAllowanceTests: XCTestCase {
         string.attribute(.kern, at: index, effectiveRange: nil) as? CGFloat ?? 0
     }
 
-    // Ruby may overhang its own okurigana by half a ruby character, the next word's kana not at all.
-    func test_allowances() {
-        XCTAssertEqual(okuriganaAllowance, furiganaFont.pointSize / 2)
-        XCTAssertEqual(wordBoundaryAllowance, 0)
+    // The allowance is zero: ruby never overhangs a neighbouring kana.
+    func test_allowanceIsZero() {
+        XCTAssertEqual(KiokuRubyPadding.overhangAllowance(furiganaFont: furiganaFont), 0)
     }
 
     // Okurigana: 戦う with たたか — the kern after 戦 is its overhang beyond the allowance.
     func test_okurigana_kernIsOverhangBeyondAllowance() {
         let attributed = build("戦う", segments: ["戦う"], furigana: [0: "たたか"], furiganaLength: [0: 1], isSegmentPacked: true)
-        XCTAssertEqual(kern(attributed, at: 0), expectedPadding(kanji: "戦", reading: "たたか", allowance: okuriganaAllowance), accuracy: 0.01)
+        XCTAssertEqual(kern(attributed, at: 0), expectedPadding(kanji: "戦", reading: "たたか"), accuracy: 0.01)
     }
 
     // A reading long enough to exceed the allowance still pushes its okurigana away: 憤り with いきどお.
     func test_okurigana_longReadingStillAddsSpace() {
         let attributed = build("憤り", segments: ["憤り"], furigana: [0: "いきどお"], furiganaLength: [0: 1], isSegmentPacked: true)
-        let padding = expectedPadding(kanji: "憤", reading: "いきどお", allowance: okuriganaAllowance)
+        let padding = expectedPadding(kanji: "憤", reading: "いきどお")
         XCTAssertGreaterThan(padding, 0)
         XCTAssertEqual(kern(attributed, at: 0), padding, accuracy: 0.01)
     }
 
-    // Between words, unpacked: 涙|は — the kern after 涙 uses the word-boundary allowance.
+    // Between words, unpacked: 涙|は — the kern after 涙 uses the same allowance as okurigana.
     func test_betweenWords_unpacked_kernIsOverhangBeyondAllowance() {
         let attributed = build("涙は", segments: ["涙", "は"], furigana: [0: "なみだ"], furiganaLength: [0: 1], isSegmentPacked: false)
-        XCTAssertEqual(kern(attributed, at: 0), expectedPadding(kanji: "涙", reading: "なみだ", allowance: wordBoundaryAllowance), accuracy: 0.01)
+        XCTAssertEqual(kern(attributed, at: 0), expectedPadding(kanji: "涙", reading: "なみだ"), accuracy: 0.01)
     }
 
     // Between words, unpacked, next to another reading: 涙|瞳 — no allowance, or the two readings

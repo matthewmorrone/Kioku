@@ -245,8 +245,8 @@ enum KiokuCoreTextAttributedStringBuilder {
                 ))
 
                 // Intra-segment spacing, in both layout modes: ruby wider than its kanji overhangs
-                // kana of its own segment by at most KiokuRubyPadding.okuriganaOverhangAllowance
-                // (so 戦う with たたか needs no gap and 憤り with いきどお only a little).
+                // kana of its own segment by at most KiokuRubyPadding.overhangAllowance; space is
+                // added for the rest (戦う with たたか, 憤り with いきどお).
                 // Kern on the character before the run pushes the kanji right; kern on the run's
                 // last character pushes the following kana away; ruby centring discounts it
                 // (KiokuRubyPadding.kanjiSpan).
@@ -254,7 +254,7 @@ enum KiokuCoreTextAttributedStringBuilder {
                    let containing = segmentNSRanges.first(where: { NSLocationInRange(kanjiLoc, $0) }) {
                     let kanjiW = ceil((kanjiText as NSString).size(withAttributes: [.font: baseFont]).width)
                     let rubyW = ceil((reading as NSString).size(withAttributes: [.font: furiganaFont]).width)
-                    let allowance = KiokuRubyPadding.okuriganaOverhangAllowance(furiganaFont: furiganaFont)
+                    let allowance = KiokuRubyPadding.overhangAllowance(furiganaFont: furiganaFont)
                     let overhang = max(0, ceil((rubyW - kanjiW) / 2 - allowance))
                     if overhang > 0.5 {
                         let runLastIdx = kanjiLoc + kanjiLen - 1
@@ -278,9 +278,8 @@ enum KiokuCoreTextAttributedStringBuilder {
                 //     (visible only when the kanji sits at the start of its segment, so the
                 //     ruby's left tail actually crosses the segment boundary)
                 //
-                // Ruby reaches over a neighbouring word's kana by
-                // KiokuRubyPadding.wordBoundaryOverhangAllowance; a neighbour under ruby of its own
-                // gets the full overhang.
+                // Ruby reaches over a neighbouring kana by KiokuRubyPadding.overhangAllowance, as
+                // it does over its own; a neighbour under ruby of its own gets the full overhang.
                 //
                 // SKIPPED in segment-packed mode: the packer handles inter-segment spacing
                 // via per-segment footprint placement, so adding kern here would inflate
@@ -288,7 +287,7 @@ enum KiokuCoreTextAttributedStringBuilder {
                 if inputs.isRubySpacingEnabled && inputs.isSegmentPacked == false {
                     let kanjiW = ceil((kanjiText as NSString).size(withAttributes: [.font: baseFont]).width)
                     let rubyW = ceil((reading as NSString).size(withAttributes: [.font: furiganaFont]).width)
-                    let allowance = KiokuRubyPadding.wordBoundaryOverhangAllowance(furiganaFont: furiganaFont)
+                    let allowance = KiokuRubyPadding.overhangAllowance(furiganaFont: furiganaFont)
                     let fullOverhang = max(0, ceil((rubyW - kanjiW) / 2))
                     let isUnderRuby: (Int) -> Bool = { index in
                         inputs.furiganaBySegmentLocation.contains { loc, reading in
