@@ -4,7 +4,7 @@ import Foundation
 // between two characters. The training data (segcli features, scripts/segmentation-eval) and the app
 // compute them with this one type, so the model never sees features computed two different ways.
 // Offsets are Characters, the unit the path search uses; gap i (1..<n) is the gap before character i.
-enum BoundaryFeatures {
+nonisolated enum BoundaryFeatures {
     // Values per gap: dictionary edges ending there by length 1/2/3/4+, starting there by length
     // 1/2/3/4+, edges crossing it, the longest crossing edge's length, and the cheapest node cost
     // (centi-nats) of an edge ending and of one starting there, -1 when there is none.

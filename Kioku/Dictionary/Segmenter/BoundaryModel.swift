@@ -6,7 +6,7 @@ import Foundation
 // characters around it and the lattice's evidence there. The path search adds its verdict as
 // BoundaryCosts, so it only decides between paths the lattice already priced close. It runs on the
 // CPU in float32 and its costs are rounded to whole centi-nats, so every device segments alike.
-final class BoundaryModel: @unchecked Sendable {
+nonisolated final class BoundaryModel: @unchecked Sendable {
     private let model: MLModel
     // Character → embedding index, as trained; 1 is the shared slot for characters it never saw.
     private let vocabulary: [String: Int32]

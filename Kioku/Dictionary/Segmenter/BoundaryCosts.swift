@@ -5,7 +5,7 @@ import Foundation
 // path search stays integer and deterministic. A segmentation's total is the sum over every gap, which
 // splits exactly into one charge per segment — so it adds to viterbiSelect's node cost unchanged.
 // Gap i (1..<n) is the gap before character i, as in BoundaryFeatures.
-struct BoundaryCosts {
+nonisolated struct BoundaryCosts: Sendable {
     // Prefix sums of the join cost: joinPrefix[i] is the cost of keeping gaps 1..<i uncut.
     private let joinPrefix: [Int]
     // Cut cost per gap, indexed 0...n; gaps 0 and n (text start and end) cost nothing.
