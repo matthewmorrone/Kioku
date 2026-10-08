@@ -10,6 +10,14 @@ written so a new session can pick it up cold.
       by wordfreq zipf (だの 4.09) recovers ~390 of the 416 gap, not all; needs scoring work plus a
       full eval (held2k, kana2k, named cases, lyrics).
 
+- [ ] **すこしのまおつきあいください → の|まお|つきあい (named case, a 93 centi-nat near-tie)** —
+      broke 2026-10-08 when a surface that is both a word and an inflected form started getting an
+      edge for each reading (fixes なかないで|くれ, kana2k 246 → 241). つきあい's verb-stem reading
+      flows into ください and drags in まお (苧, a uk-tagged JMdict word, so "normally kanji" can't
+      exclude it). Candidate fix: skip the second reading when the word and the lemma are one family
+      (付き合い/付き合う share 付き合; 暮れ/呉れる don't) — needs kanji spellings per entry in the
+      segmenter. Left failing on purpose; pick up if まお-style junk shows up in real notes.
+
 ## Features
 - [ ] Quiz on next and previous words/lines: points for consecutivity 
 - [ ] **Real-time kanji-choice game mode** — pick the correct kanji as fast as possible; score
