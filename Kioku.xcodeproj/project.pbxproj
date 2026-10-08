@@ -111,6 +111,11 @@
 			path = KiokuTests;
 			sourceTree = "<group>";
 		};
+		C0FFEE0000000000000000A1 /* KiokuUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = KiokuUITests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -164,6 +169,7 @@
 				E3070AEA2F4DFDB6005FD323 /* Kioku */,
 				C0FFEE000000000000000003 /* KiokuWidget */,
 				E3070AF82F4DFDB8005FD323 /* KiokuTests */,
+				C0FFEE0000000000000000A1 /* KiokuUITests */,
 				E3070AE92F4DFDB6005FD323 /* Products */,
 				E3FBBF9C303F516D009664F4 /* Recovered References */,
 			);
@@ -304,6 +310,9 @@
 			);
 			dependencies = (
 				E3070B012F4DFDB8005FD323 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				C0FFEE0000000000000000A1 /* KiokuUITests */,
 			);
 			name = KiokuUITests;
 			packageProductDependencies = (

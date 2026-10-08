@@ -45,11 +45,13 @@ final class TourCoordinator: ObservableObject {
         }
     }
 
-    // Starts the tab's tour unless it has been seen. Waits a moment first so the tab's controls
+    // Starts the tab's tour unless it has been seen or the UI tests launched the app (a tour would
+    // cover what they tap). Waits a moment first so the tab's controls
     // have laid out and reported their frames, and drops the start if the user moves on meanwhile.
     func startIfUnseen(_ tab: ContentTab) {
         pendingStart?.cancel()
         guard activeTab == nil,
+              UITestDictionaryInstaller.isUITestLaunch == false,
               TourCatalog.steps(for: tab).isEmpty == false,
               defaults.bool(forKey: TourCatalog.seenKey(for: tab)) == false else { return }
         pendingStart = Task { [weak self] in
