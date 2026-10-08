@@ -229,3 +229,17 @@ The full training half comes from `prep.py` (see Data); kana copies from `bounda
 relabelling from `segcli relabel` + `boundary/relabel_kana.py` + `boundary/relabel_features.py`.
 The weight is chosen on train2k and its kana copies, never on the held-out sets. Above weight 4 the
 model starts pushing Tatoeba's conventions (と|いう).
+
+## Lyric gold without anyone's review (`lyrics/mecab_gold.py`)
+
+All 319 lyric lines, gold from MeCab (ipadic) relabelled to Kioku's convention — no one's own
+segmentation review goes into it. Disagreements are graded from JMdict and grammar; on 2026-10-08
+the three cut-throughs were all MeCab's mistakes on kana (ひとり|ぼっ|ちよ, なら|し|てよ|ん|で, 眩し|げに),
+so Kioku has 0 real errors on the set.
+
+```bash
+sed 's/ | //g' lyrics/review-corrected-2026-09-20.txt | grep -v '^\s*$' | sort -u > work/lyrics-lines.txt
+python3 lyrics/mecab_gold.py work/lyrics-lines.txt | ./work/segcli relabel > work/lyrics-gold.jsonl
+python3 -c "import json;[print(json.loads(l)['s']) for l in open('work/lyrics-gold.jsonl')]" | ./work/segcli run > work/lyrics.out
+python3 score.py work/lyrics-gold.jsonl work/lyrics.out
+```
