@@ -243,3 +243,12 @@ python3 lyrics/mecab_gold.py work/lyrics-lines.txt | ./work/segcli relabel > wor
 python3 -c "import json;[print(json.loads(l)['s']) for l in open('work/lyrics-gold.jsonl')]" | ./work/segcli run > work/lyrics.out
 python3 score.py work/lyrics-gold.jsonl work/lyrics.out
 ```
+
+## Known fails, left on purpose
+
+- **あめ|だ|の|せんべい** (want あめ|だの|せんべい, the listing particle; sample note キャラメルと飴玉).
+  Not a frequency error: on the same scale as the rank list (wordfreq runs ~1.7 Zipf higher for
+  function words), だの's rank is accurate — it's a rare particle losing a near-tie. Raising function
+  words to their raw wordfreq fixed it only by inflating every particle (broke 雨|なのに → 雨|な|のに).
+  The only remaining fix is a rule for the paired AだのBだの pattern, which would be a one-particle
+  exception; dropped 2026-10-08.
