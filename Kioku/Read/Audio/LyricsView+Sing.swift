@@ -193,16 +193,46 @@ extension LyricsView {
     }
 
     // The note ranges of the words the reveal option currently hides: every word Sing listens for
-    // that isn't graded yet, or all of them until Stop with "Reveal at end".
+    // that isn't graded yet, or all of them until Stop with "Reveal at end". A word too short to
+    // grade (を, a lone vowel) is hidden with the graded word before it on its line, so it doesn't
+    // give the line away; one before a line's first graded word goes with that word instead.
     var singHiddenRanges: [NSRange] {
         let reveal = SingReveal(rawValue: singRevealRaw) ?? .show
         guard singSession.isActive, reveal != .show else { return [] }
         let words = segmentationRanges.map { NSRange($0, in: noteText) }
-        return singSession.targetIDs.compactMap { id in
-            guard reveal == .atEnd || singSession.verdicts[id] == nil,
-                  let word = words.first(where: { NSLocationInRange(id, $0) }) else { return nil }
+        let isHidden: (Int) -> Bool = { reveal == .atEnd || singSession.verdicts[$0] == nil }
+        var hidden: [NSRange] = singSession.targetIDs.compactMap { id in
+            guard isHidden(id), let word = words.first(where: { NSLocationInRange(id, $0) }) else { return nil }
             return NSRange(location: id, length: NSMaxRange(word) - id)
         }
+        let targets = singSession.targetIDs.sorted()
+        let noteNS = noteText as NSString
+        for word in words where word.length > 0 && NSMaxRange(word) <= noteNS.length {
+            guard targets.contains(where: { NSLocationInRange($0, word) }) == false,
+                  Self.isSingableWord(noteNS.substring(with: word)),
+                  let owner = Self.singOwner(of: word, targets: targets, in: noteNS),
+                  isHidden(owner) else { continue }
+            hidden.append(word)
+        }
+        return hidden
+    }
+
+    // True for a word with something to sing in it — not punctuation, spaces or ♪ alone.
+    static func isSingableWord(_ text: String) -> Bool {
+        text.unicodeScalars.contains { CharacterSet.letters.contains($0) }
+    }
+
+    // The graded word an ungraded word is hidden with: the nearest graded word before it on its line,
+    // else the nearest after it on its line; nil when its line has none (it isn't a sung line).
+    static func singOwner(of word: NSRange, targets: [Int], in note: NSString) -> Int? {
+        // True when nothing between the two offsets starts a new line.
+        func sameLine(_ a: Int, _ b: Int) -> Bool {
+            let lo = min(a, b), hi = max(a, b)
+            return note.substring(with: NSRange(location: lo, length: hi - lo)).contains("\n") == false
+        }
+        if let before = targets.last(where: { $0 < word.location }), sameLine(before, word.location) { return before }
+        if let after = targets.first(where: { $0 > word.location }), sameLine(word.location, after) { return after }
+        return nil
     }
 
     // `text`, which starts at note offset `origin`, with every hidden word replaced by 〇, one per
