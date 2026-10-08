@@ -5,6 +5,11 @@ name: Tests
 # scripts/segmentation-eval (held2k / lyrics numbers and named_cases.py).
 on:
   workflow_dispatch:
+    inputs:
+      only-testing:
+        description: "Space-separated test identifiers to run instead of the whole suite, e.g. KiokuTests/LexiconTests/testOtherFormsOfSuruStayInItsClass"
+        required: false
+        default: ""
 
 # A newer push to the same PR makes the older run pointless, so cancel the superseded one.
 concurrency:
@@ -104,14 +109,20 @@ jobs:
       # also records that CI-env-var-based skipping doesn't propagate into the simulator test
       # process, so a build-flag exclusion is the mechanism.
       - name: Build & test
+        env:
+          ONLY_TESTING: ${{ inputs.only-testing }}
         run: |
           set -o pipefail
+          # An only-testing input narrows the run to those identifiers; empty runs everything.
+          only_args=()
+          for test_id in $ONLY_TESTING; do only_args+=("-only-testing:$test_id"); done
           xcodebuild test \
             -project Kioku.xcodeproj \
             -scheme Kioku \
             -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
             -parallel-testing-enabled NO \
             -skip-testing:KiokuTests/AlignmentQualityTests \
+            ${only_args[@]+"${only_args[@]}"} \
             -enableCodeCoverage YES \
             -derivedDataPath build \
             -resultBundlePath build/Kioku.xcresult \
