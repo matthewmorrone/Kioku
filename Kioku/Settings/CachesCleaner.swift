@@ -29,7 +29,7 @@ nonisolated enum CachesCleaner {
         var freed = 0
         for root in roots() {
             let before = totalRegularFileBytes(at: root)
-            removeContents(of: root)
+            DownloadedModelsStore.removeContents(of: root)
             freed += max(0, before - totalRegularFileBytes(at: root))
         }
         return freed
@@ -127,17 +127,6 @@ nonisolated enum CachesCleaner {
             }
         }
         return freed
-    }
-
-    // Removes every top-level entry under `root`, leaving the directory itself in place.
-    private static func removeContents(of root: URL) {
-        let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil, options: []) else {
-            return
-        }
-        for url in entries {
-            try? fm.removeItem(at: url)
-        }
     }
 
     // Recursive byte sum of regular files under `root`. Ignores symlinks and directory

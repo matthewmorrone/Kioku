@@ -13,8 +13,7 @@ enum LogFeatureSettings {
     // Reads a feature's toggle, defaulting to enabled when the user has never touched it —
     // distinguishes "never set" from "explicitly set to false" via UserDefaults.object(forKey:).
     nonisolated static func isEnabled(_ feature: LogFeature) -> Bool {
-        guard UserDefaults.standard.object(forKey: key(feature)) != nil else { return true }
-        return UserDefaults.standard.bool(forKey: key(feature))
+        UserDefaultsBool.read(key(feature), default: true)
     }
 
     // Persists a feature's toggle, called from the Settings → Debug Logs switch.

@@ -58,7 +58,7 @@ enum LLMSettings {
     static let useLLMKey = "kioku.llm.useLLM"
     // AI is on unless the developer stub mode (Advanced → Diagnostics) turned it off.
     static func isEnabled() -> Bool {
-        UserDefaults.standard.object(forKey: useLLMKey) == nil || UserDefaults.standard.bool(forKey: useLLMKey)
+        UserDefaultsBool.read(useLLMKey, default: true)
     }
     // Compact-format stub used when useLLM is false. Parsed by the same pipeline as real responses.
     static let stubResponseKey = "kioku.llm.stubResponse"

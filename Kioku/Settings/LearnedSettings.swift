@@ -19,6 +19,6 @@ nonisolated enum LearnedSettings {
 
     // Reads the auto-learn switch from the shared store @AppStorage writes to.
     static func isAutoLearnEnabled(_ defaults: UserDefaults = .standard) -> Bool {
-        defaults.object(forKey: enabledKey) as? Bool ?? false
+        UserDefaultsBool.read(enabledKey, default: false, from: defaults)
     }
 }
