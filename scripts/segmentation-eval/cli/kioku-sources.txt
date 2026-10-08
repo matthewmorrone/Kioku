@@ -72,3 +72,10 @@ Settings/TypographySettings.swift
 Dictionary/Deinflection/DeinflectionRuleSet.swift
 Dictionary/DictionaryStore+Deinflection.swift
 Dictionary/DictionaryStore+JLPT.swift
+Dictionary/CustomWords/CustomWord.swift
+Dictionary/CustomWords/CustomWordApplier.swift
+Dictionary/CustomWords/CustomWordIdentity.swift
+Dictionary/CustomWords/CustomWordSQLValue.swift
+Dictionary/CustomWords/CustomWordStore.swift
+Dictionary/CustomWords/CustomWordsExtrasCodec.swift
+Dictionary/CustomWords/CustomWordsExtrasDecodeError.swift

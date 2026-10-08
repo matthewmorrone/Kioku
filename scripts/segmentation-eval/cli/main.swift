@@ -8,10 +8,28 @@ import Foundation
 //   segcli helpers < surfaces                    → "surface<TAB>lemma + helper…": the words deinflection folds into each surface
 //   segcli compounds < surfaces                  → "surface<TAB>base + auxiliary" for each surface the lookup sheet names as a compound verb
 //   segcli furigana < sentences                  → per sentence, a JSON list of [utf16Location, utf16Length, reading]: the Read view's furigana for dictionary words
+// NO_EXTRAS=1                                  → skip the built-in Custom Words (Resources/extras.json)
 // Repo root: four levels up from this file (scripts/segmentation-eval/cli/main.swift), unless KIOKU_CHECKOUT says otherwise.
 let root = ProcessInfo.processInfo.environment["KIOKU_CHECKOUT"]
     ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path
-let store = try DictionaryStore(databaseURL: URL(fileURLWithPath: ProcessInfo.processInfo.environment["DB"] ?? "\(root)/Resources/dictionary.sqlite"))
+let sourceDictionaryURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["DB"] ?? "\(root)/Resources/dictionary.sqlite")
+// The app writes its built-in Custom Words (Resources/extras.json) into the downloaded dictionary at
+// runtime (CustomWordApplier); the build no longer bakes them in. segcli does the same on a temp copy,
+// so the source file is never written. NO_EXTRAS=1 measures the bare dictionary.
+let dictionaryURL: URL
+if ProcessInfo.processInfo.environment["NO_EXTRAS"] == "1" {
+    dictionaryURL = sourceDictionaryURL
+} else {
+    dictionaryURL = FileManager.default.temporaryDirectory.appendingPathComponent("segcli-\(ProcessInfo.processInfo.processIdentifier).sqlite")
+    try? FileManager.default.removeItem(at: dictionaryURL)
+    try FileManager.default.copyItem(at: sourceDictionaryURL, to: dictionaryURL)
+    guard let resources = Bundle(path: "\(root)/Resources") else { fatalError("no Resources folder at \(root)") }
+    let builtIns = CustomWordStore.bundledDefaults(bundle: resources)
+    guard builtIns.isEmpty == false else { fatalError("no built-in Custom Words read from \(root)/Resources/extras.json") }
+    try CustomWordApplier.apply(builtIns, toDatabaseAt: dictionaryURL)
+    atexit { try? FileManager.default.removeItem(at: dictionaryURL) }
+}
+let store = try DictionaryStore(databaseURL: dictionaryURL)
 try store.populateSurfacePOSBitsMap()
 var trie = DictionaryTrie()
 let surfaceData = try store.fetchSurfaceData()

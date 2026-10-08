@@ -59,6 +59,18 @@ written so a new session can pick it up cold.
       ほう/かた, 中 なか/ちゅう, 分 ふん/ぶん. Don't retry "prefer the reading that spells a
       dictionary word with the following kana": measured 2026-10-02 at 87.38% → 86.04% on
       `score_readings.py`, fixed nothing, broke 18 (short kana strings always spell some word).
+      **2026-10-07/08 results.** Near-tie margin code parked on branch `claude/segment-near-ties`
+      (Segmenter.nearTies via splitCosts, `segcli nearties`, `score_nearties.py`; keep the branch).
+      margin<300 flags 1030 held2k windows and catches 35% of cut-throughs (kana2k 45%), but only ~30
+      flagged windows are fixable errors vs ~900 correct; most gold "errors" are conventions (ん|だ vs
+      んだ) — real misreadings in a 15-error sample: 3 (中|日間, どう|やらない, ので|あった). AI
+      correction must be on-device Apple Intelligence (FoundationModels), never OpenAI (user
+      decision). On-device A/B on 30 spans (15 Kioku-wrong, 15 right): bare cuts fixed 7/15, broke
+      6/15, answered "A" 22/30; with dictionary meanings per piece fixed all 3 real misreadings but
+      broke こんなに, 実は, 英日間; with POS + meanings + translate-first + agreement across both
+      option orders it picked A 28/30 in both orders (position bias): 0 fixes, 1 convention change.
+      The on-device model can't judge segmentation — don't retry without a materially stronger
+      model. Left open; the user wants to come back to it.
 
 ## Testing
 - [ ] **UI automation tests for the core loop** (notes, lookup/save, study, backup). Store-level
