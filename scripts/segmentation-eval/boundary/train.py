@@ -2,7 +2,7 @@
 """Trains the boundary model: P(cut) at every gap between two characters, from the characters around
 it and the lattice's evidence there (BoundaryFeatures.swift, dumped by `segcli features`).
 
-  python3 boundary/train.py work/train.features work/boundary [--no-path-feature] [--epochs N]
+  python3 boundary/train.py work/train.features work/boundary [--no-path-feature] [--epochs N] [--extra work/train-kana.features]
 
 The first 2,000 lines of train.features (= train2k) are the validation set; the rest is fitted.
 Never pass a held-out set (held2k, fresh, kana2k) here. Writes <outdir>/model.pt and vocab.json."""
@@ -20,6 +20,7 @@ ap.add_argument("--no-path-feature", action="store_true", help="hide the shipped
 ap.add_argument("--epochs", type=int, default=3)
 ap.add_argument("--batch", type=int, default=256)
 ap.add_argument("--seed", type=int, default=0)
+ap.add_argument("--extra", action="append", default=[], help="more features files to fit on (e.g. kana copies); never a held-out set")
 args = ap.parse_args()
 random.seed(args.seed)
 torch.manual_seed(args.seed)
@@ -27,6 +28,8 @@ os.makedirs(args.outdir, exist_ok=True)
 
 rows = load_features(args.features)
 val, fit = rows[:2000], rows[2000:]
+for extra in args.extra:
+    fit += load_features(extra)
 counts = {}
 for r in fit:
     for c in r["c"]:

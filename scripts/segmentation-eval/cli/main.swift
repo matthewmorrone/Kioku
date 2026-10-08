@@ -273,6 +273,61 @@ if mode == "features" {
     exit(0)
 }
 
+if mode == "relabel" {
+    // segcli relabel < gold.jsonl → the same gold with Kioku's word convention applied, for training the
+    // boundary model: adjacent gold tokens are merged when the text spanning both resolves (the segmenter's lemma
+    // resolution) to the first token's headword (or, for a vs noun, its する verb) — Tatoeba writes
+    // 泣き|たく, 歩き|ながら, キス|して; the app reads each as one inflected word. Merges chain left to right
+    // (クリア|して|ゆく). LABEL_DEBUG=1 prints each merge to stderr.
+    let debug = ProcessInfo.processInfo.environment["LABEL_DEBUG"] == "1"
+    // Spans repeat across sentences (して, たい, なさい…); resolve each surface once.
+    var resolved: [String: [String]] = [:]
+    while let line = readLine() {
+        guard let data = line.data(using: .utf8),
+              let record = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let sentence = record["s"] as? String, let gold = record["g"] as? [[Any]] else {
+            fatalError("relabel: unreadable gold line: \(line.prefix(80))")
+        }
+        let scalars = Array(sentence.unicodeScalars)
+        // What the span a..<b resolves to: the segmenter's own lemma resolution, plus the noun of a
+        // する compound. No lattice is built — resolution alone decides, which keeps this fast.
+        func lemmas(_ a: Int, _ b: Int) -> [String] {
+            let surface = String(String.UnicodeScalarView(scalars[a..<b]))
+            if let cached = resolved[surface] { return cached }
+            let found = Array(segmenter.resolvedTrieLemmasWithInflectionSteps(for: surface).lemmas)
+                + [segmenter.suruCompoundPrefix(for: surface)].compactMap { $0 }
+            resolved[surface] = found
+            return found
+        }
+        var merged: [[Any]] = []
+        for token in gold {
+            guard let a = token[0] as? Int, let b = token[1] as? Int, let head = token[2] as? String else {
+                fatalError("relabel: bad gold token in \(sentence)")
+            }
+            if var last = merged.last, let lastStart = last[0] as? Int, let lastEnd = last[1] as? Int,
+               let lastHead = last[2] as? String, lastEnd == a {
+                let spanning = lemmas(lastStart, b)
+                // "headword + する" only for a noun JMdict tags as a する verb (vs) — not が + した.
+                let suruNoun = segmenter.isValidatedSuruNounPrefix(lastHead)
+                if spanning.contains(where: { $0 == lastHead || (suruNoun && $0 == lastHead + "する") }) {
+                    if debug {
+                        let text = String(String.UnicodeScalarView(scalars[lastStart..<b]))
+                        FileHandle.standardError.write("merge \(text) (\(lastHead) + \(head))\n".data(using: .utf8)!)
+                    }
+                    last[1] = b
+                    merged[merged.count - 1] = last
+                    continue
+                }
+            }
+            merged.append(token)
+        }
+        var out = record
+        out["g"] = merged
+        print(String(data: try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys]), encoding: .utf8)!)
+    }
+    exit(0)
+}
+
 if mode == "rescore" {
     // segcli rescore <probabilities> <weights> <outdir> < sentences — the shipped path search with the
     // boundary model's costs added (BoundaryCosts), once per weight: lattice once per sentence, outdir/cfgN.txt
