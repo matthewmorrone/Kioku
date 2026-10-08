@@ -43,6 +43,13 @@ nonisolated protocol TextSegmenting: Sendable {
 }
 
 extension TextSegmenting {
+    // Returns once the dictionary is loaded. Only the app's Segmenter starts empty (see
+    // SegmenterLoadGate); other segmenters return at once. Await this before segmenting anything whose result
+    // is shown or kept, so it can't run against the empty placeholder at launch.
+    func waitUntilLoaded() async {
+        await (self as? Segmenter)?.loadGate.wait()
+    }
+
     // Like preferredLemma, but for auxiliary-verb detection: prefers whichever candidate is itself
     // a known auxiliary verb, over the plain top-ranked pick. preferredLemma's surface-equality
     // preference always ranks "the surface itself" first when it's independently a real dictionary

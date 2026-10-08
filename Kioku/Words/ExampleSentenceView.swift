@@ -72,7 +72,11 @@ struct ExampleSentenceView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 2)
-        .task(id: japanese) { computeCacheIfNeeded() }
+        .task(id: japanese) {
+            // The cache is kept, so it must not be built against the empty launch-time segmenter.
+            await segmenter?.waitUntilLoaded()
+            computeCacheIfNeeded()
+        }
     }
 
     @ViewBuilder

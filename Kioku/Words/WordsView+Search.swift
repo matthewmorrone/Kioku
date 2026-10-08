@@ -365,6 +365,8 @@ extension WordsView {
             if isWildcardQuery == false,
                let parseSegmenter = capturedSegmenter,
                ScriptClassifier.containsJapanese(trimmed) {
+                // A search typed right after launch would otherwise split into single characters.
+                await parseSegmenter.waitUntilLoaded()
                 let tokens = await Task.detached(priority: .userInitiated) {
                     WordsView.parseTokens(trimmed, using: parseSegmenter)
                 }.value

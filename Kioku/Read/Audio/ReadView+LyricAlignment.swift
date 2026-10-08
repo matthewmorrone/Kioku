@@ -37,6 +37,8 @@ extension ReadView {
             return
         }
 
+        // The romanizer reads lyrics through the segmenter; unloaded, it would misread every kanji.
+        await segmenter.waitUntilLoaded()
         lyricAlignment.isAligning = true
         subtitleImport.isCancellingAlignment = false
         subtitleImport.alignmentCancellationToken.reset()
@@ -116,6 +118,8 @@ extension ReadView {
         guard let attachmentID = audioPlayback.activeAudioAttachmentID,
               let audioURL = NotesAudioStore.shared.audioURL(for: attachmentID) else { return }
 
+        // The romanizer reads lyrics through the segmenter; unloaded, it would misread every kanji.
+        await segmenter.waitUntilLoaded()
         let lyrics = lyricsForAlignment
         guard lyrics.isEmpty == false else {
             lyricAlignment.errorMessage = "Add lyrics to the note before re-aligning."

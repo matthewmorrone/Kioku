@@ -45,6 +45,8 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     // Reads a name's usual reading from the dictionary (DictionaryStore.lookupNames); nil without a
     // store. Queried per furigana segment rather than held in memory beside nameSurfaces.
     var nameReadingLookup: (@Sendable (String) -> String?)?
+    // Open once the trie holds a dictionary; see SegmenterLoadGate and TextSegmenting.waitUntilLoaded.
+    let loadGate: SegmenterLoadGate
     // Set to true locally to print POS transition decisions during Viterbi runs.
     let shouldLogPOSTransitions = false
     // Shared set of characters that are always their own segment — single source of truth for
@@ -91,6 +93,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         self.frequencyScoreBySurface = frequencyScoreBySurface
         self.commonKanaSurfaces = commonKanaSurfaces
         self.transitionTable = transitionTable
+        self.loadGate = SegmenterLoadGate(loaded: trie.surfaceCount > 0)
     }
 
     // Builds the production segmenter for a loaded dictionary, fetching the cost model's frequency
@@ -159,6 +162,9 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         self.deinflector = deinflector
         self.partOfSpeechByEntryID = partOfSpeechByEntryID
         self.frequencyScoreBySurface = frequencyScoreBySurface
+        if trie.surfaceCount > 0 {
+            loadGate.markLoaded()
+        }
     }
 
     // Installs the name spellings the lattice may use and the longest one's length, together, so
@@ -172,6 +178,9 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     // background thread and needs to fold its data into the already-published placeholder
     // instance rather than replacing it — see the property-group comment above.
     func reconfigure(from other: Segmenter) {
+        // Before the main reconfigure, which opens the load gate: nothing released by it may
+        // segment without the boundary model.
+        boundaryModel = other.boundaryModel
         reconfigure(
             trie: other.trie,
             deinflector: other.deinflector,
@@ -183,7 +192,6 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             nameReadingLookup: other.nameReadingLookup,
             bestWordRankByKana: other.bestWordRankByKana
         )
-        boundaryModel = other.boundaryModel
     }
 
     // Generates all dictionary-backed lattice edges for every start position in the input text.
