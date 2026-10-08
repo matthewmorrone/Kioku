@@ -17,7 +17,7 @@ for line in open(os.path.join(HERE, "data", "named-cases.tsv"), encoding="utf-8"
     cases.append((text, expected.split("|")))
 
 env = dict(os.environ, SWIFT_DETERMINISTIC_HASHING="1")
-out = subprocess.run([os.path.join(HERE, "work", "segcli"), "run"], input="\n".join(t for t, _ in cases) + "\n",
+out = subprocess.run((os.environ["SEGCLI_RUN"].split() if "SEGCLI_RUN" in os.environ else [os.path.join(HERE, "work", "segcli"), "run"]), input="\n".join(t for t, _ in cases) + "\n",
                      capture_output=True, text=True, env=env, check=True).stdout.split("\n")
 
 failures = 0

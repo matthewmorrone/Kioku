@@ -6,7 +6,7 @@ import json, os, subprocess
 here = os.path.dirname(os.path.abspath(__file__))
 gold = json.load(open(os.path.join(here, "gold-reviewed.json"), encoding="utf-8"))
 env = dict(os.environ)
-out = subprocess.run([os.path.join(here, "..", "work", "segcli"), "run"], input="\n".join(g["text"] for g in gold) + "\n",
+out = subprocess.run((os.environ["SEGCLI_RUN"].split() if "SEGCLI_RUN" in os.environ else [os.path.join(here, "..", "work", "segcli"), "run"]), input="\n".join(g["text"] for g in gold) + "\n",
                      capture_output=True, text=True, env=env).stdout.split("\n")
 correct, wrong = 0, []
 for g, line in zip(gold, out):

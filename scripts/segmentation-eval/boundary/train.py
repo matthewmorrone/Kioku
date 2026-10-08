@@ -6,7 +6,7 @@ it and the lattice's evidence there (BoundaryFeatures.swift, dumped by `segcli f
 
 The first 2,000 lines of train.features (= train2k) are the validation set; the rest is fitted.
 Never pass a held-out set (held2k, fresh, kana2k) here. Writes <outdir>/model.pt and vocab.json."""
-import argparse, json, math, os, random, sys
+import argparse, json, math, os, random, sys, time
 import torch
 from torch import nn
 
@@ -17,7 +17,8 @@ ap = argparse.ArgumentParser()
 ap.add_argument("features")
 ap.add_argument("outdir")
 ap.add_argument("--no-path-feature", action="store_true", help="hide the shipped path's cuts from the model")
-ap.add_argument("--epochs", type=int, default=6)
+ap.add_argument("--epochs", type=int, default=3)
+ap.add_argument("--batch", type=int, default=256)
 ap.add_argument("--seed", type=int, default=0)
 args = ap.parse_args()
 random.seed(args.seed)
@@ -38,18 +39,19 @@ print(f"fit {len(fit)} val {len(val)} vocab {len(vocab)} path-feature {use_path}
 
 model = BoundaryModel(len(vocab) + 2)
 print(f"parameters {sum(p.numel() for p in model.parameters())}", flush=True)
-opt = torch.optim.AdamW(model.parameters(), lr=2e-3, weight_decay=1e-4)
+opt = torch.optim.AdamW(model.parameters(), lr=4e-3, weight_decay=1e-4)
 loss_fn = nn.BCEWithLogitsLoss(reduction="sum")
 
 
-def batches(data, size, shuffle):
-    # Length-sorted buckets so padding stays small; bucket order shuffled when fitting.
+def encoded_batches(data, size):
+    # Length-sorted buckets so padding stays small, encoded to tensors once (encoding is the slow part).
     order = sorted(range(len(data)), key=lambda i: len(data[i]["c"]))
-    chunks = [order[i:i + size] for i in range(0, len(order), size)]
-    if shuffle:
-        random.shuffle(chunks)
-    for chunk in chunks:
-        yield gap_inputs([data[i] for i in chunk], vocab, use_path)
+    return [gap_inputs([data[i] for i in order[j:j + size]], vocab, use_path) for j in range(0, len(order), size)]
+
+
+val_batches = encoded_batches(val, 256)
+fit_batches = encoded_batches(fit, args.batch)
+print(f"encoded {len(fit_batches)} batches", flush=True)
 
 
 def evaluate(data):
@@ -58,7 +60,7 @@ def evaluate(data):
     right = path_right = total = 0
     loss = 0.0
     with torch.no_grad():
-        for chars, scripts, gaps, labels, path in batches(data, 256, False):
+        for chars, scripts, gaps, labels, path in data:
             logits = model(chars, scripts, gaps)
             mask = labels >= 0
             loss += loss_fn(logits[mask], labels[mask].float()).item()
@@ -69,9 +71,11 @@ def evaluate(data):
     return loss / total, right / total, path_right / total
 
 
+started = time.time()
 for epoch in range(args.epochs):
     seen = 0
-    for chars, scripts, gaps, labels, path in batches(fit, 64, True):
+    random.shuffle(fit_batches)
+    for chars, scripts, gaps, labels, path in fit_batches:
         logits = model(chars, scripts, gaps)
         mask = labels >= 0
         loss = loss_fn(logits[mask], labels[mask].float()) / max(1, mask.sum().item())
@@ -81,8 +85,7 @@ for epoch in range(args.epochs):
         seen += 1
     for group in opt.param_groups:
         group["lr"] *= 0.6
-    vloss, acc, path_acc = evaluate(val)
-    print(f"epoch {epoch + 1}: val loss {vloss:.4f}  gap accuracy {acc * 100:.2f}%  (shipped path {path_acc * 100:.2f}%)", flush=True)
-
-torch.save(model.state_dict(), os.path.join(args.outdir, "model.pt"))
-print("saved", os.path.join(args.outdir, "model.pt"))
+    vloss, acc, path_acc = evaluate(val_batches)
+    print(f"epoch {epoch + 1} ({time.time() - started:.0f} s): val loss {vloss:.4f}  gap accuracy {acc * 100:.2f}%  (shipped path {path_acc * 100:.2f}%)", flush=True)
+    # Saved every epoch, so a run stopped early still leaves its last finished epoch.
+    torch.save(model.state_dict(), os.path.join(args.outdir, "model.pt"))
