@@ -105,6 +105,8 @@ final class KiokuCoreTextView: UIView {
     private func commonInit() {
         backgroundColor = .clear
         isOpaque = false
+        // How KiokuUITests finds the text to tap a word in.
+        accessibilityIdentifier = "readerText"
         contentMode = .redraw
     }
 
