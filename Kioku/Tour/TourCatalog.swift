@@ -17,15 +17,15 @@ enum TourCatalog {
                 TourStep(target: .readEdit, title: "Edit",
                          message: "Tap to edit the text. Long-press for display options like furigana, line wrapping and colors."),
                 TourStep(target: .readExtractWords, title: "Word List",
-                         message: "Every word in the note, ready to save for study. Long-press to see what you've changed."),
+                         message: "Every word in the note, ready to save for study."),
                 TourStep(target: .readLyrics, title: "Audio & Lyrics",
                          message: "Attach a song or recording. Kioku lines the lyrics up with the audio so you can follow along."),
                 TourStep(target: .readBreakdown, title: "Breakdown",
                          message: "Generate a line-by-line explanation of the note's vocabulary and grammar."),
                 TourStep(target: .readCorrection, title: "AI Correction",
                          message: "Ask an AI to fix word boundaries and readings. You review each change before it's applied."),
-                TourStep(target: .readReset, title: "Reset",
-                         message: "Undo your segmentation and reading edits and go back to Kioku's own split."),
+                TourStep(target: .readReset, title: "Your Changes",
+                         message: "See how you've changed the note's word splits and readings, and reset them to Kioku's own."),
             ]
         case .notes:
             return [
