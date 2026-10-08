@@ -25,17 +25,18 @@ final class CoreLoopUITests: XCTestCase {
         let app = launchApp()
 
         app.tabBars.buttons["Notes"].tap()
-        let note = app.staticTexts["キャラメルと飴玉"]
+        let note = app.staticTexts["キャラメルと飴玉"].firstMatch
         XCTAssertTrue(note.waitForExistence(timeout: 60), "sample note not listed")
         note.tap()
 
-        let text = app.otherElements["readerText"]
+        // The note's body comes first; other text views (the title) reuse the same view.
+        let text = app.otherElements["readerText"].firstMatch
         XCTAssertTrue(text.waitForExistence(timeout: 60), "note didn't open in the reader")
 
         // The note segments once the dictionary has loaded; until then a tap has no word under
         // it. Tap the first word (top-left, below its ruby) until the lookup sheet answers.
         // The lookup sheet's star; its label says whether the word is saved.
-        let save = app.buttons["lookupSaveStar"]
+        let save = app.buttons["lookupSaveStar"].firstMatch
         let firstWord = text.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 24, dy: 30))
         var attempts = 0
         while save.exists == false && attempts < 10 {
@@ -51,6 +52,6 @@ final class CoreLoopUITests: XCTestCase {
 
         app.swipeDown()
         app.tabBars.buttons["Words"].tap()
-        XCTAssertTrue(app.staticTexts["キャラメル"].waitForExistence(timeout: 15), "saved word missing from Words")
+        XCTAssertTrue(app.staticTexts["キャラメル"].firstMatch.waitForExistence(timeout: 15), "saved word missing from Words")
     }
 }
