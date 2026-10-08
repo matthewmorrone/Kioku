@@ -59,6 +59,10 @@ extension ReadView {
         document.hasManualSegmentationEdits = true
         // Rebuild segments with updated furigana then persist.
         rebuildAndPersistSegments()
+        // Carry the pinned reading into the word's History row so the Words list shows it too.
+        if let selectedSurface {
+            recordLookupHistory(surface: selectedSurface, reading: reading)
+        }
     }
 
     // The lemma of `entry` when it was picked from an ambiguous form's possibilities; nil otherwise.

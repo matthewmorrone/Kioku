@@ -265,6 +265,7 @@ struct WordsView: View {
             return selectedDetailReading
         }
         return wordsStore.words.first { $0.canonicalEntryID == word.canonicalEntryID }?.selectedReading
+            ?? historyStore.reading(for: word.canonicalEntryID)
     }
 
     // Drops the route-supplied detail context when the sheet closes, scoping it to exactly one

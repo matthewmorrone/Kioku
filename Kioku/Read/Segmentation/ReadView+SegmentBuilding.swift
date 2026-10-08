@@ -172,9 +172,10 @@ extension ReadView {
         return rebuiltEdges.isEmpty ? nil : rebuiltEdges
     }
 
-    // Resolves the canonical dictionary entry for the given surface in the background and records it in history.
+    // Resolves the canonical dictionary entry for the given surface in the background and records it in history,
+    // along with the reading the note shows for it (so a pinned reading carries into the History list).
     // Skips surfaces that are boundary characters, whitespace, or single-character kana-only tokens.
-    func recordLookupHistory(surface: String) {
+    func recordLookupHistory(surface: String, reading: String?) {
         let trimmed = surface.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { return }
         guard ScriptClassifier.containsKanji(trimmed) || (ScriptClassifier.isPureKana(trimmed) && trimmed.count > 1) else { return }
@@ -190,7 +191,7 @@ extension ReadView {
             for (candidate, mode) in candidateModes {
                 if let entry = try? await MainActor.run(body: { try store?.lookup(surface: candidate, mode: mode) })?.first {
                     await MainActor.run {
-                        historyStore.record(canonicalEntryID: entry.entryId, surface: trimmed)
+                        historyStore.record(canonicalEntryID: entry.entryId, surface: trimmed, reading: reading)
                     }
                     return
                 }

@@ -21,7 +21,8 @@ extension ReadView {
                 return
             }
 
-            recordLookupHistory(surface: segmentSurface)
+            let noteReading = reconstructedReading(for: segmentSurface, at: tappedSegmentLocation)
+            recordLookupHistory(surface: segmentSurface, reading: noteReading.isEmpty ? nil : noteReading)
 
             // Drilling into a compound component row spawns a stacked, full-chrome lookup sheet
             // for the tapped lemma. Installed here so the closure captures the current ReadView
