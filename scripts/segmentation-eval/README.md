@@ -73,18 +73,22 @@ headwords by the JMdict maintainers. https://downloads.tatoeba.org/exports/jpn_i
   including the 281 they left as correct; the source the 38 gold lines were taken from.
   Never print whole lyric lines; the scorer prints only the differing fragments.
 
-## Numbers to beat (2026-09-30: Jiten frequency list, dictionary-v13)
+## Numbers to beat (2026-10-08: boundary model, weight 4, dictionary-v15)
 
 | Set | exact | cut-through | split |
 |---|---|---|---|
-| held2k | 88.93 | 0.39 (79) | 3.10 |
-| fresh5k (not re-run since 2026-09-25) | 90.91 | 0.26 | 2.89 |
-| kana2k | 85.65 | 1.23 (250) | 4.01 |
-| CI fixture (300; not re-run; PR #91) | 91.64 | 0.26 | 2.77 |
-| lyric lines reviewed | 36 / 38 | | |
+| held2k | 89.92 | 0.30 (62) | 2.71 |
+| fresh5k | 92.12 | 0.18 (71) | 2.49 |
+| kana2k | 86.37 | 1.10 (223) | 3.68 |
+| lyric lines reviewed | 38 / 38 | | |
 | named cases | 62 / 63 | | |
 
-History: greedy + demotion list 80.0 / 3.41 (held2k) → Viterbi on surface ranks 86.55 / 0.91 (PR #83,
+Without the model (`NO_BOUNDARY_MODEL=1`): held2k 88.87 / 75, kana2k 85.66 / 240, fresh5k 90.75 / 117,
+lyrics 35 / 38, named 61 / 63. Measured through `segcli run` with `SWIFT_DETERMINISTIC_HASHING=1`;
+`boundary/eval.sh` gives the same cut-throughs. The model, its training and the conventions it was
+relabelled to are described under "Boundary model" below.
+
+History (held2k exact / cut-through %): greedy + demotion list 80.0 / 3.41 → Viterbi on surface ranks 86.55 / 0.91 (PR #83,
 tag `segmentation-viterbi-baseline-2026-09-19` + `dictionary-v9`) → fitted overhead + inflection-step
 cost 87.22 / 0.80 (#84) → transition costs 88.53 / 0.60 (#86) → deinflection retyped 88.84 / 0.54 (#88)
 → stems, mixed-script words, two-readings pricing (#89–#91; exact dips are gold convention) 88.56 / 0.54
@@ -202,3 +206,26 @@ convention-neutral objective (penalise cut-throughs only) — the principled rou
 which flips only at a global weight that over-splits. A signal for dropped particles in lyrics.
 One lattice edge per reading (が particle vs conjunction). Script-aware unknown cost (small on Tatoeba:
 digits are 5% of remaining cut-throughs, katakana 0 — measure on lyrics first). A larger lyric gold set.
+
+## Boundary model (`boundary/`)
+
+A small character-level network gives P(cut) at every gap between characters from the characters
+around it and the lattice's evidence there (`BoundaryFeatures.swift`); the path search adds
+−weight·ln P as per-gap costs (`BoundaryCosts.swift`, `Segmenter+BoundaryModel.swift`). The shipped
+model (`Kioku/Dictionary/Segmenter/SegmentBoundaryNet.mlpackage`, 2.2 MB, CPU-only) averages two
+networks: one trained on Tatoeba's training half, one on the same data plus kana copies relabelled
+to Kioku's word convention (`segcli relabel`: tokens merge when the segmenter resolves the pair to
+the first token's word — 泣き|たく → 泣きたく, キス|して → キスして). Each fixes cases the other gets
+wrong (またたく, 会いたい / 雨|なのに, がいよう|のみ).
+
+```bash
+MODE=features WORKERS=3 python3 run_parallel.py work/data/train.jsonl > work/train.features   # lattice features
+python3 boundary/train.py work/train.features work/boundary-path                              # ~2 min/epoch, 3 threads
+boundary/eval.sh work/boundary-path "0 2 3 4" train2k train2k-kana                            # pick the weight here
+python3 boundary/export_coreml.py work/boundary-path,work/boundary-relabel                     # writes the app's model
+```
+
+The full training half comes from `prep.py` (see Data); kana copies from `boundary/kana_copies.py`,
+relabelling from `segcli relabel` + `boundary/relabel_kana.py` + `boundary/relabel_features.py`.
+The weight is chosen on train2k and its kana copies, never on the held-out sets. Above weight 4 the
+model starts pushing Tatoeba's conventions (と|いう).
