@@ -42,7 +42,12 @@ nonisolated enum CustomWordApplier {
         let newDefaults = builtIns.filter { offeredDefaultKeys.contains($0.defaultKey ?? "") == false }
 
         let wordsToWrite = words + newDefaults
-        let signature = "v\(rowFormatVersion):" + String(decoding: try JSONEncoder().encode(wordsToWrite), as: UTF8.self)
+        // Sorted keys: JSONEncoder's key order otherwise varies between launches, so an unchanged
+        // list read as changed and was rewritten on every launch (which also invalidated the trie
+        // snapshot keyed on this signature).
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let signature = "v\(rowFormatVersion):" + String(decoding: try encoder.encode(wordsToWrite), as: UTF8.self)
         if builtInEntryIDs.isEmpty, try appliedSignature(db) == signature { return [] }
 
         try execute(db, "BEGIN IMMEDIATE")
