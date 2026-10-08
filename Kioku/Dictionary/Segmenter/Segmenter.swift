@@ -330,15 +330,13 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     // ま|って beat 待って on a line of its own. A two-kana reading JMdict marks as
                     // common (のみ, よみ, なる) is a real word and pays nothing. See
                     // SegmenterScoring.loneKanaPenalty and twoKanaPenalty.
-                    if surface.count <= 2, ScriptClassifier.isPureKana(surface),
-                       surface.count == 1 || commonKanaSurfaces.contains(surface) == false,
-                       let lexical = transitionTable?.lexical, lexical.contains(surface) == false,
-                       PartOfSpeech.isCounter(edge.partOfSpeech) == false,
-                       edge.frequencyScore > 0 {
-                        edge.frequencyScore = max(
-                            SegmenterScoring.unrankedDictionaryScore,
-                            edge.frequencyScore - (surface.count == 1 ? SegmenterScoring.loneKanaPenalty : SegmenterScoring.twoKanaPenalty)
-                        )
+                    let isPenalizedShortKana = surface.count <= 2 && ScriptClassifier.isPureKana(surface)
+                        && (surface.count == 1 || commonKanaSurfaces.contains(surface) == false)
+                        && (transitionTable?.lexical.contains(surface) == false)
+                        && PartOfSpeech.isCounter(edge.partOfSpeech) == false
+                    let shortKanaPenalty = surface.count == 1 ? SegmenterScoring.loneKanaPenalty : SegmenterScoring.twoKanaPenalty
+                    if isPenalizedShortKana, edge.frequencyScore > 0 {
+                        edge.frequencyScore = max(SegmenterScoring.unrankedDictionaryScore, edge.frequencyScore - shortKanaPenalty)
                     }
                     edge.inflectionSteps = reading.inflectionSteps
                     edge.partOfSpeech |= reading.lemmaPartOfSpeech
@@ -353,6 +351,17 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                         }
                     }
                     edges.append(edge)
+                    // The other reading of a surface that is both a word and an inflected form, as its
+                    // own edge priced and classed that way (Segmenter+LemmaResolution.unchosenReading).
+                    if let other = unchosenReading(of: surface, lemmas: lemmas, inflectionSteps: inflectionSteps, chosen: reading) {
+                        var alternate = edge
+                        alternate.frequencyScore = isPenalizedShortKana
+                            ? max(SegmenterScoring.unrankedDictionaryScore, other.score - shortKanaPenalty)
+                            : other.score
+                        alternate.inflectionSteps = other.inflectionSteps
+                        alternate.partOfSpeech = other.isLemma ? other.lemmaPartOfSpeech : posBits
+                        edges.append(alternate)
+                    }
                     keptMatches += 1
                     if characterLength > 1 { keptMultiCharacterMatch = true }
                 }
