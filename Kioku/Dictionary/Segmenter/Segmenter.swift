@@ -381,6 +381,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             index = text.index(after: index)
         }
 
+        edges += honorificStemEdges(in: text, lattice: edges)
         return edges
     }
 

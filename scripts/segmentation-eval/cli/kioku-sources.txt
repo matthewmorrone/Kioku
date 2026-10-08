@@ -83,3 +83,5 @@ Dictionary/CustomWords/CustomWordSQLValue.swift
 Dictionary/CustomWords/CustomWordStore.swift
 Dictionary/CustomWords/CustomWordsExtrasCodec.swift
 Dictionary/CustomWords/CustomWordsExtrasDecodeError.swift
+Dictionary/Segmenter/SegmenterLoadGate.swift
+Dictionary/Segmenter/Segmenter+HonorificPrefix.swift
