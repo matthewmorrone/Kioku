@@ -68,7 +68,18 @@ final class CoreLoopUITests: XCTestCase {
 
         record(app, "saved")
         app.swipeDown()
-        app.tabBars.buttons["Words"].tap()
+        // A tab tap while the sheet is still animating away is dropped: wait for it to go, then
+        // tap Words until the tab bar shows it selected.
+        let gone = NSPredicate(format: "exists == false")
+        _ = XCTWaiter.wait(for: [expectation(for: gone, evaluatedWith: save)], timeout: 10)
+        let words = app.tabBars.buttons["Words"]
+        var tabTaps = 0
+        while words.isSelected == false && tabTaps < 3 {
+            words.tap()
+            _ = XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "isSelected == true"), evaluatedWith: words)], timeout: 5)
+            tabTaps += 1
+        }
+        record(app, "words tab")
         XCTAssertTrue(app.staticTexts["キャラメル"].firstMatch.waitForExistence(timeout: 15), "saved word missing from Words")
     }
 }
