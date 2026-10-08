@@ -17,7 +17,7 @@ extension ReadView {
             spans.append(offset..<(offset + length))
             offset += length
         }
-        guard offset == sourceText.utf16.count else { return nil }
+        guard offset == sourceText.utf16.count, persisted.map(\.surface).joined() == sourceText else { return nil }
 
         let words: [(range: Range<Int>, surface: String)] = computedEdges.compactMap { edge in
             let nsRange = NSRange(edge.start..<edge.end, in: sourceText)

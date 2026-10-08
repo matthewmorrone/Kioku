@@ -86,12 +86,16 @@ final class KiokuRubyOverhangAllowanceTests: XCTestCase {
     }
 
     // Between words, unpacked, next to another reading: 涙|瞳 — no allowance, or the two readings
-    // would collide; the kern is the full overhang.
+    // would collide. Both overhang into the same gap, so the kern after 涙 is なみだ's full right
+    // overhang plus ひとみ's full left overhang.
     func test_betweenWords_unpacked_neighbourUnderRubyGetsFullOverhang() {
         let attributed = build("涙瞳", segments: ["涙", "瞳"], furigana: [0: "なみだ", 1: "ひとみ"], furiganaLength: [0: 1, 1: 1], isSegmentPacked: false)
-        let kanjiW = ceil(("涙" as NSString).size(withAttributes: [.font: baseFont]).width)
-        let rubyW = ceil(("なみだ" as NSString).size(withAttributes: [.font: furiganaFont]).width)
-        XCTAssertEqual(kern(attributed, at: 0), max(0, ceil((rubyW - kanjiW) / 2)), accuracy: 0.01)
+        let fullOverhang: (String, String) -> CGFloat = { kanji, reading in
+            let kanjiW = ceil((kanji as NSString).size(withAttributes: [.font: self.baseFont]).width)
+            let rubyW = ceil((reading as NSString).size(withAttributes: [.font: self.furiganaFont]).width)
+            return max(0, ceil((rubyW - kanjiW) / 2))
+        }
+        XCTAssertEqual(kern(attributed, at: 0), fullOverhang("涙", "なみだ") + fullOverhang("瞳", "ひとみ"), accuracy: 0.01)
     }
 
     // Packs two one-character segments with the given readings and returns both placements.
