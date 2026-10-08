@@ -244,15 +244,18 @@ enum KiokuCoreTextAttributedStringBuilder {
                     reading: reading
                 ))
 
-                // Intra-segment spacing, in both layout modes: ruby wider than its kanji never
-                // overhangs kana of its own segment. Kern on the character before the run pushes
-                // the kanji right; kern on the run's last character pushes the following kana
-                // away; ruby centring discounts it (KiokuRubyPadding.kanjiSpan).
+                // Intra-segment spacing, in both layout modes: ruby wider than its kanji overhangs
+                // kana of its own segment by at most half a ruby character (the usual typesetting
+                // allowance, so 戦う with たたか needs no gap and 憤り with いきどお only a little).
+                // Kern on the character before the run pushes the kanji right; kern on the run's
+                // last character pushes the following kana away; ruby centring discounts it
+                // (KiokuRubyPadding.kanjiSpan).
                 if inputs.isRubySpacingEnabled,
                    let containing = segmentNSRanges.first(where: { NSLocationInRange(kanjiLoc, $0) }) {
                     let kanjiW = ceil((kanjiText as NSString).size(withAttributes: [.font: baseFont]).width)
                     let rubyW = ceil((reading as NSString).size(withAttributes: [.font: furiganaFont]).width)
-                    let overhang = max(0, ceil((rubyW - kanjiW) / 2))
+                    let allowance = furiganaFont.pointSize / 2
+                    let overhang = max(0, ceil((rubyW - kanjiW) / 2 - allowance))
                     if overhang > 0.5 {
                         let runLastIdx = kanjiLoc + kanjiLen - 1
                         if runLastIdx < containing.location + containing.length - 1 {
@@ -338,33 +341,6 @@ enum KiokuCoreTextAttributedStringBuilder {
         }
 
         return Output(attributedString: result, rubyEntries: rubyEntries)
-    }
-
-    // Returns ceil((rubyWidth - kanjiWidth)/2) when the LAST kanji run in the segment
-    // sits at the segment's right edge AND its ruby is wider than the kanji. The next
-    // segment will visually crowd into the overhang otherwise; bumping the trailing
-    // .kern by this amount restores the gap.
-    private static func rightSideRubyOverhang(
-        segmentSurface: String,
-        reading: String,
-        baseFont: UIFont,
-        furiganaFont: UIFont
-    ) -> CGFloat {
-        let runs = FuriganaAttributedString.kanjiRuns(in: segmentSurface)
-        guard let lastRun = runs.last,
-              let runReadings = FuriganaAttributedString.normalizedRunReadings(
-                  surface: segmentSurface, reading: reading, runs: runs
-              ), runReadings.count == runs.count else { return 0 }
-        let lastReading = runReadings[runs.count - 1]
-        guard lastReading.isEmpty == false else { return 0 }
-        let characters = Array(segmentSurface)
-        // Trailing okurigana would absorb the overhang visually, so only compensate when
-        // the kanji is at the segment's right edge.
-        guard lastRun.end == characters.count else { return 0 }
-        let kanji = String(characters[lastRun.start..<lastRun.end])
-        let kanjiW = ceil((kanji as NSString).size(withAttributes: [.font: baseFont]).width)
-        let rubyW = ceil((lastReading as NSString).size(withAttributes: [.font: furiganaFont]).width)
-        return max(0, ceil((rubyW - kanjiW) / 2))
     }
 
     // Tags each contiguous kanji run within the segment with a CTRubyAnnotation whose
