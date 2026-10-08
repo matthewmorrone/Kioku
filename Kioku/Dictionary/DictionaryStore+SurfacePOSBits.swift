@@ -55,7 +55,7 @@ extension DictionaryStore {
             }
 
             guard stepCode == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
+                throw DictionarySQLiteError.step(message: errorMessage()).logged()
             }
 
             return map

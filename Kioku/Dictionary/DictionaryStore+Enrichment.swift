@@ -39,7 +39,7 @@ extension DictionaryStore {
                 else {
                     throw DictionarySQLiteError.corruptRow(
                         message: "NULL accent or morae in pitch_accent for word=\(word), kana=\(kana)"
-                    )
+                    ).logged()
                 }
 
                 return PitchAccent(

@@ -47,7 +47,7 @@ extension DictionaryStore {
                 stepCode = sqlite3_step(statement)
             }
             guard stepCode == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
+                throw DictionarySQLiteError.step(message: errorMessage()).logged()
             }
             return map
         }
@@ -102,8 +102,17 @@ extension DictionaryStore {
         let sql = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1 LIMIT 1"
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
-        guard (try? prepare(sql: sql, statement: &statement)) != nil else { return false }
-        sqlite3_bind_text(statement, 1, name, -1, sqliteTransient)
-        return sqlite3_step(statement) == SQLITE_ROW
+        do {
+            try prepare(sql: sql, statement: &statement)
+            try bindText(name, index: 1, statement: statement)
+        } catch {
+            // Already logged by prepare/bindText; reads as absent so optional tables still degrade.
+            return false
+        }
+        let stepCode = sqlite3_step(statement)
+        if stepCode != SQLITE_ROW && stepCode != SQLITE_DONE {
+            AppLog.error(.dictionary, "[DictionaryStore] tableExists(\(name)) failed: \(errorMessage())")
+        }
+        return stepCode == SQLITE_ROW
     }
 }

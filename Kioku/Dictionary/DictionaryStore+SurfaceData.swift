@@ -57,7 +57,7 @@ extension DictionaryStore {
                 posStep = sqlite3_step(posStatement)
             }
             guard posStep == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
+                throw DictionarySQLiteError.step(message: errorMessage()).logged()
             }
             return posByEntryID
         }
@@ -117,7 +117,7 @@ extension DictionaryStore {
             }
 
             guard step == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
+                throw DictionarySQLiteError.step(message: errorMessage()).logged()
             }
 
             flushCurrentSurface()

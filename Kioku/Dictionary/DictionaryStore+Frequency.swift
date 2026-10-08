@@ -146,7 +146,7 @@ extension DictionaryStore {
             }
 
             guard stepCode == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
+                throw DictionarySQLiteError.step(message: errorMessage()).logged()
             }
 
             // Flush the final surface group after the last row.
@@ -179,12 +179,19 @@ extension DictionaryStore {
                 var statement: OpaquePointer?
                 defer { sqlite3_finalize(statement) }
                 try prepare(sql: sql, statement: &statement)
-                while sqlite3_step(statement) == SQLITE_ROW {
-                    guard let textPointer = sqlite3_column_text(statement, 0) else { continue }
-                    let surface = String(cString: textPointer)
-                    let rank = Int(sqlite3_column_int(statement, 1))
-                    if let existing = bestRankBySurface[surface], existing <= rank { continue }
-                    bestRankBySurface[surface] = rank
+                var stepCode = sqlite3_step(statement)
+                while stepCode == SQLITE_ROW {
+                    if let textPointer = sqlite3_column_text(statement, 0) {
+                        let surface = String(cString: textPointer)
+                        let rank = Int(sqlite3_column_int(statement, 1))
+                        if bestRankBySurface[surface].map({ $0 > rank }) ?? true {
+                            bestRankBySurface[surface] = rank
+                        }
+                    }
+                    stepCode = sqlite3_step(statement)
+                }
+                guard stepCode == SQLITE_DONE else {
+                    throw DictionarySQLiteError.step(message: errorMessage()).logged()
                 }
             }
 
@@ -223,12 +230,17 @@ extension DictionaryStore {
             var statement: OpaquePointer?
             defer { sqlite3_finalize(statement) }
             try prepare(sql: "SELECT surface, frequency_rank FROM surface_frequency", statement: &statement)
-            while sqlite3_step(statement) == SQLITE_ROW {
-                guard let textPointer = sqlite3_column_text(statement, 0) else { continue }
+            var stepCode = sqlite3_step(statement)
+            while stepCode == SQLITE_ROW {
                 let rank = Int(sqlite3_column_int(statement, 1))
-                if let score = FrequencyData(frequencyRank: rank, wordfreqZipf: nil).normalizedScore, score > 0 {
+                if let textPointer = sqlite3_column_text(statement, 0),
+                   let score = FrequencyData(frequencyRank: rank, wordfreqZipf: nil).normalizedScore, score > 0 {
                     scoreBySurface[String(cString: textPointer)] = score
                 }
+                stepCode = sqlite3_step(statement)
+            }
+            guard stepCode == SQLITE_DONE else {
+                throw DictionarySQLiteError.step(message: errorMessage()).logged()
             }
             try addEntryFallbackScoresForUnlistedKana(into: &scoreBySurface)
             return scoreBySurface
@@ -281,7 +293,7 @@ extension DictionaryStore {
             stepCode = sqlite3_step(statement)
         }
         guard stepCode == SQLITE_DONE else {
-            throw DictionarySQLiteError.step(message: errorMessage())
+            throw DictionarySQLiteError.step(message: errorMessage()).logged()
         }
     }
 
@@ -352,7 +364,7 @@ extension DictionaryStore {
             }
 
             guard stepCode == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
+                throw DictionarySQLiteError.step(message: errorMessage()).logged()
             }
 
             return surfaces

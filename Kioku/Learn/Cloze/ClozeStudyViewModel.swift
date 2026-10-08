@@ -163,7 +163,7 @@ final class ClozeStudyViewModel: ObservableObject {
     }
 
     // Constructs a ClozeQuestion for one sentence: tokenises, picks blank targets,
-    // fetches embedding-based distractors, and assembles the segment list.
+    // gathers distractors from the sentence's other tokens, and assembles the segment list.
     private func buildQuestion(sentenceIndex: Int, sentenceText: String) async -> ClozeQuestion? {
         let trimmed = sentenceText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { return nil }
@@ -180,7 +180,7 @@ final class ClozeStudyViewModel: ObservableObject {
         var blanksByLocation: [Int: ClozeBlank] = [:]
         for idx in chosen {
             let correct = candidates[idx].surface
-            let options = await buildOptions(correct: correct, contextSentence: trimmed)
+            let options = buildOptions(correct: correct, contextSentence: trimmed)
             guard options.count >= 2 else { return nil }
             blanksByLocation[candidates[idx].range.location] = ClozeBlank(
                 id: UUID(), correct: correct, options: options
@@ -234,28 +234,14 @@ final class ClozeStudyViewModel: ObservableObject {
         )
     }
 
-    // Gathers distractor options using embedding neighbors; falls back to sentence tokens.
-    private func buildOptions(correct: String, contextSentence: String) async -> [String] {
+    // Gathers distractor options from the sentence's other tokens.
+    private func buildOptions(correct: String, contextSentence: String) -> [String] {
         var choices: [String] = [correct]
         choices.reserveCapacity(numberOfChoices)
 
-        if let neighbors = await EmbeddingNeighborsService.shared.neighbors(for: correct, topN: 30) {
-            let filtered = neighbors
-                .map(\.word)
-                .filter { $0 != correct && $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
-                .filter { isReasonableDistractor(candidate: $0, comparedTo: correct) }
-            for w in filtered {
-                if choices.count >= numberOfChoices { break }
-                if choices.contains(w) == false { choices.append(w) }
-            }
-        }
-
-        if choices.count < numberOfChoices {
-            let fallback = fallbackDistractors(from: contextSentence, excluding: Set(choices))
-            for w in fallback {
-                if choices.count >= numberOfChoices { break }
-                choices.append(w)
-            }
+        for w in fallbackDistractors(from: contextSentence, excluding: Set(choices)) {
+            if choices.count >= numberOfChoices { break }
+            choices.append(w)
         }
 
         // Pad with an ellipsis token so there are always at least 2 options.
@@ -273,15 +259,7 @@ final class ClozeStudyViewModel: ObservableObject {
         return choices
     }
 
-    // Returns true when the distractor is a plausible length relative to the correct answer.
-    private func isReasonableDistractor(candidate: String, comparedTo correct: String) -> Bool {
-        let a = (candidate as NSString).length
-        let b = (correct as NSString).length
-        guard a >= 1, b >= 1, a <= 12 else { return false }
-        return Double(max(a, b)) / Double(min(a, b)) <= 2.0
-    }
-
-    // Returns up to 12 unique tokens from the sentence as last-resort distractors.
+    // Returns up to 12 unique tokens from the sentence as distractors.
     private func fallbackDistractors(from sentenceText: String, excluding: Set<String>) -> [String] {
         var unique: [String] = []
         var seen: Set<String> = []
