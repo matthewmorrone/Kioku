@@ -18,6 +18,13 @@ written so a new session can pick it up cold.
       (付き合い/付き合う share 付き合; 暮れ/呉れる don't) — needs kanji spellings per entry in the
       segmenter. Left failing on purpose; pick up if まお-style junk shows up in real notes.
 
+- [ ] **An unexpected small っ in hiragana swallows the rest of the line** — かんっぜんにかんこどりが
+      ないてる → かん|っぜんにかんこどりがないてる; うっわまじかよ → う|っわまじかよ; そうげいでっき
+      からみても → そうげい|で|っきからみても. Emphatic っ (casual speech, lyrics) or a hiragana
+      loanword (でっき, ねっと) the dictionary doesn't know starts one unknown segment that runs to the
+      end of the line, over dictionary words. Katakana (デッキ) is fine. Wanted: the っ attaches to the
+      kana before it and the text after it segments normally. 6 of kana2k's 120 real errors.
+
 ## Features
 - [ ] Quiz on next and previous words/lines: points for consecutivity 
 - [ ] **Real-time kanji-choice game mode** — pick the correct kanji as fast as possible; score
