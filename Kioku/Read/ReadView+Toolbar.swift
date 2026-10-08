@@ -141,9 +141,20 @@ extension ReadView {
     // "actions for the currently-open note."
     // Accent (blue) once the note has an alignment — any timed lyric line, not just ♪ markers —
     // or while the lyrics view is open; secondary otherwise.
+    // While the song aligns, a spinner stands in for the ♪.
     var titleLyricsButton: some View {
         let isAligned = audioPlayback.audioAttachmentCues.contains { SubtitleParser.isNonSpeechCue($0.text.trimmingCharacters(in: .whitespacesAndNewlines)) == false }
-        return titleActionLabel(systemImage: "music.note", foreground: ReadToggleAppearance.foreground(isOn: isAligned || audioPlayback.isShowingLyricsView))
+        return Group {
+            if lyricAlignment.isAligning {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 36, height: 36)
+                    .background(Capsule().fill(ReadToggleAppearance.background))
+                    .contentShape(Rectangle())
+            } else {
+                titleActionLabel(systemImage: "music.note", foreground: ReadToggleAppearance.foreground(isOn: isAligned || audioPlayback.isShowingLyricsView))
+            }
+        }
             .contentShape(Capsule())
             .onTapGesture {
                 // Nothing attached yet → the lyric view would be empty, so jump straight to the

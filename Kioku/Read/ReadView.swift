@@ -104,7 +104,7 @@ struct ReadView: View {
     @State var subtitleImport = SubtitleImportUIState()
     // Whole-note re-align UI state (progress/error, subtitle editor, mismatch dialog) — see
     // LyricAlignmentUIState.
-    @State var lyricAlignment = LyricAlignmentUIState.shared
+    @State var lyricAlignment = LyricAlignmentUIState()
     // Audio-attachment playback state (controller, cues, highlight override, active cue/attachment) —
     // see AudioPlaybackUIState.
     @State var audioPlayback = AudioPlaybackUIState()
