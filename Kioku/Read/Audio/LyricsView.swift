@@ -335,6 +335,10 @@ struct LyricsView: View {
                 let activeCueScale = activeCueFontScale(text: cueInput.text, availableWidth: activeCueAvailableWidth)
                 let scaledTextSize = TypographySettings.defaultTextSize * Double(activeCueScale)
                 let untimedLocations: Set<Int> = []
+                // Computed once and reused below (playback band, dim cutoff, accent range) instead
+                // of calling activeCardHighlightRange three times with the same arguments — while
+                // Sing mode is active it does real per-call work (filtering the cue's checkpoints).
+                let activeHighlightRange = activeCardHighlightRange(cueIndex: displayIndex, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count)
                 VStack(spacing: 0) {
                     // Non-speech (♪) cues render as a duration-scaled, pulsing note row
                     // (LyricsView+MusicalInterlude.swift) instead of going through the CoreText
@@ -376,7 +380,7 @@ struct LyricsView: View {
                             // segments come from the same noteText segmentation the Read view uses.
                             isRubySpacingEnabled: isRubySpacingEnabled,
                             selectedHighlightRange: nil,
-                            playbackHighlightRange: activeCardHighlightRange(cueIndex: displayIndex, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                            playbackHighlightRange: activeHighlightRange,
                             selectionHighlightColor: .clear,
                             playbackHighlightColor: Self.activeWordHighlightColor,
                             // The played-portion band is gated on alignment-coverage: when
@@ -387,7 +391,7 @@ struct LyricsView: View {
                             // `cueHasReliableDimCoverage` for the 90%-of-cueLen threshold and its
                             // rationale.
                             unplayedDimmingLocation: cueHasReliableDimCoverage(forCueAtIndex: displayIndex, cueLength: cueInput.text.utf16.count)
-                                ? activeCardHighlightRange(cueIndex: displayIndex, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count).map { $0.location + $0.length }
+                                ? activeHighlightRange.map { $0.location + $0.length }
                                 : nil,
                             unplayedDimmingColor: Self.playedLineHighlightColor,
                             unknownSegmentLocations: untimedLocations,
@@ -405,7 +409,7 @@ struct LyricsView: View {
                             // Overrides the highlighted range's glyph color so it never has to
                             // compete with whatever semantic token color (red vocab, blue, etc.)
                             // it already had — see activeWordForegroundColor's doc comment above.
-                            accentTextRange: activeCardHighlightRange(cueIndex: displayIndex, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                            accentTextRange: activeHighlightRange,
                             accentTextColor: Self.activeWordForegroundColor,
                             debugFlags: KiokuDebugOverlayView.Flags(),
                             illegalMergeLocation: nil,
