@@ -1,7 +1,8 @@
 import SwiftUI
 
 // Renders the first-visit tour over the whole app window: the screen dimmed except for a rounded
-// cutout around the current target, ringed in the accent color, and an accent-filled callout card (title, message, step count, Skip) with
+// cutout around the current target, ringed in the accent color, and an accent-filled callout card (title
+// and close ✕, message, step count, back/next arrows) with
 // an arrow pointing at the cutout. The card goes below the target when there's more room
 // there, above otherwise; a target taking up most of the screen (the Read text) gets the card
 // inside its lower edge, with no arrow. Tapping the card or the dimmed area advances; the last
@@ -99,13 +100,27 @@ struct TourOverlay: View {
             .offset(x: x)
     }
 
-    // Title, message, progress and Skip. The whole card is the advance control; Skip, being a
-    // button, takes its own taps first.
+    // Title with a small ✕ that ends the tour, message, progress and back/next arrows. The whole
+    // card also advances; its buttons take their own taps first.
     private func card(for step: TourStep) -> some View {
         let isLast = coordinator.stepIndex >= coordinator.stepCount - 1
         return VStack(alignment: .leading, spacing: 8) {
-            Text(step.title)
-                .font(.title3.bold())
+            HStack(alignment: .firstTextBaseline) {
+                Text(step.title)
+                    .font(.title3.bold())
+                Spacer()
+                Button {
+                    coordinator.finish()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Close Tour")
+            }
             Text(step.message)
                 .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.9))
@@ -117,11 +132,11 @@ struct TourOverlay: View {
                         .foregroundStyle(.white.opacity(0.75))
                 }
                 Spacer()
-                if isLast == false {
-                    Button("Skip") { coordinator.finish() }
-                        .buttonStyle(.borderless)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
+                arrowButton("chevron.left", label: "Previous") { coordinator.goBack() }
+                    .opacity(coordinator.canGoBack ? 1 : 0.35)
+                    .disabled(coordinator.canGoBack == false)
+                arrowButton(isLast ? "checkmark" : "chevron.right", label: isLast ? "Done" : "Next") {
+                    coordinator.advance()
                 }
             }
             .padding(.top, 4)
@@ -135,5 +150,18 @@ struct TourOverlay: View {
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
         .accessibilityAction(named: isLast ? "Done" : "Next") { coordinator.advance() }
+    }
+
+    // One of the card's back/next controls: a white symbol in a faint circle, sized for a thumb.
+    private func arrowButton(_ systemImage: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(.white.opacity(0.2)))
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(label)
     }
 }

@@ -96,6 +96,28 @@ final class TourCoordinator: ObservableObject {
         }
     }
 
+    // Moves back to the previous step whose target is on screen; does nothing on the first one.
+    func goBack() {
+        guard let activeTab else { return }
+        let steps = TourCatalog.steps(for: activeTab)
+        var previous = stepIndex - 1
+        while previous >= 0, isVisible(steps[previous].target) == false {
+            previous -= 1
+        }
+        guard previous >= 0 else { return }
+        withAnimation(.easeInOut(duration: 0.3)) {
+            stepIndex = previous
+            currentTargetFrame = framesByTarget[steps[previous].target]
+        }
+    }
+
+    // Whether any earlier step is on screen to go back to, so the card can dim its back arrow.
+    var canGoBack: Bool {
+        guard let activeTab else { return false }
+        let steps = TourCatalog.steps(for: activeTab)
+        return steps.indices.contains(stepIndex) && steps[..<stepIndex].contains { isVisible($0.target) }
+    }
+
     // Ends the running tour and marks its tab seen, whether it was completed or skipped.
     func finish() {
         guard let activeTab else { return }
