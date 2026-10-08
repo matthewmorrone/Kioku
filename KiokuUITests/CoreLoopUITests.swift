@@ -37,6 +37,9 @@ final class CoreLoopUITests: XCTestCase {
         continueAfterFailure = false
         let app = launchApp()
 
+        // A cold first launch builds the dictionary index before the UI settles; wait for the
+        // tab bar rather than tapping into a busy app.
+        XCTAssertTrue(app.tabBars.buttons["Notes"].waitForExistence(timeout: 120), "app never finished launching")
         app.tabBars.buttons["Notes"].tap()
         let note = app.staticTexts["キャラメルと飴玉"].firstMatch
         XCTAssertTrue(note.waitForExistence(timeout: 60), "sample note not listed")
