@@ -78,6 +78,15 @@ final class TourCoordinator: ObservableObject {
             next += 1
         }
         guard next < steps.count else {
+            // Nothing was ever shown: leave the tab unseen so the tour can run on a later visit.
+            if stepIndex < 0 {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    self.activeTab = nil
+                    stepIndex = 0
+                    currentTargetFrame = nil
+                }
+                return
+            }
             finish()
             return
         }

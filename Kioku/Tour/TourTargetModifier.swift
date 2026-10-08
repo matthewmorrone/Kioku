@@ -6,6 +6,9 @@ import SwiftUI
 struct TourTargetModifier: ViewModifier {
     // Nil leaves the view untagged — for list rows where only the first one is a target.
     let target: TourTargetID?
+    // The last frame seen. A tab hidden and shown again keeps its layout, so onGeometryChange
+    // doesn't fire on return; onAppear re-reports this instead, or the target stays withdrawn.
+    @State private var lastFrame: CGRect?
 
     // Tracks the frame as the view lays out and moves, and withdraws it when the view goes away.
     func body(content: Content) -> some View {
@@ -13,8 +16,13 @@ struct TourTargetModifier: ViewModifier {
             .onGeometryChange(for: CGRect.self) { proxy in
                 proxy.frame(in: .global)
             } action: { frame in
+                lastFrame = frame
                 guard let target else { return }
                 TourCoordinator.shared.report(frame, for: target)
+            }
+            .onAppear {
+                guard let target, let lastFrame else { return }
+                TourCoordinator.shared.report(lastFrame, for: target)
             }
             .onDisappear {
                 guard let target else { return }
