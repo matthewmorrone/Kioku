@@ -181,12 +181,11 @@
   "text": "いつか本当に出会う",
   "segments": [
    "いつか",
-   "本当",
-   "に",
+   "本当に",
    "出会う"
   ],
   "flagged": true,
-  "edited": false
+  "edited": true
  },
  {
   "text": "ラララ",
