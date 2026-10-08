@@ -27,7 +27,7 @@ struct LearnActivityHome: View {
                     selection: $options.directions
                 )
             } footer: {
-                Text("Draws from your saved words; Any studies all of them. Directions pick what a question shows and what you answer with.")
+                Text("Draws from your saved words; Any studies all of them.")
             }
 
             Section {
@@ -83,6 +83,7 @@ struct LearnDirectionPicker: View {
     var body: some View {
         HStack {
             Text("Directions")
+            InfoButton(text: "What a question shows and what you answer with. Recognition goes from the Japanese to its meaning or reading; Production goes the other way.")
             Spacer()
             Button(summary) { isPresented = true }
         }
