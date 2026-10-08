@@ -231,7 +231,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Word of the Day")
                 } footer: {
-                    Text("A daily notification with one of your saved words.")
+                    Text("A daily notification with one of your saved words. The Word of the Day widget for the Home Screen or Lock Screen shows the same word, so it stays empty while the notification is off.")
                 }
                 .task {
                     await refreshWotdStatus()
