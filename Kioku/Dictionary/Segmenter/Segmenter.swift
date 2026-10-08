@@ -140,58 +140,11 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         }
     }
 
-    // Swaps in fully-loaded dictionary data while preserving this instance's identity — see the
-    // property-group comment above for why identity stability matters more than a fresh init here.
-    func reconfigure(
-        trie: DictionaryTrie,
-        deinflector: Deinflector?,
-        partOfSpeechByEntryID: [Int: UInt64],
-        frequencyScoreBySurface: [String: Double],
-        commonKanaSurfaces: Set<String>,
-        transitionTable: SegmenterTransitionTable?,
-        nameSurfaces: Set<String>,
-        nameReadingLookup: (@Sendable (String) -> String?)?,
-        bestWordRankByKana: [String: Int]
-    ) {
-        self.bestWordRankByKana = bestWordRankByKana
-        useNameSurfaces(nameSurfaces)
-        self.nameReadingLookup = nameReadingLookup
-        self.transitionTable = transitionTable
-        self.commonKanaSurfaces = commonKanaSurfaces
-        self.trie = trie
-        self.deinflector = deinflector
-        self.partOfSpeechByEntryID = partOfSpeechByEntryID
-        self.frequencyScoreBySurface = frequencyScoreBySurface
-        if trie.surfaceCount > 0 {
-            loadGate.markLoaded()
-        }
-    }
-
     // Installs the name spellings the lattice may use and the longest one's length, together, so
     // the probe length can never disagree with the set (Swift skips didSet inside initializers).
     func useNameSurfaces(_ surfaces: Set<String>) {
         nameSurfaces = surfaces
         longestNameSurface = surfaces.map(\.count).max() ?? 0
-    }
-
-    // Convenience for ContentView's startup sequence, which builds a brand-new Segmenter on a
-    // background thread and needs to fold its data into the already-published placeholder
-    // instance rather than replacing it — see the property-group comment above.
-    func reconfigure(from other: Segmenter) {
-        // Before the main reconfigure, which opens the load gate: nothing released by it may
-        // segment without the boundary model.
-        boundaryModel = other.boundaryModel
-        reconfigure(
-            trie: other.trie,
-            deinflector: other.deinflector,
-            partOfSpeechByEntryID: other.partOfSpeechByEntryID,
-            frequencyScoreBySurface: other.frequencyScoreBySurface,
-            commonKanaSurfaces: other.commonKanaSurfaces,
-            transitionTable: other.transitionTable,
-            nameSurfaces: other.nameSurfaces,
-            nameReadingLookup: other.nameReadingLookup,
-            bestWordRankByKana: other.bestWordRankByKana
-        )
     }
 
     // Generates all dictionary-backed lattice edges for every start position in the input text.
