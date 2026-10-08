@@ -106,7 +106,8 @@ extension DictionaryStore {
             try prepare(sql: sql, statement: &statement)
             try bindText(name, index: 1, statement: statement)
         } catch {
-            // Already logged by prepare/bindText; reads as absent so optional tables still degrade.
+            // Reads as absent so optional tables still degrade, but the probe failure is recorded.
+            AppLog.error(.dictionary, "[DictionaryStore] tableExists(\(name)) failed: \(error)")
             return false
         }
         let stepCode = sqlite3_step(statement)

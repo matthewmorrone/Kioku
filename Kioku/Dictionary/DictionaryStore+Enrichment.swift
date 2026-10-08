@@ -328,6 +328,9 @@ extension DictionaryStore {
 
             let charStep = sqlite3_step(charStatement)
             guard charStep == SQLITE_ROW else {
+                if charStep != SQLITE_DONE {
+                    throw DictionarySQLiteError.step(message: errorMessage()).logged()
+                }
                 return nil
             }
 
