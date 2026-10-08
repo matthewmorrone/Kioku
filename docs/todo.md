@@ -32,14 +32,6 @@ written so a new session can pick it up cold.
       pass (grilling) before building: question source (saved words? by JLPT/frequency?), distractor
       selection, timer/scoring model, round length, how it ties into `ReviewStore` (does a fast
       correct answer count as a review?). Sits alongside the existing MultipleChoiceView.
-- [ ] **Sing mode: check the stitched timeline on a real run** — model runs every 0.5 s keep
-      only their middle (1.5 s in to 0.4 s before the end) and are stitched along song time
-      (`SingEmissionTimeline`), so words of any length grade from frames with context; replaced
-      a per-word length cap that cut long words (なつかしい, 何度も). Last run before it
-      (ムーンライト伝説 08:09): 90% passed, line-final 26/32. Also in this pass: half of vowels
-      and half of consonants must be heard (long-vowel う/い optional), line-final words get 0.6 s
-      lead slack, は/へ score as wa/e, readings come from the note's furigana. Pull the log
-      (`heard「…」` per word) after a run and compare.
 ## Segmentation & Lookup
 - [ ] **Segment uncertainty, then AI correction of only the low-confidence spans** — planned
       2026-10-02. The segmenter's costs are centi-nats, so: (1) forward–backward over the existing
