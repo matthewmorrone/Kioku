@@ -356,12 +356,11 @@ extension ReadView {
                 title: "Cleanup",
                 systemImage: "character.book.closed.ja",
                 isEnabled: false,
+                isActionDisabled: noteNeedsCleanup == false,
                 info: "Suggest fixes for the note's text: English words turned into katakana, and half-width kana or full-width digits normalized. You review each change first."
             ) {
                 startCleanup()
             }
-            .disabled(noteNeedsCleanup == false)
-            .opacity(noteNeedsCleanup ? 1 : 0.4)
         }
         .padding(12)
         .frame(width: 270)
@@ -453,6 +452,7 @@ extension ReadView {
         title: String,
         systemImage: String,
         isEnabled: Bool,
+        isActionDisabled: Bool = false,
         info: String? = nil,
         action: @escaping () -> Void
     ) -> some View {
@@ -460,6 +460,7 @@ extension ReadView {
             title: title,
             image: Image(systemName: systemImage),
             isEnabled: isEnabled,
+            isActionDisabled: isActionDisabled,
             info: info,
             action: action
         )
@@ -470,11 +471,13 @@ extension ReadView {
     // asset, not a system symbol. Shares all other styling with the systemImage variant
     // so the popover keeps a single visual language.
     // `info`, when given, adds an ⓘ popover beside the row's button (not inside it, so it takes
-    // its own tap), within the same rounded background.
+    // its own tap), within the same rounded background. `isActionDisabled` dims and disables only
+    // the button, so the ⓘ still explains a row that can't be used right now.
     func displayOptionRow(
         title: String,
         image: Image,
         isEnabled: Bool,
+        isActionDisabled: Bool = false,
         info: String? = nil,
         action: @escaping () -> Void
     ) -> some View {
@@ -504,6 +507,8 @@ extension ReadView {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .disabled(isActionDisabled)
+            .opacity(isActionDisabled ? 0.4 : 1)
             if let info {
                 InfoButton(text: info)
             }

@@ -3,7 +3,8 @@ import SwiftUI
 // Renders the small ⓘ button placed after a control's label; tapping it opens a popover with a
 // sentence or two on what that control does. Used wherever an explanation belongs to one control
 // rather than a whole section (which gets a section footer instead). Borderless, so inside a Form
-// row it takes its own tap instead of triggering the row's toggle, link or button.
+// row it takes its own tap instead of triggering the row's toggle, link or button. Always enabled:
+// a control that's disabled right now still deserves an explanation, often more so.
 struct InfoButton: View {
     let text: String
     @State private var isPresented = false
@@ -16,6 +17,8 @@ struct InfoButton: View {
                 .foregroundStyle(.secondary)
         }
         .buttonStyle(.borderless)
+        // Overrides a `.disabled` set on an enclosing row or section, which would otherwise reach here.
+        .environment(\.isEnabled, true)
         .accessibilityLabel("About this setting")
         .popover(isPresented: $isPresented) {
             Text(text)
