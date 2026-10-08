@@ -3,7 +3,7 @@ import Foundation
 // Regular respellings of a katakana loanword: the sound correspondences by which older or looser
 // spellings differ from the ones JMdict lists (ファ/ハ in ウエファース/ウエハース, テイ/ティ in
 // スパゲテイ/スパゲティ, ヴァ/バ, ヰ/イ, small and full-size kana, long vowels written イ or ウ or
-// left out). General rules over the script, not a list of words; DictionaryStore.katakanaSpellingGuess
+// left out), and English plurals (スターズ → スター, ドロップス → ドロップ, ミンツ → ミント). General rules over the script, not a list of words; DictionaryStore.katakanaSpellingGuess
 // checks which variants the dictionary has.
 nonisolated enum KatakanaSpellingVariants {
     // Each pair is rewritten in both directions.
@@ -30,7 +30,8 @@ nonisolated enum KatakanaSpellingVariants {
     }
 
     // The spellings one rewrite away: a correspondence swapped at one place, a ー or イ after the
-    // first character dropped, or a ー added at the end.
+    // first character dropped, a ー added at the end, or a plural ending taken off (a final ズ or
+    // ス dropped; a final ツ, the ts of mints and parts, read as ト).
     private static func oneRewrite(_ word: String) -> Set<String> {
         var variants = Set<String>()
         for (lhs, rhs) in correspondences {
@@ -49,6 +50,11 @@ nonisolated enum KatakanaSpellingVariants {
             variants.insert(String(shortened))
         }
         variants.insert(word + "ー")
+        if characters.count > 2, let last = characters.last {
+            let stem = String(characters.dropLast())
+            if last == "ズ" || last == "ス" { variants.insert(stem) }
+            if last == "ツ" { variants.insert(stem + "ト") }
+        }
         variants.remove(word)
         return variants
     }
