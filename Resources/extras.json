@@ -1,14 +1,8 @@
 {
 	"entries": [
 		{
-			"kanji": "夕映",
-			"kana": "ゆうばえ",
-			"sense": [
-				{
-					"partOfSpeech": ["n"],
-					"gloss": ["evening glow; afterglow of sunset"]
-				}
-			]
+			"sameAs": 1542680,
+			"kanji": ["夕映"]
 		},
 		{
 			"kana": "プレイヤーズ",
@@ -82,12 +76,12 @@
 			]
 		},
 		{
-			"kana": "カステイラ",
-			"gloss": "castella (sponge cake) (old spelling of カステラ)"
+			"sameAs": 1037370,
+			"kana": ["カステイラ"]
 		},
 		{
-			"kana": "ウエファース",
-			"gloss": "wafer (old spelling of ウエハース)"
+			"sameAs": 1026280,
+			"kana": ["ウエファース"]
 		}
 	]
 }
