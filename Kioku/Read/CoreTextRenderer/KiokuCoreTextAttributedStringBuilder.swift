@@ -245,8 +245,8 @@ enum KiokuCoreTextAttributedStringBuilder {
                 ))
 
                 // Intra-segment spacing, in both layout modes: ruby wider than its kanji overhangs
-                // kana of its own segment by at most KiokuRubyPadding.overhangAllowance (so 戦う with
-                // たたか needs no gap and 憤り with いきどお only a little).
+                // kana of its own segment by at most KiokuRubyPadding.overhangAllowance; space is
+                // added for the rest (戦う with たたか, 憤り with いきどお).
                 // Kern on the character before the run pushes the kanji right; kern on the run's
                 // last character pushes the following kana away; ruby centring discounts it
                 // (KiokuRubyPadding.kanjiSpan).

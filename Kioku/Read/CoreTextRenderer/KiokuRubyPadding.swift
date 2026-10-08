@@ -39,11 +39,11 @@ nonisolated enum KiokuRubyPadding {
         return (start, end)
     }
 
-    // How far ruby may reach over a neighbouring kana before space is added: half a ruby
-    // character. The one value behind every ruby spacing rule (a word's own okurigana, the next
-    // word's kana, the segment packer), so they can't drift apart.
+    // How far ruby may reach over a neighbouring kana before space is added: none, so ruby never
+    // overhangs any kana. The one value behind every ruby spacing rule (a word's own okurigana, the
+    // next word's kana, the segment packer), so they can't drift apart.
     static func overhangAllowance(furiganaFont: UIFont) -> CGFloat {
-        furiganaFont.pointSize / 2
+        0
     }
 
     // The .kern on the character at `index`, 0 when none.
