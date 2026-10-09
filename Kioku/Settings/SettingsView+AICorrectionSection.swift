@@ -33,6 +33,11 @@ extension SettingsView {
             if selectedRemoteProvider == .claude {
                 apiKeyField(label: "Claude API Key", key: $claudeKey, provider: .claude)
             }
+            NavigationLink {
+                APIKeyHelpView()
+            } label: {
+                Label("Getting an API Key", systemImage: "key")
+            }
         } header: {
             Text("AI")
         } footer: {

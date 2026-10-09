@@ -140,6 +140,12 @@ struct BulkImportSheet: View {
                 }
                 .disabled(runner.isRunning)
             }
+
+            NavigationLink {
+                FileImportHelpView()
+            } label: {
+                Label("How Importing Works", systemImage: "questionmark.circle")
+            }
         } header: {
             Text("Files")
         } footer: {

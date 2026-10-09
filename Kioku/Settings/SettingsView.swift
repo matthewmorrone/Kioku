@@ -303,6 +303,11 @@ struct SettingsView: View {
                         InfoButton(text: "Show each tab's walkthrough again the next time you open it.")
                     }
                     NavigationLink {
+                        FileImportHelpView()
+                    } label: {
+                        Label("Importing Files", systemImage: "tray.and.arrow.down")
+                    }
+                    NavigationLink {
                         AboutView()
                     } label: {
                         Label("About", systemImage: "info.circle")
