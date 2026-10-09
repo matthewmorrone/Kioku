@@ -156,10 +156,11 @@ extension ReadView {
         }
             .contentShape(Capsule())
             .onTapGesture {
-                // While a song aligns there's nothing useful a tap can do yet — the attachment
-                // this note will get doesn't exist until the alignment finishes — so the spinner
-                // ignores taps rather than reopening the media picker underneath it.
-                guard lyricAlignment.isAligning == false else { return }
+                // A first import's attachment doesn't exist until its alignment finishes, so the
+                // spinner ignores taps then rather than reopening the media picker underneath it.
+                // A note that already has audio still toggles: the lyric view shows the
+                // alignment's progress and its Cancel button.
+                guard lyricAlignment.isAligning == false || audioPlayback.activeAudioAttachmentID != nil else { return }
                 // Nothing attached yet → the lyric view would be empty, so jump straight to the
                 // media picker (mp3 / srt / textgrid) instead of toggling a blank overlay. Once an
                 // attachment exists, the tap reverts to its normal show/hide-lyrics behavior; opening
