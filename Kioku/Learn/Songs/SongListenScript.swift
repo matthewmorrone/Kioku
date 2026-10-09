@@ -158,18 +158,24 @@ nonisolated enum SongListenScript {
 
     // Same "own value, else the referenced line's value" rule as SongLineCard.effectiveGrammarNote.
     private static func effectivePatternNote(for line: SongLine, linesByIndex: [Int: SongLine]) -> String? {
-        if let g = line.grammarNote, g.isEmpty == false { return g }
-        if let reference = line.reference {
-            return referencedLine(for: reference, linesByIndex: linesByIndex)?.grammarNote
-        }
-        return nil
+        effectiveValue(for: line, linesByIndex: linesByIndex, field: \.grammarNote)
     }
 
     // Same "own value, else the referenced line's value" rule as SongLineCard.effectiveGist.
     private static func effectiveGist(for line: SongLine, linesByIndex: [Int: SongLine]) -> String? {
-        if let g = line.gist, g.isEmpty == false { return g }
+        effectiveValue(for: line, linesByIndex: linesByIndex, field: \.gist)
+    }
+
+    // Shared "own value, else the referenced line's value" rule behind effectivePatternNote and
+    // effectiveGist — they differ only in which SongLine field they read.
+    private static func effectiveValue(
+        for line: SongLine,
+        linesByIndex: [Int: SongLine],
+        field: (SongLine) -> String?
+    ) -> String? {
+        if let own = field(line), own.isEmpty == false { return own }
         if let reference = line.reference {
-            return referencedLine(for: reference, linesByIndex: linesByIndex)?.gist
+            return referencedLine(for: reference, linesByIndex: linesByIndex).flatMap(field)
         }
         return nil
     }
