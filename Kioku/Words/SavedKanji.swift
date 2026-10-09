@@ -9,7 +9,7 @@ import Foundation
 // and the user typically wants to study a kanji's readings + meanings + stroke order
 // rather than a single JMdict entry whose senses depend on the surface form.
 // `nonisolated` so CSV import / bulk operations can construct them off-main.
-nonisolated struct SavedKanji: Codable, Hashable, Identifiable {
+nonisolated struct SavedKanji: Codable, Hashable, Identifiable, NoteAndListAttributed {
     static let currentSchemaVersion = 1
 
     // The kanji literal — a single Character expected to satisfy
