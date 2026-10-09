@@ -5,25 +5,27 @@ import SwiftUI
 // populated here off the main thread, with a synchronous fast-path when the
 // row is already cached.
 extension SegmentListView {
-    // Resolves the canonical dictionary entry for a tapped surface and presents the word detail sheet.
-    // Reuses the canonical-id cache populated for star rendering, falling back to a hydrate pass when
-    // the row hasn't been resolved yet (e.g. fresh sheet, mid-scroll segment).
-    func openWordDetail(for surface: String, lemma: String) {
+    // Resolves the canonical dictionary entry id for a tapped surface through the shared fallback
+    // chain — cache hit, then a match against a saved entry's stored/encountered surface (covers
+    // words that can't round-trip through DictionaryStore.lookupFirstEntryID: archaic kana,
+    // dict-build drift), then a dictionary hydration pass — and calls `present` once one is
+    // found. Shared by openWordDetail and openLookupSheet, which differ only in what they do
+    // with the resolved id.
+    private func resolveCanonicalEntryID(
+        forSurface surface: String,
+        lemma: String,
+        present: @escaping (_ canonicalEntryID: Int64, _ surface: String) -> Void
+    ) {
         let normalizedSurface = normalizedSurfaceForFiltering(surface)
         guard normalizedSurface.isEmpty == false else { return }
 
         if let entryID = canonicalEntryIDBySurface[normalizedSurface] {
-            presentWordDetail(canonicalEntryID: entryID, surface: normalizedSurface)
+            present(entryID, normalizedSurface)
             return
         }
-
-        // Fallback path: if the surface matches a saved entry's stored or encountered surface,
-        // open detail for THAT card directly. Skips the dictionary hydration for words that
-        // can't round-trip through DictionaryStore.lookupFirstEntryID (archaic kana, dict-build
-        // drift) — without this, tapping a row with yellow-hollow star silently no-ops.
         if let entryID = canonicalEntryIDFromSavedEntries(for: normalizedSurface) {
             canonicalEntryIDBySurface[normalizedSurface] = entryID
-            presentWordDetail(canonicalEntryID: entryID, surface: normalizedSurface)
+            present(entryID, normalizedSurface)
             return
         }
 
@@ -33,15 +35,24 @@ extension SegmentListView {
                 canonicalEntryIDBySurface.merge(hydratedEntryIDs) { current, _ in current }
             }
             if let entryID = hydratedEntryIDs[normalizedSurface] {
-                presentWordDetail(canonicalEntryID: entryID, surface: normalizedSurface)
+                present(entryID, normalizedSurface)
                 return
             }
             // Last-resort fallback after hydration: same saved-entries lookup as above. Useful
             // when canonicalEntryIDBySurface was cleared between the two checks.
             if let entryID = canonicalEntryIDFromSavedEntries(for: normalizedSurface) {
                 canonicalEntryIDBySurface[normalizedSurface] = entryID
-                presentWordDetail(canonicalEntryID: entryID, surface: normalizedSurface)
+                present(entryID, normalizedSurface)
             }
+        }
+    }
+
+    // Resolves the canonical dictionary entry for a tapped surface and presents the word detail sheet.
+    // Reuses the canonical-id cache populated for star rendering, falling back to a hydrate pass when
+    // the row hasn't been resolved yet (e.g. fresh sheet, mid-scroll segment).
+    func openWordDetail(for surface: String, lemma: String) {
+        resolveCanonicalEntryID(forSurface: surface, lemma: lemma) { entryID, normalizedSurface in
+            presentWordDetail(canonicalEntryID: entryID, surface: normalizedSurface)
         }
     }
 
@@ -51,32 +62,8 @@ extension SegmentListView {
     // sheetOpenWordDetail callback to navigate to WordDetailView, so the user's mental model
     // (tap = sheet, Word Details = full page) holds end-to-end.
     func openLookupSheet(for surface: String, lemma: String) {
-        let normalizedSurface = normalizedSurfaceForFiltering(surface)
-        guard normalizedSurface.isEmpty == false else { return }
-
-        // Resolve canonical entry ID using the same fallback chain as openWordDetail: cache →
-        // saved-entries index → dictionary hydration. Without this the sheet would render an
-        // empty shell for surfaces that don't directly resolve in the dictionary right now.
-        if let entryID = canonicalEntryIDBySurface[normalizedSurface] {
+        resolveCanonicalEntryID(forSurface: surface, lemma: lemma) { entryID, normalizedSurface in
             presentLookupSheet(canonicalEntryID: entryID, surface: normalizedSurface)
-            return
-        }
-        if let entryID = canonicalEntryIDFromSavedEntries(for: normalizedSurface) {
-            canonicalEntryIDBySurface[normalizedSurface] = entryID
-            presentLookupSheet(canonicalEntryID: entryID, surface: normalizedSurface)
-            return
-        }
-        let normalizedLemma = normalizedSurfaceForFiltering(lemma)
-        hydrateCanonicalEntryIDs(for: [(surface: normalizedSurface, lemma: normalizedLemma)]) { hydratedEntryIDs in
-            if hydratedEntryIDs.isEmpty == false {
-                canonicalEntryIDBySurface.merge(hydratedEntryIDs) { current, _ in current }
-            }
-            if let entryID = hydratedEntryIDs[normalizedSurface] {
-                presentLookupSheet(canonicalEntryID: entryID, surface: normalizedSurface)
-            } else if let entryID = canonicalEntryIDFromSavedEntries(for: normalizedSurface) {
-                canonicalEntryIDBySurface[normalizedSurface] = entryID
-                presentLookupSheet(canonicalEntryID: entryID, surface: normalizedSurface)
-            }
         }
     }
 
