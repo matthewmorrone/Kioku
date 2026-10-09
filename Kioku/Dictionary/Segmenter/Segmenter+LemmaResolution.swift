@@ -199,18 +199,10 @@ extension Segmenter {
     ) -> (score: Double, inflectionSteps: Int, lemmaPartOfSpeech: UInt64) {
         let ownScore = frequencyScore(of: surface)
         // The edge is priced as ONE lemma's form, so it takes that lemma's POS alone. A union over
-        // every candidate classed できなく as an auxiliary (でる has an aux-v entry). Sorted so a
-        // score tie picks the same lemma every run.
-        var lemmaScore = 0.0
-        var pricedLemma: String?
-        for lemma in lemmas.sorted() where lemma != surface {
-            let score = frequencyScore(of: lemma)
-            if pricedLemma == nil || score > lemmaScore {
-                lemmaScore = score
-                pricedLemma = lemma
-            }
-        }
-        let lemmaBits = pricedLemma.map { trie.partOfSpeech(for: $0) } ?? 0
+        // every candidate classed できなく as an auxiliary (でる has an aux-v entry).
+        let best = bestScoringLemma(among: lemmas, excluding: surface)
+        let lemmaScore = best?.score ?? 0.0
+        let lemmaBits = best.map { trie.partOfSpeech(for: $0.lemma) } ?? 0
         guard trie.contains(surface) else {
             return (max(ownScore, lemmaScore), inflectionSteps, lemmaBits)
         }
@@ -231,21 +223,28 @@ extension Segmenter {
         chosen: (score: Double, inflectionSteps: Int, lemmaPartOfSpeech: UInt64)
     ) -> (score: Double, inflectionSteps: Int, lemmaPartOfSpeech: UInt64, isLemma: Bool)? {
         guard trie.contains(surface), inflectionSteps > 0 else { return nil }
-        var lemmaScore = 0.0
-        var pricedLemma: String?
-        for lemma in lemmas.sorted() where lemma != surface {
-            let score = frequencyScore(of: lemma)
-            if pricedLemma == nil || score > lemmaScore {
-                lemmaScore = score
-                pricedLemma = lemma
-            }
-        }
-        guard let pricedLemma, lemmaScore > 0 else { return nil }
+        guard let best = bestScoringLemma(among: lemmas, excluding: surface), best.score > 0 else { return nil }
         if chosen.inflectionSteps == 0 {
-            return (lemmaScore, inflectionSteps, trie.partOfSpeech(for: pricedLemma), true)
+            return (best.score, inflectionSteps, trie.partOfSpeech(for: best.lemma), true)
         }
         let ownScore = frequencyScore(of: surface)
         return ownScore > 0 ? (ownScore, 0, 0, false) : nil
+    }
+
+    // The best-scoring lemma among `lemmas` other than `surface` itself, and its frequency score;
+    // nil when no candidate (other than the surface) scores. Sorted iteration so a score tie picks
+    // the same lemma every run. Shared by pricedReading and unchosenReading.
+    private func bestScoringLemma(among lemmas: Set<String>, excluding surface: String) -> (lemma: String, score: Double)? {
+        var bestScore = 0.0
+        var best: String?
+        for lemma in lemmas.sorted() where lemma != surface {
+            let score = frequencyScore(of: lemma)
+            if best == nil || score > bestScore {
+                bestScore = score
+                best = lemma
+            }
+        }
+        return best.map { (lemma: $0, score: bestScore) }
     }
 
     // Same resolution as resolvedTrieLemmas, but split by source so lemmaCandidates can gate only
