@@ -43,44 +43,45 @@ nonisolated final class Deinflector {
     // Each rule's rulesOut, keyed by helperKey — what grammar a chain ending on that rule claims.
     let rulesOutByTransition: [String: Set<String>]
 
-    // Stores deinflection rules used by candidate generation.
-    init(rules: [DeinflectionRule], trie: DictionaryTrie, nonIchidanRuVerbs: Set<String> = [], intermediateForms: Set<String> = []) {
-        self.rules = rules.sorted { lhs, rhs in
-            lhs.kanaIn.count > rhs.kanaIn.count
+    // Stores (label, rule) pairs built by either public initializer below, sorted longest-kanaIn
+    // first, and derives every other stored property from that one list.
+    private init(
+        labeledRules: [(label: String, rule: DeinflectionRule)],
+        trie: DictionaryTrie,
+        nonIchidanRuVerbs: Set<String>,
+        intermediateForms: Set<String>
+    ) {
+        let sortedLabeledRules = labeledRules.sorted { lhs, rhs in
+            lhs.rule.kanaIn.count > rhs.rule.kanaIn.count
         }
-        self.labeledRules = self.rules.map { rule in
-            (label: "rule", rule: rule)
-        }
-        (self.ruleIndicesByLastCharacter, self.emptyInputRuleIndices) = Self.lastCharacterIndex(self.labeledRules)
+        self.labeledRules = sortedLabeledRules
+        self.rules = sortedLabeledRules.map(\.rule)
+        (self.ruleIndicesByLastCharacter, self.emptyInputRuleIndices) = Self.lastCharacterIndex(sortedLabeledRules)
         self.trie = trie
         self.knownNonIchidanRuVerbs = nonIchidanRuVerbs
         self.intermediateForms = intermediateForms
-        self.helperByTransition = Self.helperIndex(self.labeledRules, normalizingLabel: Self.normalizedRuleLabel)
-        self.rulesOutByTransition = Self.rulesOutIndex(self.labeledRules, normalizingLabel: Self.normalizedRuleLabel)
+        self.helperByTransition = Self.helperIndex(sortedLabeledRules, normalizingLabel: Self.normalizedRuleLabel)
+        self.rulesOutByTransition = Self.rulesOutIndex(sortedLabeledRules, normalizingLabel: Self.normalizedRuleLabel)
+    }
+
+    // Stores deinflection rules used by candidate generation.
+    convenience init(rules: [DeinflectionRule], trie: DictionaryTrie, nonIchidanRuVerbs: Set<String> = [], intermediateForms: Set<String> = []) {
+        self.init(
+            labeledRules: rules.map { (label: "rule", rule: $0) },
+            trie: trie,
+            nonIchidanRuVerbs: nonIchidanRuVerbs,
+            intermediateForms: intermediateForms
+        )
     }
 
     // Stores grouped deinflection rules while preserving group labels used for chain reporting.
-    init(groupedRules: [String: [DeinflectionRule]], trie: DictionaryTrie, nonIchidanRuVerbs: Set<String> = [], intermediateForms: Set<String> = []) {
-        let expandedLabeledRules = groupedRules
-            .flatMap { label, grouped in
-                grouped.map { rule in
-                    (label: label, rule: rule)
-                }
-            }
-            .sorted { lhs, rhs in
-                lhs.rule.kanaIn.count > rhs.rule.kanaIn.count
-            }
-
-        self.labeledRules = expandedLabeledRules
-        self.rules = expandedLabeledRules.map { labeledRule in
-            labeledRule.rule
-        }
-        (self.ruleIndicesByLastCharacter, self.emptyInputRuleIndices) = Self.lastCharacterIndex(expandedLabeledRules)
-        self.trie = trie
-        self.knownNonIchidanRuVerbs = nonIchidanRuVerbs
-        self.intermediateForms = intermediateForms
-        self.helperByTransition = Self.helperIndex(expandedLabeledRules, normalizingLabel: Self.normalizedRuleLabel)
-        self.rulesOutByTransition = Self.rulesOutIndex(expandedLabeledRules, normalizingLabel: Self.normalizedRuleLabel)
+    convenience init(groupedRules: [String: [DeinflectionRule]], trie: DictionaryTrie, nonIchidanRuVerbs: Set<String> = [], intermediateForms: Set<String> = []) {
+        self.init(
+            labeledRules: groupedRules.flatMap { label, grouped in grouped.map { (label: label, rule: $0) } },
+            trie: trie,
+            nonIchidanRuVerbs: nonIchidanRuVerbs,
+            intermediateForms: intermediateForms
+        )
     }
 
     // Builds a deinflector from the rules the dictionary carries (DictionaryStore.fetchDeinflectionRuleSet).
@@ -237,20 +238,7 @@ nonisolated final class Deinflector {
         from pathsByLemma: DeinflectionPathMap,
         targetLemma: String
     ) -> [(label: String, kanaIn: String, kanaOut: String)]? {
-        let paths = pathsByLemma[targetLemma] ?? []
-        guard paths.isEmpty == false else {
-            return nil
-        }
-
-        let bestPath = paths.min { lhs, rhs in
-            if lhs.chain.count != rhs.chain.count {
-                return lhs.chain.count < rhs.chain.count
-            }
-
-            return lhs.chain.joined(separator: ",") < rhs.chain.joined(separator: ",")
-        }
-
-        return bestPath?.transitions
+        bestPath(from: pathsByLemma, targetLemma: targetLemma)?.transitions
     }
 
     // Picks grouped-rule labels for one surface-to-lemma path using shortest-path tie breaking.
@@ -260,20 +248,27 @@ nonisolated final class Deinflector {
 
     // Picks chain labels from pre-computed paths, avoiding a redundant deinflection traversal.
     func inflectionChain(from pathsByLemma: DeinflectionPathMap, targetLemma: String) -> [String] {
+        bestPath(from: pathsByLemma, targetLemma: targetLemma)?.chain ?? []
+    }
+
+    // The shortest-chain path to `targetLemma`, breaking ties by chain label order, or nil when
+    // `targetLemma` wasn't reached. Shared by bestTransitions(from:) and inflectionChain(from:).
+    private func bestPath(
+        from pathsByLemma: DeinflectionPathMap,
+        targetLemma: String
+    ) -> (chain: [String], transitions: [(label: String, kanaIn: String, kanaOut: String)])? {
         let paths = pathsByLemma[targetLemma] ?? []
         guard paths.isEmpty == false else {
-            return []
+            return nil
         }
 
-        let bestPath = paths.min { lhs, rhs in
+        return paths.min { lhs, rhs in
             if lhs.chain.count != rhs.chain.count {
                 return lhs.chain.count < rhs.chain.count
             }
 
             return lhs.chain.joined(separator: ",") < rhs.chain.joined(separator: ",")
         }
-
-        return bestPath?.chain ?? []
     }
 
     // Produces candidate dictionary surfaces by delegating to deinflectionPaths and adding alternate surface forms.
