@@ -340,6 +340,29 @@ final class SurfaceSheetViewController: UIViewController {
         updateMergeButtonAvailability()
     }
 
+    // Reflects whether the current surface can still be split, after a merge or split changes it.
+    // Shared by mergeLeftButton/mergeRightButton/applySplitButton's actions in
+    // SurfaceSheetViewController+Build.swift; the viewDidLoad/updateCurrentSurface call sites also
+    // require `currentOnSplitApply != nil` and so keep their own copy rather than share this one.
+    func refreshSplitButtonAvailability() {
+        splitButton.isEnabled = currentSurface.count > 1
+        splitButton.alpha = splitButton.isEnabled ? 1 : 0.45
+        updateMergeButtonAvailability()
+    }
+
+    // Re-reads every segment-dependent panel (definitions, reading header, lemma chain, save/open
+    // button state) after `currentSurface` changes from a merge or split. Shared by
+    // mergeLeftButton/mergeRightButton/applySplitButton's actions and the two-character split
+    // shortcut inside splitButton's own action, in SurfaceSheetViewController+Build.swift.
+    func refreshSegmentDependentPanels() {
+        sheet?.refreshSheetSupplementalData()
+        updateReadingFurigana()
+        updateLemmaChain()
+        updateMiddleContent()
+        updateSaveButtonAppearance()
+        updateOpenDetailButtonAppearance()
+    }
+
     // Reflects current neighbor availability in merge button enabled state and opacity.
     func updateMergeButtonAvailability() {
         mergeLeftButton.isEnabled = currentLeftNeighborSurface != nil

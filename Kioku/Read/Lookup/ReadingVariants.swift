@@ -53,11 +53,12 @@ nonisolated enum ReadingVariants {
         }
     }
 
-    // The distinct readings to display, in cycle order — mirrors the sheet's sheetReadingsProvider.
-    // Prefers the in-memory surface map (covers base forms and kana surfaces with no SQL), then the
-    // Lexicon's forward-projected lemma readings for inflected forms, then a segmenter-lemma fallback
-    // when no Lexicon is wired (other call sites). Returns [] when nothing resolves.
-    private static func orderedReadings(
+    // The distinct readings to display, in cycle order — also used directly as the Read-tab lookup
+    // sheet's sheetReadingsProvider. Prefers the in-memory surface map (covers base forms and kana
+    // surfaces with no SQL), then the Lexicon's forward-projected lemma readings for inflected forms,
+    // then a segmenter-lemma fallback when no Lexicon is wired (other call sites). Returns [] when
+    // nothing resolves.
+    static func orderedReadings(
         surface: String,
         lexicon: Lexicon?,
         segmenter: (any TextSegmenting)?,
@@ -83,11 +84,12 @@ nonisolated enum ReadingVariants {
         return combined
     }
 
-    // Per-reading (lemma, chain, entry) — mirrors the sheet's sheetLemmaInfoByReadingProvider, with a
-    // store-only fallback added so the map still resolves entries when no Lexicon is wired. The entry
-    // is the one whose kana form matches the reading exactly, disambiguating homographs (様 さま/よう,
-    // 抱く いだく/だく/うだく); it may be nil for a projected inflected reading that matches no kana form.
-    private static func lemmaInfoByReading(
+    // Per-reading (lemma, chain, entry) — also used directly as the Read-tab lookup sheet's
+    // sheetLemmaInfoByReadingProvider, with a store-only fallback added so the map still resolves
+    // entries when no Lexicon is wired. The entry is the one whose kana form matches the reading
+    // exactly, disambiguating homographs (様 さま/よう, 抱く いだく/だく/うだく); it may be nil for a
+    // projected inflected reading that matches no kana form.
+    static func lemmaInfoByReading(
         surface: String,
         lexicon: Lexicon?,
         store: DictionaryStore?,
