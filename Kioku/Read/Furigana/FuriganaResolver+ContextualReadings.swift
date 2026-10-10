@@ -6,7 +6,7 @@ import Foundation
 //      かた, 時 after a number → じ).
 //   2. Where the counts kept the frequency reading, Apple's tokenizer (AppleTokenReadings) may still
 //      swap in a suffix or counter reading of that spelling (SurfaceReadingData.suffixOrCounterReadings).
-// held2k 91.09% → 94.96%, fresh5k 94.79% → 96.87% on scripts/segmentation-eval/score_readings.py.
+// held2k 91.09% → 95.12%, fresh5k 94.79% → 96.85% on scripts/segmentation-eval/score_readings.py.
 // Readings the after-の rule set are left alone: that rule comes from JMdict's own expressions.
 nonisolated extension FuriganaResolver {
     // Rewrites `furigana` in place; `fixedLocations` are ruby the after-の rule placed.
@@ -67,16 +67,26 @@ nonisolated extension FuriganaResolver {
         return NSRange(location: segmentStart + offset, length: length)
     }
 
-    // The distinct hiragana readings the kanji run of `surface` can take, in the frequency order
-    // `build` uses: each of the lemma's readings cropped to the run, as furiganaAnnotations crops it.
+    // The distinct hiragana readings the kanji run of `surface` can take: every reading of every word
+    // the surface can be (lemmaCandidates), cropped to the run as furiganaAnnotations crops it. The
+    // preferred lemma's readings come first, in the frequency order `build` uses. All lemmas, not just
+    // the preferred one, because the preferred one is sometimes the wrong word and then the right
+    // reading is never on offer: 入り read as the noun いり where it is 入る はいる, 甘く as the
+    // adverb うまく where it is 甘い あまい.
     private func runReadingCandidates(for surface: String, surfaceReadingData: SurfaceReadingDataMap) -> [String] {
-        let lemma = segmenter.preferredLemma(for: surface) ?? surface
+        let preferred = segmenter.preferredLemma(for: surface) ?? surface
+        var lemmas = [preferred]
+        for lemma in segmenter.lemmaCandidates(for: surface) where lemmas.contains(lemma) == false {
+            lemmas.append(lemma)
+        }
         var readings: [String] = []
-        for candidate in FuriganaResolver.candidateReadingsForSegment(lemma, surfaceReadingData: surfaceReadingData) {
-            guard let run = inflectedStemReading(surface: surface, lemma: lemma, lemmaReading: candidate)
-                ?? firstKanjiRunReading(in: lemma, using: candidate) else { continue }
-            let hiragana = KanaNormalizer.katakanaToHiragana(run)
-            if readings.contains(hiragana) == false { readings.append(hiragana) }
+        for lemma in lemmas {
+            for candidate in FuriganaResolver.candidateReadingsForSegment(lemma, surfaceReadingData: surfaceReadingData) {
+                guard let run = inflectedStemReading(surface: surface, lemma: lemma, lemmaReading: candidate)
+                    ?? firstKanjiRunReading(in: lemma, using: candidate) else { continue }
+                let hiragana = KanaNormalizer.katakanaToHiragana(run)
+                if readings.contains(hiragana) == false { readings.append(hiragana) }
+            }
         }
         return readings
     }
