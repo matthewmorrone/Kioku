@@ -1,6 +1,6 @@
 import Foundation
 
-// Which reading a kanji takes next to which word classes, counted from Tatoeba's training sentences,
+// Which reading a kanji takes next to which word classes, counted from Tatoeba's indexed sentences,
 // whose index marks the reading of every headword that has more than one (時(じ) after a number,
 // 方(かた) after a verb). FuriganaResolver asks it to choose among a word's dictionary readings by
 //   P(reading | kanji) · P(class before | kanji, reading) · P(class after | kanji, reading)
@@ -9,7 +9,8 @@ import Foundation
 //
 // The numbers live in reading-contexts.tsv beside this file, built by
 // scripts/calibration/count_reading_contexts.py; never edit it by hand. Measured on its own with
-// scripts/segmentation-eval/score_readings.py: held2k 91.09% → 94.50%, fresh5k 94.79% → 96.97%.
+// scripts/segmentation-eval/score_readings.py: held2k 91.09% → 94.50%, fresh5k 94.79% → 96.97%
+// (counts from the training half; the unused held-out sentences, added since, are worth +1 / +2 more).
 nonisolated final class ReadingContextTable: Sendable {
     // Pseudo-count for a class never seen next to a reading: fitted on train2k (0.05–2 all within
     // 0.4 points; 0.2 best), confirmed on held2k and fresh5k.

@@ -306,7 +306,7 @@
       "derived": true,
       "url": null,
       "sha256": null,
-      "provenance": "Counted from the training half of tatoeba-jpn-indices, minus its first 2,000 sentences (train2k, kept out for fitting): every gold token whose index marks a reading (方(かた)) gives its kanji run's reading and the classes of the gold tokens either side, classed by the app's own TransitionClass through segcli count with the transition table's lexical words. Recount when the transition table is recounted, for the same reason: the classes come from the running code. Without the file furigana keeps the dictionary's frequency order (ReadingContextTable.bundled is nil). Recipe: the docstring of scripts/calibration/count_reading_contexts.py.",
+      "provenance": "Counted from every tatoeba-jpn-indices sentence no eval set uses: the training half minus its first 2,000 sentences (train2k, kept out for fitting), plus the held-out half minus held2k, fresh5k and kana2k (count_reading_contexts.py corpus). Every gold token whose index marks a reading (方(かた)) gives its kanji run's reading and the classes of the gold tokens either side, classed by the app's own TransitionClass through segcli count with the transition table's lexical words. Recount when the transition table is recounted, for the same reason: the classes come from the running code. Without the file furigana keeps the dictionary's frequency order (ReadingContextTable.bundled is nil). Recipe: the docstring of scripts/calibration/count_reading_contexts.py.",
       "derivedFrom": [
         "tatoeba-jpn-indices"
       ],

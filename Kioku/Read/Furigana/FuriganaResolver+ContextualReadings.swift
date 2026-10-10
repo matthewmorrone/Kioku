@@ -6,7 +6,7 @@ import Foundation
 //      かた, 時 after a number → じ).
 //   2. Where the counts kept the frequency reading, Apple's tokenizer (AppleTokenReadings) may still
 //      swap in a suffix or counter reading of that spelling (SurfaceReadingData.suffixOrCounterReadings).
-// held2k 91.09% → 95.12%, fresh5k 94.79% → 96.85% on scripts/segmentation-eval/score_readings.py.
+// held2k 91.09% → 95.19%, fresh5k 94.79% → 96.90% on scripts/segmentation-eval/score_readings.py.
 // Readings the after-の rule set are left alone: that rule comes from JMdict's own expressions.
 nonisolated extension FuriganaResolver {
     // Rewrites `furigana` in place; `fixedLocations` are ruby the after-の rule placed.
