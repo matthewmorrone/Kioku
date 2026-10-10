@@ -1,5 +1,7 @@
 # App Store Submission Kit
 
+> **Status:** live on the App Store as [Kioku Reader](https://apps.apple.com/us/app/kioku-reader/id6761954675) (first released 2026-10-03). This kit is now the source for each release's listing copy, privacy answers and review notes, so the first-submission wording below is kept as written.
+
 Everything App Store Connect asks for, pre-filled. Copy each section into the
 matching field. Items marked ⚠️ are the only steps that require your account
 or your phone.
@@ -146,7 +148,7 @@ Store Connect will not ask.
 
 ## ⚠️ Steps only you can do
 
-1. **Register the app**: App Store Connect → My Apps → "+" → New App, with
+1. **Register the app** (done; only needed for a new app): App Store Connect → My Apps → "+" → New App, with
    bundle ID `matthewmorrone.Kioku` (register the ID at
    developer.apple.com/account → Identifiers first if it isn't listed).
 2. **Screenshots** (iPhone-only, one 6.9" set at 1320 × 2868): 1.1 keeps the existing set. A new

@@ -32,9 +32,9 @@ An iOS app for reading, looking up, and studying Japanese. It turns Japanese tex
 
 No accounts, analytics or tracking. Notes, saved words, study history and audio stay on the device and leave it only when you export a backup. The app downloads its dictionary once from this project's GitHub releases, and downloads models for lyric alignment and vocal isolation when you use those features. Optional AI features use Apple Intelligence or your own API key. See [docs/PRIVACY.md](docs/PRIVACY.md).
 
-## Building
+## Building from source
 
-Requires Xcode and an iOS 18 device or simulator.
+The App Store version is the easiest way to run Kioku. To build it yourself you need Xcode and an iOS 18 device or simulator.
 
 ```bash
 git clone git@github.com:matthewmorrone/Kioku.git
