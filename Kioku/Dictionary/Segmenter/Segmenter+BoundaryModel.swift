@@ -17,6 +17,22 @@ extension Segmenter {
         guard unaided.isEmpty == false else { return nil }
         let path = absorbingBoundCharacters(in: unaided, of: text)
         guard let probabilities = boundaryModel.cutProbabilities(text: text, lattice: lattice, path: path) else { return nil }
-        return BoundaryCosts(cutProbabilities: probabilities, weight: Self.boundaryModelWeight)
+        return BoundaryCosts(cutProbabilities: Self.withoutDigitGapVerdicts(probabilities, in: text), weight: Self.boundaryModelWeight)
+    }
+
+    // Sets every gap between two digits (script class 5; kanji numerals count as kanji) to 0.5, a cut
+    // and a join priced alike, so the model has no say there. Training masks the gaps no gold token
+    // covers, and gold leaves numbers outside its tokens, so the model has never been taught a
+    // digit–digit gap: its guess there is noise, and at its weight that noise split ２０２ into ２０|２
+    // (a dictionary entry plus a digit).
+    static func withoutDigitGapVerdicts(_ probabilities: [Double], in text: String) -> [Double] {
+        let characters = Array(text)
+        var adjusted = probabilities
+        for gap in 1..<characters.count where gap - 1 < adjusted.count {
+            if BoundaryFeatures.scriptClass(characters[gap - 1]) == 5, BoundaryFeatures.scriptClass(characters[gap]) == 5 {
+                adjusted[gap - 1] = 0.5
+            }
+        }
+        return adjusted
     }
 }
