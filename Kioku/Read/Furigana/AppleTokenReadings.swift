@@ -5,7 +5,7 @@ import Foundation
 // context: 時 after a number as じ, 中 after a noun as ちゅう. FuriganaResolver takes it only for
 // readings JMdict tags as a suffix or counter (SurfaceReadingData.suffixOrCounterReadings), because
 // elsewhere it misreads common words (私 is always わたくし). On device, no network, no model of ours.
-enum AppleTokenReadings {
+nonisolated enum AppleTokenReadings {
     // Each token's single kanji run, keyed by the run's UTF-16 location: its UTF-16 length and the
     // hiragana reading of just the run (the token's reading less its kana before and after).
     static func runReadings(in text: String) -> [Int: (length: Int, reading: String)] {

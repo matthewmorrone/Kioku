@@ -8,7 +8,7 @@ import Foundation
 //      swap in a suffix or counter reading of that spelling (SurfaceReadingData.suffixOrCounterReadings).
 // held2k 91.09% → 94.96%, fresh5k 94.79% → 96.87% on scripts/segmentation-eval/score_readings.py.
 // Readings the after-の rule set are left alone: that rule comes from JMdict's own expressions.
-extension FuriganaResolver {
+nonisolated extension FuriganaResolver {
     // Rewrites `furigana` in place; `fixedLocations` are ruby the after-の rule placed.
     func applyContextualReadings(
         to furigana: inout [Int: String],
