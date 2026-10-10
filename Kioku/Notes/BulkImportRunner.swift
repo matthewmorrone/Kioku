@@ -15,9 +15,8 @@ final class BulkImportRunner: ObservableObject {
     // True after a run completes (success or failure). Used by the sheet to swap Import → Done.
     @Published private(set) var hasFinished = false
 
-    // Note IDs created during the most recent run. Read by the bulk-import sheet
-    // after run() completes so the LLM correction queue can be handed exactly the
-    // notes that were just landed, not every note in the store. Reset on each run.
+    // Note IDs created during the most recent run, counted in the run's closing log line.
+    // Reset on each run.
     @Published private(set) var createdNoteIDs: [UUID] = []
 
     private let store: NotesStore

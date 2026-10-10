@@ -151,7 +151,7 @@ nonisolated struct FuriganaResolver {
 
     // Extracts the reading that maps to the first contiguous kanji run of a dictionary
     // surface. Internal access so the ReadView extension wrapper (kept for test
-    // compatibility) and the LLM correction path can both call through here.
+    // compatibility) and the contextual reading pass can call through here.
     func firstKanjiRunReading(in surface: String, using reading: String) -> String? {
         let characters = Array(surface)
         let runs = FuriganaAttributedString.kanjiRuns(in: surface)

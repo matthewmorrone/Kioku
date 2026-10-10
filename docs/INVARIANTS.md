@@ -198,41 +198,6 @@ Notes hold user-authored content. The contract is data integrity above all.
 
 ---
 
-## LLM Correction (`ReadView+LLMCorrection`, `SongBreakdownStore`)
-
-LLM-driven corrections are user-authored overrides on derived data. They must
-survive normal app lifecycle and not silently misapply.
-
-1. **Persistence across reload**: a correction applied to a (note, segment,
-   range) survives note close + app relaunch and is re-applied on note
-   reopen.
-   - *Rationale*: anything else is functionally useless.
-   - *Status*: ❌.
-
-2. **Override scope**: corrections apply only to the specific
-   (note ID, segment surface, intra-segment range) they were authored for —
-   never to a different note or to a different segment with the same
-   surface.
-   - *Rationale*: cross-note bleed of corrections is a confusing,
-     hard-to-undo bug.
-   - *Status*: ❌.
-
-3. **Re-segmentation invalidation**: when a segment is split, merged, or its
-   surface otherwise changes, corrections targeted at the prior segment are
-   dropped (not silently transplanted to the new segment).
-   - *Rationale*: transplanted corrections look like they applied correctly
-     but are at the wrong position; users can't tell.
-   - *Status*: ❌.
-
-4. **Breakdown hash gates display**: the breakdown UI surfaces a "Regenerate"
-   banner when `breakdown.sourceTextHash != hash(currentNoteText)`; it does
-   not auto-invalidate the cached breakdown.
-   - *Rationale*: established by `SongBreakdownStore` design — automatic
-     invalidation would discard expensive LLM output on every trivial edit.
-   - *Status*: ⚠️ (logic exists; not directly tested).
-
----
-
 ## Backup & Restore (`AppBackupValidator`, `SettingsView.importAppBackup`)
 
 Restore replaces every store at once; a bad backup or a mid-restore failure must

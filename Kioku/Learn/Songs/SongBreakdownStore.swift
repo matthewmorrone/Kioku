@@ -216,9 +216,8 @@ final class SongBreakdownStore: ObservableObject {
         generationTasksByNoteID[id] = task
     }
 
-    // Generates a note's breakdown with the plain breakdown request. Segmentation corrections
-    // are a separate, on-demand request from the Read tab (LLMCorrectionClient). The user's saved
-    // per-song note (SongBreakdownUserNote) travels with the request.
+    // Generates a note's breakdown with the plain breakdown request. The user's saved per-song
+    // note (SongBreakdownUserNote) travels with the request.
     func startBreakdown(forNote note: Note, providerLabel: String) {
         startGeneration(
             forNoteID: note.id,

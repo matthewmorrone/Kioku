@@ -5,8 +5,7 @@ import Observation
 // audio/SRT/TextGrid picks from the lyric-button media picker. An
 // alignment run's own progress/error lives in LyricAlignmentUIState, which the lyric view
 // renders; only the cancellation token stays here, shared by both entry points.
-// Extracted from ReadView's own @State — see LLMCorrectionUIState for the same rationale
-// applied to the LLM-correction feature.
+// Extracted from ReadView's own @State so it reads as one unit.
 @Observable
 final class SubtitleImportUIState {
     var isPerformingAudioTranscription = false

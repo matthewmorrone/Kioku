@@ -67,18 +67,6 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     let unknownSegmentLocations: Set<Int>
     let isHighlightUnknownEnabled: Bool
     let unknownSegmentColor: UIColor
-    // Pending-LLM-correction highlight: locations the AI re-segmented or re-read, awaiting the
-    // user's confirm/reject. Each is tinted green (carrying its furigana) so the change is
-    // visible. `changedReadingLocations` is the reading-only subset, threaded for parity with
-    // the TextKit path and the typography hash. Empty = no pending correction. Defaulted so the
-    // lyrics/song call sites that don't surface LLM changes need not pass them.
-    var changedSegmentLocations: Set<Int> = []
-    var changedReadingLocations: Set<Int> = []
-    // UTF-16 segment start locations for the line the LLM is processing right now.
-    // Tinted indigo so the user can see which line is "active" while corrections
-    // stream in. Empty when no AI request is in flight or for non-LLM call sites
-    // (lyrics, song breakdown) that never surface this state.
-    var inFlightSegmentLocations: Set<Int> = []
     // Saved Highlight: segments whose resolved dictionary entry matches a saved word,
     // colored by Learned-state category (Save/Learned/Not Learned each have their own
     // fixed color). A word's category is global — the same everywhere it's saved — so there's
@@ -310,9 +298,6 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         for location in unknownSegmentLocations { typographyHasher.combine(location) }
         typographyHasher.combine(isHighlightUnknownEnabled)
         typographyHasher.combine(unknownSegmentColor.description)
-        for location in changedSegmentLocations.sorted() { typographyHasher.combine(location) }
-        for location in changedReadingLocations.sorted() { typographyHasher.combine(location) }
-        for location in inFlightSegmentLocations.sorted() { typographyHasher.combine(location) }
         typographyHasher.combine(isSavedHighlightEnabled)
         for location in savedSegmentLocations.sorted() { typographyHasher.combine(location) }
         typographyHasher.combine(savedHighlightColor.description)
@@ -347,9 +332,6 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
                     unknownSegmentLocations: unknownSegmentLocations,
                     isHighlightUnknownEnabled: isHighlightUnknownEnabled,
                     unknownSegmentColor: unknownSegmentColor,
-                    changedSegmentLocations: changedSegmentLocations,
-                    changedReadingLocations: changedReadingLocations,
-                    inFlightSegmentLocations: inFlightSegmentLocations,
                     isSegmentPacked: isRubySpacingEnabled && isFuriganaVisible,
                     furiganaSizeOverride: furiganaSizeOverride,
                     isSavedHighlightEnabled: isSavedHighlightEnabled,

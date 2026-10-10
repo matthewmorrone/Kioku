@@ -2,12 +2,12 @@ import Foundation
 
 // Central registry of the app's loggable feature areas. Every AppLog call site names one of
 // these, so a single case here is the one place that both (a) defines the os.Logger category a
-// feature's output lands under — enabling `log stream --predicate 'category == "llmCorrection"'`
+// feature's output lands under — enabling `log stream --predicate 'category == "ai"'`
 // / Console filtering — and (b) drives the per-feature on/off toggle in Settings → Debug Logs
 // (LogFeatureSettings). Adding a new instrumented feature means adding one case here, not
 // inventing another bespoke log file.
 enum LogFeature: String, CaseIterable, Identifiable {
-    case llmCorrection
+    case ai
     case dictionaryDownload
     case transcription
     case notesImport
@@ -26,7 +26,7 @@ enum LogFeature: String, CaseIterable, Identifiable {
     // Human-readable label for the Settings toggle list.
     var displayName: String {
         switch self {
-        case .llmCorrection: return "LLM Correction"
+        case .ai: return "AI Requests"
         case .dictionaryDownload: return "Dictionary Download"
         case .transcription: return "Transcription"
         case .notesImport: return "Notes Import (OCR / URL / Bulk)"
@@ -46,7 +46,7 @@ enum LogFeature: String, CaseIterable, Identifiable {
     // deciding whether to silence a noisy feature knows what they're giving up.
     var detail: String {
         switch self {
-        case .llmCorrection: return "System/user prompts, raw provider responses, parse and salvage steps."
+        case .ai: return "Song breakdowns, word-meaning guesses and quiz options: prompts, provider responses, failures."
         case .dictionaryDownload: return "Dictionary archive fetch, decompression, and install progress."
         case .transcription: return "Speech model downloads and on-device transcription/alignment runs."
         case .notesImport: return "OCR capture, URL text import, and bulk import runs."

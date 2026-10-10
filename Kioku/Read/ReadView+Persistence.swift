@@ -36,7 +36,6 @@ extension ReadView {
             document.segmentationRefreshTask = nil
             document.furiganaComputationTask?.cancel()
             document.furiganaComputationTask = nil
-            llmCorrection.llmCorrectionTask?.cancel()
             document.isLoadingSelectedNote = true
             document.activeNoteID = nil
             loadAudioAttachmentIfNeeded(attachmentID: nil)
@@ -56,12 +55,6 @@ extension ReadView {
             document.furiganaLengthBySegmentLocation = [:]
             document.chosenEntryIDBySegmentLocation = [:]
             segmentSelection.illegalMergeBoundaryLocation = nil
-            llmCorrection.pendingLLMChangedLocations = []
-            llmCorrection.pendingLLMChangedReadingLocations = []
-            llmCorrection.pendingLLMChangesByLocation = [:]
-            llmCorrection.pendingLLMRebuiltEdges = []
-            llmCorrection.pendingLLMWorkingEntries = []
-            llmCorrection.hasPendingLLMChanges = false
             SegmentLookupSheet.shared.dismissPopover()
             document.isLoadingSelectedNote = false
             return
@@ -79,13 +72,6 @@ extension ReadView {
         document.segmentationRefreshTask = nil
         document.furiganaComputationTask?.cancel()
         document.furiganaComputationTask = nil
-        llmCorrection.llmCorrectionTask?.cancel()
-        llmCorrection.pendingLLMChangedLocations = []
-        llmCorrection.pendingLLMChangedReadingLocations = []
-        llmCorrection.pendingLLMChangesByLocation = [:]
-        llmCorrection.pendingLLMRebuiltEdges = []
-        llmCorrection.pendingLLMWorkingEntries = []
-        llmCorrection.hasPendingLLMChanges = false
         let noteToLoad = notesStore.note(withID: selectedNote.id) ?? selectedNote
         StartupTimer.mark("loadSelectedNoteIfNeeded preparing note")
         document.isLoadingSelectedNote = true

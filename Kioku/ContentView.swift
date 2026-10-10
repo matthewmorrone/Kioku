@@ -177,8 +177,6 @@ struct ContentView: View {
             // A Siri launch can raise the request before this view exists to observe the change.
             playRandomAudioNoteIfRequested()
             loadReadResourcesIfNeeded()
-            // Same wiring for the LLM correction queue — it needs the store reference
-            // to resolve note IDs and persist corrections after each run.
             // dictionary.sqlite isn't bundled — download it if this is a fresh install, then
             // rebuild the read resources so DictionaryStore() (which failed silently above,
             // since nothing was downloaded yet) succeeds on this second attempt.

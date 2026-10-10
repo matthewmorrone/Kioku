@@ -1,8 +1,8 @@
 import Foundation
 
 // Server-sent-events client for the two remote chat providers. Song breakdowns
-// (SongBreakdownService) and segmentation corrections (LLMCorrectionClient) go through here so
-// their per-line UI gets text as the model writes it instead of one blob after a
+// (SongBreakdownService) and gloss guesses (GlossGuesser) go through here, so the breakdown's
+// per-line UI gets text as the model writes it instead of one blob after a
 // 30–180s wait. Each call returns the fully accumulated text (so callers parse exactly what a
 // non-streaming request would have returned) and invokes `onDelta` with every text fragment
 // as it arrives, on the network task — callers hop to the main actor themselves.
@@ -136,7 +136,7 @@ nonisolated enum LLMStreamingClient {
             // Routed through AppLog (not NSLog): an error body can echo back request content on
             // some providers' validation errors, so it gets the same `.private` redaction in a
             // pulled release log archive that every other prompt/response log line gets.
-            AppLog.error(.llmCorrection, "[LLMStreaming] \(providerName) HTTP \(http.statusCode) body=\(body.prefix(400))")
+            AppLog.error(.ai, "[LLMStreaming] \(providerName) HTTP \(http.statusCode) body=\(body.prefix(400))")
             throw SongBreakdownError.networkError("\(providerName) HTTP \(http.statusCode): \(body)")
         }
 
@@ -149,7 +149,7 @@ nonisolated enum LLMStreamingClient {
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 // A malformed event line is skipped rather than fatal — the stream's final
                 // message_stop / [DONE] still arrives and the accumulated text is what matters.
-                AppLog.debug(.llmCorrection, "skipping malformed stream event: \(payload)")
+                AppLog.debug(.ai, "skipping malformed stream event: \(payload)")
                 continue
             }
             if let fragment = try extract(json), fragment.isEmpty == false {

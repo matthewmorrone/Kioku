@@ -84,7 +84,7 @@ enum GlossGuesser {
                     break
                 }
             } catch {
-                AppLog.error(.llmCorrection, "gloss guess request failed: \(error)")
+                AppLog.error(.ai, "gloss guess request failed: \(error)")
                 return nil
             }
         }
@@ -107,7 +107,7 @@ enum GlossGuesser {
                 )
                 return response.content
             } catch {
-                AppLog.error(.llmCorrection, "on-device gloss guess failed: \(error)")
+                AppLog.error(.ai, "on-device gloss guess failed: \(error)")
             }
         }
         #endif

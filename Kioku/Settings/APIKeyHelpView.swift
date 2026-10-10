@@ -7,7 +7,7 @@ struct APIKeyHelpView: View {
     var body: some View {
         Form {
             Section {
-                Text("Song breakdowns, AI corrections and meanings for words the dictionary doesn't have are sent to an AI service you choose. Kioku doesn't run its own server, so you bring your own key: requests go straight from this device to the service and are billed to your account there.")
+                Text("Song breakdowns and meanings for words the dictionary doesn't have are sent to an AI service you choose. Kioku doesn't run its own server, so you bring your own key: requests go straight from this device to the service and are billed to your account there.")
             } header: {
                 Text("What the Key Is For")
             }

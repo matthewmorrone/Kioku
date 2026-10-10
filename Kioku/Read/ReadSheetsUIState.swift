@@ -1,9 +1,8 @@
 import Foundation
 import Observation
 
-// Owns the presentation flags for ReadView's toolbar-launched sheets and popovers. Extracted
-// from ReadView's own @State — see LLMCorrectionUIState for the same rationale applied to the
-// LLM-correction feature.
+// Owns the presentation flags for ReadView's toolbar-launched sheets and popovers.
+// Extracted from ReadView's own @State so it reads as one unit.
 @Observable
 final class ReadSheetsUIState {
     var isShowingSegmentList = false

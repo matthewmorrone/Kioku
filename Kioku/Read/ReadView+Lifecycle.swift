@@ -27,26 +27,6 @@ extension ReadView {
             } message: {
                 Text("We recommend finding the song's lyrics online.")
             }
-            .alert("AI Correction", isPresented: $llmCorrection.isShowingLLMCorrectionError) {
-                Button("OK", role: .cancel) {
-                    llmCorrection.llmCorrectionErrorMessage = ""
-                }
-            } message: {
-                Text(llmCorrection.llmCorrectionErrorMessage)
-            }
-            .alert("Run AI Correction?", isPresented: $llmCorrection.isShowingLLMRunConfirm) {
-                Button("Run") { requestLLMCorrection() }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This sends the note to \(LLMSettings.remoteProvider().displayName), billed to your API key.")
-            }
-            .alert("Apply AI Changes?", isPresented: $llmCorrection.isShowingLLMConfirmAll) {
-                Button("Apply All") { confirmLLMChanges() }
-                Button("Reject All", role: .destructive) { rejectAllPendingLLMChanges() }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("\(llmCorrection.pendingLLMChangedLocations.count) suggested change(s) are highlighted. Tap one to decide on it individually.")
-            }
             // The reset button opens this; Reset here is what restores Kioku's own segmentation.
             .alert("Changes from Default", isPresented: $readSheets.isShowingChangesFromDefault) {
                 if readSheets.changesFromDefault.isEmpty {
@@ -57,21 +37,6 @@ extension ReadView {
                 }
             } message: {
                 Text(readSheets.changesFromDefault.isEmpty ? "None" : readSheets.changesFromDefault.joined(separator: "\n"))
-            }
-            .alert("AI Correction", isPresented: $llmCorrection.isShowingLLMChangePopover) {
-                Button("Confirm") {
-                    if let loc = llmCorrection.llmChangePopoverLocation {
-                        confirmLLMChange(at: loc)
-                    }
-                }
-                Button("Reject", role: .destructive) {
-                    if let loc = llmCorrection.llmChangePopoverLocation {
-                        rejectLLMChange(at: loc)
-                    }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text(llmCorrection.llmChangePopoverText)
             }
     }
 

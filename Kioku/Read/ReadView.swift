@@ -125,9 +125,6 @@ struct ReadView: View {
     var lyricsHighlightGranularity: LyricsHighlightGranularity {
         LyricsHighlightGranularity(rawValue: lyricsHighlightGranularityRaw) ?? LyricsHighlightGranularity.defaultValue
     }
-    // LLM-correction UI state (in-flight request, pending per-location changes, alerts) — see
-    // LLMCorrectionUIState.
-    @State var llmCorrection = LLMCorrectionUIState()
     @AppStorage(LLMSettings.useLLMKey) private var llmUseLLM = true
     @AppStorage(SongBreakdownService.songStubResponseKey) private var breakdownStubResponse = ""
     // Keys themselves live in the Keychain; the revision counter is the reactive
@@ -175,13 +172,6 @@ struct ReadView: View {
     // Settings → Dictionary ("Open Full Lookup on Tap").
     @AppStorage(DictionarySettings.prefersSheetDirectSegmentActionsKey)
     var prefersSheetDirectSegmentActions: Bool = DictionarySettings.defaultPrefersSheetDirectSegmentActions
-
-    // Whether AI correction has somewhere to go (a provider with a key, or a stub in stub mode).
-    // Reads llmKeysRevision so the sparkles button enables the moment a key is entered.
-    var isCorrectionConfigured: Bool {
-        _ = llmKeysRevision
-        return LLMSettings.isConfigured()
-    }
 
     // Reactive equivalent of "is song breakdown usable with the active provider": re-evaluates
     // when the key changes (llmKeysRevision). Reads the breakdown-specific stub key in stub mode.

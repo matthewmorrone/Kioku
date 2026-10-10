@@ -4,9 +4,8 @@ import UIKit
 
 // Owns ReadView's segment-selection state: which segment is selected for lookup, the merged
 // bounds/highlight override the lookup sheet operates on, the transient blank-reading flag, a
-// tap deferred until dictionary resources load, and the illegal-merge flash. Extracted from
-// ReadView's own @State — see LLMCorrectionUIState for the same rationale applied to the
-// LLM-correction feature.
+// tap deferred until dictionary resources load, and the illegal-merge flash.
+// Extracted from ReadView's own @State so it reads as one unit.
 @Observable
 final class SegmentSelectionUIState {
     var selectedSegmentLocation: Int?

@@ -368,9 +368,6 @@ extension ReadView {
                         unknownSegmentLocations: document.unknownSegmentLocations,
                         isHighlightUnknownEnabled: isHighlightUnknownEnabled,
                         unknownSegmentColor: .label,
-                        changedSegmentLocations: llmCorrection.pendingLLMChangedLocations,
-                        changedReadingLocations: llmCorrection.pendingLLMChangedReadingLocations,
-                        inFlightSegmentLocations: inFlightLineSegmentLocations,
                         // Sing results take over the Saved Highlight slots: heard green, missed red.
                         isSavedHighlightEnabled: isShowingSingResults || isSavedHighlightEnabled,
                         savedSegmentLocations: isShowingSingResults ? [] : savedSegmentLocations,

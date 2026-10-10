@@ -60,8 +60,6 @@ enum LLMSettings {
     static func isEnabled() -> Bool {
         UserDefaultsBool.read(useLLMKey, default: true)
     }
-    // Compact-format stub used when useLLM is false. Parsed by the same pipeline as real responses.
-    static let stubResponseKey = "kioku.llm.stubResponse"
 
     // The one model each provider uses, chosen by a one-shot seven-model song-breakdown
     // comparison on the same song (2026-09-23). gpt-5.6-luna got every sung reading right at
@@ -132,26 +130,5 @@ enum LLMSettings {
     // The OpenAI model every OpenAI request uses.
     static func openAIModel() -> String {
         defaultOpenAIModel
-    }
-
-    // True when a request goes to a paid remote provider (OpenAI / Claude) and is billed to the
-    // user's API key — AI on, not the developer stub. Such requests are confirmed before they run.
-    static func isPaid() -> Bool {
-        guard isEnabled() else { return false }
-        switch remoteProvider() {
-        case .openAI, .claude: return true
-        case .none, .appleIntelligence, .appleIntelligenceCloud, .appleIntelligenceCloudPro: return false
-        }
-    }
-
-    // Returns true when useLLM is on and the remote provider has a key, or when useLLM is off
-    // and a stub is set — i.e. a breakdown request has somewhere to go.
-    static func isConfigured() -> Bool {
-        if isEnabled() {
-            return apiKey(for: remoteProvider()) != nil
-        } else {
-            let stub = UserDefaults.standard.string(forKey: stubResponseKey) ?? ""
-            return stub.isEmpty == false
-        }
     }
 }

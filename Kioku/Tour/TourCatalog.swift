@@ -22,8 +22,6 @@ enum TourCatalog {
                          message: "Attach a song or recording. Kioku lines the lyrics up with the audio so you can follow along."),
                 TourStep(target: .readBreakdown, title: "Breakdown",
                          message: "Generate a line-by-line explanation of the note's vocabulary and grammar."),
-                TourStep(target: .readCorrection, title: "AI Correction",
-                         message: "Ask an AI to fix word boundaries and readings. You review each change before it's applied."),
                 TourStep(target: .readReset, title: "Your Changes",
                          message: "See how you've changed the note's word splits and readings, and reset them to Kioku's own."),
             ]

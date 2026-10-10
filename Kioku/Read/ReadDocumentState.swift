@@ -4,8 +4,7 @@ import Observation
 // Owns the note ReadView is currently displaying: its text, which stored note it came from, the
 // segmentation derived from it (persisted overrides, lattice, edges, ranges), the per-location
 // furigana maps, the recompute tasks that keep those in sync, and the render caches derived from
-// them. Extracted from ReadView's own @State — see LLMCorrectionUIState for the same rationale
-// applied to the LLM-correction feature.
+// them. Extracted from ReadView's own @State so it reads as one unit.
 @Observable
 final class ReadDocumentState {
     var text = ""
@@ -23,7 +22,7 @@ final class ReadDocumentState {
     var segmentRanges: [Range<String.Index>] = []
     var unknownSegmentLocations: Set<Int> = []
     // True once the user has manually changed this note's segmentation (merge/split) or its
-    // readings (pin/unpin furigana), or applied an LLM correction. Drives the reset button's
+    // readings (pin/unpin furigana). Drives the reset button's
     // enabled state. `segments != nil` can't stand in for this: import precompute persists the
     // *computed* segmentation to disk, so a freshly-loaded, never-edited note still has non-nil
     // segments. This flag is set only at genuine user-mutation funnels and cleared on note load

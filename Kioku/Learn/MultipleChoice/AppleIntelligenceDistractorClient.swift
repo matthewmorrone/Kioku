@@ -75,14 +75,14 @@ enum AppleIntelligenceDistractorClient {
                 raw, request: request, alreadyChosen: picks, isRealWord: isRealWord
             )
             AppLog.debug(
-                .llmCorrection,
+                .ai,
                 "[AppleIntelligence] distractors for \(request.prompt): kept \(picks.count) of \(raw.chosen.count), shallow=\(raw.poolIsTooShallow), invented \(invented.count) of \(raw.invented.count)"
             )
             return DistractorRefinement(
                 chosen: picks, poolIsTooShallow: raw.poolIsTooShallow, invented: invented
             )
         } catch {
-            AppLog.debug(.llmCorrection, "[AppleIntelligence] distractor refinement failed: \(error)")
+            AppLog.debug(.ai, "[AppleIntelligence] distractor refinement failed: \(error)")
             return nil
         }
     }
