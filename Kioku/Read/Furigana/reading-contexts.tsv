@@ -1,0 +1,1138 @@
+一	いち	16	BOUNDARY=1 exp=2 exp-v:る=1 suf=1 w:から=1 w:で=1 w:と=1 w:の=3 w:は=2 w:を=3	adj-no=4 ctr=1 n=9 n-suf=1 w:です=1
+一	ひと	1	w:の=1	BOUNDARY=1
+一人	ひとり	1	w:を=1	w:で=1
+一分	いっぷん	3	w:は=3	w:か=1 w:の=2
+一味	いちみ	1	w:の=1	w:が=1
+一定	いってい	1	w:を=1	w:する=1
+一度	いちど	1	w:に=1	suf=1
+一方	いっぽう	28	BOUNDARY=10 conj=1 exp-v:る=1 n=4 v5:る=2 w:が=1 w:の=3 w:もう=6	BOUNDARY=1 exp=1 w:が=3 w:だ=1 w:で=4 w:です=1 w:に=2 w:の=4 w:は=9 w:を=2
+一日	いちにち	69	BOUNDARY=21 adj-i:い=2 exp=1 n=1 v1:た=1 w:で=1 w:と=1 w:どんな=1 w:に=1 w:は=31 w:もう=1 w:より=1 w:を=6	BOUNDARY=5 adj-na=1 adj-no=1 adv=3 aux-v:す=1 exp=7 n=6 n-suf=1 n-vs=1 num=1 suf=1 v5:す=1 v5:だ=1 v5:て=1 w:いい=1 w:か=1 w:から=1 w:だった=1 w:で=6 w:に=15 w:の=4 w:は=1 w:も=4 w:や=1 w:を=3
+一日	ついたち	1	n=1	w:です=1
+一日中	いちにちじゅう	1	w:に=1	adv=1
+一時	いちじ	6	w:が=1 w:の=1 w:は=4	exp=1 n=1 n-vs=1 v1:た=1 w:は=1 w:まで=1
+一月	いちがつ	2	w:は=2	w:に=2
+一枚	いちまい	15	n=3 w:から=1 w:が=1 w:で=1 w:には=1 w:の=1 w:は=2 w:もう=2 w:を=3	BOUNDARY=2 adj-no=1 aux-v:て=1 n=1 prt=1 v1:て=1 v5:て=1 v5:る=1 w:が=1 w:に=1 w:の=4
+一段	いちだん	4	BOUNDARY=1 v1:て=1 w:が=1 w:は=1	adj-i:く=1 adj-na=1 adj-pn=1 w:の=1
+一片	いっぺん	1	w:は=1	w:の=1
+一物	いちもつ	1	w:に=1	adj-na=1
+一番	いちばん	280	BOUNDARY=42 adj-na=1 adj-no=1 adj-t=1 adv=1 aux-v:て=1 exp=3 n=3 v1:て=2 v5:だ=1 v5:ぶ=1 v5:る=2 w:いつも=2 w:から=2 w:が=99 w:する=1 w:ずっと=1 w:で=82 w:と=1 w:ところ=1 w:に=5 w:には=2 w:の=6 w:のに=1 w:は=15 w:を=3	BOUNDARY=18 adj-i:い=73 adj-i:く=2 adj-i:た=2 adj-na=35 adj-no=16 adj-pn=3 adv=5 ctr=1 exp=1 exp-adj:い=10 exp-v:た=3 exp-v:る=1 n=17 n-vs=4 suf=1 v1:て=1 v1:る=1 v5:い=1 v5:み=1 vs-i:る=1 w:いい=22 w:お=1 w:だ=10 w:だった=1 w:です=3 w:どう=1 w:な=1 w:に=1 w:になった=1 w:の=24 w:よい=12 w:よく=6
+一端	いったん	2	w:の=2	w:は=2
+一節	いっせつ	7	BOUNDARY=1 w:から=1 w:この=1 w:その=2 w:の=2	w:が=1 w:には=1 w:は=1 w:を=4
+一色	いっしょく	1	adj-no=1	w:です=1
+一行	いっこう	20	BOUNDARY=11 w:その=3 w:ために=1 w:の=4 w:は=1	exp=1 w:から=1 w:が=2 w:に=3 w:は=12 w:より=1
+一見	いっけん	11	BOUNDARY=4 w:その=1 w:は=6	BOUNDARY=1 adj-i:い=1 adj-na=3 n=1 w:した=2 w:して=2 w:に=1
+一角	いっかく	2	w:の=2	w:だ=1 w:を=1
+一足	いっそく	5	w:は=1 w:を=4	v5:た=2 w:くれた=2 w:の=1
+一身	いっしん	4	w:ために=1 w:に=3	w:に=1 w:を=3
+七	しち	11	BOUNDARY=2 adv=1 w:いつも=1 w:には=1 w:は=5 w:も=1	adj-no=7 ctr=1 suf=3
+万	まん	69	BOUNDARY=59 adj-no=2 n-pref=1 num=6 w:で=1	BOUNDARY=3 ctr=2 n=11 n-suf=3 suf=45 v5:て=1 v5:る=1 w:に=1 w:の=2
+万歳	ばんざい	2	n=1 w:は=1	BOUNDARY=1 w:と=1
+万能	ばんのう	2	n=1 w:ほど=1	w:だ=1 w:ではない=1
+丈	たけ	2	BOUNDARY=2	w:の=1 w:を=1
+丈夫	じょうぶ	10	BOUNDARY=1 adj-no=1 exp=1 v5:る=1 w:が=1 w:とても=1 w:は=1 w:ほど=2 w:を=1	aux:す=1 exp-adj:た=1 n=3 w:だ=2 w:で=1 w:である=1 w:ではない=1
+三	みっ	7	BOUNDARY=1 n=1 pn=1 w:が=1 w:を=3	exp=1 n-vs=1 suf=1 v5:た=1 w:ある=1 w:に=1 w:の=1
+三分	さんぶん	1	w:から=1	w:して=1
+三十	さんじゅう	1	n=1	adv=1
+三月	さんがつ	1	BOUNDARY=1	w:で=1
+上	あ	1	w:が=1	BOUNDARY=1
+上	うえ	308	BOUNDARY=29 adj-no=2 adv=1 aux-v:く=1 aux-v:て=1 exp-adj:い=1 exp-v:た=1 num=1 v1:た=1 v1:て=1 v1:る=1 v5:て=1 w:ある=1 w:が=1 w:くれた=1 w:この=2 w:する=3 w:その=4 w:である=2 w:と=1 w:の=245 w:は=2 w:もっと=1 w:より=3 w:よりも=1	BOUNDARY=9 adj-i:い=5 adj-i:く=1 adj-na=1 adj-no=2 adv=1 exp=3 n=26 n-suf=3 n-vs=4 pref=1 suf=1 v1:る=1 w:あの=1 w:から=4 w:ご=1 w:だ=4 w:で=35 w:である=1 w:です=6 w:に=163 w:には=8 w:にも=2 w:の=1 w:は=1 w:へ=2 w:を=21
+上	じょう	21	BOUNDARY=1 adj-no=1 n=16 n-vs=3	BOUNDARY=1 adj-na=1 w:に=3 w:には=1 w:の=14 w:は=1
+上下	じょうげ	3	w:の=1 w:を=2	w:に=2 w:は=1
+上品	じょうひん	3	adv=2 w:は=1	n=1 w:だ=1 w:である=1
+上手	じょうず	150	BOUNDARY=2 adj-f=1 adj-na=10 adj-no=4 adv=3 exp=5 n=1 prt=1 v1:て=1 v5:し=1 w:が=47 w:すぐ=2 w:ずっと=1 w:でも=1 w:とても=18 w:なら=1 w:なんて=1 w:の=1 w:は=20 w:ほど=2 w:も=1 w:より=4 w:よりも=5 w:を=17	BOUNDARY=2 adj-na=1 aux-v:る=1 aux-v:れ=1 exp-v:ん=1 n=20 n-suf=1 n-vs=2 suf=1 v1:る=2 v5:い=1 v5:う=2 v5:く=3 v5:ぐ=5 v5:す=9 v5:た=3 v5:て=1 v5:る=3 w:だ=21 w:だった=2 w:である=5 w:です=18 w:ではない=4 w:と=1 w:な=5 w:なさい=1 w:に=32 w:もの=1 w:を=1
+上方	じょうほう	2	w:の=2	w:に=2
+上気	じょうき	1	adj-i:く=1	w:していた=1
+下	くだ	39	adv=1 n=1 prt=1 w:が=2 w:を=34	BOUNDARY=18 adj-no=2 aux-v:く=1 aux-v:た=4 exp=3 exp-adj:い=1 exp-v:る=1 w:か=1 w:が=1 w:きた=1 w:こと=1 w:する=1 w:とき=1 w:ところ=1 w:の=1 w:もの=1
+下	した	80	BOUNDARY=2 adj-no=6 exp=1 n-vs=1 w:が=3 w:この=1 w:ずっと=1 w:の=59 w:は=2 w:を=4	BOUNDARY=1 n-suf=1 w:から=4 w:で=9 w:に=43 w:には=1 w:の=15 w:へ=1 w:よ=1 w:を=4
+下品	げひん	3	v5:た=1 w:いつも=1 w:の=1	n=3
+下手	へた	22	BOUNDARY=3 adj-i:く=1 adj-pn=1 adv=1 w:が=9 w:とても=1 w:の=1 w:は=5	BOUNDARY=1 conj=1 n=5 n-vs=1 w:だ=11 w:だった=1 w:です=1 w:や=1
+下水	げすい	1	BOUNDARY=1	w:が=1
+下駄	げた	1	BOUNDARY=1	w:を=1
+不便	ふべん	4	w:が=1 w:には=1 w:は=2	w:こと=1 w:だ=2 w:を=1
+世	せい	2	BOUNDARY=2	w:は=2
+世	よ	10	conj=1 n=1 w:が=4 w:の=1 w:は=3	w:でも=1 w:に=5 w:の=3 w:は=1
+丘	おか	79	BOUNDARY=21 adj-i:い=4 adv=1 conj=1 exp=1 v5:て=1 w:あの=1 w:が=5 w:この=3 w:その=9 w:で=4 w:に=1 w:には=1 w:の=3 w:は=22 w:も=1	w:から=4 w:が=3 w:で=1 w:に=4 w:の=45 w:は=5 w:へ=1 w:も=1 w:や=1 w:を=14
+両	りょう	5	BOUNDARY=1 adv=1 num=1 w:の=2	n=3 n-vs=1 w:ですか=1
+両親	りょうしん	1	BOUNDARY=1	w:は=1
+両面	りょうめん	1	w:には=1	w:が=1
+中	じゅう	27	adv=6 n=16 n-vs=2 suf=3	adj-i:い=1 adj-na=1 adj-pn=1 adv=1 v5:た=1 w:が=2 w:ずっと=2 w:で=1 w:に=13 w:には=1 w:の=2 w:は=1
+中	ちゅう	169	BOUNDARY=3 adj-na=1 adj-no=6 adv=1 ctr=1 n=24 n-vs=129 num=1 suf=1 v1:え=1 v5:し=1	BOUNDARY=11 adj-i:い=1 adj-na=2 adj-no=2 adj-pn=1 adv=1 aux-adj:た=1 aux:だ=4 conj=2 exp=1 exp-v:る=1 n=4 num=1 v5:い=1 w:から=1 w:が=1 w:だ=22 w:だった=1 w:で=4 w:であった=1 w:である=11 w:でした=1 w:でしょう=1 w:です=23 w:ですか=2 w:な=1 w:に=34 w:には=3 w:の=16 w:は=14
+中	なか	555	BOUNDARY=22 adj-i:い=1 adv=2 aux-v:た=6 aux-v:ら=1 aux-v:る=1 n-vs=1 v1:た=1 v1:て=1 v5:だ=2 v5:て=1 v5:る=3 w:から=1 w:が=3 w:この=1 w:した=1 w:する=1 w:その=4 w:に=3 w:の=484 w:ので=1 w:は=7 w:を=7	BOUNDARY=4 adj-pn=1 exp-adj:く=1 n-vs=1 w:から=19 w:が=3 w:で=209 w:でも=2 w:に=125 w:には=68 w:にも=4 w:の=33 w:は=7 w:へ=21 w:を=57
+中位	ちゅうくらい	1	w:は=1	w:で=1
+中心	ちゅうしん	9	w:の=5 w:は=1 w:を=3	exp-v:た=1 exp-v:る=1 w:である=1 w:に=5 w:を=1
+中流	ちゅうりゅう	1	w:は=1	n=1
+中立	ちゅうりつ	4	w:は=4	w:か=1 w:の=2 w:を=1
+中身	なかみ	1	w:の=1	w:を=1
+中道	ちゅうどう	1	w:にも=1	BOUNDARY=1
+中間	ちゅうかん	2	w:された=1 w:は=1	n=2
+丸	まる	5	BOUNDARY=1 adj-no=1 w:に=1 w:は=2	ctr=1 n=3 w:は=1
+主	おも	25	BOUNDARY=2 adj-pn=1 aux-v:く=1 exp-v:る=1 v5:う=1 w:その=1 w:で=1 w:できない=1 w:の=16	exp=1 exp-v:る=1 n=21 n-suf=2
+主	ぬし	3	adj-i:い=1 w:の=2	v5:す=1 w:である=1 w:に=1
+主人	しゅじん	29	BOUNDARY=7 n=1 w:ご=5 w:その=1 w:で=1 w:と=1 w:には=1 w:の=8 w:は=4	BOUNDARY=1 w:が=1 w:です=3 w:と=2 w:に=9 w:には=1 w:の=3 w:は=6 w:を=3
+乙	おつ	2	w:は=2	w:の=2
+予言	よげん	1	BOUNDARY=1	w:が=1
+争	あらそ	7	v5:て=1 w:で=1 w:と=3 w:を=2	BOUNDARY=5 n=2
+事	こと	601	BOUNDARY=44 adj-f=2 adj-i:い=26 adj-i:た=2 adj-na=7 adj-pn=6 aux-adj:い=1 aux-v:い=4 aux-v:く=11 aux-v:す=1 aux-v:た=6 aux-v:る=14 exp=8 exp-adj:い=2 exp-v:く=2 exp-v:た=2 exp-v:つ=3 exp-v:る=7 n=1 n-vs=1 prt=1 v1:い=1 v1:た=5 v1:る=37 v5:い=4 v5:う=47 v5:く=11 v5:ぐ=4 v5:す=13 v5:た=34 v5:だ=4 v5:つ=5 v5:ぶ=4 v5:む=5 v5:る=24 vs-i:る=3 w:ある=1 w:いい=1 w:いう=12 w:いる=3 w:くれる=1 w:この=17 w:された=1 w:した=8 w:したい=1 w:しまった=1 w:する=42 w:その=23 w:そんな=29 w:たい=3 w:だった=1 w:だろう=1 w:である=8 w:ではない=1 w:という=7 w:どんな=6 w:ない=1 w:の=69 w:は=7 w:べき=3 w:よい=1 w:ような=1	BOUNDARY=6 aux-v:る=1 aux-v:ん=1 conj=2 exp=5 exp-adj:い=2 exp-adj:く=1 exp-adj:た=1 exp-v:る=1 n=1 prt=6 v1:て=2 v5:う=1 v5:す=3 v5:た=3 v5:て=1 v5:る=4 w:か=2 w:から=2 w:が=114 w:する=1 w:だ=21 w:だけ=1 w:だった=2 w:で=20 w:である=3 w:できない=1 w:でしょう=1 w:です=11 w:ではない=1 w:でも=1 w:と=5 w:とは=2 w:ない=1 w:なら=1 w:なんて=1 w:に=39 w:について=5 w:になった=1 w:には=6 w:の=15 w:は=117 w:ほど=3 w:も=8 w:を=175
+事態	じたい	1	w:の=1	w:を=1
+事故	じこ	2	adj-no=1 w:その=1	w:が=1 w:に=1
+二	に	1	w:に=1	n=1
+二世	にせい	1	BOUNDARY=1	w:は=1
+二人	ふたり	2	BOUNDARY=1 w:あの=1	w:は=2
+二分	にふん	4	BOUNDARY=1 w:か=1 w:に=1 w:は=1	adv=1 aux-v:む=1 aux-v:る=1 w:の=1
+二十	にじゅう	5	BOUNDARY=2 w:は=3	adv=1 ctr=2 suf=2
+二十歳	はたち	5	BOUNDARY=1 w:は=4	BOUNDARY=1 exp=1 w:だ=1 w:で=1 w:の=1
+二度	にど	1	w:は=1	n=1
+二月	にがつ	1	BOUNDARY=1	w:には=1
+互	たが	1	w:は=1	w:の=1
+五	ご	11	BOUNDARY=1 adj-no=1 adv=2 w:で=1 w:は=6	adj-no=3 adv=2 suf=6
+五分	ごふん	5	BOUNDARY=1 adj-no=1 w:に=1 w:は=2	adj-no=2 aux-v:む=1 conj=1 w:で=1
+五分	ごぶ	2	BOUNDARY=1 w:と=1	w:と=2
+五十	ごじゅう	3	n=1 w:には=1 w:は=1	ctr=1 n=1 suf=1
+五月	ごがつ	4	adv=1 w:は=3	num=1 w:に=2 w:の=1
+人	じん	8	BOUNDARY=2 n=6	n=1 w:が=1 w:と=1 w:は=3 w:も=2
+人	にん	184	BOUNDARY=142 adj-no=2 adv=1 n=11 n-pref=1 num=26 w:の=1	BOUNDARY=1 adj-i:た=2 adj-na=1 adj-no=1 adv=3 aux-v:く=1 aux-v:た=2 conj=4 exp-v:る=1 n=6 n-suf=1 n-vs=4 prt=7 suf=3 v1:る=1 v5:く=1 v5:た=1 v5:ぶ=1 v5:り=1 v5:る=2 w:いる=3 w:から=1 w:が=7 w:だ=1 w:だけ=1 w:だった=2 w:で=1 w:です=6 w:と=1 w:という=3 w:に=6 w:の=79 w:は=1 w:も=17 w:もの=5 w:を=6
+人	ひと	1438	BOUNDARY=391 adj-f=1 adj-i:い=90 adj-na=4 adj-no=4 adj-pn=33 adv=5 aux-adj:い=6 aux-adj:た=1 aux-v:い=4 aux-v:う=2 aux-v:く=3 aux-v:た=18 aux-v:て=2 aux-v:ば=1 aux-v:ぶ=1 aux-v:る=11 conj=1 exp=9 exp-adj:い=16 exp-adj:て=1 exp-v:い=5 exp-v:う=1 exp-v:く=1 exp-v:た=5 exp-v:つ=2 exp-v:る=25 n=22 n-vs=1 num=1 pn=1 prt=4 v1:い=3 v1:た=16 v1:る=41 v5:い=8 v5:う=27 v5:く=6 v5:す=7 v5:た=21 v5:だ=1 v5:つ=4 v5:て=1 v5:ぬ=2 v5:ば=1 v5:ぶ=1 v5:む=8 v5:る=52 vs-i:た=1 vs-i:る=1 w:あった=1 w:ある=30 w:いい=14 w:いう=3 w:いつも=6 w:いる=2 w:から=1 w:が=7 w:きた=2 w:くれた=1 w:くれる=9 w:この=6 w:した=18 w:したい=3 w:していた=2 w:している=14 w:しない=7 w:しまった=1 w:すぐ=1 w:する=25 w:その=45 w:そんな=1 w:たい=8 w:で=11 w:である=1 w:できない=2 w:できる=8 w:でも=1 w:と=5 w:という=9 w:とても=1 w:どんな=9 w:な=1 w:ない=4 w:に=11 w:には=6 w:の=173 w:ので=1 w:は=55 w:べき=2 w:ほとんど=2 w:みんな=1 w:も=2 w:もの=1 w:や=2 w:よい=4 w:ような=32 w:ように=4 w:よく=2 w:よりも=1 w:を=7	BOUNDARY=10 adj-no=4 adv=2 aux:す=4 aux:だ=1 aux:ば=1 conj=9 cop:と=1 exp=18 exp-adj:い=2 exp-adj:た=3 exp-adj:て=1 exp-v:た=1 exp-v:て=2 exp-v:ん=1 n=1 n-suf=1 prt=8 v5:て=1 w:いる=1 w:か=2 w:から=18 w:が=220 w:たち=2 w:だ=100 w:だけ=2 w:だった=21 w:だろう=1 w:で=16 w:であった=4 w:である=14 w:でした=6 w:でしょう=1 w:です=50 w:ですか=3 w:ではない=24 w:でも=5 w:と=39 w:として=3 w:とは=7 w:な=2 w:なら=13 w:なんて=1 w:に=104 w:になった=1 w:には=24 w:にも=4 w:ね=3 w:の=142 w:ので=1 w:は=332 w:ほど=3 w:みんな=1 w:も=77 w:や=2 w:よ=1 w:より=2 w:よりも=2 w:を=113
+人々	ひとびと	297	BOUNDARY=119 adj-i:い=10 adv=5 aux-v:た=2 conj=2 exp=5 exp-v:つ=1 exp-v:る=2 v1:た=3 v5:い=2 v5:う=8 v5:た=2 v5:だ=1 v5:て=1 v5:む=3 v5:る=3 vs-i:る=1 w:ある=1 w:が=1 w:この=1 w:された=1 w:した=1 w:していた=2 w:しない=1 w:する=2 w:その=3 w:ために=1 w:で=3 w:である=1 w:ではない=1 w:と=3 w:という=2 w:ない=3 w:に=1 w:の=80 w:ので=1 w:は=13 w:もの=2 w:ように=1 w:を=2	BOUNDARY=1 exp=2 exp-v:る=1 prt=1 w:から=3 w:が=66 w:だけ=2 w:で=3 w:と=5 w:に=27 w:について=2 w:には=1 w:にも=1 w:の=28 w:は=129 w:も=1 w:より=1 w:よりも=1 w:を=22
+人事	じんじ	3	BOUNDARY=2 w:は=1	n=1 w:や=1 w:を=1
+人体	じんたい	4	BOUNDARY=3 w:は=1	prt=1 w:に=1 w:には=1 w:は=1
+人前	にんまえ	1	BOUNDARY=1	n-vs=1
+人前	ひとまえ	42	BOUNDARY=14 exp=1 w:が=3 w:すぐに=1 w:でも=1 w:の=1 w:は=18 w:を=3	w:で=36 w:に=6
+人形	にんぎょう	49	adj-i:い=2 n=1 v1:た=2 v5:た=2 v5:て=1 w:お=2 w:きた=1 w:この=5 w:その=3 w:で=1 w:に=11 w:には=1 w:の=4 w:は=12 w:を=1	w:が=6 w:だ=1 w:で=4 w:です=1 w:に=3 w:は=3 w:よりも=1 w:を=30
+人数	にんずう	3	BOUNDARY=1 w:の=2	w:が=1 w:は=2
+人民	じんみん	15	BOUNDARY=7 v5:た=1 w:の=1 w:は=6	exp=2 exp-v:る=2 w:から=1 w:が=1 w:に=2 w:の=4 w:は=2 w:を=1
+人気	にんき	45	BOUNDARY=4 adj-i:い=1 adj-na=2 adj-no=5 adj-pn=1 adv=4 conj=1 exp=1 w:ずっと=1 w:その=1 w:で=2 w:でも=1 w:とても=2 w:に=4 w:の=3 w:ので=2 w:は=7 w:ほど=2 w:みんな=1	ctr=1 exp-v:た=1 n=6 n-vs=1 w:が=16 w:の=12 w:は=2 w:を=6
+人間	にんげん	180	BOUNDARY=97 adj-f=1 adj-i:い=3 adj-i:く=1 adv=2 aux-adj:ら=1 exp=3 exp-adj:い=1 exp-adj:く=1 exp-v:い=1 n=2 n-vs=1 pn=1 v5:い=1 v5:た=1 v5:る=1 vs-i:る=1 w:ある=1 w:いう=1 w:が=3 w:した=1 w:している=1 w:で=1 w:と=1 w:という=1 w:とは=1 w:どんな=2 w:ない=1 w:の=9 w:は=31 w:べき=1 w:ほとんど=1 w:ほど=1 w:ような=4	BOUNDARY=2 adj-na=1 exp=7 exp-adj:い=1 exp-adj:く=1 n=1 n-suf=1 n-vs=1 w:か=1 w:が=12 w:だ=7 w:だけ=3 w:だった=1 w:で=3 w:である=5 w:です=7 w:ではない=6 w:と=1 w:として=1 w:なら=1 w:に=6 w:には=3 w:の=33 w:は=65 w:も=3 w:や=2 w:よりも=1 w:を=4
+仇	あだ	1	w:を=1	w:で=1
+今	いま	461	BOUNDARY=204 adj-na=1 adv=3 conj=1 exp=2 prt=3 v5:て=1 w:が=31 w:しまった=1 w:で=5 w:に=1 w:には=2 w:ので=1 w:は=192 w:も=3 w:もし=2 w:より=2 w:よりも=1 w:を=5	BOUNDARY=68 adj-i:い=10 adj-na=13 adj-no=12 adj-pn=2 adv=22 aux-adj:い=1 aux-v:く=1 aux-v:た=2 aux-v:て=1 aux-v:る=1 conj=4 ctr=1 exp=5 exp-adj:い=1 exp-v:す=1 exp-v:て=3 exp-v:る=5 exp-v:ん=1 n=67 n-suf=1 n-vs=26 num=1 pn=11 pref=3 suf=1 v1:い=1 v1:す=1 v1:た=1 v1:ば=1 v1:る=5 v5:う=1 v5:き=1 v5:す=2 v5:た=5 v5:て=1 v5:み=1 v5:む=1 v5:る=9 w:あなた=1 w:あの=1 w:ある=3 w:いる=3 w:お=1 w:が=10 w:ここ=5 w:この=1 w:ご=1 w:し=1 w:そこ=2 w:その=4 w:それ=2 w:だけ=1 w:できる=1 w:とても=4 w:どこ=5 w:の=34 w:は=80 w:ほとんど=2 w:まで=1 w:もし=1 w:よく=1 w:より=1 w:よりも=1
+今	こん	12	BOUNDARY=5 w:は=7	adv=1 n=11
+今日	きょう	12	BOUNDARY=7 w:の=5	BOUNDARY=2 n=1 w:で=1 w:の=2 w:は=4 w:まで=2
+他	ほか	151	BOUNDARY=49 adj-i:い=1 adj-pn=1 adv=3 aux-v:ら=1 conj=1 n-pref=1 pn=5 pref=1 v1:て=1 w:いつも=1 w:が=9 w:している=1 w:すぐ=1 w:で=2 w:と=1 w:に=2 w:の=18 w:ので=1 w:のに=1 w:は=40 w:や=1 w:より=6 w:を=3	BOUNDARY=2 adj-no=3 adj-pn=11 adv=1 ctr=1 exp=5 exp-v:す=1 n=54 n-vs=3 pn=3 pref=1 suf=26 w:から=1 w:ところ=1 w:どんな=3 w:に=22 w:には=4 w:にも=1 w:の=1 w:は=3 w:みんな=1 w:も=1 w:よりも=1 w:を=1
+付	つ	17	num=1 w:が=13 w:すぐに=1 w:に=1 w:には=1	BOUNDARY=13 w:が=1 w:しまった=1 w:の=1 w:よ=1
+付	づ	1	n=1	w:の=1
+代	か	1	w:が=1	w:に=1
+代	だい	30	BOUNDARY=20 adv=1 n=6 n-vs=1 suf=1 w:の=1	BOUNDARY=2 adv=1 n=1 w:から=1 w:が=2 w:だった=1 w:で=5 w:である=1 w:として=1 w:に=3 w:にも=1 w:の=6 w:は=3 w:も=1 w:を=1
+代々	だいだい	2	w:は=2	v5:て=1 v5:る=1
+代物	しろもの	1	w:ような=1	w:だ=1
+令	れい	2	n-vs=2	w:が=1 w:は=1
+仮	かり	2	BOUNDARY=1 w:は=1	ctr=1 n=1
+仲	なか	12	BOUNDARY=1 adv=1 aux-v:う=1 w:とは=1 w:の=8	exp-v:た=1 w:だ=2 w:です=1 w:と=1 w:の=3 w:は=2 w:も=1 w:を=1
+仲間	なかま	35	BOUNDARY=3 adj-i:い=1 adj-na=1 adj-pn=1 n=4 n-vs=5 v5:う=1 v5:る=1 w:が=1 w:その=1 w:の=8 w:は=4 w:も=2 w:を=2	BOUNDARY=1 adv=1 exp=1 suf=1 v5:て=1 w:が=1 w:だ=1 w:で=1 w:である=1 w:です=2 w:と=3 w:として=1 w:に=9 w:にも=1 w:の=4 w:は=2 w:や=1 w:を=3
+件	けん	72	BOUNDARY=3 w:あの=1 w:この=24 w:その=41 w:の=3	aux-v:た=1 exp=7 suf=1 w:が=1 w:で=6 w:と=1 w:とは=1 w:に=3 w:について=26 w:には=4 w:の=2 w:は=11 w:を=8
+会	あ	1	w:で=1	exp-v:る=1
+会	かい	52	BOUNDARY=12 adj-t=1 adv=1 conj=1 n=2 n-vs=1 v5:み=2 w:が=1 w:この=4 w:その=16 w:で=2 w:の=3 w:は=6	w:から=1 w:が=1 w:に=16 w:には=7 w:の=4 w:は=15 w:へ=2 w:を=6
+伝	つた	1	w:を=1	exp-v:た=1
+伝言	でんごん	20	BOUNDARY=4 adv=3 exp=1 w:この=1 w:ご=1 w:その=1 w:に=3 w:の=4 w:は=1 w:を=1	exp=1 w:が=2 w:して=1 w:は=3 w:を=13
+伯父	おじ	2	BOUNDARY=1 w:は=1	w:の=1 w:は=1
+似	に	3	BOUNDARY=1 v1:る=1 w:よく=1	BOUNDARY=1 prt=1 v1:る=1
+位	くらい	1	w:の=1	w:を=1
+住処	すみか	1	w:の=1	BOUNDARY=1
+体	からだ	110	BOUNDARY=33 adj-no=3 adj-pn=2 adv=2 aux-v:ら=1 aux-v:る=1 exp=2 n-vs=1 v5:て=3 w:ある=1 w:いつも=1 w:お=6 w:が=2 w:して=2 w:その=1 w:で=5 w:と=3 w:に=1 w:の=8 w:は=26 w:も=1 w:もし=1 w:や=1 w:よう=1 w:よく=1 w:より=1	BOUNDARY=1 adj-no=1 exp=1 v5:し=1 w:が=18 w:だけ=1 w:である=1 w:に=27 w:には=1 w:の=18 w:は=5 w:も=1 w:や=1 w:を=33
+何	なに	450	BOUNDARY=22 adj-no=17 adv=29 aux-v:て=2 aux-v:ら=1 conj=4 exp=2 n-vs=1 pn=1 prt=1 v-other:ず=1 v1:て=1 v5:て=1 w:から=1 w:が=57 w:この=1 w:して=1 w:ずっと=1 w:ために=3 w:で=24 w:として=1 w:とは=3 w:なら=2 w:に=81 w:には=5 w:の=1 w:のに=2 w:は=180 w:を=4	BOUNDARY=8 adj-na=4 adj-no=1 adv=1 aux-v:る=2 aux:だ=1 ctr=1 exp=6 n=2 n-suf=3 pref=2 prt=1 suf=4 v5:る=2 w:から=1 w:が=75 w:くれる=1 w:だ=12 w:だった=6 w:であった=1 w:である=4 w:でした=3 w:ですか=48 w:と=3 w:という=7 w:な=1 w:に=9 w:について=3 w:の=2 w:を=236
+何	なん	173	BOUNDARY=26 adj-no=3 adv=3 conj=2 exp=3 v5:で=1 w:から=4 w:が=11 w:して=1 w:で=8 w:と=6 w:ところ=1 w:とは=3 w:に=16 w:には=12 w:の=2 w:のに=1 w:は=54 w:ほとんど=1 w:も=3 w:を=12	adj-na=9 adj-no=7 adv=1 conj=1 ctr=29 exp=2 exp-v:う=1 exp-v:つ=3 n=42 n-suf=20 n-vs=13 pref=11 suf=1 v-other:得=2 v5:る=1 vs-i:為=1 w:いう=1 w:こと=4 w:ために=6 w:ですか=1 w:と=17
+何人	なんにん	23	BOUNDARY=7 w:で=2 w:には=2 w:は=12	aux-v:す=2 exp-v:す=1 n=4 prt=1 v5:だ=1 w:が=1 w:ですか=8 w:の=5
+何分	なんぷん	2	BOUNDARY=1 adj-pn=1	aux-v:す=1 w:の=1
+何故	なぜ	13	BOUNDARY=7 conj=1 w:が=1 w:は=4	BOUNDARY=2 adv=2 aux-v:た=1 pn=3 suf=1 v1:た=1 w:そう=1 w:そこ=1 w:ですか=1
+何時	いつ	5	BOUNDARY=2 w:は=3	w:が=1 w:ですか=1 w:に=3
+何時	なんじ	86	BOUNDARY=26 adj-na=2 adj-no=7 adv=4 conj=1 w:いつも=1 w:が=3 w:で=1 w:に=1 w:には=3 w:は=37	adv=3 exp=4 n-vs=2 prt=1 v5:く=1 w:か=1 w:から=4 w:が=1 w:だ=1 w:だろう=1 w:ですか=13 w:な=1 w:に=51 w:の=1 w:まで=1
+何語	なにご	4	w:は=4	w:を=4
+何語	なんご	1	w:を=1	v5:す=1
+作	つく	2	BOUNDARY=1 v1:て=1	w:の=1 w:は=1
+作	づく	4	n=4	w:だ=1 w:に=2 w:の=1
+作品	さくひん	2	w:その=1 w:の=1	w:が=2
+作文	さくぶん	35	BOUNDARY=15 adj-pn=3 adv=1 aux-v:た=1 w:この=2 w:に=1 w:の=8 w:は=2 w:もう=1 w:を=1	n-suf=1 w:が=1 w:した=1 w:で=2 w:には=7 w:の=3 w:は=12 w:を=8
+作物	さくもつ	17	BOUNDARY=4 adv=1 w:が=1 w:で=2 w:の=2 w:は=7	w:が=3 w:に=7 w:の=1 w:は=4 w:を=2
+使	つか	1	w:を=1	n=1
+例	れい	18	BOUNDARY=3 adj-i:い=1 aux-v:た=1 exp-v:ぬ=1 v5:た=1 v5:つ=1 w:この=1 w:そんな=1 w:の=6 w:は=1 w:よい=1	exp=1 w:が=5 w:である=3 w:に=1 w:について=1 w:は=1 w:や=1 w:を=5
+価値	かち	1	w:その=1	w:が=1
+便	びん	30	BOUNDARY=13 adj-f=1 adj-no=2 adv=3 aux-v:る=1 n=1 w:この=1 w:と=1 w:の=7	BOUNDARY=1 adj-no=1 suf=2 w:あります=3 w:が=2 w:で=1 w:に=7 w:の=5 w:は=8
+便	べん	3	adj-i:い=2 adv=1	n=1 w:が=2
+便所	べんじょ	1	w:この=1	w:を=1
+保証	ほしょう	1	w:が=1	w:する=1
+信	しん	1	w:と=1	BOUNDARY=1
+信念	しんねん	1	w:その=1	w:を=1
+俳壇	はいだん	1	w:が=1	w:に=1
+俺	おれ	57	BOUNDARY=46 conj=1 pn=1 w:から=1 w:が=4 w:に=2 w:の=1 w:は=1	BOUNDARY=4 prt=1 w:が=5 w:たち=1 w:だけ=2 w:に=4 w:には=4 w:の=12 w:は=17 w:も=2 w:を=5
+個	こ	31	BOUNDARY=29 adj-no=1 num=1	BOUNDARY=1 conj=1 exp-adj:く=1 n=1 n-vs=1 suf=2 v1:る=1 v5:す=1 v5:た=1 v5:る=1 w:あった=2 w:だけ=1 w:です=2 w:に=2 w:の=10 w:も=1 w:を=2
+倒	たお	13	BOUNDARY=1 aux-v:け=1 n=1 n-suf=1 suf=1 w:で=1 w:に=1 w:は=2 w:もっと=1 w:を=3	BOUNDARY=9 n=1 w:ところ=1 w:の=1 w:よ=1
+借	か	1	ctr=1	n-suf=1
+借家	しゃくや	1	w:は=1	w:に=1
+借金	しゃっきん	1	w:は=1	w:を=1
+値	あたい	5	adj-i:い=1 exp=1 w:の=3	exp=1 w:が=1 w:を=3
+値	ね	1	adj-i:い=1	w:を=1
+側	がわ	14	n=7 n-vs=2 pn=2 w:の=3	w:が=3 w:で=1 w:と=2 w:にも=2 w:の=3 w:は=2 w:も=1
+側	そば	16	BOUNDARY=4 n=1 w:いつ=1 w:の=10	w:で=2 w:に=5 w:には=2 w:の=3 w:まで=1 w:を=3
+偽物	にせもの	1	w:その=1	w:と=1
+傘	かさ	73	BOUNDARY=22 adj-i:い=2 adj-na=1 adj-no=1 adj-pn=1 adv=1 v5:た=1 v5:て=2 w:いつも=1 w:から=2 w:が=2 w:この=2 w:で=2 w:に=15 w:には=1 w:の=5 w:ので=2 w:は=9 w:を=1	exp-v:ば=1 w:が=6 w:だ=1 w:でしょう=1 w:に=2 w:は=3 w:も=1 w:を=58
+傷	きず	2	adj-i:い=1 w:の=1	w:から=1 w:を=1
+傾	かたむ	6	BOUNDARY=1 w:に=2 w:は=1 w:へ=2	BOUNDARY=4 v1:た=1 v5:る=1
+僕	ぼく	594	BOUNDARY=388 adj-na=1 adj-no=3 adv=12 conj=7 ctr=1 exp=6 pn=1 prt=1 v1:た=1 v1:て=2 v1:ら=1 v5:て=2 w:いつも=4 w:か=3 w:から=3 w:が=24 w:し=1 w:で=5 w:と=10 w:とき=1 w:なら=4 w:なんて=1 w:に=6 w:は=85 w:ほど=1 w:まだ=2 w:も=4 w:もし=2 w:よ=2 w:よう=1 w:ように=1 w:を=8	BOUNDARY=3 conj=2 exp=3 exp-adj:い=1 n=1 prt=4 suf=1 w:から=1 w:が=48 w:だ=1 w:と=7 w:とは=1 w:なら=1 w:に=45 w:には=17 w:にも=1 w:の=139 w:は=271 w:まで=1 w:も=15 w:より=8 w:よりも=1 w:を=22
+兄	あに	133	BOUNDARY=83 adj-pn=10 adv=2 v5:る=1 w:いつも=1 w:いる=1 w:が=2 w:その=1 w:ために=1 w:と=2 w:には=1 w:の=5 w:は=17 w:も=2 w:を=4	adv=1 exp-adj:て=1 w:から=1 w:が=9 w:たち=1 w:だった=2 w:です=3 w:と=15 w:とは=1 w:に=9 w:について=1 w:の=12 w:は=65 w:ほど=2 w:も=3 w:より=3 w:よりも=1 w:を=3
+兄弟	きょうだい	45	BOUNDARY=9 adj-pn=1 adv=1 n=2 pn=2 w:ご=1 w:その=4 w:で=1 w:とは=1 w:に=1 w:には=5 w:の=11 w:は=4 w:も=2	BOUNDARY=1 adv=1 exp-adj:て=1 n=1 w:が=15 w:たち=1 w:だ=1 w:です=1 w:として=1 w:に=1 w:の=5 w:は=12 w:も=1 w:や=1 w:より=1 w:を=1
+先	さき	61	BOUNDARY=5 adj-i:い=1 adj-na=1 adj-no=3 adv=1 conj=4 ctr=2 exp=6 n=3 n-vs=1 v5:て=1 w:から=1 w:が=4 w:すぐ=1 w:に=1 w:にも=1 w:の=6 w:ので=1 w:は=3 w:まだ=1 w:もう=1 w:より=7 w:よりも=2 w:を=4	BOUNDARY=1 adj-na=1 adj-no=1 adv=1 aux-v:る=1 ctr=2 n=2 n-suf=1 w:から=1 w:が=7 w:だ=2 w:で=1 w:です=3 w:に=23 w:にも=1 w:の=2 w:は=2 w:へ=4 w:まで=3 w:を=2
+先	せん	1	BOUNDARY=1	adv=1
+先方	せんぽう	3	BOUNDARY=3	w:が=2 w:の=1
+先生	せんせい	451	BOUNDARY=243 adj-i:い=8 adj-no=3 adj-pn=1 adv=8 aux-v:た=1 exp=2 n=9 n-suf=1 w:あの=5 w:いい=1 w:か=2 w:が=4 w:した=1 w:すぐに=1 w:ずっと=1 w:その=15 w:で=4 w:と=5 w:に=3 w:について=1 w:には=1 w:の=55 w:は=64 w:も=2 w:よい=5 w:ように=1 w:を=4	BOUNDARY=16 adv=1 aux:だ=1 conj=1 cop:り=1 exp=7 exp-v:ん=1 prt=1 suf=2 v5:る=1 w:から=2 w:が=34 w:その=1 w:たち=3 w:だ=9 w:で=1 w:であった=1 w:である=5 w:でした=1 w:です=18 w:ですか=5 w:と=11 w:なら=1 w:に=59 w:について=1 w:には=3 w:の=39 w:は=200 w:ほど=1 w:も=5 w:を=19
+先週	せんしゅう	1	w:は=1	w:の=1
+党	とう	8	BOUNDARY=1 w:あの=1 w:が=1 w:その=3 w:は=2	w:が=1 w:の=3 w:は=4
+入	い	1	w:に=1	w:んだ=1
+入	はい	383	BOUNDARY=12 adj-na=10 adj-no=5 adv=3 aux-v:ば=1 ctr=1 exp=2 exp-v:て=1 n=2 n-suf=1 num=1 prt=3 suf=3 v1:て=1 v5:て=1 w:か=2 w:から=7 w:が=49 w:して=1 w:たくさん=3 w:に=230 w:には=5 w:にも=2 w:の=10 w:は=7 w:へ=18 w:も=1 w:を=1	BOUNDARY=121 adj-i:い=1 adj-na=3 adj-no=17 adj-t=1 adv=4 aux-v:う=1 aux-v:く=2 aux-v:す=1 aux-v:た=16 aux-v:て=5 aux-v:で=1 aux-v:る=12 aux:い=1 ctr=2 exp=10 exp-adj:い=2 exp-v:た=2 exp-v:る=2 n=20 n-suf=3 n-vs=1 pref=1 prt=2 suf=1 v1:る=1 v5:た=2 v5:だ=1 v5:ち=1 w:いる=1 w:か=14 w:から=3 w:が=1 w:きた=28 w:ください=4 w:こと=4 w:しまった=3 w:たい=4 w:ために=1 w:と=16 w:という=1 w:とき=8 w:ところ=1 w:な=3 w:なさい=4 w:なら=1 w:に=1 w:には=2 w:の=22 w:ので=3 w:のです=1 w:のに=1 w:は=4 w:べき=1 w:まで=1 w:も=2 w:もの=1 w:よ=6 w:よう=1 w:ように=1 w:ん=1 w:んだ=1
+入会	にゅうかい	6	w:ご=1 w:に=4 w:の=1	aux-v:ば=1 n=1 w:したい=1 w:する=1 w:を=2
+入用	にゅうよう	3	w:が=2 w:ご=1	w:で=1 w:です=1 w:なら=1
+入賞	にゅうしょう	1	adv=1	w:した=1
+全	まった	2	BOUNDARY=2	v5:る=1 w:あの=1
+全国民	ぜんこくみん	2	BOUNDARY=2	w:が=2
+全貌	ぜんぼう	1	w:の=1	w:は=1
+八百長	やおちょう	1	w:は=1	w:だ=1
+公	おおやけ	1	v5:て=1	w:に=1
+公園	こうえん	1	w:する=1	w:だ=1
+公平	こうへい	1	w:を=1	w:に=1
+兵	へい	2	v5:う=1 w:から=1	w:も=1 w:を=1
+内	うち	11	BOUNDARY=3 exp-v:ぬ=1 n=1 w:その=1 w:の=4 w:は=1	BOUNDARY=3 adv=1 aux-v:る=1 n=1 n-pref=1 w:で=1 w:に=2 w:へ=1
+内	ない	12	adj-i:い=1 adj-no=1 n=10	w:で=8 w:に=3 w:の=1
+内耳	ないじ	1	w:は=1	w:の=1
+内輪	うちわ	2	adv=1 w:にも=1	n=2
+円	えん	109	BOUNDARY=48 adj-no=44 adj-pn=1 num=9 w:この=1 w:で=1 w:に=2 w:の=1 w:は=2	BOUNDARY=2 adv=2 aux-v:た=4 aux-v:ば=1 aux-v:ら=1 conj=1 exp-v:た=1 n-suf=1 prt=8 suf=1 v1:た=1 v5:ぐ=3 v5:た=7 v5:て=2 v5:ら=1 v5:る=2 w:ある=1 w:から=3 w:が=2 w:する=1 w:だ=1 w:だった=2 w:で=8 w:である=1 w:です=5 w:と=1 w:なら=1 w:に=5 w:の=15 w:は=5 w:も=8 w:を=12
+冊	さつ	58	BOUNDARY=35 adv=11 n=3 num=9	aux-adj:い=2 conj=1 n-vs=1 pref=2 prt=4 v1:る=1 v5:ず=1 v5:た=1 v5:だ=1 v5:て=3 v5:び=1 v5:む=1 v5:る=1 w:ある=1 w:か=6 w:くれた=1 w:で=1 w:という=2 w:の=18 w:は=2 w:まで=1 w:も=6
+写真	しゃしん	1	w:の=1	w:を=1
+冠	かんむり	1	w:の=1	w:を=1
+凝	こ	9	w:が=1 w:に=5 w:の=1 w:もっと=1 w:を=1	BOUNDARY=5 w:いい=1 w:が=1 w:の=1 w:もの=1
+出	で	10	BOUNDARY=1 w:に=1 w:の=7 w:も=1	BOUNDARY=1 exp=1 w:だ=3 w:だった=1 w:である=4
+出会	であ	1	w:に=1	BOUNDARY=1
+出場	しゅつじょう	5	w:として=1 w:に=2 w:には=1 w:の=1	n=1 w:した=2 w:しない=1 w:できる=1
+出所	しゅっしょ	1	w:の=1	w:について=1
+出来	でき	6	adj-pn=1 w:が=1 w:に=1 w:の=3	BOUNDARY=1 w:が=2 w:の=1 w:は=2
+出没	しゅつぼつ	1	w:よく=1	w:する=1
+出発	しゅっぱつ	1	w:に=1	w:します=1
+刃	は	4	BOUNDARY=1 w:の=1 w:は=2	w:が=2 w:の=1 w:は=1
+分	ふん	181	BOUNDARY=172 adv=2 n-vs=1 num=6	BOUNDARY=2 adj-no=19 adv=12 aux-v:す=2 aux-v:た=5 aux-v:て=1 aux-v:ば=3 aux-v:む=4 aux-v:ら=3 aux-v:る=4 conj=2 exp=5 exp-v:て=1 n=6 n-suf=5 n-vs=1 prt=7 v1:す=3 v1:た=4 v1:て=7 v1:る=6 v5:く=3 v5:た=4 v5:ら=1 w:お=1 w:か=1 w:から=5 w:だ=2 w:で=13 w:です=7 w:と=3 w:なら=1 w:に=6 w:の=15 w:は=2 w:ほど=4 w:まで=4 w:も=7
+分	ぶ	3	BOUNDARY=2 w:に=1	BOUNDARY=1 w:が=1 w:の=1
+分	ぶん	18	adv=2 ctr=1 n=8 n-suf=1 n-vs=1 suf=3 w:その=1 w:の=1	n=2 n-vs=2 w:が=2 w:の=8 w:も=1 w:よりも=1 w:を=2
+分	わ	1	w:が=1	BOUNDARY=1
+分別	ふんべつ	37	BOUNDARY=4 exp=1 n-vs=1 v5:て=1 w:でも=1 w:に=1 w:には=1 w:の=6 w:は=4 w:もっと=16 w:より=1	w:ある=2 w:が=23 w:の=5 w:を=7
+分割	ぶんかつ	1	w:を=1	w:したい=1
+切	き	2	BOUNDARY=2	aux-v:た=1 w:は=1
+切手	きって	39	BOUNDARY=5 adj-i:い=2 adj-no=2 adj-pn=1 exp=1 n=1 suf=1 v1:た=1 w:この=1 w:で=2 w:と=1 w:に=5 w:の=8 w:は=7 w:まだ=1	aux-v:ん=1 n=1 n-vs=2 w:が=3 w:の=6 w:は=4 w:を=22
+切断	せつだん	1	w:で=1	w:された=1
+刑事	けいじ	1	w:は=1	w:を=1
+初	はじ	30	BOUNDARY=10 adj-no=1 v-other:ず=1 w:が=1 w:に=1 w:について=1 w:の=7 w:は=4 w:を=4	v5:る=1 w:から=9 w:に=9 w:には=2 w:の=3 w:は=6
+初日	しょにち	1	w:の=1	w:は=1
+別	べつ	75	BOUNDARY=26 adj-no=7 adv=6 conj=1 exp=3 pn=1 v1:て=1 w:から=2 w:が=1 w:して=1 w:で=1 w:という=1 w:とは=1 w:の=1 w:ので=1 w:は=19 w:を=2	BOUNDARY=2 adj-na=1 adj-no=5 adv=1 exp-v:す=1 exp-v:て=1 n=28 n-suf=2 n-vs=6 suf=3 w:だ=7 w:である=1 w:ですか=1 w:と=1 w:な=1 w:に=1 w:の=6 w:もの=3 w:を=4
+利己	りこ	1	w:は=1	n=1
+利益	りえき	1	w:の=1	w:も=1
+削	けず	2	adv=1 w:を=1	adj-na=1 exp=1
+前	ぜん	1	BOUNDARY=1	n=1
+前々	まえまえ	1	BOUNDARY=1	w:から=1
+前後	ぜんご	6	BOUNDARY=1 ctr=2 w:が=2 w:は=1	BOUNDARY=1 w:で=1 w:という=1 w:に=2 w:の=1
+前方	ぜんぽう	5	BOUNDARY=1 adj-na=2 w:の=2	w:に=3 w:の=1 w:を=1
+剥	は	1	w:が=1	w:よ=1
+力	ちから	55	BOUNDARY=9 adv=3 v1:る=3 v5:ぐ=1 v5:す=4 w:する=4 w:に=2 w:には=1 w:の=19 w:のに=1 w:は=5 w:より=2 w:を=1	exp-adj:て=1 exp-v:る=1 prt=2 w:が=23 w:で=9 w:に=3 w:には=1 w:の=4 w:は=3 w:を=8
+力	りょく	9	n=6 n-vs=3	w:が=4 w:に=1 w:にも=1 w:は=2 w:を=1
+助	たす	1	v5:て=1	w:を=1
+助手	じょしゅ	10	BOUNDARY=1 adj-pn=1 exp-v:る=1 w:が=1 w:の=3 w:は=1 w:よい=1 w:を=1	w:が=1 w:だ=1 w:である=1 w:と=1 w:として=1 w:に=2 w:を=3
+努力	どりょく	1	w:な=1	w:を=1
+勉強	べんきょう	1	w:を=1	aux-v:れ=1
+勝	か	6	BOUNDARY=1 suf=1 w:が=3 w:の=1	BOUNDARY=3 v1:る=1 w:です=1 w:に=1
+包	つつ	30	BOUNDARY=3 adj-pn=1 adv=1 w:お=1 w:この=2 w:その=2 w:で=2 w:として=1 w:に=14 w:は=1 w:を=2	BOUNDARY=12 adj-na=1 adj-pn=1 aux-v:す=1 aux-v:ん=1 n=1 prt=1 v5:し=1 w:ください=2 w:くれた=1 w:の=2 w:は=2 w:を=4
+化	ば	1	w:は=1	exp-v:る=1
+化粧水	けしょうすい	1	w:は=1	w:を=1
+北京	ぺきん	1	w:が=1	w:で=1
+匹	ひき	35	BOUNDARY=25 adv=5 n-pref=1 num=4	BOUNDARY=1 aux-v:す=2 n=3 suf=1 v5:す=3 v5:た=2 v5:る=2 w:か=4 w:が=1 w:と=2 w:の=13 w:を=1
+医	い	2	n=2	w:と=1 w:は=1
+医師	いし	27	BOUNDARY=16 pn=1 w:この=1 w:その=1 w:の=1 w:は=7	BOUNDARY=1 n-suf=1 suf=2 w:が=2 w:たち=2 w:だ=1 w:である=1 w:です=1 w:と=1 w:として=2 w:に=1 w:の=3 w:は=9
+医者	いしゃ	1	aux-v:ら=1	w:に=1
+十	じゅう	1	w:は=1	adj-no=1
+十分	じゅうぶん	183	BOUNDARY=18 adv=3 conj=3 n=1 v1:る=3 v5:つ=1 v5:る=1 w:から=1 w:が=14 w:する=3 w:ために=1 w:で=9 w:と=1 w:に=10 w:について=1 w:には=12 w:の=2 w:ので=1 w:のに=12 w:は=52 w:ほど=2 w:まだ=1 w:も=9 w:もう=1 w:もし=1 w:ように=1 w:よりも=1 w:を=18	BOUNDARY=1 adj-i:い=2 adj-na=5 adj-no=8 adv=2 aux-v:い=1 aux-v:す=2 aux-v:た=3 aux-v:ば=2 aux-v:る=3 exp=3 exp-adj:い=2 exp-v:た=2 exp-v:れ=1 n=43 n-vs=28 prt=1 v1:る=7 v5:う=2 v5:す=2 v5:た=3 v5:だ=1 v5:て=3 v5:む=1 v5:る=1 w:あった=1 w:あなた=1 w:ある=11 w:その=2 w:それ=1 w:だ=4 w:だけ=2 w:だろう=1 w:である=2 w:でしょう=1 w:です=2 w:ですか=2 w:ではない=7 w:と=2 w:とは=2 w:な=2 w:に=7 w:には=2 w:ほど=1 w:もの=1
+十分	じゅっぷん	4	adj-pn=1 w:に=1 w:は=2	adj-no=1 n=1 w:の=1 w:も=1
+千	せん	1	BOUNDARY=1	suf=1
+千万	せんまん	3	BOUNDARY=3	n=1 suf=1 w:に=1
+半分	はんぶん	41	BOUNDARY=1 adj-na=1 adv=1 aux-v:ば=1 exp=2 n=1 pref=1 v5:て=2 v5:ば=1 w:が=1 w:その=1 w:と=1 w:ところ=1 w:の=18 w:は=2 w:まだ=2 w:を=4	BOUNDARY=1 aux-v:た=1 conj=3 n=1 prt=1 v1:た=2 v1:て=1 v5:た=1 v5:る=1 w:が=3 w:だけ=1 w:です=1 w:でも=2 w:に=7 w:の=4 w:は=4 w:も=3 w:を=4
+南	みなみ	14	BOUNDARY=1 adv=1 prt=1 w:から=2 w:が=3 w:すぐ=1 w:で=1 w:と=2 w:に=1 w:まで=1	n=1 w:から=2 w:に=2 w:の=2 w:へ=6 w:まで=1
+単	たん	1	BOUNDARY=1	n=1
+単一	たんいつ	1	w:は=1	n=1
+博士	はくし	1	BOUNDARY=1	w:は=1
+印	しるし	8	w:この=1 w:に=2 w:の=5	BOUNDARY=1 w:だ=1 w:である=1 w:として=2 w:は=1 w:を=2
+即日	そくじつ	1	w:は=1	n-vs=1
+卵	たまご	56	BOUNDARY=22 adj-i:い=1 adj-no=1 adv=2 v5:だ=1 w:が=2 w:この=3 w:で=2 w:と=4 w:には=1 w:の=5 w:は=12	BOUNDARY=2 exp=2 prt=2 w:が=6 w:で=1 w:と=1 w:に=1 w:の=5 w:は=9 w:ほど=1 w:を=26
+原	はら	1	aux-v:だ=1	w:は=1
+参照	さんしょう	1	w:を=1	w:して=1
+取	と	1	w:を=1	w:の=1
+取得	しゅとく	3	w:を=3	w:した=1 w:している=1 w:する=1
+口	くち	62	BOUNDARY=23 adv=1 exp=2 v1:た=1 w:から=2 w:そんな=2 w:と=2 w:とても=1 w:に=1 w:には=1 w:の=9 w:は=10 w:も=1 w:より=1 w:を=5	BOUNDARY=1 adj-i:い=1 prt=1 w:から=4 w:が=7 w:で=6 w:と=2 w:に=15 w:には=3 w:の=2 w:は=4 w:へ=1 w:まで=2 w:も=2 w:を=11
+古	ふる	1	w:は=1	n=1
+叩	たた	5	w:を=5	BOUNDARY=1 aux-v:り=1 n-suf=2 w:なんて=1
+可愛	かわい	8	BOUNDARY=3 adj-i:く=1 exp-adj:て=1 prt=1 w:なんて=1 w:は=1	BOUNDARY=2 exp=2 n=2 pn=1 w:ん=1
+台	だい	40	BOUNDARY=27 adj-no=2 adv=4 n-vs=1 num=5 w:この=1	BOUNDARY=1 n=1 n-vs=2 suf=1 v1:る=1 v5:た=1 v5:つ=1 v5:る=3 w:ある=1 w:に=2 w:の=22 w:は=3 w:も=1
+史	し	8	n=8	w:です=1 w:に=1 w:の=3 w:を=3
+右手	みぎて	8	BOUNDARY=2 aux-v:ば=1 w:で=1 w:に=1 w:は=2 w:を=1	w:が=1 w:に=3 w:を=4
+叶	かな	4	w:が=1 w:は=2 w:みんな=1	BOUNDARY=2 w:の=1 w:ように=1
+各	かく	9	BOUNDARY=4 conj=1 w:が=1 w:は=3	adj-no=1 n=8
+同行	どうこう	3	w:と=2 w:に=1	v1:た=1 w:して=1 w:しない=1
+名	な	54	BOUNDARY=7 adj-na=2 adj-pn=7 w:が=1 w:その=2 w:と=1 w:という=12 w:に=1 w:の=21	exp=2 v5:た=1 w:から=2 w:が=2 w:で=2 w:です=1 w:と=1 w:に=1 w:の=10 w:は=8 w:を=24
+名	めい	15	BOUNDARY=12 num=3	BOUNDARY=2 aux-v:た=1 n=1 v1:た=1 w:いる=1 w:から=1 w:が=1 w:だった=1 w:で=1 w:である=1 w:の=4
+名代	みょうだい	1	w:の=1	w:として=1
+名所	めいしょ	6	BOUNDARY=1 n-vs=2 w:には=1 w:の=2	w:が=3 w:です=1 w:は=1 w:を=1
+名簿	めいぼ	9	BOUNDARY=1 adv=2 exp=1 n=2 suf=1 w:が=1 w:は=1	w:から=1 w:に=3 w:には=1 w:の=1 w:を=3
+吐	つ	9	BOUNDARY=1 n-suf=1 prt=1 v5:て=1 v5:り=1 w:を=4	BOUNDARY=3 aux-v:た=2 w:こと=1 w:して=1 w:だろう=1 w:の=1
+向	む	1	BOUNDARY=1	w:まで=1
+君	きみ	1863	BOUNDARY=1262 adj-na=3 adj-no=9 adv=66 aux-v:て=1 aux-v:ば=2 aux-v:ら=3 aux:ば=1 conj=10 cop:り=1 ctr=1 exp=21 exp-adj:て=1 exp-v:て=1 exp-v:ば=1 exp-v:る=1 int=1 n-vs=1 pn=2 prt=8 v-other:ず=1 v1:て=2 v1:ば=1 v1:ら=1 v1:る=1 v5:て=1 v5:ば=3 v5:ら=1 vs-i:て=1 vs-i:る=1 w:いつも=3 w:か=3 w:から=2 w:が=51 w:して=1 w:すぐに=4 w:する=1 w:ずっと=1 w:ため=1 w:ために=1 w:で=16 w:でも=1 w:と=5 w:とは=7 w:なら=2 w:なんて=15 w:に=11 w:について=3 w:には=7 w:の=3 w:ので=3 w:は=266 w:ほど=1 w:まで=1 w:みんな=4 w:も=9 w:もう=2 w:もし=14 w:や=1 w:よ=2 w:よりも=2 w:を=11	BOUNDARY=16 adj-i:い=3 adj-na=20 adj-no=24 adj-pn=1 adv=6 aux-adj:い=4 aux-v:た=1 aux-v:て=1 aux-v:る=2 conj=3 ctr=7 exp=26 exp-adj:い=2 exp-v:せ=1 exp-v:て=2 exp-v:る=6 n=194 n-pref=2 n-suf=24 n-vs=124 pn=7 pref=5 prt=10 suf=13 v5:い=2 v5:う=23 v5:た=5 v5:る=7 vs-i:る=1 w:いう=2 w:いつも=1 w:か=7 w:から=6 w:が=251 w:この=1 w:ため=4 w:ために=6 w:だ=4 w:だけ=4 w:です=2 w:でも=1 w:と=44 w:ところ=6 w:なら=6 w:に=157 w:には=41 w:にも=7 w:の=13 w:のだ=1 w:のです=2 w:は=647 w:へ=1 w:ほど=5 w:も=25 w:もの=2 w:や=1 w:より=8 w:よりも=1 w:を=65
+君	くん	25	BOUNDARY=25	BOUNDARY=1 prt=1 w:が=1 w:と=3 w:に=1 w:の=2 w:は=16
+否	いな	1	BOUNDARY=1	BOUNDARY=1
+否定	ひてい	1	w:と=1	w:した=1
+含	ふく	1	w:が=1	BOUNDARY=1
+呪	のろ	3	w:に=1 w:には=1 w:は=1	BOUNDARY=1 aux:れ=1 w:が=1
+味	あじ	25	BOUNDARY=3 adj-na=1 exp-v:た=1 n=1 v1:ら=1 v5:た=1 w:いい=1 w:この=1 w:で=1 w:とても=1 w:どんな=2 w:の=6 w:は=4 w:ような=1	w:が=9 w:だ=1 w:だった=1 w:で=1 w:ですか=2 w:の=4 w:は=4 w:を=3
+命	いのち	45	BOUNDARY=10 adj-pn=2 adv=1 conj=1 w:が=1 w:ために=1 w:で=2 w:に=1 w:の=19 w:は=6 w:を=1	adv=1 exp=1 prt=1 w:が=4 w:の=5 w:は=7 w:も=1 w:より=2 w:を=23
+命令	めいれい	1	w:と=1	w:した=1
+品	しな	1	w:の=1	w:は=1
+品	ひん	2	adj-na=1 w:は=1	w:が=1 w:を=1
+品物	しなもの	1	w:が=1	w:を=1
+唆	そそのか	2	adj-i:く=1 w:を=1	w:こと=1 w:の=1
+商品	しょうひん	1	BOUNDARY=1	w:の=1
+喉	のど	8	BOUNDARY=5 v1:ら=1 w:が=2	w:が=5 w:に=3
+器	うつわ	1	w:を=1	w:から=1
+四	よ	3	num=1 w:は=2	ctr=2 n=1
+四	よん	12	BOUNDARY=1 adj-no=1 adj-pn=1 conj=1 num=1 pref=1 w:から=1 w:に=1 w:は=4	adj-no=1 ctr=1 n=2 n-suf=5 num=1 w:に=1 w:を=1
+四時	よじ	7	BOUNDARY=2 adv=2 w:は=1 w:もう=1 w:を=1	w:です=1 w:に=5 w:まで=1
+四月	しがつ	6	BOUNDARY=2 w:は=4	adv=1 n=1 w:から=1 w:です=1 w:と=1 w:は=1
+回	まわ	41	BOUNDARY=3 adv=5 n=1 n-suf=1 prt=1 v5:て=3 w:が=2 w:して=4 w:で=1 w:に=1 w:は=1 w:を=18	BOUNDARY=18 adj-no=1 adj-pn=1 aux-v:い=1 exp-v:す=1 n=4 n-vs=1 prt=1 w:か=2 w:きた=2 w:ください=1 w:こと=3 w:と=3 w:ところ=1 w:よ=1
+国民	こくみん	44	BOUNDARY=15 adj-pn=1 adv=1 conj=1 exp=2 n=1 pref=1 v1:る=1 v5:く=1 v5:む=1 vs-i:る=1 w:その=1 w:で=2 w:の=3 w:は=12	adj-no=1 exp=2 exp-v:た=1 suf=1 w:だ=4 w:である=4 w:です=2 w:と=2 w:に=6 w:の=11 w:は=8 w:より=1 w:を=1
+園	えん	1	n=1	w:を=1
+土	つち	4	adv=1 w:この=1 w:で=1 w:は=1	w:に=1 w:は=1 w:を=2
+土産	みやげ	2	BOUNDARY=1 w:の=1	w:の=1 w:を=1
+地	じ	2	conj=1 n=1	v5:る=1 w:は=1
+地	ち	4	w:その=1 w:の=3	exp-v:る=1 w:である=1 w:として=1 w:に=1
+地下	ちか	2	BOUNDARY=1 w:は=1	n-vs=1 w:は=1
+地味	じみ	1	w:よりも=1	n=1
+垂	た	1	w:が=1	BOUNDARY=1
+埃	ほこり	3	adv=1 w:その=1 w:の=1	adj-i:い=1 w:で=1 w:を=1
+埋	う	9	w:に=3 w:は=1 w:を=5	BOUNDARY=5 adj-i:く=1 n=1 w:の=1 w:は=1
+城	しろ	33	BOUNDARY=5 adj-i:い=4 adj-pn=1 w:あの=2 w:お=3 w:この=1 w:その=7 w:に=7 w:の=1 w:は=2	adj-no=1 exp=1 w:が=13 w:です=1 w:に=2 w:の=4 w:は=8 w:を=3
+城	じょう	4	BOUNDARY=3 n=1	w:が=1 w:に=2 w:を=1
+基	もと	1	w:を=1	w:に=1
+堪能	たんのう	5	adj-na=1 w:が=2 w:に=2	w:して=1 w:だ=1 w:で=1 w:であった=1 w:である=1
+場	ば	11	BOUNDARY=2 w:あの=1 w:この=3 w:の=5	w:で=5 w:に=2 w:を=4
+塗	ぬ	45	BOUNDARY=1 adj-i:く=11 adj-na=1 adj-no=1 adv=1 w:が=1 w:に=4 w:を=25	BOUNDARY=19 adj-na=3 aux-adj:い=1 aux-v:す=2 aux-v:た=6 aux-v:ら=1 exp-adj:い=1 w:あった=1 w:から=1 w:くれた=1 w:だろう=1 w:なさい=1 w:の=5 w:ので=1 w:ような=1
+塩梅	あんばい	1	w:いい=1	w:だ=1
+声	こえ	1	w:は=1	w:を=1
+声明	せいめい	8	BOUNDARY=3 w:その=4 w:について=1	w:で=2 w:に=1 w:は=2 w:を=3
+壷	つぼ	1	v5:た=1	w:を=1
+変	か	1	w:を=1	BOUNDARY=1
+変化	へんか	55	BOUNDARY=9 adj-na=2 adj-pn=5 adv=6 conj=1 exp=1 w:その=2 w:という=1 w:に=1 w:の=21 w:は=4 w:ほど=1 w:も=1	exp=3 w:が=13 w:した=2 w:して=1 w:する=6 w:に=9 w:には=1 w:にも=1 w:は=6 w:へ=1 w:も=1 w:を=11
+夏	なつ	129	BOUNDARY=40 adj-i:い=5 adj-i:た=1 adj-t=1 adv=4 pref=1 w:あの=1 w:いつも=2 w:この=21 w:その=1 w:で=2 w:の=27 w:は=21 w:ような=1 w:より=1	BOUNDARY=6 adj-na=1 adj-no=4 adv=2 aux-v:く=1 exp=6 n=6 n-vs=2 pn=1 v5:た=1 w:お=1 w:が=11 w:だけ=1 w:です=1 w:と=2 w:という=1 w:に=11 w:には=8 w:の=21 w:は=36 w:も=3 w:より=1 w:を=2
+夕	ゆう	1	conj=1	w:は=1
+外	がい	1	n=1	w:の=1
+外	そと	109	BOUNDARY=29 adj-na=2 adj-no=1 adv=6 aux-v:ら=1 exp=1 exp-v:て=1 n=2 prt=1 v1:て=1 v5:て=2 w:から=7 w:が=5 w:して=1 w:で=2 w:と=1 w:に=3 w:には=2 w:の=16 w:ので=1 w:は=15 w:を=9	aux:だ=1 w:から=2 w:が=2 w:で=28 w:である=1 w:でも=1 w:に=27 w:には=1 w:の=6 w:は=11 w:へ=17 w:を=12
+多大	ただい	1	BOUNDARY=1	w:な=1
+夜	よる	1	w:は=1	w:よく=1
+夜中	やちゅう	1	w:その=1	w:ずっと=1
+夜中	よなか	7	BOUNDARY=2 w:は=4 w:もう=1	n-suf=1 w:に=2 w:の=2 w:まで=1 w:を=1
+夜半	やはん	1	w:で=1	w:まで=1
+大	おお	5	BOUNDARY=1 w:という=1 w:に=1 w:の=1 w:は=1	exp-v:で=1 n=2 n-vs=2
+大	だい	44	BOUNDARY=7 adj-no=1 adj-pn=1 adv=1 exp=1 n=1 num=1 w:あの=1 w:が=4 w:して=1 w:その=3 w:で=1 w:に=3 w:の=2 w:は=13 w:ような=2 w:を=1	adj-f=1 adj-no=1 exp-v:た=2 exp-v:て=1 n=28 n-vs=10 w:か=1
+大丈夫	だいじょうぶ	35	BOUNDARY=12 adj-na=1 adj-no=2 aux-v:ば=2 aux:ば=1 exp=1 prt=2 v5:ば=1 w:から=1 w:で=1 w:に=1 w:は=3 w:も=3 w:もう=3 w:を=1	BOUNDARY=8 prt=1 w:か=3 w:この=1 w:だ=10 w:です=10 w:ですか=2
+大事	だいじ	29	BOUNDARY=5 adj-i:く=1 adj-na=1 adj-pn=1 adv=2 exp=1 prt=1 w:が=2 w:とても=1 w:は=3 w:ほど=1 w:より=3 w:を=7	n=3 n-suf=2 v5:て=1 w:こと=5 w:だ=5 w:である=1 w:に=9 w:の=1 w:もの=1 w:を=1
+大人	おとな	34	BOUNDARY=10 adv=2 exp=1 w:が=1 w:で=1 w:に=1 w:の=3 w:は=12 w:まだ=1 w:もう=2	BOUNDARY=3 aux:だ=1 v5:て=1 v5:ら=5 w:が=1 w:だ=1 w:である=1 w:ではない=1 w:と=2 w:に=2 w:になった=2 w:にも=1 w:の=8 w:へ=1 w:を=4
+大切	たいせつ	86	BOUNDARY=8 adj-no=5 adv=9 conj=1 exp=3 w:あの=1 w:が=18 w:そんな=1 w:で=3 w:でも=1 w:とても=5 w:の=8 w:のに=1 w:は=13 w:ほど=3 w:も=1 w:より=2 w:よりも=2 w:を=1	adj-no=1 ctr=1 exp=1 n=10 n-suf=3 n-vs=4 w:か=1 w:が=1 w:こと=11 w:だ=18 w:で=1 w:である=7 w:です=6 w:と=1 w:に=1 w:になった=1 w:の=6 w:もの=7 w:ように=1 w:を=4
+大勢	おおぜい	25	BOUNDARY=7 v1:て=1 w:が=2 w:し=1 w:して=1 w:ため=1 w:で=1 w:には=8 w:は=3	aux-v:ば=1 n=14 suf=7 w:いる=1 w:だ=1 w:です=1
+大学生	だいがくせい	19	BOUNDARY=5 adv=2 v1:た=1 w:の=2 w:は=7 w:まだ=1 w:もう=1	BOUNDARY=3 aux:だ=1 exp=1 w:だった=2 w:である=1 w:です=3 w:と=1 w:として=2 w:の=3 w:は=2
+大家	おおや	1	w:その=1	w:は=1
+大家	たいか	2	w:の=1 w:や=1	w:です=1 w:を=1
+大手	おおて	1	adj-pn=1	w:の=1
+大柄	おおがら	3	BOUNDARY=2 exp=1	adj-no=1 w:だった=1 w:の=1
+大流行	だいりゅうこう	1	w:で=1	w:している=1
+大物	おおもの	1	w:は=1	n=1
+大酒	おおざけ	2	BOUNDARY=1 adv=1	w:を=2
+大阪	おおさか	1	w:は=1	adj-no=1
+大頭	おおあたま	1	w:の=1	w:には=1
+天	てん	7	BOUNDARY=3 adj-pn=1 w:は=3	w:から=1 w:にも=1 w:の=3 w:は=1 w:を=1
+天皇	てんのう	1	BOUNDARY=1	w:は=1
+夫	おっと	93	BOUNDARY=32 adj-i:い=3 adj-t=1 exp=1 exp-v:る=1 v1:た=1 v5:た=2 v5:だ=1 w:いい=2 w:いつも=1 w:いる=1 w:が=1 w:で=1 w:として=1 w:ない=1 w:の=5 w:は=32 w:や=2 w:よい=1 w:よく=1 w:を=2	suf=1 w:から=3 w:が=11 w:だ=1 w:だった=1 w:で=1 w:です=2 w:と=6 w:に=14 w:の=19 w:は=18 w:や=1 w:より=1 w:を=14
+夫婦	ふうふ	17	BOUNDARY=3 adj-i:い=2 adj-no=1 w:あの=1 w:する=1 w:その=6 w:は=2 w:を=1	BOUNDARY=1 w:が=2 w:だ=1 w:である=1 w:と=1 w:に=1 w:になった=1 w:の=1 w:は=6 w:を=2
+失敗	しっぱい	1	conj=1	v5:て=1
+女	おんな	57	BOUNDARY=23 adj-i:い=4 adj-na=1 adj-pn=1 adv=1 conj=1 exp=1 w:あの=3 w:か=1 w:が=3 w:その=4 w:ですか=1 w:でも=1 w:と=1 w:の=4 w:は=5 w:も=1 w:より=1	BOUNDARY=2 cop:り=1 exp=1 n=3 prt=1 w:から=1 w:が=4 w:たち=1 w:だ=5 w:で=1 w:である=1 w:ですか=1 w:でも=1 w:と=1 w:に=2 w:になった=2 w:の=10 w:は=13 w:も=1 w:より=1 w:よりも=1 w:を=3
+女子	じょし	13	BOUNDARY=3 w:が=1 w:と=1 w:の=3 w:は=3 w:も=1 w:よりも=1	BOUNDARY=1 n=3 w:から=1 w:が=3 w:です=1 w:の=1 w:は=1 w:も=1 w:より=1
+女性	じょせい	1	w:その=1	w:は=1
+女神	めがみ	1	BOUNDARY=1	w:である=1
+奴	かれ	1	BOUNDARY=1	w:は=1
+奴	やつ	34	BOUNDARY=13 adj-f=1 adj-i:い=4 adj-pn=1 exp-adj:い=1 v5:う=1 v5:く=1 v5:た=1 v5:む=1 w:いい=5 w:した=1 w:そんな=1 w:は=1 w:みんな=1 w:ような=1	BOUNDARY=1 aux-adj:い=1 aux:だ=1 conj=1 w:が=4 w:だ=15 w:だった=1 w:と=2 w:の=4 w:は=3 w:を=1
+好	この	29	BOUNDARY=9 adj-pn=1 exp=1 w:お=1 w:に=1 w:の=14 w:は=1 w:を=1	BOUNDARY=1 exp-adj:い=1 w:が=7 w:ではない=1 w:に=9 w:について=1 w:には=1 w:は=7 w:を=1
+好	ごの	1	n=1	w:だ=1
+好	す	825	BOUNDARY=33 adj-na=13 adj-no=31 adj-pn=2 adv=26 conj=5 exp=6 n=3 pref=1 prt=2 w:お=7 w:から=3 w:が=545 w:こと=2 w:で=1 w:でも=6 w:とても=17 w:に=11 w:の=13 w:は=57 w:ほど=1 w:みんな=1 w:も=19 w:もっと=1 w:より=4 w:を=15	BOUNDARY=37 adj-no=2 adj-t=1 adv=4 aux-adj:い=3 aux-v:て=3 aux-v:ば=1 aux:す=10 aux:だ=6 conj=4 ctr=3 exp=4 exp-adj:い=22 exp-adj:た=5 exp-v:た=1 exp-v:ん=7 n=27 n-suf=9 n-vs=2 pref=2 suf=22 v5:て=1 w:お=1 w:か=4 w:こと=6 w:し=1 w:だ=259 w:だけ=1 w:だった=17 w:だろう=2 w:で=10 w:である=9 w:でした=2 w:です=182 w:ですか=55 w:ではない=60 w:と=3 w:ところ=3 w:とは=1 w:な=10 w:に=2 w:の=5 w:ので=1 w:は=1 w:もの=14
+好	ず	1	n-vs=1	w:です=1
+妊娠	にんしん	1	w:は=1	aux-v:す=1
+妬	ねた	3	w:を=3	BOUNDARY=3
+妹	いもうと	99	BOUNDARY=44 adj-pn=4 conj=1 n=1 v5:て=1 v5:る=1 w:いつも=1 w:が=2 w:で=1 w:と=5 w:とき=1 w:に=1 w:には=3 w:の=14 w:は=19	adv=2 aux:だ=1 exp=1 w:が=11 w:たち=1 w:だ=2 w:でした=1 w:です=2 w:ですか=1 w:と=10 w:に=9 w:の=19 w:は=29 w:も=2 w:より=1 w:を=7
+姉	あね	108	BOUNDARY=64 adj-pn=6 prt=1 w:いつも=1 w:で=1 w:である=1 w:と=2 w:の=4 w:ので=1 w:は=24 w:も=1 w:を=2	adj-na=1 adv=2 exp-adj:く=2 w:が=11 w:たち=2 w:だ=2 w:と=10 w:とは=1 w:に=15 w:の=7 w:は=51 w:ほど=1 w:も=2 w:より=1
+始末	しまつ	1	w:の=1	w:を=1
+姓	せい	3	w:が=1 w:の=2	w:が=1 w:で=1 w:を=1
+姿	すがた	1	BOUNDARY=1	w:を=1
+娘	むすめ	128	BOUNDARY=32 adj-f=1 adj-i:い=6 adj-pn=6 adv=4 exp=1 exp-adj:い=1 v5:い=1 w:あの=2 w:が=3 w:して=1 w:その=6 w:で=2 w:と=3 w:には=5 w:の=24 w:は=29 w:を=1	BOUNDARY=1 adj-no=1 adv=1 exp=2 prt=1 suf=3 w:が=27 w:さん=6 w:たち=1 w:です=4 w:と=3 w:に=12 w:になった=1 w:の=16 w:は=25 w:も=1 w:を=23
+子	こ	184	BOUNDARY=10 adj-i:い=13 adj-no=2 adj-pn=3 aux-v:た=1 aux-v:る=1 exp-adj:い=1 exp-v:た=1 n=2 prt=1 v1:る=2 v5:く=1 v5:た=1 v5:る=1 w:あの=22 w:いけない=1 w:から=1 w:が=1 w:この=7 w:その=84 w:だった=1 w:で=1 w:どんな=1 w:なら=1 w:の=19 w:は=2 w:も=1 w:よい=1 w:ような=1	BOUNDARY=3 aux-v:り=1 aux:だ=1 conj=2 int=1 prt=4 suf=2 w:から=1 w:が=9 w:たち=2 w:だ=11 w:だった=1 w:だろう=1 w:で=1 w:であった=1 w:でした=1 w:です=2 w:でも=1 w:と=1 w:な=1 w:に=11 w:には=4 w:ね=1 w:の=10 w:は=82 w:も=3 w:より=1 w:を=25
+子供	こども	1	w:は=1	w:を=1
+字	じ	10	BOUNDARY=2 adj-pn=1 w:で=1 w:と=1 w:に=1 w:の=2 w:は=2	w:が=1 w:と=1 w:に=1 w:の=3 w:を=4
+学	まな	1	w:を=1	w:には=1
+学生	がくせい	252	BOUNDARY=85 adj-no=1 adj-pn=2 adv=1 aux-v:た=2 exp=2 exp-adj:い=2 exp-v:る=1 n=4 pn=4 pref=1 v1:た=1 v1:る=1 v5:う=1 v5:た=1 v5:ぶ=1 v5:る=5 w:あの=3 w:ある=1 w:が=1 w:した=4 w:したい=2 w:して=1 w:する=3 w:その=19 w:で=1 w:と=3 w:とは=1 w:どんな=2 w:なら=1 w:に=1 w:には=3 w:の=44 w:は=38 w:ほとんど=1 w:も=1 w:もの=1 w:よい=2 w:よく=2 w:を=2	adj-no=2 adv=1 aux-adj:い=1 conj=1 exp-v:ん=1 n=6 n-suf=1 prt=2 suf=14 w:から=1 w:が=38 w:たち=25 w:だ=9 w:で=1 w:であった=1 w:である=1 w:です=12 w:ですか=5 w:ではない=2 w:でも=1 w:と=6 w:なら=1 w:に=15 w:には=3 w:の=35 w:は=56 w:も=4 w:より=1 w:を=6
+孫	まご	1	prt=1	w:が=1
+守	まも	1	BOUNDARY=1	w:を=1
+安心	あんしん	15	BOUNDARY=2 adj-na=1 adv=1 aux-v:ば=1 v5:て=3 w:ご=1 w:は=4 w:も=1 w:を=1	aux-v:た=2 exp=1 w:し=1 w:した=5 w:して=2 w:している=1 w:しない=1 w:だ=1 w:です=1
+完済	かんさい	1	w:を=1	w:できない=1
+官	かん	2	adj-no=1 n-vs=1	w:が=1 w:に=1
+定職	ていしょく	1	n=1	w:に=1
+宛	あて	2	adj-no=1 pn=1	aux-v:た=1 w:に=1
+実	じつ	34	BOUNDARY=5 aux-v:て=1 exp=1 w:と=1 w:とは=1 w:は=23 w:を=2	BOUNDARY=4 adj-i:い=5 adj-i:く=2 adj-i:た=1 adj-na=8 adj-no=2 adj-t=1 adv=2 exp=1 exp-v:た=1 exp-v:つ=1 n=1 n-suf=1 v5:た=1 w:いい=1 w:が=1 w:よい=1
+実	み	12	adj-i:い=1 w:が=2 w:この=1 w:その=1 w:には=1 w:の=2 w:は=2 w:よい=1 w:よく=1	exp=1 w:から=1 w:が=7 w:は=3
+実物	じつぶつ	4	w:の=1 w:は=3	adj-na=2 w:より=1 w:を=1
+客人	きゃくじん	2	BOUNDARY=1 w:は=1	w:たち=1 w:の=1
+室	しつ	10	BOUNDARY=2 adj-na=1 n=3 n-vs=3 suf=1	BOUNDARY=2 w:で=2 w:に=3 w:は=1 w:へ=2
+宮	みや	2	BOUNDARY=2	w:から=1 w:の=1
+家	いえ	1011	BOUNDARY=243 adj-f=1 adj-i:い=28 adj-i:く=1 adj-na=3 adj-no=7 adj-pn=58 adv=47 aux-v:て=1 aux-v:で=1 aux-v:ば=1 conj=4 exp=17 exp-adj:く=1 exp-v:た=1 exp-v:て=1 n=4 n-suf=3 pn=1 suf=1 v-other:ず=1 v1:ず=1 v1:た=7 v1:て=5 v1:る=5 v5:く=1 v5:た=10 v5:て=7 v5:ば=3 v5:む=4 v5:ら=1 v5:る=3 vs-i:て=1 w:あの=12 w:ある=2 w:いい=2 w:いつ=3 w:いつも=5 w:いる=1 w:から=5 w:が=43 w:この=31 w:した=1 w:して=1 w:すぐ=1 w:すぐに=2 w:その=87 w:ために=1 w:で=9 w:でも=2 w:と=3 w:どんな=1 w:に=29 w:には=4 w:の=123 w:ので=5 w:は=122 w:べき=2 w:まだ=2 w:まで=1 w:みんな=2 w:もう=4 w:よい=2 w:ように=1 w:よく=1 w:より=6 w:よりも=4 w:を=18	BOUNDARY=3 adj-na=1 adj-no=2 exp-adj:い=1 prt=1 w:から=29 w:が=56 w:だ=9 w:で=31 w:です=13 w:でも=1 w:と=7 w:に=354 w:には=22 w:にも=1 w:の=109 w:は=166 w:へ=26 w:まで=25 w:も=1 w:や=1 w:を=152
+家	うち	8	BOUNDARY=2 adv=1 w:なら=1 w:に=3 w:の=1	w:で=1 w:に=5 w:へ=2
+家	か	1	n=1	w:は=1
+家	け	7	BOUNDARY=7	w:に=1 w:には=1 w:の=4 w:は=1
+家業	かぎょう	2	w:に=1 w:は=1	w:を=2
+家系	かけい	4	adj-i:い=1 adj-na=1 adj-pn=1 w:の=1	w:が=1 w:の=2 w:は=1
+宿直	しゅくちょく	1	w:が=1	w:です=1
+寒気	さむけ	4	BOUNDARY=1 exp=1 w:まだ=2	w:が=4
+寝	ね	1	w:で=1	w:こと=1
+寮	りょう	3	v5:る=1 w:には=1 w:は=1	w:が=1 w:で=1 w:は=1
+寺	てら	15	BOUNDARY=1 adj-i:い=1 v5:る=1 w:お=9 w:その=3	n=1 w:が=4 w:です=2 w:ですか=1 w:に=1 w:の=1 w:は=2 w:へ=2 w:を=1
+対	たい	14	BOUNDARY=11 n-suf=1 w:に=1 w:の=1	BOUNDARY=12 adj-no=1 n=1
+封	ふう	1	w:を=1	BOUNDARY=1
+専売	せんばい	1	w:の=1	w:です=1
+将	しょう	1	BOUNDARY=1	w:を=1
+尊敬	そんけい	1	w:を=1	w:の=1
+小	しょう	1	BOUNDARY=1	w:か=1
+小	ちい	1	w:の=1	suf=1
+小人	しょうじん	1	BOUNDARY=1	w:は=1
+小人	しょうにん	1	w:の=1	w:は=1
+小人数	こにんずう	3	w:は=3	w:です=1 w:の=1 w:ほど=1
+小柄	こがら	3	exp-v:た=1 w:は=2	n=1 n-suf=1 w:だ=1
+小遣	こづか	1	adv=1	w:を=1
+少年	しょうねん	1	BOUNDARY=1	w:たち=1
+尺	しゃく	1	v1:ば=1	w:を=1
+尻	しり	2	w:お=1 w:の=1	prt=1 w:が=1
+尽	つ	1	w:を=1	aux-v:す=1
+尾	お	9	adj-i:い=1 adv=1 pn=1 w:には=1 w:にも=1 w:の=1 w:は=2 w:も=1	w:が=2 w:で=1 w:の=1 w:も=1 w:を=4
+尿	にょう	5	BOUNDARY=4 adv=1	w:が=1 w:に=2 w:の=2
+局	きょく	1	n-vs=1	w:の=1
+居	い	20	exp=2 w:が=2 w:で=1 w:と=1 w:に=9 w:の=1 w:は=3 w:も=1	BOUNDARY=8 conj=1 w:こと=1 w:たい=1 w:と=1 w:に=1 w:の=3 w:は=1 w:も=3
+属	ぞく	9	w:が=1 w:に=6 w:には=1 w:の=1	BOUNDARY=5 adj-no=1 aux-v:ん=1 n=2
+山	さん	9	BOUNDARY=8 exp-v:れ=1	exp-v:れ=1 w:が=1 w:です=1 w:に=1 w:の=1 w:は=3 w:を=1
+山	やま	142	BOUNDARY=22 adj-i:い=13 adj-pn=2 aux-v:た=1 aux-v:る=1 conj=2 exp=1 exp-v:て=1 n=1 prt=1 v5:る=1 w:あの=11 w:お=1 w:が=4 w:この=8 w:その=29 w:で=1 w:と=2 w:どんな=1 w:に=5 w:には=1 w:の=15 w:は=15 w:まだ=1 w:や=1 w:よく=1	BOUNDARY=1 w:から=1 w:が=4 w:で=6 w:です=3 w:ですか=1 w:と=2 w:に=23 w:について=1 w:には=1 w:の=39 w:は=28 w:へ=4 w:も=2 w:より=2 w:よりも=1 w:を=23
+岬	みさき	1	w:は=1	w:が=1
+島	しま	54	BOUNDARY=4 adj-i:い=1 adj-pn=4 w:あの=1 w:ある=2 w:から=1 w:この=3 w:その=29 w:に=1 w:には=1 w:の=2 w:は=3 w:を=2	exp=1 w:から=3 w:が=6 w:で=1 w:と=1 w:に=9 w:には=4 w:の=6 w:は=14 w:へ=3 w:まで=2 w:を=4
+島	とう	6	BOUNDARY=4 n=2	w:で=1 w:に=3 w:には=1 w:の=1
+川	かわ	2	w:この=1 w:と=1	w:は=2
+州	しゅう	28	BOUNDARY=8 aux-v:る=1 n=7 pref=1 w:この=1 w:その=2 w:と=1 w:の=6 w:は=1	BOUNDARY=1 n=5 n-suf=1 suf=1 w:から=2 w:が=4 w:と=1 w:に=3 w:には=1 w:の=3 w:は=4 w:へ=1 w:を=1
+工夫	くふう	1	w:が=1	w:した=1
+左	ひだり	25	BOUNDARY=10 adv=1 conj=1 exp-adj:く=1 w:で=4 w:に=1 w:は=2 w:を=5	n=1 w:から=1 w:に=12 w:の=2 w:へ=8 w:を=1
+左右	さゆう	11	adj-i:く=1 exp=1 w:で=1 w:に=2 w:は=1 w:を=5	adj-no=1 aux-v:る=4 w:する=3 w:に=3
+左手	ひだりて	9	BOUNDARY=3 exp=1 w:で=1 w:の=1 w:は=2 w:を=1	w:で=2 w:に=2 w:の=3 w:を=2
+己	おのれ	5	BOUNDARY=3 w:は=1 w:を=1	exp=1 w:の=2 w:も=1 w:を=1
+巻	かん	3	BOUNDARY=2 adj-no=1	w:が=2 w:です=1
+市	し	63	BOUNDARY=15 adj-i:い=2 adv=1 n=6 v5:て=1 w:この=7 w:その=12 w:と=1 w:に=1 w:の=6 w:は=11	adj-no=1 n=1 w:が=1 w:だ=1 w:で=3 w:に=5 w:には=5 w:の=27 w:は=10 w:へ=2 w:や=1 w:を=6
+市場	いちば	7	adv=1 w:に=1 w:には=1 w:は=3 w:を=1	w:が=1 w:で=1 w:に=5
+市場	しじょう	27	BOUNDARY=3 adj-f=1 adj-i:い=4 adj-no=2 adv=1 n=8 w:その=1 w:で=1 w:の=2 w:は=4	exp=1 n-vs=1 w:が=2 w:で=2 w:という=2 w:に=6 w:の=3 w:は=4 w:を=6
+席	せき	80	BOUNDARY=20 adj-i:い=3 adj-pn=1 adv=3 aux-v:い=1 exp=1 n=1 v1:た=1 v5:る=1 w:お=1 w:この=9 w:ために=2 w:と=3 w:に=6 w:の=21 w:は=1 w:まで=1 w:よい=3 w:を=1	w:から=1 w:が=13 w:で=5 w:とは=1 w:に=12 w:の=3 w:は=13 w:も=1 w:を=31
+帰	かえ	1	BOUNDARY=1	adj-no=1
+帰	き	2	w:に=2	BOUNDARY=2
+常	つね	9	w:が=8 w:を=1	exp-v:る=1 w:だ=2 w:だった=2 w:であった=1 w:でした=2 w:です=1
+干物	ひもの	1	BOUNDARY=1	w:は=1
+平和	へいわ	3	BOUNDARY=1 w:が=1 w:は=1	adj-na=1 w:の=1 w:へ=1
+平坦	へいたん	1	adv=1	w:ではない=1
+平等	びょうどう	1	prt=1	n=1
+年	とし	58	BOUNDARY=10 adj-i:い=1 adj-pn=2 aux-v:ぶ=1 num=1 v5:た=1 v5:だ=1 v5:る=1 w:ある=1 w:いい=1 w:お=2 w:その=10 w:で=1 w:できる=2 w:に=1 w:には=1 w:の=6 w:は=9 w:ほど=2 w:も=1 w:もう=1 w:よい=2	BOUNDARY=1 conj=1 exp=4 pn=1 pref=1 prt=1 v5:て=1 v5:る=1 w:が=7 w:だ=4 w:だった=2 w:で=1 w:です=3 w:ではない=1 w:に=7 w:になった=1 w:には=1 w:の=6 w:は=8 w:まで=1 w:より=1 w:を=4
+年	ねん	383	BOUNDARY=339 adj-no=1 n=4 n-pref=4 num=33 w:その=1 w:よりも=1	BOUNDARY=49 adj-f=1 adj-i:い=1 adj-no=89 adv=7 aux-v:い=1 aux-v:す=1 aux-v:た=8 aux-v:る=2 conj=17 exp=4 n=18 n-vs=3 prt=4 suf=4 v1:た=2 v5:く=1 v5:た=4 v5:つ=3 v5:て=1 v5:ら=1 v5:る=3 w:いる=1 w:から=3 w:が=11 w:ここ=1 w:だ=2 w:で=10 w:である=2 w:です=2 w:と=1 w:という=1 w:とは=1 w:に=63 w:には=4 w:にも=1 w:の=31 w:は=7 w:ほど=1 w:まで=3 w:も=10 w:や=1 w:よりも=1 w:を=2
+幼	おさな	19	BOUNDARY=6 adv=1 w:が=1 w:その=2 w:の=1 w:は=5 w:まだ=3	adj-no=2 adv=2 n=10 v1:る=2 w:とき=1 w:ので=1 w:もの=1
+幼児	ようじ	1	w:は=1	adj-no=1
+幾	いく	1	w:に=1	ctr=1
+床	とこ	4	BOUNDARY=1 w:で=1 w:は=2	w:に=3 w:も=1
+床	ゆか	44	BOUNDARY=13 exp-v:て=2 v1:て=1 w:が=2 w:この=1 w:その=1 w:で=2 w:の=3 w:は=17 w:を=2	adj-no=1 adv=2 w:から=2 w:が=4 w:で=1 w:に=12 w:には=2 w:の=9 w:は=3 w:を=8
+床板	ゆかいた	1	w:は=1	w:の=1
+底	そこ	11	BOUNDARY=1 adj-pn=1 w:の=7 w:は=1 w:まだ=1	w:に=7 w:の=1 w:まで=1 w:を=2
+店	てん	5	n=5	w:で=1 w:に=1 w:の=1 w:は=1 w:へ=1
+店	みせ	198	BOUNDARY=20 adj-i:い=6 adj-na=1 adj-no=1 adj-pn=4 adv=1 conj=1 exp=1 n=2 v5:ぐ=1 v5:た=1 v5:る=1 w:あの=29 w:ある=1 w:お=8 w:から=1 w:が=7 w:この=22 w:その=49 w:ために=1 w:には=1 w:の=14 w:は=23 w:もの=1 w:を=1	BOUNDARY=1 conj=1 exp=1 n-suf=1 v5:る=1 w:から=3 w:が=13 w:だ=1 w:で=52 w:です=3 w:と=1 w:に=17 w:には=4 w:にも=1 w:の=20 w:は=51 w:へ=1 w:まで=2 w:も=1 w:や=2 w:より=2 w:を=19
+度々	たびたび	1	w:は=1	v1:て=1
+庭	にわ	1	BOUNDARY=1	w:に=1
+建物	たてもの	1	BOUNDARY=1	w:は=1
+弓道	きゅうどう	1	BOUNDARY=1	n-suf=1
+引	ひ	1	adj-i:い=1	w:を=1
+引	び	2	BOUNDARY=2	w:で=2
+張	は	13	adj-i:く=1 conj=1 exp=1 w:を=10	BOUNDARY=7 aux-v:た=1 n=1 n-vs=1 w:か=1 w:が=1 w:ところ=1
+張	ば	1	BOUNDARY=1	w:の=1
+強	つよ	131	BOUNDARY=11 adj-f=1 adj-i:く=2 adj-na=1 adj-no=2 adv=8 n-vs=4 prt=1 w:が=33 w:そう=1 w:で=1 w:と=4 w:という=1 w:とても=5 w:に=12 w:には=1 w:の=3 w:は=17 w:へ=1 w:も=2 w:よう=1 w:ように=2 w:より=4 w:よりも=2 w:を=11	BOUNDARY=30 adj-na=7 adj-no=4 aux-v:た=5 aux-v:て=1 aux-v:る=2 aux:れ=1 exp=5 exp-v:た=2 exp-v:る=1 n=16 n-pref=1 n-vs=9 suf=4 v1:た=4 v1:る=4 v5:き=1 v5:た=7 v5:て=1 v5:で=1 v5:る=3 w:か=1 w:から=1 w:が=2 w:した=2 w:して=1 w:そう=1 w:だ=1 w:です=1 w:と=2 w:な=2 w:の=1 w:ので=3 w:のです=1 w:んだ=2 w:んです=1
+強力	きょうりょく	8	BOUNDARY=1 adv=2 w:の=1 w:は=3 w:より=1	exp=1 n=5 w:で=1 w:に=1
+強気	つよき	1	w:は=1	w:だ=1
+強者	きょうしゃ	2	BOUNDARY=1 adv=1	w:に=1 w:は=1
+弾	ひ	91	BOUNDARY=2 adv=1 exp=1 n=2 n-suf=1 w:が=8 w:に=2 w:の=2 w:は=1 w:も=4 w:を=67	BOUNDARY=44 adj-no=1 aux-v:い=1 aux-v:う=1 aux-v:た=2 aux-v:る=1 exp=1 exp-v:い=1 exp-v:る=2 n=3 n-suf=2 n-vs=1 v5:う=1 w:か=6 w:くれる=1 w:こと=3 w:とき=1 w:なさい=1 w:には=1 w:の=12 w:のだ=1 w:ほど=1 w:も=1 w:ように=1 w:んです=1
+弾丸	だんがん	1	w:は=1	exp=1
+当局	とうきょく	1	BOUNDARY=1	w:は=1
+当店	とうてん	1	w:は=1	w:の=1
+当社	とうしゃ	1	w:は=1	w:の=1
+形	かた	1	w:は=1	w:が=1
+形	かたち	28	BOUNDARY=3 adj-i:い=1 adj-pn=1 exp=1 w:が=1 w:この=1 w:と=1 w:という=2 w:に=1 w:の=10 w:は=2 w:も=1 w:や=1 w:ような=2	w:が=4 w:で=3 w:に=1 w:の=2 w:は=5 w:も=1 w:を=12
+役	やく	19	BOUNDARY=3 n=4 v1:る=1 w:その=1 w:の=9 w:は=1	w:だけ=1 w:に=1 w:の=1 w:は=1 w:を=15
+役所	やくしょ	1	w:は=1	w:に=1
+彼	かれ	16475	BOUNDARY=13130 adj-f=1 adj-i:く=1 adj-na=32 adj-no=61 adj-t=4 adv=282 aux-adj:く=3 aux-v:て=15 aux-v:ば=9 aux-v:ら=2 aux:ば=1 conj=60 ctr=1 exp=168 exp-adj:く=2 exp-adj:た=1 exp-v:け=1 exp-v:た=1 exp-v:て=8 exp-v:ば=1 exp-v:る=1 n=8 n-suf=1 pn=2 prt=5 suf=1 v-other:ず=1 v1:た=1 v1:て=10 v1:ば=1 v5:い=1 v5:た=5 v5:て=31 v5:で=2 v5:ば=2 v5:ら=2 v5:る=1 vs-i:る=2 w:あの=1 w:ある=2 w:いう=2 w:いつ=4 w:いつも=11 w:か=6 w:から=24 w:が=225 w:された=1 w:した=1 w:して=23 w:すぐ=4 w:すぐに=11 w:ずっと=6 w:そんな=1 w:ため=17 w:ために=16 w:で=156 w:でも=3 w:と=118 w:という=4 w:とき=16 w:ところ=1 w:として=7 w:とても=2 w:とは=6 w:なら=3 w:なんて=10 w:に=89 w:について=19 w:には=32 w:にも=10 w:の=19 w:ので=24 w:のに=4 w:は=1554 w:ほど=1 w:まだ=5 w:まで=9 w:みんな=8 w:も=29 w:もう=10 w:もし=31 w:よう=1 w:ように=8 w:よく=4 w:よりも=1 w:を=75	BOUNDARY=98 adj-f=5 adj-i:い=30 adj-na=66 adj-no=90 adj-pn=2 adv=30 aux-adj:い=7 aux-v:い=2 aux-v:く=1 aux-v:た=1 conj=3 ctr=64 exp=107 exp-adj:て=1 exp-v:う=2 exp-v:た=5 exp-v:て=1 exp-v:む=1 exp-v:る=1 n=798 n-pref=6 n-suf=52 n-vs=405 pn=21 pref=21 prt=16 suf=53 v1:け=1 v1:た=2 v1:る=2 v5:い=1 v5:う=12 v5:き=1 v5:た=10 v5:つ=1 w:あの=3 w:か=4 w:から=51 w:が=1222 w:こと=3 w:この=1 w:すぐ=1 w:そこ=1 w:その=1 w:そんな=1 w:ために=4 w:だ=9 w:だけ=6 w:だった=2 w:で=1 w:である=1 w:です=4 w:ではない=6 w:でも=1 w:と=197 w:という=2 w:ところ=1 w:とは=23 w:なら=8 w:に=776 w:について=11 w:には=193 w:の=692 w:のです=1 w:は=10707 w:へ=6 w:ほとんど=2 w:ほど=10 w:も=31 w:もの=2 w:よい=2 w:ような=3 w:よく=1 w:より=15 w:よりも=2 w:を=549
+彼女	かのじょ	15	BOUNDARY=11 w:して=1 w:で=1 w:は=2	w:が=1 w:と=2 w:は=11 w:も=1
+彼方	かなた	1	w:の=1	w:に=1
+待	ま	1	v5:て=1	BOUNDARY=1
+後	あと	181	BOUNDARY=24 adj-no=3 aux-v:た=12 conj=2 exp-v:た=2 n=1 n-vs=11 v1:た=12 v5:た=22 v5:だ=6 w:か=1 w:が=3 w:した=13 w:しまった=1 w:すぐ=3 w:ずっと=1 w:なかった=1 w:の=54 w:は=8 w:まで=1	BOUNDARY=50 adj-na=1 adj-pn=2 adv=5 exp=4 n=10 n-suf=1 n-vs=5 pn=2 v5:て=2 w:すぐ=1 w:すぐに=1 w:その=2 w:だった=3 w:で=32 w:でも=3 w:に=25 w:について=4 w:には=3 w:にも=1 w:は=13 w:へ=1 w:も=3 w:を=7
+後	ご	43	adj-na=1 adv=6 ctr=2 n=30 n-suf=2 n-vs=2	BOUNDARY=7 pn=2 v1:た=1 w:だ=1 w:に=27 w:には=3 w:の=2
+後悔	こうかい	2	aux-v:て=1 w:に=1	w:した=1 w:する=1
+徒歩	とほ	1	w:へ=1	w:で=1
+従兄弟	いとこ	3	BOUNDARY=2 adv=1	exp-v:ん=1 w:は=1 w:を=1
+従来	じゅうらい	1	BOUNDARY=1	w:の=1
+得	う	2	n-suf=1 w:で=1	n-suf=1 w:ところ=1
+得	え	123	BOUNDARY=2 aux-v:れ=1 exp=3 int=1 n=2 prt=1 v1:え=1 v1:じ=1 v5:て=1 v5:り=1 w:から=1 w:が=6 w:し=1 w:ずっと=1 w:たくさん=1 w:で=1 w:ので=1 w:は=3 w:も=2 w:を=92	BOUNDARY=51 adj-i:い=1 adj-na=2 adv=1 conj=1 exp=1 exp-adj:い=2 exp-v:す=1 exp-v:た=3 n=6 prt=2 suf=1 w:か=1 w:こと=6 w:たい=4 w:ため=2 w:ために=6 w:だろう=2 w:でしょう=3 w:と=10 w:とは=1 w:に=1 w:には=2 w:の=5 w:のに=4 w:もの=3 w:ように=1
+得	とく	5	adj-pn=2 exp-v:ば=1 w:が=2	BOUNDARY=1 w:だ=1 w:です=1 w:にも=1 w:も=1
+御	ご	50	BOUNDARY=17 adj-i:い=1 adj-na=1 adj-no=3 adv=4 conj=1 exp=1 w:と=1 w:という=1 w:に=6 w:の=2 w:は=2 w:へ=1 w:まで=1 w:を=8	BOUNDARY=1 adj-na=3 adj-no=8 adv=2 aux-v:い=1 exp=1 exp-adj:い=1 n=13 n-suf=2 n-vs=14 v5:い=1 v5:せ=1 v5:り=1 v5:れ=1
+御兄弟	ごきょうだい	2	BOUNDARY=1 adv=1	w:を=2
+御子	みこ	3	BOUNDARY=1 w:の=1 w:は=1	w:である=1 w:を=2
+御所	ごしょ	1	n=1	w:に=1
+御霊	みたま	1	BOUNDARY=1	exp=1
+微妙	びみょう	13	BOUNDARY=1 adj-na=1 w:とても=1 w:に=1 w:には=5 w:の=2 w:は=2	ctr=1 n=9 n-vs=1 w:だ=1 w:ところ=1
+徳	とく	1	w:の=1	BOUNDARY=1
+心	こころ	107	BOUNDARY=39 adj-i:い=5 adj-pn=6 aux-v:る=1 exp=1 exp-adj:い=1 v5:て=1 v5:ば=1 vs-i:る=1 w:いつも=1 w:が=2 w:その=1 w:で=1 w:と=5 w:とても=1 w:に=4 w:の=18 w:は=12 w:も=1 w:より=1 w:を=4	BOUNDARY=3 exp=1 n=1 pn=1 suf=1 v1:る=1 v5:た=1 v5:る=1 w:から=2 w:が=15 w:ここ=1 w:に=20 w:にも=1 w:の=17 w:は=17 w:も=2 w:を=22
+心中	しんちゅう	1	BOUNDARY=1	w:お=1
+心地	ここち	3	v1:た=1 v1:て=1 w:たい=1	w:が=1 w:だ=1 w:も=1
+心理学	しんりがく	1	BOUNDARY=1	w:を=1
+必要	ひつよう	2	v5:す=1 w:が=1	w:が=1 w:だ=1
+志	こころざし	1	w:にも=1	w:が=1
+忘	わす	1	w:を=1	exp-adj:た=1
+忙	いそが	202	BOUNDARY=16 adj-na=7 adj-no=10 adv=19 exp=6 n=1 w:いつ=1 w:いつも=8 w:いる=1 w:お=1 w:から=2 w:が=14 w:ずっと=8 w:その=1 w:で=20 w:とても=19 w:に=7 w:のに=17 w:は=34 w:ほど=4 w:まだ=1 w:まで=2 w:みんな=2 w:より=1	BOUNDARY=93 adj-no=1 aux-adj:い=1 aux-v:う=1 aux-v:す=1 aux-v:た=1 aux-v:ぶ=1 aux-v:る=2 aux-v:ん=4 aux:ば=1 conj=1 exp=3 exp-adj:い=2 n=2 n-suf=4 n-vs=3 prt=4 suf=1 v1:た=1 v1:て=1 v1:る=2 v5:た=1 v5:る=2 w:あなた=1 w:から=2 w:が=2 w:こと=2 w:さ=1 w:し=2 w:している=3 w:そう=3 w:だろう=1 w:でしょう=4 w:です=1 w:ですか=6 w:と=3 w:という=1 w:なら=1 w:に=1 w:ね=2 w:の=7 w:のだ=1 w:ので=12 w:のです=5 w:も=3 w:よ=1 w:ん=1 w:んだ=1 w:んです=2
+忠実	ちゅうじつ	16	BOUNDARY=1 adj-no=1 adv=1 w:に=5 w:には=1 w:の=1 w:は=2 w:より=3 w:を=1	conj=2 cop:い=1 exp=2 n=2 n-vs=1 w:だ=5 w:であった=1 w:である=1 w:には=1
+怒	おこ	138	BOUNDARY=14 adj-i:く=3 adv=10 exp=7 v5:て=7 w:から=2 w:が=18 w:して=2 w:すぐ=2 w:で=1 w:と=2 w:とても=5 w:に=8 w:は=45 w:ほど=1 w:まだ=1 w:よく=1 w:を=9	BOUNDARY=40 adj-na=1 adj-no=3 aux-v:う=1 aux:ば=1 ctr=2 exp-v:た=3 n=13 n-suf=1 n-vs=3 num=1 pn=1 prt=4 v5:た=3 w:から=2 w:が=1 w:ください=1 w:こと=1 w:だろう=4 w:でしょう=1 w:と=6 w:な=2 w:なんて=1 w:に=3 w:ね=1 w:の=19 w:のだ=4 w:ので=2 w:のです=2 w:は=1 w:べき=1 w:も=3 w:もの=1 w:よ=1 w:よい=1 w:よう=1 w:ような=1 w:ん=1
+思	おも	5	w:と=4 w:を=1	BOUNDARY=3 prt=1 w:きた=1
+思案	しあん	1	w:が=1	w:の=1
+急	いそ	1	BOUNDARY=1	aux-v:て=1
+急	きゅう	15	BOUNDARY=2 adj-i:て=1 adv=1 exp=2 w:が=1 w:で=1 w:に=1 w:は=5 w:を=1	adj-no=2 n=5 n-vs=1 v5:せ=1 w:が=2 w:だ=2 w:で=1 w:を=1
+性	せい	15	adj-na=5 adj-no=2 n=7 n-vs=1	exp-adj:い=1 exp-v:る=1 n=1 w:が=3 w:である=2 w:の=1 w:は=2 w:を=4
+息	いき	23	BOUNDARY=7 adv=2 exp=1 w:と=1 w:に=3 w:の=1 w:ので=1 w:は=5 w:ほとんど=1 w:も=1	w:が=8 w:も=1 w:を=14
+悪	あく	8	BOUNDARY=1 w:で=1 w:でも=1 w:と=3 w:は=1 w:を=1	exp-adj:い=1 w:だ=1 w:ではない=1 w:の=3 w:は=1 w:を=1
+悪	わる	305	BOUNDARY=45 adj-i:く=2 adj-na=3 adj-no=4 adj-pn=1 adv=24 aux-v:り=1 conj=8 exp=4 n=3 unc=1 v1:て=1 w:から=1 w:が=105 w:この=1 w:して=1 w:すぐに=1 w:ずっと=1 w:その=4 w:そんな=3 w:と=5 w:という=1 w:とても=2 w:どんな=1 w:に=7 w:について=1 w:には=1 w:の=16 w:は=38 w:ほど=1 w:も=3 w:もっと=1 w:より=4 w:を=10	BOUNDARY=64 adj-na=1 adj-no=5 adv=2 aux-v:い=1 aux-v:た=2 aux-v:て=5 aux-v:ら=1 aux-v:る=5 cop:だ=2 ctr=1 exp=3 exp-v:た=3 exp-v:る=2 n=39 n-suf=12 n-vs=2 pn=3 pref=2 prt=7 suf=1 v1:た=1 v5:い=2 v5:う=2 v5:せ=7 v5:て=2 v5:で=1 v5:る=1 w:いう=1 w:から=4 w:が=1 w:こと=34 w:した=2 w:して=1 w:する=1 w:そう=3 w:だ=1 w:です=2 w:ですか=1 w:と=16 w:とき=1 w:ところ=2 w:な=1 w:ない=1 w:に=2 w:には=3 w:ね=3 w:の=14 w:のだ=3 w:ので=8 w:のです=6 w:は=6 w:も=1 w:もの=1 w:よ=1 w:よう=1 w:を=1 w:ん=3 w:んだ=1
+悪口	わるぐち	17	BOUNDARY=1 w:で=1 w:には=1 w:の=14	w:は=2 w:を=15
+悪性	あくせい	2	BOUNDARY=1 w:の=1	w:の=2
+悪気	わるぎ	1	BOUNDARY=1	w:は=1
+情報	じょうほう	2	BOUNDARY=1 w:の=1	w:を=2
+愛妻弁当	あいさいべんとう	1	w:も=1	w:です=1
+愛敬	あいきょう	2	BOUNDARY=1 w:は=1	BOUNDARY=1 w:の=1
+愛着	あいちゃく	8	adj-i:い=2 adv=1 w:が=2 w:とても=1 w:に=2	w:が=1 w:を=7
+感	かん	1	w:を=1	BOUNDARY=1
+慣	な	1	w:に=1	BOUNDARY=1
+憂	うれ	1	BOUNDARY=1	w:の=1
+懲	こ	1	w:も=1	w:だろう=1
+成功	せいこう	1	w:に=1	BOUNDARY=1
+我	われ	3	BOUNDARY=2 conj=1	aux-v:り=1 prt=1 v5:う=1
+戦	いくさ	4	adj-na=1 n=2 w:は=1	w:が=2 w:は=1 w:を=1
+戦場	せんじょう	1	w:は=1	w:で=1
+戸	こ	2	BOUNDARY=1 num=1	w:が=2
+戸	と	35	BOUNDARY=11 adj-no=2 adv=1 exp-v:た=1 w:か=1 w:が=2 w:この=1 w:その=4 w:に=2 w:には=1 w:の=2 w:は=7	w:が=5 w:に=1 w:には=1 w:は=6 w:を=22
+戸口	とぐち	13	BOUNDARY=2 adj-i:い=2 adj-no=1 adv=1 w:が=3 w:の=1 w:は=3	w:に=5 w:の=5 w:を=3
+戻	もど	1	w:に=1	BOUNDARY=1
+房	ふさ	1	num=1	BOUNDARY=1
+所	ところ	100	BOUNDARY=11 adj-f=1 adj-i:い=9 adj-pn=7 adv=1 aux-v:う=1 aux-v:た=1 aux-v:る=2 exp-v:た=3 n=2 n-vs=4 v1:た=3 v1:る=7 v5:た=2 v5:だ=1 v5:て=1 v5:ぬ=1 v5:む=1 v5:る=7 w:あった=2 w:ある=2 w:いい=1 w:いる=2 w:この=1 w:する=2 w:そんな=1 w:どんな=2 w:ない=1 w:の=21	BOUNDARY=1 adv=1 aux:す=1 exp=1 n-suf=1 prt=1 v5:ば=1 w:から=1 w:が=5 w:だ=2 w:だった=1 w:で=9 w:です=7 w:ですか=1 w:に=40 w:には=2 w:の=1 w:は=9 w:へ=9 w:まで=2 w:も=1 w:を=3
+手前	てまえ	2	BOUNDARY=1 w:した=1	BOUNDARY=1 w:に=1
+手強	てごわ	3	w:には=1 w:は=2	n=2 suf=1
+手書	てが	1	w:を=1	w:に=1
+才	さい	6	w:の=5 w:は=1	w:が=3 w:に=1 w:の=1 w:を=1
+打	う	49	BOUNDARY=1 adj-i:く=4 adv=2 w:が=2 w:で=3 w:に=4 w:の=1 w:を=32	BOUNDARY=19 adj-pn=1 aux-v:た=2 aux-v:ら=1 exp-v:る=1 n-suf=3 v5:た=1 w:が=2 w:ください=3 w:こと=1 w:する=1 w:なさい=1 w:に=1 w:の=7 w:ので=1 w:のです=1 w:ような=1 w:ように=1 w:ん=1
+打	ぶ	1	adj-i:く=1	n-vs=1
+払	はら	1	w:を=1	n-vs=1
+承知	しょうち	1	w:は=1	w:の=1
+抵抗	ていこう	1	w:な=1	w:に=1
+拍手	はくしゅ	12	BOUNDARY=1 adj-i:い=1 adj-pn=1 aux-v:る=1 w:が=1 w:に=5 w:は=2	n-vs=2 w:した=1 w:を=9
+拳	こぶし	2	v5:う=1 w:は=1	w:で=1 w:を=1
+挟	はさ	1	w:を=1	w:しまった=1
+振	ふ	17	BOUNDARY=1 adj-pn=1 v1:た=1 w:して=1 w:に=4 w:になった=1 w:の=1 w:よく=1 w:を=6	BOUNDARY=6 aux-v:て=1 prt=1 v5:せ=1 w:から=1 w:が=1 w:ください=1 w:こと=1 w:なさい=1 w:を=3
+振	ぶ	2	ctr=1 n-suf=1	w:の=1 w:は=1
+掛	か	2	BOUNDARY=1 w:には=1	w:で=1 w:は=1
+接	せっ	1	w:に=1	BOUNDARY=1
+描	えが	1	w:を=1	w:こと=1
+搬送	はんそう	1	w:を=1	w:できる=1
+携	たずさ	1	w:に=1	BOUNDARY=1
+摘	つ	8	w:が=1 w:に=1 w:は=1 w:を=5	BOUNDARY=4 adv=1 aux-v:た=1 n=1 w:の=1
+撮	と	1	w:で=1	n-suf=1
+擁護	ようご	7	n=2 w:を=5	exp=1 w:した=2 w:しない=1 w:する=2 w:の=1
+支	ささ	25	BOUNDARY=1 exp=1 n=1 prt=1 w:で=1 w:の=1 w:は=1 w:ように=1 w:を=17	BOUNDARY=7 adj-i:い=1 aux-v:い=2 exp=1 n=2 n-suf=1 v5:て=1 vs-i:為=1 w:いけない=1 w:ために=1 w:です=1 w:の=1 w:のに=2 w:ほど=2 w:もの=1
+故郷	ふるさと	35	BOUNDARY=7 adj-pn=2 adv=6 v1:た=1 w:ある=1 w:いつも=1 w:と=2 w:に=3 w:には=1 w:の=1 w:は=9 w:を=1	w:から=1 w:が=1 w:だ=1 w:で=1 w:です=2 w:に=6 w:には=1 w:の=10 w:は=1 w:へ=1 w:を=10
+数	かず	56	BOUNDARY=3 adj-i:い=2 adj-na=1 adj-pn=3 adv=1 v5:る=1 w:その=2 w:の=38 w:は=3 w:よい=1 w:より=1	adv=2 exp-v:す=1 prt=1 w:が=22 w:だ=3 w:だけ=1 w:に=2 w:の=8 w:は=10 w:を=6
+数	すう	22	BOUNDARY=4 adv=2 n=2 n-vs=1 w:から=1 w:が=2 w:ここ=1 w:ために=1 w:と=1 w:に=1 w:のに=1 w:は=5	ctr=5 n=7 n-suf=2 n-vs=1 num=1 pref=1 suf=1 w:が=1 w:で=1 w:は=1 w:を=1
+数々	かずかず	2	w:には=1 w:の=1	w:の=2
+数奇	すうき	1	w:は=1	adj-no=1
+敵	かな	1	w:には=1	BOUNDARY=1
+敵	てき	60	BOUNDARY=19 adv=1 aux-v:て=1 v5:て=1 w:と=1 w:とき=1 w:に=1 w:には=1 w:の=4 w:は=26 w:を=4	exp=2 n-suf=1 w:から=1 w:が=3 w:である=1 w:と=5 w:に=14 w:の=16 w:は=12 w:を=5
+文	ぶん	32	BOUNDARY=7 n-vs=1 v5:て=1 w:ある=1 w:この=9 w:その=5 w:で=1 w:の=6 w:もし=1	n=1 w:から=1 w:が=1 w:と=1 w:には=1 w:の=6 w:は=12 w:を=9
+料	りょう	1	n=1	exp=1
+料理	りょうり	1	n=1	prt=1
+新	しん	43	BOUNDARY=14 adj-pn=2 adv=4 exp=2 w:その=1 w:に=1 w:の=8 w:は=11	adj-no=2 adv=1 n=31 n-suf=1 n-vs=8
+新築	しんちく	1	w:まだ=1	w:の=1
+新聞	しんぶん	1	w:と=1	w:は=1
+方	かた	78	BOUNDARY=7 adj-i:い=1 adj-na=1 adj-no=3 adv=1 aux-v:た=2 aux-v:り=1 aux-v:る=3 ctr=1 n=11 n-pref=1 n-suf=1 n-vs=2 pn=1 pref=1 suf=3 v1:た=1 v1:て=2 v5:い=1 v5:う=1 v5:き=1 v5:し=2 v5:に=2 v5:み=1 v5:り=1 v5:る=2 v5:れ=2 vs-i:し=1 w:ある=1 w:いう=1 w:する=1 w:その=1 w:たい=1 w:という=5 w:の=10 w:は=1	BOUNDARY=2 adj-na=1 adv=1 aux-v:す=1 aux-v:ん=1 exp=3 exp-v:ん=1 w:いい=1 w:から=1 w:が=12 w:だ=1 w:で=1 w:です=3 w:ですか=1 w:に=3 w:について=1 w:の=6 w:は=12 w:や=1 w:を=25
+方	ほう	185	BOUNDARY=27 adj-i:い=5 adj-pn=1 aux-adj:い=1 aux-v:た=3 exp-adj:い=1 exp-v:う=1 exp-v:つ=1 n=2 n-suf=1 v1:た=1 v1:る=3 v5:う=1 v5:き=1 v5:く=3 v5:け=1 v5:し=1 v5:す=1 v5:た=2 v5:だ=1 v5:て=1 v5:に=3 v5:む=2 v5:る=4 vs-i:る=1 w:した=1 w:している=1 w:という=1 w:の=113	aux:す=1 prt=2 w:から=2 w:が=114 w:だ=3 w:で=2 w:です=3 w:と=1 w:に=24 w:には=2 w:の=1 w:は=2 w:へ=17 w:を=11
+方々	かたがた	3	BOUNDARY=1 v5:た=2	w:から=1 w:ですか=1 w:の=1
+方便	ほうべん	1	v5:す=1	w:に=1
+旅	たび	41	BOUNDARY=1 adj-i:い=2 adj-na=1 adv=1 exp=1 v1:て=1 v5:て=1 w:その=1 w:で=5 w:として=1 w:に=1 w:には=1 w:の=13 w:は=6 w:を=5	BOUNDARY=1 w:が=2 w:した=1 w:していた=1 w:する=5 w:で=1 w:に=4 w:には=1 w:の=4 w:は=3 w:を=18
+旅人	たびびと	4	BOUNDARY=2 w:その=1 w:ので=1	suf=1 w:は=3
+旅行	りょこう	1	adj-i:た=1	w:を=1
+族	ぞく	6	BOUNDARY=3 adj-no=1 n=2	w:で=1 w:の=2 w:は=3
+既	すで	8	BOUNDARY=3 adj-no=1 w:は=3 w:もう=1	exp-adj:い=1 n=3 n-vs=1 v1:た=1 v5:た=1 v5:る=1
+日	か	1	BOUNDARY=1	exp=1
+日	にち	62	BOUNDARY=60 num=1 w:その=1	BOUNDARY=4 adj-na=1 adj-no=3 adv=3 aux-v:ば=1 aux-v:ら=1 exp=1 n=2 n-vs=1 prt=1 v5:た=1 v5:て=2 v5:ん=1 w:から=2 w:そこ=1 w:で=6 w:でした=1 w:です=2 w:に=11 w:の=6 w:まで=10 w:も=1
+日	ひ	277	BOUNDARY=48 adj-f=1 adj-i:い=32 adj-na=2 adj-pn=1 adv=4 aux-v:く=1 aux-v:た=2 aux-v:る=7 conj=1 exp=2 exp-adj:い=1 exp-v:た=1 exp-v:る=1 n=1 n-vs=1 num=2 pref=2 v1:た=8 v1:る=1 v5:た=9 v5:る=4 w:あの=3 w:いい=3 w:か=1 w:くれた=1 w:この=1 w:しない=1 w:する=8 w:その=41 w:ために=1 w:で=1 w:できる=3 w:と=1 w:という=1 w:ない=1 w:に=1 w:には=1 w:の=55 w:ので=1 w:は=13 w:よい=5 w:ような=2	BOUNDARY=7 adj-na=1 adv=7 aux-v:た=2 aux-v:ゃ=1 aux:だ=1 conj=2 cop:す=1 exp=6 int=1 n-suf=2 pn=3 v5:す=1 v5:た=1 v5:だ=1 w:が=51 w:します=1 w:それ=1 w:だ=7 w:だった=12 w:で=4 w:であった=1 w:である=2 w:です=13 w:でも=2 w:と=4 w:に=32 w:には=10 w:にも=1 w:の=25 w:は=40 w:まで=3 w:も=8 w:より=1 w:を=22
+日中	にっちゅう	2	BOUNDARY=1 w:が=1	adj-pn=1 w:この=1
+日付	ひづけ	1	w:と=1	w:が=1
+旧	きゅう	2	w:は=2	n=1 n-vs=1
+早	はや	3	BOUNDARY=1 w:の=1 w:を=1	BOUNDARY=1 n=2
+早々	はやばや	1	adv=1	w:に=1
+早食	はやぐ	1	BOUNDARY=1	aux:だ=1
+明日	あした	2	BOUNDARY=2	w:の=1 w:は=1
+明日	あす	1	w:は=1	n-vs=1
+明朝	みょうちょう	10	BOUNDARY=6 adj-no=1 w:は=3	BOUNDARY=6 n=1 n-vs=1 v1:ず=1 w:は=1
+明白	めいはく	11	BOUNDARY=1 exp=1 w:には=1 w:は=8	n=2 w:だ=4 w:だった=2 w:であった=1 w:です=1 w:ではない=1
+星	ほし	48	BOUNDARY=16 adj-no=2 adv=1 v1:い=1 w:その=2 w:と=1 w:という=1 w:に=4 w:には=4 w:の=4 w:のに=1 w:は=9 w:もの=2	adj-no=2 exp=1 w:が=24 w:と=1 w:に=1 w:について=1 w:の=4 w:は=10 w:も=1 w:を=3
+昨夜	ゆうべ	110	BOUNDARY=64 adv=1 conj=1 exp=1 w:が=5 w:で=1 w:は=36 w:を=1	BOUNDARY=21 adj-i:い=3 adj-no=2 adj-pn=3 adv=6 aux-v:た=1 aux-v:て=1 aux-v:ら=1 conj=1 ctr=1 exp=2 exp-v:た=2 n=20 n-vs=2 pn=3 suf=1 v5:て=1 w:あった=1 w:あなた=1 w:から=1 w:ここ=1 w:この=1 w:その=1 w:に=1 w:の=5 w:は=26 w:よく=1
+昨日	きのう	1	w:は=1	aux-v:た=1
+昼食	ちゅうしょく	79	BOUNDARY=20 adj-i:い=3 adj-no=1 adv=5 exp=2 v5:て=1 w:が=2 w:ために=1 w:で=6 w:に=6 w:の=2 w:は=20 w:へ=2 w:まだ=2 w:も=1 w:もう=4 w:を=1	adj-no=4 aux-v:た=1 n=2 w:が=2 w:で=1 w:と=1 w:に=9 w:の=11 w:は=7 w:まで=1 w:も=1 w:を=39
+時	じ	470	BOUNDARY=453 num=16 w:きた=1	BOUNDARY=39 adj-i:い=1 adj-no=12 adv=23 conj=4 exp=3 n=10 n-suf=7 n-vs=3 num=2 v5:る=1 w:か=1 w:から=21 w:だ=4 w:だろう=1 w:で=3 w:です=10 w:と=3 w:に=235 w:には=6 w:は=2 w:まで=71 w:も=1 w:よ=1 w:より=3 w:を=3
+時	とき	498	BOUNDARY=39 adj-f=1 adj-i:い=29 adj-i:く=1 adj-i:た=1 adj-na=1 adj-pn=2 aux-v:い=1 aux-v:う=1 aux-v:く=3 aux-v:た=17 aux-v:ぶ=1 aux-v:る=8 exp=12 exp-adj:い=3 exp-v:い=1 exp-v:た=9 exp-v:つ=1 exp-v:る=1 n=5 n-vs=3 num=17 v1:い=1 v1:く=1 v1:た=17 v1:て=1 v1:る=12 v5:い=2 v5:う=6 v5:く=3 v5:す=2 v5:た=53 v5:だ=4 v5:て=1 v5:ぶ=1 v5:む=1 v5:る=26 w:あった=3 w:あの=12 w:ある=2 w:いる=3 w:きた=5 w:くれた=1 w:された=3 w:した=8 w:して=1 w:していた=3 w:している=7 w:しない=1 w:しまった=1 w:する=19 w:その=69 w:たい=3 w:で=1 w:できる=1 w:という=1 w:に=1 w:の=58 w:は=6 w:べき=1	BOUNDARY=89 adj-i:い=1 adj-i:く=1 adj-i:た=1 adj-na=1 adj-no=9 adj-pn=6 adv=12 aux-v:た=2 aux-v:ぬ=1 ctr=1 exp=7 exp-adj:い=1 int=2 n=16 n-suf=1 n-vs=2 num=1 pn=12 pref=2 v1:た=4 v5:た=1 v5:ら=1 w:あなた=3 w:いつも=1 w:から=13 w:が=31 w:ここ=1 w:さ=1 w:ずっと=1 w:その=1 w:だ=6 w:だった=1 w:で=1 w:である=5 w:でした=3 w:です=1 w:ですか=1 w:と=3 w:に=93 w:には=28 w:の=21 w:は=69 w:ほど=1 w:まで=12 w:も=4 w:や=1 w:より=1 w:を=21
+時々	ときどき	1	w:にも=1	v5:る=1
+時代	じだい	1	w:な=1	w:を=1
+時半	じはん	27	BOUNDARY=22 num=5	adv=3 w:から=2 w:で=1 w:です=1 w:に=14 w:には=1 w:の=2 w:まで=2 w:を=1
+時間	じかん	2	adv=1 exp=1	adv=1 v1:た=1
+暇	ひま	55	BOUNDARY=5 adj-no=2 adv=7 aux-adj:く=1 aux-v:く=1 aux-v:る=2 exp=1 exp-v:る=1 v5:う=2 v5:む=3 v5:る=1 w:いつ=1 w:お=4 w:くれる=1 w:する=3 w:その=1 w:に=1 w:には=1 w:は=15 w:まで=1 w:もし=1	BOUNDARY=3 adj-no=1 aux:ば=1 conj=1 exp=2 exp-adj:く=1 n=4 n-suf=2 w:ある=1 w:か=1 w:が=9 w:だ=2 w:だった=1 w:だろう=1 w:です=6 w:ですか=5 w:ではない=1 w:なら=2 w:は=3 w:も=6 w:を=2
+曇	くも	6	BOUNDARY=4 adv=1 w:は=1	BOUNDARY=2 adj-no=1 n-suf=1 w:きた=2
+曲	きょく	26	BOUNDARY=1 adj-i:い=2 n=1 w:あの=1 w:いう=1 w:が=1 w:この=4 w:された=1 w:その=5 w:どんな=1 w:の=7 w:は=1	BOUNDARY=1 v5:た=1 w:が=5 w:ですか=1 w:な=1 w:に=2 w:には=1 w:は=3 w:を=11
+書	か	2	w:を=2	BOUNDARY=1 aux-v:ば=1
+書	しょ	1	n-vs=1	w:を=1
+最	もっと	1	exp=1	adj-na=1
+最中	さいちゅう	11	adj-i:い=1 aux-v:る=1 v5:る=2 w:の=7	w:だった=2 w:です=1 w:に=7 w:は=1
+最悪	さいあく	1	w:は=1	w:の=1
+最近	さいきん	1	BOUNDARY=1	n=1
+月	げつ	1	BOUNDARY=1	BOUNDARY=1
+月	つき	96	BOUNDARY=41 adj-i:い=3 adj-no=1 adv=10 v1:て=1 v5:て=1 w:が=4 w:ために=1 w:で=1 w:と=1 w:に=3 w:には=1 w:の=4 w:ので=1 w:は=22 w:を=1	BOUNDARY=1 n-vs=4 num=1 w:から=1 w:が=12 w:で=2 w:である=1 w:です=2 w:と=2 w:に=29 w:には=2 w:の=14 w:は=12 w:へ=4 w:まで=1 w:も=1 w:より=1 w:よりも=2 w:を=4
+月日	つきひ	1	BOUNDARY=1	w:が=1
+有	ゆう	1	w:から=1	w:は=1
+服	ふく	120	BOUNDARY=17 adj-i:い=31 adj-i:く=1 adj-na=1 adj-no=1 adj-pn=2 adv=1 exp=2 exp-v:う=1 exp-v:る=1 prt=1 v1:た=2 v1:て=1 v5:う=1 v5:た=2 v5:る=1 w:あの=2 w:いい=2 w:この=9 w:した=1 w:その=7 w:に=4 w:の=18 w:は=10 w:よく=1	w:が=6 w:で=1 w:です=2 w:と=3 w:に=10 w:について=1 w:には=3 w:の=3 w:は=25 w:よりも=1 w:を=65
+朝	あさ	107	BOUNDARY=25 adj-i:い=4 adj-na=1 exp=1 w:ある=4 w:いい=1 w:いつも=1 w:が=1 w:その=2 w:に=2 w:の=44 w:は=20 w:もう=1	BOUNDARY=31 adj-pn=2 adv=2 exp-v:る=1 exp-v:ん=1 n=6 n-vs=1 num=2 v1:た=1 v5:つ=1 w:から=12 w:この=1 w:そこ=1 w:たくさん=1 w:だ=2 w:だった=1 w:だろう=1 w:でした=1 w:なら=1 w:に=8 w:には=1 w:の=11 w:は=13 w:まで=3 w:よく=1 w:よりも=1
+期	き	3	n=1 n-vs=1 num=1	w:に=2 w:の=1
+木	き	181	BOUNDARY=32 adj-i:い=16 adj-i:く=1 adj-no=1 adj-pn=3 adv=1 int=1 v1:た=4 v5:だ=1 v5:て=1 w:あの=9 w:から=2 w:が=11 w:この=8 w:その=16 w:ために=1 w:で=2 w:と=1 w:に=2 w:の=29 w:は=33 w:ほど=1 w:や=1 w:を=4	BOUNDARY=1 aux-v:り=1 w:から=11 w:が=31 w:だ=1 w:で=17 w:でしょう=1 w:と=2 w:に=24 w:には=2 w:の=39 w:は=31 w:へ=2 w:や=2 w:よりも=1 w:を=15
+木片	もくへん	1	BOUNDARY=1	w:は=1
+木綿	もめん	1	w:と=1	w:である=1
+木造	もくぞう	1	exp=1	n=1
+未	み	1	w:は=1	n-vs=1
+末	すえ	8	v1:た=2 w:の=6	BOUNDARY=4 adj-pn=1 w:で=2 w:と=1
+末	まつ	1	n=1	w:に=1
+末期	まっき	1	n=1	w:の=1
+本	ほん	988	BOUNDARY=136 adj-i:い=41 adj-na=4 adj-no=8 adj-pn=14 adv=21 aux-v:た=2 aux-v:ら=1 ctr=2 exp=5 exp-v:た=1 exp-v:つ=2 exp-v:て=5 n=3 n-vs=1 num=3 prt=3 v1:た=3 v5:い=1 v5:う=1 v5:た=13 v5:だ=3 v5:て=3 v5:む=2 v5:る=6 vs-i:る=3 w:あの=17 w:ある=4 w:いい=2 w:いつも=1 w:から=7 w:が=7 w:くれた=1 w:この=216 w:ご=1 w:した=3 w:して=1 w:すぐに=1 w:する=1 w:ずっと=1 w:その=157 w:そんな=1 w:たい=2 w:たくさん=9 w:ため=1 w:ために=1 w:で=14 w:と=1 w:という=2 w:ところ=1 w:どんな=9 w:に=28 w:について=1 w:には=5 w:の=137 w:ので=1 w:は=46 w:べき=1 w:ほとんど=2 w:も=2 w:もう=1 w:や=1 w:よい=4 w:ような=7 w:よく=1 w:よりも=1 w:を=2	BOUNDARY=6 adj-na=1 adj-no=1 adv=1 aux:だ=1 conj=1 exp=6 exp-adj:い=1 exp-v:う=1 n=1 n-vs=1 prt=1 suf=4 v1:た=1 v5:た=5 v5:だ=1 v5:て=2 v5:で=1 v5:む=1 v5:る=1 w:あります=1 w:ある=2 w:お=1 w:か=6 w:から=8 w:が=67 w:ください=1 w:たくさん=1 w:だ=14 w:だった=1 w:で=6 w:であった=1 w:である=2 w:でした=1 w:でしょう=2 w:です=23 w:ですか=2 w:ではない=1 w:でも=11 w:と=7 w:という=1 w:どこ=1 w:な=2 w:なら=1 w:に=27 w:について=4 w:には=8 w:の=55 w:は=214 w:ほど=2 w:も=4 w:や=2 w:よりも=3 w:を=468
+本屋	ほんや	13	BOUNDARY=2 exp=1 v5:て=1 w:その=2 w:で=1 w:に=5 w:は=1	w:が=2 w:で=3 w:に=4 w:は=1 w:へ=1 w:を=2
+本当	ほんとう	1	w:は=1	w:の=1
+札	さつ	13	n=8 suf=2 w:この=2 w:の=1	BOUNDARY=1 v1:す=1 w:が=1 w:だった=1 w:で=2 w:を=7
+杖	つえ	3	BOUNDARY=1 exp-v:て=1 w:は=1	w:が=1 w:に=1 w:は=1
+束	たば	1	w:を=1	w:に=1
+条	じょう	2	BOUNDARY=2	w:だ=1 w:を=1
+来	く	851	BOUNDARY=26 adj-i:く=2 adj-i:て=1 adj-na=2 adj-no=7 adj-t=1 adv=83 aux-v:て=1 aux-v:ば=1 aux-v:ら=1 conj=12 ctr=2 exp=13 n=2 n-suf=1 pn=1 prt=1 v1:て=16 v5:て=21 v5:ら=1 w:いつ=22 w:か=3 w:から=19 w:が=152 w:して=7 w:すぐ=9 w:すぐに=4 w:その=1 w:ため=2 w:ために=6 w:で=11 w:なら=1 w:に=258 w:には=3 w:の=4 w:ので=1 w:は=52 w:へ=61 w:ほとんど=1 w:まだ=13 w:まで=11 w:みんな=1 w:も=8 w:もう=4 w:もし=1 w:よく=1	BOUNDARY=190 adj-i:い=3 adj-i:た=4 adj-na=6 adj-no=15 adv=11 aux-adj:い=3 aux-adj:ゃ=1 aux-v:い=7 aux-v:う=1 aux-v:え=1 aux-v:き=1 aux-v:く=1 aux-v:す=3 aux-v:た=6 aux-v:て=8 aux-v:る=2 aux-v:ん=5 aux:い=3 aux:ず=2 aux:ば=3 conj=1 exp=55 exp-adj:い=2 exp-v:い=1 exp-v:す=3 exp-v:た=5 exp-v:り=1 exp-v:る=7 n=19 n-suf=10 n-vs=1 num=1 pn=3 prt=10 suf=13 v1:て=1 v5:た=1 v5:て=6 v5:ば=1 v5:る=2 w:あなた=1 w:いい=1 w:いる=5 w:か=39 w:から=9 w:が=4 w:ください=21 w:くれた=14 w:くれる=7 w:こと=12 w:この=1 w:これ=1 w:しまった=2 w:すぐに=3 w:そう=4 w:たい=11 w:だけ=2 w:だろう=27 w:つもり=2 w:でしょう=19 w:と=45 w:という=1 w:とき=8 w:ところ=2 w:とは=4 w:な=4 w:なさい=19 w:なんて=4 w:ね=1 w:の=52 w:のだ=1 w:ので=3 w:のです=15 w:のに=3 w:は=3 w:べき=5 w:まで=14 w:も=19 w:もの=5 w:よ=13 w:よい=1 w:よう=3 w:ような=2 w:ように=13 w:ん=4 w:んだ=2 w:んです=1
+来日	らいにち	1	w:いつ=1	w:した=1
+杭	くい	1	w:は=1	w:で=1
+杯	はい	10	BOUNDARY=6 adv=2 num=2	v5:た=1 v5:だ=3 w:か=1 w:ください=1 w:で=1 w:と=1 w:も=2
+東	ひがし	12	BOUNDARY=2 adv=1 w:の=3 w:は=6	n=1 w:から=4 w:に=2 w:の=3 w:は=1 w:へ=1
+林檎	りんご	4	BOUNDARY=1 w:くれた=1 w:その=1 w:は=1	w:が=1 w:は=1 w:を=2
+枚	まい	42	BOUNDARY=31 adv=8 num=3	BOUNDARY=2 adv=1 aux-v:る=1 exp-v:た=1 n=3 n-vs=1 prt=1 suf=3 v1:た=1 v5:た=4 v5:ち=1 v5:り=1 v5:る=3 w:あった=1 w:か=5 w:ください=4 w:と=2 w:に=1 w:の=5 w:も=1
+枝	えだ	14	BOUNDARY=3 adj-i:く=1 adj-pn=1 aux-v:ば=1 conj=1 w:その=2 w:の=3 w:は=2	w:が=1 w:に=4 w:の=1 w:は=2 w:を=6
+枝	し	1	adj-no=1	w:を=1
+柄	がら	1	w:で=1	adj-no=1
+某	ぼう	1	w:は=1	n=1
+柔軟	じゅうなん	1	v1:い=1	n-vs=1
+柱	はしら	7	BOUNDARY=1 w:この=1 w:の=3 w:は=1 w:を=1	w:で=2 w:に=2 w:の=2 w:は=1
+柳	やなぎ	2	BOUNDARY=1 w:いつも=1	w:の=2
+柵	さく	7	BOUNDARY=2 adj-no=1 w:その=1 w:は=3	BOUNDARY=1 w:で=1 w:は=1 w:を=4
+株	かぶ	18	BOUNDARY=2 w:ない=1 w:に=2 w:の=7 w:は=4 w:より=1 w:を=1	w:が=2 w:で=2 w:に=4 w:の=2 w:を=8
+核	かく	1	w:この=1	n=1
+根	ね	9	BOUNDARY=2 w:の=4 w:は=3	w:である=1 w:には=1 w:は=6 w:を=1
+根本	こんぽん	2	w:の=2	adv=1 w:には=1
+案	あん	36	BOUNDARY=15 adj-no=1 adj-pn=2 n-vs=1 vs-i:る=1 w:いい=1 w:この=1 w:する=1 w:その=8 w:の=4 w:よい=1	w:が=7 w:に=7 w:には=2 w:は=7 w:を=13
+梁	はり	1	w:この=1	w:は=1
+森	もり	1	w:は=1	w:の=1
+椅子	いす	39	BOUNDARY=6 adj-f=1 adj-i:い=1 adj-no=1 aux-v:て=1 exp=1 exp-v:て=1 v1:た=2 v1:る=1 v5:た=1 w:から=1 w:が=2 w:この=5 w:して=1 w:その=3 w:と=1 w:に=1 w:には=2 w:の=4 w:は=3	v5:す=1 w:が=6 w:だ=1 w:に=11 w:の=4 w:は=5 w:を=11
+業	ぎょう	3	adj-f=1 n=2	w:が=1 w:に=1 w:を=1
+極	きょく	1	BOUNDARY=1	w:で=1
+極	きわ	1	w:を=1	BOUNDARY=1
+楽	たの	2	w:とても=1 w:の=1	n-vs=1 w:こと=1
+楽	らく	39	BOUNDARY=2 adj-na=1 adj-no=1 adv=4 aux-v:ば=1 exp=2 exp-v:て=1 v5:て=1 w:お=2 w:が=5 w:すぐ=1 w:に=1 w:には=1 w:にも=1 w:の=1 w:は=8 w:ほど=1 w:もっと=1 w:を=4	BOUNDARY=4 aux-v:り=1 ctr=1 exp-adj:い=1 n=2 n-suf=1 n-vs=4 v5:た=2 v5:て=3 v5:る=2 w:こと=1 w:その=1 w:だ=3 w:ではない=1 w:に=10 w:になった=2
+槍	やり	1	w:が=1	w:が=1
+様	さま	10	BOUNDARY=2 adj-na=1 n=7	w:が=1 w:だ=1 w:ですか=1 w:に=1 w:になった=1 w:の=1 w:は=2 w:を=2
+様	よう	18	adj-i:い=1 adj-pn=1 adv=1 aux-v:げ=1 v1:い=2 v5:い=1 v5:く=1 v5:る=1 w:きた=1 w:くれる=1 w:この=2 w:しない=1 w:する=1 w:その=3	BOUNDARY=2 adj-i:い=1 adj-pn=1 exp=1 n=2 v1:る=1 v5:す=1 w:こと=1 w:と=1 w:に=5 w:には=1 w:も=1
+様々	さまざま	22	BOUNDARY=5 exp=1 vs-i:る=1 w:いつも=1 w:から=1 w:が=1 w:と=1 w:に=1 w:には=1 w:の=2 w:は=6 w:や=1	adj-na=1 adj-no=3 ctr=4 n=7 n-vs=4 w:な=2 w:の=1
+権利	けんり	1	BOUNDARY=1	w:を=1
+橋	はし	82	BOUNDARY=16 adj-i:い=10 adj-no=1 adj-pn=1 adv=1 w:あの=6 w:ある=1 w:が=1 w:この=12 w:その=16 w:で=2 w:に=6 w:には=2 w:の=3 w:は=4	w:から=2 w:が=12 w:だ=1 w:で=1 w:に=2 w:の=13 w:は=33 w:まで=2 w:よりも=1 w:を=15
+機	き	16	BOUNDARY=5 ctr=1 n=6 n-vs=1 w:この=1 w:その=1 w:は=1	adv=1 n-vs=1 prt=2 v5:る=1 w:が=3 w:に=1 w:の=2 w:は=2 w:を=3
+機嫌	きげん	1	w:の=1	w:を=1
+機能	きのう	1	w:の=1	w:を=1
+機関	きかん	3	n-vs=2 w:その=1	w:が=1 w:である=1 w:は=1
+欄	らん	1	adj-no=1	w:に=1
+欠席	けっせき	1	w:を=1	w:した=1
+次	つぎ	196	BOUNDARY=117 adj-pn=1 aux:ば=1 conj=2 exp-v:て=1 v5:て=2 w:が=8 w:この=7 w:すぐに=1 w:その=1 w:と=1 w:の=4 w:は=46 w:を=4	adj-na=3 adj-no=5 adv=17 aux-v:る=1 ctr=14 n=58 n-suf=16 n-vs=20 suf=1 w:いつ=1 w:お=1 w:が=1 w:です=1 w:に=38 w:には=1 w:の=4 w:のに=1 w:は=9 w:まで=1 w:ような=3
+次官	じかん	1	w:その=1	w:は=1
+歌詞	かし	2	w:の=1 w:を=1	exp=1 w:を=1
+止	と	95	BOUNDARY=7 adj-na=3 adj-no=1 adv=3 aux-v:て=2 exp=1 exp-v:て=3 n=1 w:が=19 w:して=1 w:で=5 w:に=8 w:にも=1 w:は=9 w:も=1 w:を=30	BOUNDARY=46 adj-no=1 adj-pn=1 adv=1 aux-v:う=1 exp=2 exp-v:た=1 n=2 w:ある=1 w:いい=1 w:か=2 w:から=1 w:ください=3 w:こと=2 w:しまった=4 w:ため=1 w:ために=2 w:つもり=1 w:と=4 w:として=1 w:なさい=5 w:の=1 w:ので=1 w:のに=2 w:は=1 w:まで=3 w:よ=1 w:よう=1 w:ように=1 w:んだ=1
+止	や	28	BOUNDARY=4 adj-na=1 v1:て=1 w:から=1 w:で=1 w:は=5 w:を=15	BOUNDARY=12 adv=1 aux-v:ば=1 aux:ば=1 exp-adj:い=1 n=2 n-suf=1 w:そう=1 w:なさい=1 w:の=1 w:まで=1 w:よ=2 w:ように=3
+正	ただ	1	w:を=1	n=1
+正気	しょうき	10	BOUNDARY=2 adv=1 w:が=1 w:とは=1 w:に=2 w:は=3	exp-adj:い=1 v5:た=1 v5:る=2 w:ですか=1 w:ではない=1 w:と=1 w:に=2 w:を=1
+正確	せいかく	1	exp=1	v5:た=1
+正面	しょうめん	2	BOUNDARY=1 w:の=1	n=1 w:に=1
+歩	ほ	3	BOUNDARY=1 adv=1 num=1	v5:て=2 w:を=1
+歩兵	ほへい	1	w:には=1	w:は=1
+歩行	ほこう	1	w:は=1	w:が=1
+歯	は	1	w:は=1	w:が=1
+歳	さい	169	BOUNDARY=152 n-pref=2 num=14 w:いい=1	BOUNDARY=11 adj-i:い=2 adj-no=19 adv=4 aux:だ=1 conj=6 exp=2 n-suf=1 pn=2 prt=1 v5:て=3 v5:ら=1 w:から=2 w:だ=11 w:だった=3 w:で=18 w:である=1 w:でした=1 w:です=9 w:と=1 w:という=1 w:に=1 w:になった=1 w:には=1 w:の=41 w:は=1 w:まで=10 w:も=2 w:を=12
+段	だん	1	num=1	suf=1
+段階	だんかい	6	BOUNDARY=3 adj-no=2 n-vs=1	w:で=1 w:です=1 w:に=1 w:の=1 w:は=2
+殺	ころ	1	w:は=1	BOUNDARY=1
+殻	から	1	w:の=1	w:は=1
+母	はは	336	BOUNDARY=248 adj-na=1 adj-no=1 adj-pn=5 adv=4 aux-adj:た=1 exp=1 v1:た=1 v1:て=2 w:いつも=1 w:から=1 w:が=4 w:して=2 w:で=1 w:と=1 w:とき=2 w:に=6 w:の=7 w:は=43 w:へ=1 w:や=1 w:より=1 w:を=1	BOUNDARY=3 adv=1 aux:す=1 exp=3 w:から=2 w:が=36 w:だけ=1 w:と=10 w:に=29 w:について=1 w:になった=1 w:には=1 w:の=39 w:は=188 w:ほど=1 w:も=1 w:より=3 w:よりも=1 w:を=14
+毎	まい	5	BOUNDARY=1 w:は=3 w:を=1	adj-no=1 adv=3 n-suf=1
+比	ひ	2	n=2	BOUNDARY=1 exp=1
+毛	け	10	adv=1 v5:て=1 w:と=1 w:に=1 w:の=6	n=1 w:が=1 w:の=2 w:は=2 w:を=4
+氏	し	94	BOUNDARY=91 adj-na=1 n=2	exp=1 w:から=1 w:が=8 w:だ=1 w:でした=1 w:と=6 w:とは=1 w:に=10 w:には=1 w:の=5 w:は=51 w:より=2 w:を=6
+気	き	42	BOUNDARY=6 adj-i:い=2 adj-na=1 adv=2 aux-v:く=2 aux-v:る=1 exp=1 exp-v:た=1 exp-v:る=2 v1:て=1 v1:る=2 v5:う=1 v5:す=1 v5:つ=1 v5:む=1 w:いう=1 w:する=4 w:で=1 w:とても=1 w:とは=2 w:に=1 w:は=3 w:まだ=1 w:を=3	BOUNDARY=1 prt=1 w:あります=1 w:か=2 w:が=9 w:で=1 w:ですか=1 w:でも=2 w:なんて=1 w:には=4 w:にも=4 w:の=1 w:は=7 w:も=1 w:を=6
+気付	きづ	1	w:は=1	cop:す=1
+気分	きぶん	2	adj-i:い=1 adj-no=1	w:が=1 w:に=1
+気取	きど	4	w:いつも=1 w:で=2 w:を=1	BOUNDARY=1 aux-v:た=1 n=1 pn=1
+気味	ぎみ	4	n=2 n-vs=1 v1:れ=1	w:だ=1 w:である=1 w:です=2
+水	すい	1	BOUNDARY=1	BOUNDARY=1
+水	みず	259	BOUNDARY=84 adj-i:い=1 adj-na=1 adv=5 conj=2 exp=6 exp-v:た=1 n=2 prt=1 v1:た=1 v5:つ=1 v5:て=2 v5:み=1 w:あの=1 w:お=3 w:から=6 w:が=2 w:この=7 w:さん=1 w:して=1 w:その=3 w:たくさん=1 w:で=2 w:と=11 w:という=1 w:に=25 w:になった=1 w:には=4 w:の=25 w:ので=2 w:は=38 w:へ=1 w:ほとんど=3 w:まで=1 w:も=1 w:もし=4 w:ような=1 w:を=6	BOUNDARY=6 aux-v:り=1 aux:す=1 exp=7 n=1 n-suf=2 prt=1 w:が=55 w:で=10 w:である=1 w:でも=1 w:と=11 w:とは=2 w:に=12 w:について=1 w:の=15 w:は=50 w:へ=1 w:も=1 w:より=1 w:よりも=1 w:を=78
+水泳	すいえい	1	w:は=1	w:を=1
+水瓶	みずがめ	2	BOUNDARY=1 w:は=1	w:に=1 w:を=1
+水色	みずいろ	1	adj-i:い=1	w:だった=1
+水金	すいきん	1	BOUNDARY=1	w:は=1
+氷	こおり	44	BOUNDARY=15 cop:ゃ=1 exp=2 w:が=1 w:この=2 w:ずっと=1 w:その=2 w:で=3 w:と=2 w:の=3 w:は=12	BOUNDARY=1 exp=2 w:が=10 w:と=2 w:に=1 w:の=11 w:は=15 w:を=2
+求	もと	1	w:を=1	BOUNDARY=1
+汗	あせ	18	BOUNDARY=3 adv=1 w:から=1 w:に=2 w:の=5 w:は=4 w:ような=2	BOUNDARY=1 adj-na=2 w:が=6 w:だった=1 w:で=3 w:や=1 w:を=4
+汚	よご	16	BOUNDARY=2 v5:ば=1 w:が=2 w:で=3 w:でも=1 w:とても=1 w:の=1 w:は=3 w:や=1 w:を=1	BOUNDARY=6 n=1 n-suf=2 suf=1 w:から=1 w:が=1 w:しまった=1 w:ので=1 w:を=2
+汝	なんじ	2	BOUNDARY=2	adv=1 n-suf=1
+決	けっ	1	w:は=1	adj-na=1
+決行	けっこう	1	vs-i:て=1	aux-v:う=1
+汽車	きしゃ	1	w:この=1	w:は=1
+法	ほう	1	w:は=1	w:の=1
+法律	ほうりつ	1	w:その=1	w:は=1
+注	そそ	16	BOUNDARY=1 adv=1 w:ために=1 w:に=8 w:を=5	BOUNDARY=13 exp=1 n-suf=1 w:な=1
+注	つ	1	adj-na=1	aux-v:て=1
+注意書	ちゅういしょ	1	w:の=1	w:を=1
+注文	ちゅうもん	64	BOUNDARY=10 adj-na=1 adj-no=1 conj=1 ctr=2 exp=1 n=1 n-suf=1 num=1 w:から=2 w:が=1 w:ご=12 w:で=2 w:に=9 w:の=1 w:は=3 w:を=15	aux-v:た=1 aux-v:ば=1 aux-v:ら=1 aux-v:ん=1 exp=3 exp-v:す=1 exp-v:る=1 v1:る=2 v5:す=1 w:が=1 w:し=1 w:した=23 w:したい=2 w:して=4 w:します=3 w:する=3 w:だ=1 w:で=1 w:に=2 w:にも=1 w:の=1 w:は=4 w:を=5
+泳	およ	1	w:は=1	BOUNDARY=1
+洒落	しゃれ	1	adj-i:い=1	w:だった=1
+流行歌	りゅうこうか	2	w:は=2	w:を=2
+深	ふか	1	w:に=1	n=1
+深々	ふかぶか	1	w:は=1	suf=1
+混	ま	1	w:に=1	v5:た=1
+渚	なぎさ	1	BOUNDARY=1	w:に=1
+温	あたた	1	w:を=1	w:と=1
+港	こう	2	n=2	w:に=1 w:まで=1
+港	みなと	22	BOUNDARY=3 adj-no=1 w:が=2 w:この=3 w:その=3 w:どんな=1 w:に=1 w:は=7 w:よい=1	w:から=2 w:が=1 w:で=3 w:でも=1 w:に=6 w:には=1 w:の=3 w:は=3 w:を=2
+湖	こ	4	BOUNDARY=4	w:が=1 w:は=2 w:まで=1
+湖	みずうみ	91	BOUNDARY=24 adj-i:い=4 adj-pn=1 adv=3 exp=1 v1:て=1 v5:で=1 w:ある=1 w:から=1 w:が=3 w:この=9 w:その=15 w:と=2 w:に=4 w:は=18 w:よく=2 w:を=1	BOUNDARY=1 w:から=2 w:が=5 w:で=6 w:である=3 w:です=1 w:に=19 w:には=4 w:の=21 w:は=17 w:へ=5 w:まで=3 w:や=1 w:を=3
+湯	ゆ	2	w:この=1 w:は=1	w:に=1 w:は=1
+源	げん	1	n=1	w:を=1
+源	みなもと	2	w:に=1 w:の=1	BOUNDARY=1 w:を=1
+溝	みぞ	3	w:して=1 w:その=1 w:の=1	w:が=1 w:は=1 w:を=1
+溢	あふ	2	w:から=1 w:で=1	BOUNDARY=2
+滑	すべ	14	adj-i:く=1 conj=1 w:で=5 w:に=1 w:は=1 w:まで=1 w:よく=1 w:を=3	BOUNDARY=1 adj-no=1 ctr=1 exp-v:る=1 n=2 n-vs=2 suf=1 v5:す=2 v5:だ=1 v5:ぶ=1 w:ように=1
+漁火	ぎょか	1	BOUNDARY=1	w:が=1
+漢詩	かんし	1	w:その=1	w:を=1
+潜	もぐ	4	BOUNDARY=1 w:に=2 w:まで=1	BOUNDARY=1 exp-v:る=1 n=1 w:は=1
+潮	しお	5	BOUNDARY=4 w:で=1	w:が=2 w:の=2 w:を=1
+火	ひ	68	BOUNDARY=22 adv=5 exp=3 v5:て=1 w:すぐに=1 w:で=2 w:に=3 w:には=3 w:の=9 w:ので=1 w:は=15 w:を=3	w:から=2 w:が=12 w:で=2 w:に=9 w:の=11 w:は=11 w:を=21
+灯	とも	1	BOUNDARY=1	BOUNDARY=1
+灯	ひ	3	w:に=1 w:は=2	w:が=1 w:に=1 w:の=1
+灯火	とうか	1	w:に=1	w:が=1
+炎	ほのお	7	BOUNDARY=1 adv=1 w:が=1 w:その=1 w:の=1 w:は=2	w:が=1 w:に=4 w:は=1 w:を=1
+点	てん	137	BOUNDARY=34 adj-i:い=7 adj-na=1 adj-pn=8 aux-v:い=1 exp=1 exp-v:い=1 n=1 n-vs=2 v1:る=1 v5:う=1 v5:た=2 v5:る=3 w:ある=3 w:いい=1 w:いう=12 w:この=13 w:する=2 w:その=5 w:である=1 w:という=8 w:どんな=1 w:の=26 w:べき=1 w:よい=1	BOUNDARY=2 adj-no=1 conj=1 exp=3 exp-adj:い=1 n-vs=1 v5:た=1 w:から=6 w:が=7 w:で=65 w:である=2 w:です=1 w:に=4 w:について=2 w:にも=1 w:の=3 w:は=15 w:ほど=1 w:を=20
+為	ため	11	adj-pn=1 aux-v:る=1 v1:る=2 v5:く=1 w:する=2 w:の=4	BOUNDARY=1 exp-adj:く=1 n-vs=2 w:なら=1 w:には=4 w:の=2
+無	む	2	BOUNDARY=1 adv=1	n-vs=1 w:から=1
+無口	むくち	1	BOUNDARY=1	w:でした=1
+無言	むごん	1	BOUNDARY=1	w:が=1
+煙	けむり	1	v1:た=1	w:に=1
+熟	う	1	adv=1	w:の=1
+熟	じゅく	8	BOUNDARY=1 adj-i:く=1 exp=1 w:から=1 w:が=1 w:には=1 w:は=2	BOUNDARY=2 n=1 v1:た=1 w:だろう=1 w:の=1 w:は=1 w:よ=1
+熱	ねつ	44	BOUNDARY=16 adj-na=1 adv=6 exp=1 exp-adj:い=1 n=2 v5:る=1 w:と=2 w:とても=1 w:に=1 w:の=3 w:は=9	exp=1 prt=1 w:が=19 w:で=3 w:である=1 w:と=3 w:の=1 w:は=7 w:を=8
+熱湯	ねっとう	2	BOUNDARY=1 w:に=1	w:が=1 w:を=1
+父	ちち	4	BOUNDARY=2 w:の=2	w:と=1 w:として=1 w:の=1 w:は=1
+父親	ちちおや	1	w:が=1	w:を=1
+片端	かたはし	1	w:の=1	w:を=1
+片言	かたこと	2	w:の=1 w:は=1	w:の=2
+牌	ぱい	1	n=1	w:は=1
+物	もの	136	BOUNDARY=34 adj-i:い=10 adj-na=1 adj-pn=5 adv=1 aux-adj:い=3 aux-adj:た=1 aux-v:て=1 conj=1 exp-adj:い=2 exp-adj:く=1 exp-v:た=1 exp-v:る=1 n=1 prt=1 v1:い=1 v1:て=1 v1:る=7 v5:う=1 v5:す=1 v5:た=4 v5:だ=1 v5:つ=1 v5:ぶ=1 w:ある=3 w:から=1 w:した=1 w:する=4 w:その=1 w:そんな=1 w:たくさん=1 w:で=6 w:でも=1 w:どんな=3 w:に=8 w:の=15 w:は=4 w:も=1 w:や=1 w:よい=1 w:ような=1 w:よく=1	BOUNDARY=1 exp=1 n-suf=1 w:か=1 w:が=20 w:だ=6 w:だけ=1 w:だった=3 w:だろう=2 w:で=1 w:である=2 w:です=5 w:ですか=3 w:ではない=2 w:と=4 w:に=3 w:について=1 w:には=1 w:にも=1 w:の=7 w:は=22 w:も=3 w:や=1 w:よ=1 w:を=43
+物体	ぶったい	6	adj-i:い=1 exp=1 w:ある=1 w:された=1 w:その=2	w:が=3 w:に=1 w:は=1 w:を=1
+物議	ぶつぎ	1	adv=1	w:を=1
+物質	ぶっしつ	1	w:その=1	w:は=1
+犠牲	ぎせい	34	BOUNDARY=1 adj-pn=2 adv=2 w:の=8 w:を=21	exp=2 w:に=22 w:になった=3 w:を=7
+犬	いぬ	1	w:の=1	w:の=1
+犯罪	はんざい	1	BOUNDARY=1	w:の=1
+狂	くる	1	w:に=1	w:は=1
+猟	りょう	1	adj-no=1	n=1
+猫	ねこ	154	BOUNDARY=58 adj-i:い=3 adj-na=1 adj-no=1 adj-pn=1 conj=1 ctr=3 exp-v:た=1 n=1 n-pref=1 v1:た=1 w:あの=2 w:いる=1 w:から=2 w:が=6 w:この=4 w:その=14 w:で=2 w:と=3 w:に=5 w:には=1 w:の=10 w:は=26 w:へ=1 w:も=1 w:や=1 w:を=3	w:が=27 w:だ=1 w:である=1 w:ですか=1 w:でも=1 w:と=4 w:に=9 w:には=1 w:にも=1 w:の=19 w:は=46 w:も=1 w:や=1 w:より=4 w:よりも=2 w:を=35
+獣	けだもの	1	BOUNDARY=1	w:と=1
+獲	と	1	w:を=1	BOUNDARY=1
+玄米	げんまい	1	w:と=1	w:を=1
+玉	たま	6	w:に=1 w:には=1 w:の=3 w:は=1	w:の=3 w:を=3
+玩具	おもちゃ	1	w:の=1	w:の=1
+現	げん	1	BOUNDARY=1	n=1
+理	り	1	w:は=1	w:に=1
+理解	りかい	1	w:を=1	w:していた=1
+琴	こと	1	w:は=1	w:を=1
+瓶	びん	7	BOUNDARY=3 adj-i:い=1 w:この=1 w:その=1 w:に=1	w:には=1 w:の=2 w:は=1 w:を=3
+甘	あま	28	BOUNDARY=3 adj-no=2 adj-pn=3 adv=2 exp=1 w:が=2 w:そんな=1 w:に=2 w:は=11 w:よりも=1	BOUNDARY=8 adj-i:い=1 exp-v:た=1 exp-v:て=1 exp-v:る=4 n=7 n-suf=1 v1:た=1 v1:る=1 v5:い=1 w:そう=1 w:んだ=1
+生	せい	2	BOUNDARY=1 w:は=1	w:の=1 w:を=1
+生	なま	11	BOUNDARY=4 w:ために=1 w:は=2 w:を=4	n=5 w:で=4 w:でも=1 w:の=1
+生地	きじ	12	BOUNDARY=1 pref=1 w:あの=1 w:この=5 w:その=1 w:のに=1 w:は=2	BOUNDARY=1 w:が=1 w:で=1 w:の=1 w:は=3 w:よりも=1 w:を=4
+生業	なりわい	1	BOUNDARY=1	w:の=1
+生活	せいかつ	1	w:は=1	exp=1
+生物	せいぶつ	23	BOUNDARY=11 aux:ば=1 n=1 w:に=2 w:には=1 w:の=3 w:は=4	w:が=5 w:ではない=1 w:に=1 w:の=1 w:は=13 w:を=2
+生産	せいさん	35	BOUNDARY=2 exp=1 n=11 n-vs=1 pref=1 w:が=2 w:で=1 w:に=1 w:の=4 w:は=3 w:を=8	aux-v:す=1 aux-v:た=1 aux-v:れ=1 exp=1 n-suf=6 n-vs=1 w:された=2 w:し=1 w:した=1 w:したい=1 w:している=2 w:する=3 w:で=1 w:できる=1 w:には=1 w:は=7 w:を=4
+生計	せいけい	1	w:して=1	w:を=1
+生魚	なまざかな	1	BOUNDARY=1	w:を=1
+産	さん	2	BOUNDARY=1 n=1	w:の=2
+産業	さんぎょう	1	n=1	n=1
+用	よう	1	n=1	w:の=1
+甲	こう	2	BOUNDARY=2	w:の=2
+甲板	かんぱん	1	w:には=1	w:が=1
+男	おとこ	4	adj-i:い=1 adj-pn=1 w:あの=1 w:よい=1	aux-v:て=1 w:である=1 w:として=1 w:は=1
+男女	だんじょ	6	BOUNDARY=3 adj-i:い=1 adv=1 w:の=1	conj=1 w:が=1 w:に=1 w:の=3
+町	まち	274	BOUNDARY=45 adj-i:い=3 adj-na=4 adj-pn=11 adv=4 aux-v:て=1 exp=1 exp-v:て=1 v1:た=3 v5:た=1 v5:て=3 v5:で=1 v5:る=1 w:あの=1 w:から=6 w:が=11 w:この=51 w:その=46 w:ために=1 w:で=4 w:と=1 w:という=1 w:ない=1 w:に=4 w:には=1 w:にも=1 w:の=23 w:は=39 w:もっと=1 w:を=3	adj-no=7 aux:だ=1 exp=3 n-suf=2 prt=2 w:から=10 w:が=4 w:だ=2 w:で=25 w:である=1 w:です=3 w:ですか=1 w:という=1 w:に=35 w:には=12 w:にも=1 w:の=71 w:は=35 w:へ=9 w:まで=4 w:や=1 w:を=44
+町中	まちじゅう	13	BOUNDARY=3 w:すぐに=1 w:に=1 w:ので=1 w:は=4 w:よく=1 w:を=2	exp=1 n-vs=1 w:が=2 w:で=2 w:に=4 w:の=1 w:を=2
+画	が	3	aux-v:た=1 w:この=1 w:の=1	w:だ=1 w:です=1 w:は=1
+画壇	がだん	1	w:が=1	w:に=1
+画面	がめん	2	n=1 w:の=1	w:は=1 w:を=1
+界	かい	2	n=2	w:で=1 w:に=1
+番	ばん	24	BOUNDARY=13 num=1 v5:う=2 w:する=1 w:の=7	exp-adj:い=1 n=4 n-suf=3 prt=1 w:が=3 w:だ=4 w:です=2 w:ですか=1 w:な=1 w:に=1 w:の=2 w:を=1
+畳	たたみ	2	w:の=1 w:は=1	w:の=2
+病	やまい	1	n=1	w:には=1
+症状	しょうじょう	1	BOUNDARY=1	w:が=1
+痛	いた	9	w:を=9	BOUNDARY=7 w:よ=1 w:ように=1
+発想	はっそう	1	BOUNDARY=1	w:が=1
+白	しろ	1	w:の=1	n=1
+白人	はくじん	3	exp=1 w:の=1 w:は=1	w:だ=1 w:と=1 w:の=1
+白鳥	はくちょう	3	BOUNDARY=2 w:は=1	w:が=3
+百姓	ひゃくしょう	1	w:お=1	w:でした=1
+的	てき	55	adj-na=3 adj-no=15 n=26 n-vs=11	adj-i:い=1 adj-no=3 conj=1 exp=2 n=26 n-vs=13 pn=1 v5:う=1 w:こと=1 w:だった=2 w:で=1 w:です=1 w:は=2
+的	まと	17	BOUNDARY=1 adj-na=1 w:の=7 w:は=8	BOUNDARY=1 n=1 v5:る=1 w:だった=2 w:であった=1 w:である=1 w:に=3 w:を=7
+皆	みな	1	w:は=1	n-vs=1
+益	えき	1	adv=1	w:が=1
+盗	ぬす	2	w:が=1 w:を=1	BOUNDARY=2
+盛	さか	5	BOUNDARY=1 adj-i:い=1 n-suf=1 w:に=1 w:を=1	w:だ=3 w:に=1 w:を=1
+目	め	157	BOUNDARY=46 adj-i:い=11 adj-no=3 adj-pn=9 aux-v:け=1 aux-v:ば=1 ctr=4 n=4 n-suf=1 num=2 pref=1 suf=3 v1:た=1 v1:て=1 v5:て=1 w:いい=2 w:お=1 w:から=2 w:が=2 w:で=4 w:に=3 w:には=2 w:の=22 w:は=28 w:まだ=1 w:を=1	BOUNDARY=1 aux-v:り=1 w:から=5 w:が=12 w:で=16 w:と=1 w:な=1 w:に=22 w:には=7 w:の=17 w:は=25 w:を=49
+目下	もっか	8	BOUNDARY=2 w:は=4 w:も=1 w:を=1	adj-pn=1 n=4 n-vs=1 w:の=2
+目前	もくぜん	1	w:が=1	w:に=1
+目標	もくひょう	27	BOUNDARY=8 adj-pn=2 adv=1 aux-v:く=1 exp=1 n=1 w:した=1 w:その=1 w:で=1 w:の=5 w:は=4 w:ような=1	conj=1 prt=1 w:と=1 w:とは=1 w:に=2 w:について=1 w:の=1 w:は=8 w:を=11
+直	じき	2	BOUNDARY=1 w:が=1	BOUNDARY=1 n=1
+直面	ちょくめん	29	BOUNDARY=5 w:が=1 w:に=22 w:の=1	aux-v:す=1 aux-v:ら=1 w:し=1 w:した=5 w:して=9 w:している=10 w:する=2
+県	けん	1	w:その=1	w:に=1
+真	しん	9	BOUNDARY=3 adj-pn=1 conj=1 exp=1 w:して=1 w:に=1 w:は=1	BOUNDARY=1 prt=1 w:に=1 w:の=4 w:は=2
+真面目	まじめ	8	adj-pn=1 adv=1 exp=1 w:が=2 w:は=3	BOUNDARY=1 adj-no=1 ctr=1 n=1 n-vs=2 w:である=1 w:に=1
+眼差	まなざ	1	w:の=1	w:で=1
+眼鏡	めがね	11	BOUNDARY=4 exp=1 w:その=1 w:の=1 w:は=4	BOUNDARY=1 exp=1 n-suf=2 w:が=1 w:は=2 w:を=4
+着	ちゃく	7	BOUNDARY=3 adj-no=1 adv=2 n=1	v1:る=1 w:だ=2 w:だった=1 w:で=1 w:の=2
+着	つ	291	BOUNDARY=3 adj-i:く=1 adj-no=1 adv=17 conj=1 n=1 v1:て=3 w:いつ=3 w:お=1 w:か=1 w:から=1 w:が=9 w:で=6 w:に=218 w:には=4 w:は=2 w:へ=12 w:まだ=3 w:もう=3 w:ように=1	BOUNDARY=96 adj-na=1 adj-no=14 adv=9 aux-v:ば=1 aux-v:ら=1 aux-v:る=1 aux:ず=12 exp=10 exp-adj:た=1 exp-v:た=3 exp-v:て=1 exp-v:る=2 n=5 n-suf=1 n-vs=1 prt=5 v1:た=1 v1:て=1 v1:る=1 w:か=11 w:から=2 w:こと=2 w:すぐ=2 w:すぐに=4 w:たい=2 w:だろう=7 w:つもり=1 w:でしょう=11 w:と=26 w:とき=16 w:ところ=1 w:になった=1 w:の=12 w:ので=1 w:のです=1 w:のに=2 w:べき=1 w:まで=6 w:も=1 w:よ=10 w:ように=3 w:んだ=1
+着替	きが	1	BOUNDARY=1	w:を=1
+瞬	またた	3	w:で=1 w:に=2	BOUNDARY=3
+知	し	3	BOUNDARY=1 w:に=1 w:は=1	BOUNDARY=2 exp=1
+石	いし	49	BOUNDARY=12 adj-i:い=1 adj-pn=1 n-vs=1 v1:た=1 v5:た=1 v5:て=1 v5:る=1 w:あの=1 w:この=5 w:その=5 w:という=1 w:とき=1 w:に=6 w:には=1 w:の=1 w:は=9	exp=1 w:から=1 w:が=5 w:で=3 w:と=1 w:という=1 w:に=4 w:には=2 w:の=3 w:は=5 w:を=23
+破	やぶ	1	w:を=1	w:よ=1
+確	かく	1	w:は=1	n=1
+社	しゃ	17	BOUNDARY=10 n=4 w:が=1 w:その=1 w:は=1	conj=1 w:で=1 w:に=1 w:の=6 w:のです=1 w:は=6 w:より=1
+社	やしろ	1	w:この=1	w:は=1
+神	かみ	57	BOUNDARY=31 adj-na=1 v1:た=1 v5:た=1 v5:て=1 w:が=1 w:に=4 w:の=1 w:は=14 w:みんな=1 w:を=1	BOUNDARY=1 adj-na=1 exp=2 exp-adj:く=1 prt=1 v5:る=2 w:が=4 w:だけ=1 w:と=2 w:に=4 w:の=14 w:は=12 w:へ=1 w:ほど=1 w:よ=2 w:を=8
+私	わたくし	5	BOUNDARY=5	w:が=1 w:の=1 w:は=3
+私	わたし	10056	BOUNDARY=7018 adj-i:い=1 adj-i:く=5 adj-i:た=1 adj-i:て=9 adj-i:ら=1 adj-na=14 adj-no=46 adj-pn=1 adj-t=2 adv=228 aux-adj:く=1 aux-adj:た=1 aux-adj:ら=3 aux-v:て=17 aux-v:ば=1 aux-v:ら=6 aux:ば=4 conj=49 exp=89 exp-adj:く=2 exp-v:て=12 exp-v:ら=2 n=8 n-suf=2 pn=1 prt=19 suf=1 v-other:ず=1 v1:ず=2 v1:て=15 v5:い=1 v5:ず=1 v5:た=1 v5:て=22 v5:で=2 v5:ば=2 v5:ら=3 vs-i:し=1 vs-i:る=1 w:いう=1 w:いつ=2 w:いつも=25 w:いる=1 w:か=42 w:から=12 w:が=248 w:この=2 w:し=1 w:した=1 w:して=12 w:すぐに=10 w:ずっと=3 w:ため=5 w:ために=10 w:で=86 w:でも=3 w:と=150 w:という=2 w:とき=8 w:として=3 w:とても=1 w:とは=3 w:なら=11 w:なんて=4 w:に=90 w:について=6 w:には=13 w:にも=26 w:の=21 w:ので=31 w:のに=5 w:は=1443 w:ほとんど=1 w:ほど=2 w:まだ=2 w:まで=10 w:みんな=3 w:も=29 w:もう=2 w:もし=28 w:よう=1 w:ように=6 w:よく=7 w:を=88	BOUNDARY=51 adj-f=1 adj-i:い=16 adj-i:く=1 adj-na=29 adj-no=96 adj-pn=3 adv=25 aux-adj:い=1 aux-adj:た=1 aux-v:い=4 aux-v:た=2 aux-v:て=2 aux-v:る=5 conj=6 ctr=12 exp=201 exp-adj:い=3 exp-adj:く=1 exp-adj:て=1 exp-v:い=2 exp-v:う=3 exp-v:し=1 exp-v:す=1 exp-v:た=12 exp-v:だ=3 exp-v:て=5 exp-v:ら=1 exp-v:り=3 exp-v:る=2 exp-v:ん=2 n=967 n-pref=17 n-suf=110 n-vs=209 num=1 pn=46 pref=29 prt=11 suf=55 v1:た=8 v1:る=3 v1:れ=1 v5:い=5 v5:う=19 v5:た=6 v5:だ=1 v5:て=1 v5:ぶ=1 v5:む=2 v5:る=14 w:いつも=1 w:いる=1 w:か=1 w:から=12 w:が=669 w:この=2 w:ご=1 w:した=1 w:すぐ=1 w:する=1 w:それ=2 w:ため=1 w:ために=12 w:だ=2 w:だけ=2 w:だった=1 w:で=1 w:である=1 w:できる=1 w:でした=1 w:です=8 w:ではない=1 w:と=80 w:ところ=12 w:とは=3 w:なら=4 w:に=840 w:について=4 w:には=271 w:にも=7 w:の=39 w:のです=7 w:のに=2 w:は=5571 w:へ=2 w:ほど=2 w:も=68 w:もの=16 w:よい=1 w:より=48 w:よりも=9 w:を=345
+私的	してき	3	w:と=1 w:の=1 w:を=1	n=2 n-vs=1
+秋	あき	55	BOUNDARY=27 adj-i:い=2 adv=4 w:この=3 w:と=4 w:の=5 w:は=9 w:を=1	BOUNDARY=5 adj-na=1 exp=2 exp-v:た=1 n=1 w:が=4 w:で=1 w:に=8 w:には=11 w:の=8 w:は=11 w:より=2
+称	たた	1	w:を=1	BOUNDARY=1
+種	しゅ	9	BOUNDARY=2 exp-v:た=1 v5:た=1 w:その=4 w:の=1	w:である=2 w:の=6 w:は=1
+種	たね	20	BOUNDARY=2 adj-i:い=2 v5:た=2 v5:ぬ=1 w:に=1 w:には=1 w:の=8 w:は=2 w:を=1	prt=1 w:から=2 w:が=1 w:だ=3 w:だった=2 w:である=1 w:と=1 w:の=1 w:は=3 w:を=5
+穴	あな	30	BOUNDARY=2 adj-i:い=2 adj-pn=2 n-suf=1 v5:て=2 w:ある=1 w:この=2 w:その=3 w:に=8 w:の=2 w:は=5	w:から=2 w:が=8 w:でした=1 w:に=4 w:の=1 w:は=1 w:を=13
+空	から	5	BOUNDARY=1 n=1 w:は=2 w:ほとんど=1	n=2 w:だった=2 w:です=1
+空	そら	87	BOUNDARY=37 adj-i:い=4 adj-i:く=1 adj-na=1 adv=4 conj=1 w:が=15 w:すぐに=1 w:で=3 w:に=1 w:の=4 w:は=14 w:を=1	BOUNDARY=1 adv=1 prt=1 w:から=5 w:が=13 w:だろう=1 w:で=2 w:と=2 w:に=17 w:には=12 w:の=3 w:は=13 w:へ=2 w:よりも=1 w:を=13
+空所	くうしょ	3	BOUNDARY=2 w:で=1	w:に=1 w:を=2
+空間	くうかん	4	BOUNDARY=2 w:の=1 w:は=1	w:が=2 w:に=1 w:や=1
+突	つ	2	w:を=2	v5:た=1 w:しまった=1
+立	た	1	v5:り=1	w:の=1
+端	はし	9	w:の=9	w:に=5 w:の=1 w:まで=1 w:を=2
+端書	はしが	1	w:が=1	w:が=1
+等	など	1	n=1	w:が=1
+等	ら	1	pn=1	w:の=1
+筋	すじ	3	w:の=2 w:は=1	w:が=1 w:は=1 w:を=1
+筋肉	きんにく	7	BOUNDARY=2 adj-i:い=1 w:の=1 w:は=3	w:が=2 w:で=1 w:は=1 w:を=3
+筋違	すじちが	1	w:は=1	w:だ=1
+策	さく	7	n=1 n-vs=2 w:の=4	BOUNDARY=1 w:だ=2 w:である=1 w:に=1 w:の=2
+管	かん	1	BOUNDARY=1	w:から=1
+節	せつ	2	BOUNDARY=1 w:の=1	w:は=1 w:を=1
+米	こめ	34	BOUNDARY=11 adv=1 exp=1 w:お=1 w:から=3 w:ため=1 w:で=1 w:と=1 w:の=3 w:は=9 w:や=1 w:を=1	BOUNDARY=1 adj-na=2 adj-no=1 adv=1 n=1 w:が=2 w:である=1 w:と=1 w:の=9 w:は=6 w:を=9
+粋	いき	1	adv=1	w:です=1
+粋	すい	1	w:の=1	prt=1
+糸	いと	6	BOUNDARY=1 adj-i:い=2 w:で=1 w:に=1 w:の=1	BOUNDARY=1 w:と=1 w:の=1 w:を=3
+紙	かみ	39	BOUNDARY=3 adj-pn=1 adv=1 aux-v:る=1 prt=1 v5:く=1 w:が=1 w:この=6 w:その=3 w:と=1 w:どんな=1 w:に=1 w:の=6 w:は=7 w:ほとんど=1 w:や=1 w:を=3	BOUNDARY=2 exp=1 n=1 w:が=5 w:で=5 w:でも=1 w:なら=1 w:に=7 w:には=1 w:の=2 w:は=3 w:や=1 w:を=9
+紙	し	1	n-vs=1	w:の=1
+素性	すじょう	2	BOUNDARY=1 w:の=1	w:は=1 w:を=1
+細	こま	1	w:に=1	BOUNDARY=1
+終	お	1	w:を=1	BOUNDARY=1
+終日	しゅうじつ	3	BOUNDARY=1 w:は=2	exp=1 n=2
+経	きょう	1	w:に=1	BOUNDARY=1
+給	たま	1	n=1	BOUNDARY=1
+絵	え	1	w:した=1	w:は=1
+綱	つな	3	BOUNDARY=1 w:その=1 w:は=1	w:を=3
+網	あみ	9	BOUNDARY=1 n=1 v1:た=1 w:の=2 w:は=4	w:で=2 w:に=3 w:は=1 w:を=3
+綿	めん	5	BOUNDARY=1 v1:た=1 w:この=1 w:と=1 w:の=1	w:で=1 w:の=3 w:は=1
+綿	わた	1	w:は=1	n-suf=1
+総	そう	3	BOUNDARY=2 v5:た=1	n=2 n-vs=1
+緩	ゆる	1	adv=1	BOUNDARY=1
+縁	ふち	3	w:の=2 w:を=1	w:に=1 w:は=1 w:まで=1
+縋	すが	1	w:に=1	BOUNDARY=1
+縦	たて	3	w:は=2 w:を=1	BOUNDARY=1 w:と=1 w:に=1
+縦横	たてよこ	2	BOUNDARY=1 w:は=1	BOUNDARY=2
+繊維	せんい	2	BOUNDARY=1 w:は=1	n=2
+缶	かん	5	BOUNDARY=2 v5:た=1 w:この=1 w:に=1	aux-v:す=1 w:には=1 w:は=1 w:を=2
+罪	つみ	1	w:その=1	w:を=1
+罪人	ざいにん	3	BOUNDARY=1 w:は=2	exp=1 w:は=1 w:を=1
+罰	ばっ	1	w:として=1	BOUNDARY=1
+罰	ばつ	1	w:は=1	w:を=1
+美	び	14	BOUNDARY=5 adv=1 exp=1 w:の=1 w:は=6	conj=1 exp=2 prt=1 w:が=1 w:だけ=1 w:であった=1 w:と=1 w:とは=1 w:に=1 w:は=2 w:を=2
+羽	はね	4	BOUNDARY=1 w:の=1 w:は=2	w:が=2 w:の=1 w:は=1
+羽	わ	19	BOUNDARY=10 adv=3 n=3 num=3	BOUNDARY=1 adj-no=1 aux-v:た=1 exp-v:で=1 n=2 v5:る=1 w:か=2 w:だ=1 w:と=1 w:の=6 w:も=1 w:もの=1
+翻訳	ほんやく	1	v5:て=1	w:が=1
+考	かんが	1	w:は=1	w:を=1
+者	しゃ	22	adj-no=6 n=7 n-suf=1 n-vs=8	BOUNDARY=1 exp=1 n=1 w:が=1 w:だ=2 w:である=2 w:でも=1 w:と=1 w:に=1 w:にも=1 w:の=3 w:は=6 w:を=1
+者	もの	102	BOUNDARY=10 adj-f=1 adj-i:い=5 adj-na=1 adj-pn=1 aux-v:た=2 aux-v:る=4 exp-adj:い=1 exp-v:す=1 exp-v:る=4 n=1 v1:い=1 v1:た=2 v1:る=5 v5:い=4 v5:う=7 v5:く=2 v5:す=2 v5:た=2 v5:つ=2 v5:ぬ=1 v5:む=1 v5:る=7 vs-i:た=1 vs-i:る=1 w:ある=3 w:か=1 w:した=3 w:している=1 w:する=5 w:そんな=1 w:という=1 w:ない=2 w:の=16	BOUNDARY=2 adj-na=1 exp=1 suf=1 w:が=19 w:たち=1 w:だ=1 w:ではない=1 w:と=2 w:なら=1 w:に=7 w:には=1 w:の=3 w:は=37 w:ほど=1 w:みんな=1 w:も=11 w:や=1 w:より=3 w:よりも=1 w:を=6
+聞	き	4	w:に=1 w:について=1 w:は=1 w:を=1	BOUNDARY=2 prt=1 w:か=1
+職	しょく	42	BOUNDARY=2 adj-i:い=2 adv=1 aux-v:ば=1 exp=2 n=1 v1:て=1 w:が=3 w:して=1 w:その=8 w:で=3 w:と=2 w:に=3 w:の=5 w:ので=1 w:は=3 w:も=1 w:よい=1 w:を=1	exp=1 w:から=1 w:が=1 w:で=2 w:に=9 w:には=2 w:を=26
+肉	にく	67	BOUNDARY=17 adj-no=1 adv=2 aux-v:た=1 exp=2 w:お=2 w:が=1 w:この=4 w:その=6 w:ために=1 w:で=1 w:と=2 w:に=4 w:の=9 w:は=13 w:より=1	exp=1 w:が=6 w:だけ=1 w:です=1 w:と=5 w:に=3 w:には=1 w:の=3 w:は=13 w:も=1 w:より=1 w:を=31
+背	せ	15	BOUNDARY=1 adj-na=1 adv=1 prt=1 w:の=3 w:は=6 w:を=2	w:が=2 w:です=1 w:に=3 w:は=3 w:を=6
+背筋	せすじ	3	adj-i:て=1 w:が=1 w:とき=1	w:が=1 w:の=1 w:を=1
+能力	のうりょく	66	BOUNDARY=8 adj-i:い=1 adj-na=1 adj-pn=4 aux-v:く=1 aux-v:る=2 exp=1 exp-v:る=2 n=1 n-vs=2 v1:る=3 v5:く=4 v5:す=4 v5:ぶ=1 v5:る=2 w:する=7 w:ために=1 w:と=1 w:には=1 w:の=11 w:は=6 w:ほど=1 w:よりも=1	exp-adj:く=2 exp-v:る=1 w:が=18 w:だ=2 w:である=2 w:と=3 w:という=1 w:に=4 w:には=2 w:の=4 w:は=8 w:を=19
+脅	おど	2	BOUNDARY=1 w:を=1	v5:た=1 w:よ=1
+脅	おびや	3	w:に=1 w:を=2	BOUNDARY=1 w:だろう=1 w:もの=1
+脇	わき	3	w:の=2 w:を=1	w:に=3
+脚	きゃく	3	BOUNDARY=3	exp-v:来=1 w:あった=1 w:の=1
+脳	のう	8	BOUNDARY=4 adv=1 w:の=2 w:は=1	exp=1 w:が=3 w:に=1 w:の=2 w:を=1
+腕	うで	64	BOUNDARY=18 adj-pn=1 v5:む=1 w:いつも=1 w:が=2 w:した=1 w:で=2 w:と=3 w:に=1 w:には=1 w:の=16 w:は=13 w:や=2 w:を=2	suf=1 w:から=1 w:が=4 w:で=1 w:に=11 w:の=5 w:は=2 w:も=1 w:を=38
+膨大	ぼうだい	1	w:は=1	n-suf=1
+自	みずか	29	BOUNDARY=4 adv=1 n=2 pn=3 w:が=1 w:に=2 w:は=16	BOUNDARY=3 adj-na=1 adj-no=2 n=3 n-vs=1 pn=1 v1:た=1 w:が=2 w:そこ=1 w:で=1 w:の=11 w:を=2
+自分	じぶん	3	BOUNDARY=2 w:は=1	w:の=2 w:を=1
+臭	くさ	20	BOUNDARY=4 adj-i:い=2 adv=1 aux-v:た=1 exp-v:ば=1 n=1 vs-i:る=1 w:が=2 w:その=2 w:の=2 w:は=3	BOUNDARY=5 aux-v:る=1 int=1 prt=1 w:が=4 w:で=1 w:と=2 w:は=3 w:を=1 w:ん=1
+臭	にお	1	w:で=1	w:を=1
+船	ふね	161	BOUNDARY=58 adj-i:い=2 adj-no=1 adj-pn=1 aux-v:く=1 n-suf=1 v1:る=3 v5:た=2 v5:だ=1 v5:て=1 v5:ぶ=1 w:あの=2 w:が=3 w:この=6 w:し=1 w:その=34 w:で=1 w:なら=1 w:に=7 w:の=15 w:は=16 w:へ=1 w:を=2	w:から=3 w:が=19 w:だった=1 w:で=11 w:である=1 w:でした=1 w:です=1 w:と=4 w:な=1 w:に=14 w:には=4 w:の=7 w:は=76 w:を=18
+色	いろ	60	BOUNDARY=11 adj-i:い=6 adj-na=2 adj-pn=1 exp=1 n=2 v5:ら=1 w:この=2 w:その=3 w:どんな=2 w:に=1 w:の=18 w:は=9 w:や=1	BOUNDARY=2 exp=1 w:が=17 w:だ=2 w:で=1 w:です=1 w:ではない=1 w:と=2 w:に=2 w:の=7 w:は=12 w:や=1 w:よい=1 w:を=10
+花	はな	1	w:は=1	w:に=1
+花瓶	かびん	29	BOUNDARY=8 adj-i:い=2 adv=2 exp-adj:い=1 v1:た=1 v5:た=1 w:が=2 w:この=2 w:その=2 w:で=1 w:に=2 w:の=1 w:は=4	aux:だ=1 w:が=3 w:だ=1 w:に=1 w:には=1 w:の=2 w:は=4 w:を=16
+苗	なえ	1	w:の=1	w:を=1
+若干	じゃっかん	1	w:を=1	v1:る=1
+苦味	にがみ	1	w:は=1	w:が=1
+草	くさ	27	BOUNDARY=2 adv=1 exp=1 v1:た=1 v1:る=1 w:が=1 w:ために=1 w:で=4 w:に=1 w:には=1 w:の=1 w:は=8 w:よく=2 w:を=2	n-suf=1 w:が=4 w:で=1 w:に=1 w:の=10 w:や=1 w:を=9
+荷	に	3	w:で=2 w:の=1	w:に=1 w:を=2
+華奢	きゃしゃ	1	w:は=1	n=1
+萎	な	1	w:が=1	n-suf=1
+落書	らくが	1	w:は=1	BOUNDARY=1
+葉	は	23	BOUNDARY=4 adv=1 exp=1 v5:る=1 w:から=2 w:が=3 w:この=1 w:その=1 w:には=1 w:の=7 w:は=1	w:が=9 w:で=1 w:と=1 w:の=1 w:は=3 w:を=8
+葛藤	かっとう	2	BOUNDARY=1 w:その=1	w:である=1 w:に=1
+薬	くすり	107	BOUNDARY=14 adj-pn=1 adv=1 exp=1 exp-adj:く=1 exp-v:ば=1 v1:る=2 v5:く=2 w:お=1 w:が=1 w:くれた=1 w:この=44 w:すぐ=1 w:その=23 w:でも=1 w:に=2 w:の=4 w:は=2 w:まだ=1 w:もう=1 w:よい=1 w:を=1	BOUNDARY=1 exp=1 n-suf=1 prt=2 v5:だ=1 w:が=5 w:だけ=1 w:で=4 w:として=1 w:に=4 w:の=8 w:は=32 w:より=1 w:を=45
+行	い	3	BOUNDARY=1 w:が=1 w:は=1	BOUNDARY=1 aux:い=1 w:たい=1
+行	おこな	1	w:が=1	BOUNDARY=1
+行	ぎょう	13	BOUNDARY=11 adv=1 w:と=1	aux-v:た=1 suf=1 w:か=1 w:で=2 w:と=1 w:に=3 w:の=3 w:は=1
+行方	ゆくえ	3	BOUNDARY=1 w:の=1 w:も=1	w:が=1 w:は=1 w:を=1
+術	じゅつ	1	v5:つ=1	w:だ=1
+術	すべ	1	BOUNDARY=1	w:を=1
+街	がい	5	BOUNDARY=1 n-suf=3 n-vs=1	w:で=1 w:です=1 w:に=1 w:の=1 w:まで=1
+街	まち	44	BOUNDARY=9 adj-i:い=2 adj-i:く=1 adj-pn=1 adv=1 conj=1 exp-v:う=1 v5:た=1 w:から=1 w:が=3 w:この=6 w:その=4 w:と=1 w:ない=1 w:に=3 w:の=3 w:は=5	w:が=2 w:だ=4 w:で=2 w:です=1 w:ではない=1 w:に=6 w:には=2 w:の=8 w:は=4 w:まで=1 w:を=13
+表	あらわ	48	exp=1 w:で=4 w:どう=2 w:にも=1 w:の=1 w:は=3 w:よく=1 w:を=35	BOUNDARY=21 adj-i:い=1 adj-na=1 adj-no=1 conj=1 exp=2 exp-v:い=1 exp-v:る=1 n=7 n-suf=2 w:か=1 w:の=4 w:のに=1 w:ほど=3 w:よい=1
+表	おもて	6	BOUNDARY=3 v1:て=1 w:と=1 w:に=1	BOUNDARY=1 w:が=1 w:に=2 w:の=1 w:へ=1
+表	ひょう	4	BOUNDARY=1 n-vs=1 w:この=2	w:から=1 w:で=1 w:には=1 w:の=1
+表裏	ひょうり	1	w:には=1	w:が=1
+袋	ふくろ	12	BOUNDARY=3 v5:だ=1 v5:る=1 w:この=1 w:その=1 w:の=3 w:は=1 w:を=1	w:が=1 w:で=1 w:に=3 w:の=1 w:は=3 w:を=3
+被	かぶ	3	w:を=3	BOUNDARY=2 exp-adj:い=1
+被	こうむ	2	w:を=2	BOUNDARY=2
+装	よそお	2	w:に=1 w:を=1	BOUNDARY=2
+裏	うら	14	BOUNDARY=4 v5:て=1 w:の=9	BOUNDARY=1 ctr=1 w:から=1 w:が=1 w:ですか=1 w:と=1 w:に=5 w:には=3
+裏側	うらがわ	1	w:の=1	w:に=1
+裏面	りめん	1	w:の=1	n-vs=1
+補完	ほかん	1	w:を=1	v5:る=1
+褐色	かっしょく	1	adj-i:い=1	w:の=1
+西	にし	18	BOUNDARY=2 adv=2 conj=1 w:が=8 w:ため=1 w:は=4	prt=1 w:から=5 w:に=7 w:の=2 w:へ=3
+西日	にしび	1	w:は=1	w:を=1
+要	よう	1	w:を=1	w:ので=1
+要素	ようそ	1	w:な=1	w:の=1
+見	み	400	BOUNDARY=3 adj-i:く=24 adj-na=2 adj-no=2 adj-t=1 adv=11 exp=27 exp-adj:く=1 exp-v:て=2 n=3 pn=1 prt=3 v1:て=5 v5:く=19 v5:て=6 v5:で=1 v5:り=1 w:から=2 w:が=142 w:して=1 w:すぐ=1 w:すぐに=2 w:たくさん=1 w:で=4 w:でも=1 w:と=1 w:に=74 w:には=5 w:の=8 w:は=8 w:ほとんど=1 w:も=5 w:もう=1 w:ように=21 w:よく=6 w:を=4	BOUNDARY=288 adj-no=2 adv=4 aux-v:た=17 aux-v:て=2 aux-v:る=7 aux:ば=1 exp=4 exp-v:す=1 exp-v:た=1 exp-v:る=1 n=4 pn=1 prt=3 suf=3 w:いい=1 w:か=8 w:から=2 w:が=10 w:きた=8 w:でしょう=3 w:とき=1 w:ところ=4 w:ね=5 w:の=5 w:ので=3 w:のに=1 w:もの=2 w:よ=5 w:ように=3
+見上	みあ	1	w:で=1	BOUNDARY=1
+見物	けんぶつ	21	BOUNDARY=1 adj-no=2 n=6 w:には=1 w:の=1 w:は=2 w:を=8	aux-v:す=1 aux-v:た=1 ctr=1 w:が=1 w:した=1 w:する=6 w:に=1 w:は=1 w:より=1 w:を=7
+見物	みもの	1	w:が=1	w:だ=1
+親	おや	77	BOUNDARY=34 adj-i:い=1 adj-na=1 adj-no=1 adv=2 aux-v:ば=1 aux:ら=1 exp=3 v5:く=1 v5:だ=1 w:いつも=3 w:が=2 w:この=1 w:と=2 w:の=3 w:は=15 w:まだ=1 w:を=4	exp=1 n=1 w:から=9 w:が=9 w:たち=1 w:と=2 w:なら=2 w:に=15 w:には=2 w:にも=2 w:の=18 w:は=13 w:を=2
+親	した	25	BOUNDARY=3 adj-na=2 adv=2 exp=1 v5:う=1 v5:て=1 w:から=1 w:で=1 w:と=10 w:の=1 w:は=2	BOUNDARY=2 adj-na=1 aux-v:た=5 aux-v:る=4 n=7 suf=1 v5:る=1 w:している=1 w:する=1 w:そう=1 w:は=1
+親族	しんぞく	1	BOUNDARY=1	w:は=1
+親父	おやじ	1	BOUNDARY=1	w:は=1
+角	かど	31	BOUNDARY=8 adv=3 aux-v:て=1 n=2 v5:て=1 w:が=2 w:その=3 w:の=4 w:は=7	n=1 w:で=4 w:です=1 w:に=1 w:の=3 w:まで=1 w:を=20
+解	と	92	BOUNDARY=3 adj-i:て=1 adj-no=1 adv=2 aux-v:く=2 exp=1 v1:て=1 w:が=8 w:で=3 w:でも=3 w:に=2 w:には=3 w:にも=2 w:は=8 w:を=52	BOUNDARY=26 aux-v:た=1 aux-v:る=2 exp=3 exp-adj:い=1 exp-v:た=7 exp-v:る=1 n=2 prt=1 suf=3 v5:て=1 w:か=2 w:ください=1 w:こと=3 w:し=1 w:しまった=2 w:ために=1 w:と=5 w:とは=1 w:なさい=1 w:なら=2 w:の=8 w:ので=1 w:のです=4 w:のに=8 w:ほど=1 w:もの=1 w:ような=1 w:ように=1
+言	い	6	prt=1 w:と=3 w:に=1 w:は=1	BOUNDARY=4 aux-v:ば=1 w:よ=1
+許	ゆる	8	BOUNDARY=1 w:お=4 w:の=2 w:を=1	aux-v:ば=1 exp=2 w:ください=2 w:を=3
+訳	やく	1	n=1	BOUNDARY=1
+訳	わけ	2	adj-pn=1 w:は=1	w:だ=1 w:も=1
+診	み	3	w:に=3	aux-v:い=1 aux-v:た=2
+詩	し	63	BOUNDARY=11 adj-i:い=3 adj-pn=3 v5:た=1 w:が=1 w:この=13 w:ずっと=1 w:その=17 w:として=1 w:に=2 w:の=5 w:は=3 w:を=2	n-suf=1 w:から=1 w:が=2 w:だ=1 w:で=1 w:です=1 w:と=1 w:とは=1 w:に=1 w:の=4 w:は=14 w:を=35
+詰	つ	2	adj-na=1 w:の=1	w:だった=1 w:を=1
+話	はな	11	adv=5 exp=1 prt=1 w:を=4	BOUNDARY=2 aux-v:い=1 w:した=3 w:して=1 w:していた=1 w:します=2 w:する=1
+話	はなし	431	BOUNDARY=63 adj-f=1 adj-i:い=26 adj-na=4 adj-pn=59 adv=12 aux-v:た=1 aux-v:て=1 conj=1 exp=3 exp-adj:い=2 exp-v:う=1 exp-v:つ=1 exp-v:て=1 n=3 v1:る=1 v5:く=1 v5:た=2 v5:て=2 v5:る=1 w:あの=2 w:いう=1 w:お=12 w:から=1 w:が=11 w:この=16 w:して=1 w:しない=1 w:その=64 w:そんな=3 w:で=13 w:と=21 w:という=2 w:に=5 w:について=3 w:には=1 w:の=69 w:ので=1 w:は=12 w:も=1 w:よい=1 w:ような=3 w:ように=1	BOUNDARY=2 aux-v:う=2 aux-v:で=1 conj=2 exp=3 exp-v:て=1 prt=1 v1:す=2 v1:る=1 v1:ん=1 w:から=4 w:が=37 w:し=1 w:だ=17 w:だった=1 w:で=11 w:である=1 w:です=4 w:ですか=1 w:ではない=1 w:に=28 w:には=4 w:にも=1 w:の=23 w:は=86 w:も=4 w:よりも=1 w:を=190
+詳細	しょうさい	1	w:の=1	w:について=1
+誌	し	1	n=1	w:を=1
+認	みと	115	BOUNDARY=2 adj-i:く=3 adj-no=1 adv=3 exp=1 w:が=1 w:と=19 w:として=3 w:とは=1 w:に=1 w:の=1 w:は=21 w:も=1 w:もっと=1 w:を=56	BOUNDARY=63 adj-na=1 adj-no=2 adv=1 aux-adj:い=1 aux-v:い=1 aux-v:ら=1 exp=7 exp-adj:た=1 exp-v:い=2 exp-v:た=4 exp-v:り=1 exp-v:る=3 prt=4 w:が=5 w:きた=1 w:こと=1 w:たい=1 w:だろう=4 w:なんて=1 w:の=2 w:のです=1 w:のに=1 w:は=1 w:も=1 w:よ=2 w:ような=1 w:ように=1
+語	ご	48	BOUNDARY=15 adj-i:い=2 adj-no=2 adv=1 aux-v:た=1 n=1 n-vs=1 v5:い=1 v5:う=1 w:この=6 w:その=9 w:そんな=1 w:という=2 w:どんな=1 w:ない=1 w:の=2 w:は=1	conj=2 prt=1 v5:て=1 w:が=3 w:で=2 w:に=2 w:には=1 w:の=12 w:は=14 w:も=1 w:を=9
+誤解	ごかい	1	adj-no=1	aux-v:る=1
+諸	しょ	1	BOUNDARY=1	n-vs=1
+象	ぞう	13	BOUNDARY=8 exp-v:た=1 w:その=2 w:は=2	w:が=2 w:の=2 w:は=8 w:を=1
+貝	かい	1	BOUNDARY=1	w:は=1
+財	ざい	2	exp=1 w:の=1	w:と=1 w:を=1
+貪欲	どんよく	2	w:に=1 w:は=1	exp=1 w:である=1
+貴方	あなた	26	BOUNDARY=17 adv=2 exp=1 w:は=5 w:を=1	suf=3 w:から=1 w:が=1 w:に=4 w:には=1 w:の=5 w:は=11
+買	か	1	w:に=1	w:もの=1
+費	ひ	5	n-vs=5	suf=1 w:について=1 w:の=1 w:は=1 w:を=1
+賊	ぞく	2	BOUNDARY=1 w:に=1	w:が=1 w:は=1
+質	しつ	14	BOUNDARY=1 w:の=7 w:は=4 w:よりも=2	BOUNDARY=1 w:が=1 w:である=1 w:に=1 w:について=1 w:の=1 w:は=4 w:より=1 w:よりも=2 w:を=1
+赤道	せきどう	1	adv=1	w:を=1
+赤面	せきめん	6	BOUNDARY=1 w:と=2 w:には=1 w:は=2	prt=1 w:した=2 w:して=1 w:する=2
+起	お	4	adv=1 exp=1 w:が=1 w:は=1	BOUNDARY=1 prt=1 w:の=1 w:も=1
+越	こ	1	w:を=1	BOUNDARY=1
+足	あし	87	BOUNDARY=22 adj-i:い=1 adj-i:く=1 adj-i:て=1 adj-no=2 adj-pn=2 adv=2 aux-v:て=1 conj=1 v5:て=2 w:いい=1 w:から=2 w:が=3 w:した=2 w:で=2 w:に=5 w:の=11 w:ので=1 w:は=20 w:まで=1 w:も=1 w:より=1 w:よりも=1 w:を=1	w:から=1 w:が=24 w:で=6 w:と=1 w:に=7 w:には=1 w:の=9 w:は=6 w:も=1 w:より=1 w:を=30
+足	そく	1	adj-no=1	w:の=1
+足下	そっか	1	w:の=1	w:にも=1
+足取	あしど	2	BOUNDARY=1 adj-i:い=1	w:で=1 w:は=1
+跡	あと	9	v5:た=1 w:の=8	w:が=4 w:です=1 w:は=1 w:を=3
+身	み	26	BOUNDARY=4 w:から=1 w:ために=1 w:として=2 w:に=4 w:の=8 w:は=6	conj=1 exp-v:た=1 w:だ=1 w:に=9 w:の=1 w:も=1 w:を=12
+車	くるま	593	BOUNDARY=74 adj-f=2 adj-i:い=31 adj-i:く=2 adj-na=3 adj-no=8 adj-pn=17 adv=19 aux-v:た=1 aux-v:る=1 conj=7 exp=11 n=5 n-suf=1 pn=1 prt=1 v1:た=1 v1:て=4 v5:く=1 v5:た=4 v5:て=5 v5:で=1 v5:ら=1 v5:る=1 w:あの=12 w:ある=1 w:から=1 w:が=12 w:この=41 w:した=4 w:する=1 w:ずっと=1 w:その=45 w:ために=1 w:で=14 w:と=2 w:として=1 w:とても=1 w:どんな=1 w:なら=1 w:に=30 w:には=5 w:にも=1 w:の=73 w:は=103 w:へ=3 w:まだ=1 w:まで=13 w:も=1 w:もう=1 w:もし=2 w:もの=1 w:や=1 w:ような=1 w:よく=1 w:よりも=1 w:を=14	adv=1 cop:ゃ=1 exp=1 exp-adj:く=1 exp-v:す=1 n-suf=1 prt=2 v5:た=1 w:から=5 w:が=56 w:だ=3 w:で=64 w:です=9 w:ですか=5 w:ではない=1 w:でも=1 w:と=5 w:なんて=1 w:に=55 w:には=6 w:の=66 w:は=117 w:も=1 w:や=1 w:より=2 w:よりも=1 w:を=185
+軍	ぐん	14	BOUNDARY=3 adj-pn=3 n=2 n-vs=1 w:した=1 w:に=1 w:は=3	n=1 w:が=1 w:と=1 w:の=2 w:は=7 w:を=2
+軒	けん	13	BOUNDARY=8 adv=1 num=4	adj-no=1 suf=2 w:が=1 w:と=1 w:の=7 w:もの=1
+転倒	てんとう	4	BOUNDARY=1 w:で=1 w:も=1 w:を=1	w:した=2 w:して=2
+輪	わ	3	adj-pn=1 w:の=2	w:が=2 w:を=1
+辛	から	13	BOUNDARY=1 adj-i:く=1 adj-no=1 adv=1 exp=3 w:の=1 w:は=4 w:ほど=1	BOUNDARY=3 n=2 n-suf=1 n-vs=1 v1:て=1 v5:い=1 w:こと=2 w:して=1 w:も=1
+辛	つら	3	adj-no=1 w:で=1 w:の=1	BOUNDARY=1 n-vs=1 v5:い=1
+辞	や	1	w:を=1	w:の=1
+辱	じょく	1	BOUNDARY=1	w:を=1
+辺	あた	22	BOUNDARY=2 v5:て=2 w:この=10 w:その=4 w:に=1 w:は=2 w:もう=1	adj-i:い=1 w:が=1 w:だ=1 w:で=2 w:に=2 w:には=2 w:の=2 w:は=5 w:を=6
+辺	へん	3	w:この=2 w:の=1	w:が=1 w:で=1 w:に=1
+迎合	げいごう	1	w:に=1	aux-v:す=1
+追従	ついじゅう	1	w:すぐに=1	w:した=1
+退	しりぞ	2	BOUNDARY=1 w:を=1	w:が=1 w:べき=1
+退	ど	1	w:へ=1	aux-v:た=1
+退	ひ	3	aux-v:て=1 w:か=1 w:から=1	BOUNDARY=2 w:べき=1
+送受信	そうじゅしん	1	w:を=1	v1:す=1
+通	とお	166	BOUNDARY=53 adj-i:い=1 adj-na=1 adj-no=1 adv=4 exp=1 n=3 n-vs=2 v1:た=1 v1:る=1 v5:た=8 v5:る=2 w:ある=4 w:が=18 w:この=14 w:して=1 w:していた=1 w:その=1 w:で=1 w:と=1 w:に=7 w:の=9 w:は=31	BOUNDARY=7 adj-i:い=1 adj-no=1 n-vs=1 pn=1 w:が=5 w:だ=2 w:だった=1 w:で=25 w:であった=1 w:である=1 w:です=5 w:ですか=1 w:ではない=1 w:に=21 w:には=6 w:の=19 w:は=12 w:を=55
+通	どお	6	adj-no=1 n=4 n-vs=1	BOUNDARY=3 w:だった=1 w:で=1 w:に=1
+造	つく	1	w:の=1	w:です=1
+連	つ	1	BOUNDARY=1	w:は=1
+進	すす	104	BOUNDARY=8 adj-i:く=2 adj-na=1 adj-no=1 adv=13 aux-v:ば=1 exp=2 exp-v:て=1 n=1 n-vs=3 v1:て=3 v5:て=8 v5:で=1 vs-i:て=1 w:お=1 w:が=7 w:して=1 w:ずっと=1 w:で=7 w:に=17 w:の=1 w:は=4 w:へ=11 w:まで=1 w:も=1 w:ように=1 w:より=3 w:を=2	BOUNDARY=63 adj-no=1 aux-v:い=1 aux-v:く=1 aux-v:す=1 aux-v:た=7 aux-v:む=1 conj=2 exp=5 n=5 n-suf=1 v5:た=1 w:あなた=1 w:か=1 w:ください=2 w:こと=1 w:その=1 w:なさい=2 w:ね=1 w:のです=1 w:べき=1 w:ほど=1 w:よ=2 w:んです=1
+遅	おそ	1	w:が=1	BOUNDARY=1
+遊	あそ	85	BOUNDARY=4 adj-i:く=2 adj-i:て=1 adj-no=1 adv=7 aux-adj:く=1 aux-v:て=1 conj=1 v1:て=1 v5:て=1 w:いつも=1 w:が=3 w:して=3 w:で=45 w:と=5 w:は=6 w:も=1 w:を=1	BOUNDARY=35 adj-na=1 adj-no=1 aux-v:り=1 conj=1 ctr=1 exp=2 exp-v:た=2 n=3 n-suf=1 prt=1 suf=1 v5:た=1 v5:る=1 w:か=1 w:こと=4 w:ため=1 w:ために=1 w:なさい=1 w:の=11 w:のに=2 w:は=2 w:べき=1 w:もの=3 w:よ=1 w:ように=3 w:より=1 w:よりも=1
+過	す	83	BOUNDARY=5 adj-na=3 adv=9 ctr=1 exp=3 exp-v:い=3 exp-v:し=1 exp-v:で=1 exp-v:り=1 n=1 n-suf=2 pref=3 suf=1 v5:い=1 v5:し=1 v5:み=6 v5:り=1 w:が=12 w:し=10 w:に=4 w:の=1 w:は=3 w:も=3 w:を=7	BOUNDARY=31 adv=1 aux-v:く=2 aux-v:た=3 exp=1 exp-adj:く=1 exp-v:る=1 n=3 n-suf=2 suf=1 v5:い=1 w:あなた=1 w:から=1 w:こと=10 w:しまった=3 w:だ=1 w:と=8 w:という=1 w:な=1 w:の=1 w:ので=1 w:は=3 w:まで=1 w:も=1 w:ように=2 w:んだ=1
+道	みち	203	BOUNDARY=34 adj-i:い=5 adj-no=1 adj-pn=5 adv=2 aux-v:く=27 v1:て=1 v1:る=2 v5:く=1 v5:た=3 v5:だ=1 v5:て=1 v5:ぶ=1 v5:る=3 w:から=1 w:が=7 w:この=26 w:した=1 w:して=1 w:その=9 w:ために=1 w:で=1 w:という=1 w:に=12 w:にも=2 w:の=40 w:は=11 w:べき=2 w:まで=1	BOUNDARY=2 aux-v:り=1 n=1 w:から=1 w:が=13 w:だ=3 w:で=11 w:である=3 w:ですか=1 w:に=9 w:には=1 w:の=7 w:は=36 w:へ=1 w:も=1 w:を=112
+道中	どうちゅう	1	BOUNDARY=1	suf=1
+道楽	どうらく	1	BOUNDARY=1	BOUNDARY=1
+達	たち	1	n=1	w:の=1
+違	たが	1	w:を=1	w:こと=1
+違	ちが	138	BOUNDARY=8 adj-i:く=1 adj-na=1 adj-no=12 adv=16 exp=4 v5:て=1 v5:り=2 w:が=20 w:と=25 w:とは=17 w:の=3 w:は=24 w:まで=1 w:も=2 w:もっと=1	BOUNDARY=87 adj-na=1 adj-no=3 ctr=2 exp-v:す=1 n=13 n-suf=4 pn=1 prt=2 suf=1 v1:る=1 v5:た=1 w:か=1 w:が=1 w:こと=2 w:しまった=1 w:と=1 w:な=1 w:に=1 w:ね=1 w:の=5 w:のだ=1 w:も=1 w:もの=1 w:よ=2 w:んだ=2
+違反	いはん	1	adv=1	n=1
+遺言	ゆいごん	3	adj-no=1 adj-pn=1 w:は=1	w:で=2 w:の=1
+部	ぶ	2	BOUNDARY=1 n=1	w:ください=1 w:に=1
+部屋	へや	1	w:は=1	w:に=1
+都	と	2	BOUNDARY=2	n=2
+都	みやこ	5	BOUNDARY=1 v5:ば=2 w:の=2	BOUNDARY=1 aux:だ=1 w:ではない=1 w:と=1 w:について=1
+酒	さけ	63	BOUNDARY=18 adj-i:い=1 adj-na=1 adj-no=1 adv=2 conj=2 exp=2 exp-v:て=1 w:から=1 w:この=1 w:たくさん=1 w:ために=1 w:で=1 w:と=2 w:に=4 w:の=2 w:は=20 w:まで=1 w:も=1	w:が=2 w:で=2 w:でも=1 w:と=1 w:に=9 w:には=1 w:は=4 w:も=6 w:を=37
+酷	ひど	3	w:に=1 w:は=1 w:を=1	ctr=1 v1:た=1 v5:て=1
+酸	さん	4	BOUNDARY=3 w:は=1	w:が=1 w:で=1 w:は=2
+重	かさ	6	w:が=3 w:と=1 w:は=2	BOUNDARY=3 v5:る=1 w:その=1 w:もの=1
+野心	やしん	1	w:という=1	w:を=1
+量	りょう	2	BOUNDARY=1 w:の=1	w:の=2
+金	かね	250	BOUNDARY=57 adj-i:く=1 adj-na=2 adj-no=3 adv=8 aux-v:て=1 aux-v:で=1 aux-v:ば=1 aux-v:り=1 conj=1 exp=4 n-vs=1 v1:た=4 v5:う=2 v5:た=2 v5:だ=1 v5:ち=1 v5:て=5 v5:り=1 w:いつも=3 w:から=4 w:が=5 w:この=6 w:する=1 w:その=25 w:そんな=1 w:で=3 w:と=3 w:に=25 w:の=34 w:は=32 w:ほとんど=1 w:ほど=1 w:まで=1 w:も=3 w:もし=1 w:もっと=1 w:や=1 w:を=2	BOUNDARY=2 adj-na=1 adj-no=2 conj=1 exp=2 exp-adj:く=1 n-vs=1 prt=2 v5:せ=1 w:が=31 w:だ=1 w:で=11 w:である=1 w:でも=1 w:と=4 w:に=9 w:には=2 w:の=16 w:は=26 w:も=5 w:より=1 w:よりも=1 w:を=128
+金	きん	30	BOUNDARY=11 adj-na=1 adv=1 v5:た=1 w:から=1 w:その=1 w:と=1 w:として=1 w:に=2 w:は=9 w:みんな=1	BOUNDARY=1 prt=1 w:で=2 w:である=1 w:と=1 w:に=1 w:の=10 w:は=4 w:より=2 w:を=7
+金庫	きんこ	2	w:は=2	w:に=1 w:を=1
+金星	きんせい	1	w:は=1	w:を=1
+鈍	にぶ	4	w:が=2 w:は=2	BOUNDARY=3 aux-v:た=1
+鉄	てつ	16	BOUNDARY=7 pn=1 w:が=2 w:その=1 w:の=1 w:は=4	w:で=2 w:の=6 w:は=5 w:や=1 w:よりも=1 w:を=1
+鉤	かぎ	1	w:を=1	w:に=1
+銀	ぎん	9	w:から=1 w:この=1 w:にも=1 w:は=5 w:より=1	BOUNDARY=1 n=1 w:の=5 w:より=1 w:を=1
+銭	ぜに	2	aux-v:て=1 w:の=1	suf=1 v5:い=1
+鍵	かぎ	51	BOUNDARY=9 aux-adj:た=2 exp-v:く=1 v1:る=1 v5:く=1 v5:て=1 v5:る=2 w:から=1 w:この=2 w:その=2 w:で=4 w:に=7 w:の=10 w:は=8	exp-v:る=1 w:が=5 w:だ=2 w:で=1 w:である=1 w:です=2 w:ですか=2 w:の=1 w:は=1 w:を=35
+鎖	くさり	3	w:に=1 w:は=1 w:ように=1	w:で=2 w:を=1
+長	ちょう	2	n=1 w:が=1	exp-v:る=1 w:の=1
+長官	ちょうかん	1	BOUNDARY=1	w:は=1
+長居	ながい	2	BOUNDARY=1 w:は=1	BOUNDARY=2
+門	もん	41	BOUNDARY=10 adj-pn=1 exp-v:ら=1 prt=1 v1:た=1 v5:う=1 w:が=2 w:この=1 w:その=3 w:に=4 w:の=2 w:は=13 w:を=1	w:から=1 w:が=2 w:に=4 w:には=1 w:の=14 w:は=8 w:を=11
+閉	し	1	w:を=1	w:ように=1
+開	あ	171	BOUNDARY=4 adj-i:く=2 adj-no=3 adv=9 exp=11 v5:て=6 w:から=2 w:が=19 w:ずっと=1 w:で=2 w:に=2 w:の=2 w:は=13 w:まで=4 w:も=1 w:もう=1 w:を=89	BOUNDARY=64 adj-no=6 adv=7 aux-v:い=2 aux-v:け=1 aux-v:す=1 aux-v:た=2 aux-v:る=1 aux-v:ん=8 conj=1 exp=2 exp-v:す=2 exp-v:た=8 exp-v:て=1 exp-v:る=1 n=9 n-pref=1 n-suf=1 pn=1 prt=1 suf=2 v1:る=1 v5:ん=3 w:か=6 w:ください=5 w:こと=1 w:と=5 w:とき=1 w:な=2 w:なさい=1 w:の=7 w:ので=1 w:は=3 w:まで=2 w:も=2 w:よう=1 w:ような=1 w:ように=4 w:んだ=1 w:んです=2
+開	ひら	78	adj-i:く=1 adv=4 n-suf=1 v1:て=1 w:が=15 w:で=5 w:に=9 w:には=1 w:を=41	BOUNDARY=43 adj-na=1 adj-pn=1 adv=1 aux-v:る=1 exp=1 n=2 n-suf=1 n-vs=6 v5:た=1 w:か=2 w:くれた=1 w:こと=2 w:たい=1 w:ため=2 w:つもり=2 w:でしょう=2 w:と=1 w:なさい=2 w:の=2 w:ので=1 w:のです=1 w:んだ=1
+間	あいだ	238	BOUNDARY=8 adj-i:い=1 adj-pn=3 aux-v:い=3 aux-v:ぬ=1 aux-v:ぶ=1 aux-v:る=3 exp-v:る=1 v1:る=17 v5:う=1 v5:つ=1 v5:る=19 w:ある=1 w:いる=6 w:している=11 w:する=3 w:の=154 w:もの=4	BOUNDARY=43 adj-no=2 adj-pn=3 adv=3 aux-v:す=1 exp=1 n=5 n-vs=3 pn=2 v1:え=1 v1:た=1 v1:て=1 v5:た=1 v5:て=2 w:あなた=2 w:ある=1 w:から=2 w:が=1 w:ここ=1 w:その=1 w:で=24 w:でも=1 w:に=74 w:には=15 w:の=15 w:は=22 w:を=10
+間	かん	50	BOUNDARY=1 adj-no=2 adv=2 ctr=9 n=35 n-vs=1	BOUNDARY=7 adj-na=4 adj-no=3 adj-pn=1 adv=1 exp=1 n=5 n-vs=7 v5:す=1 v5:た=2 w:で=3 w:に=3 w:の=5 w:も=4 w:よく=1 w:を=2
+間	ま	1	aux-v:ぬ=1	w:に=1
+間中	あいだじゅう	1	w:の=1	adj-pn=1
+間違	まちが	2	adj-no=1 w:が=1	prt=1 w:こと=1
+関与	かんよ	1	w:の=1	w:を=1
+関心	かんしん	1	w:に=1	w:を=1
+降	ふ	265	BOUNDARY=7 adj-i:く=8 adj-no=1 adv=5 conj=1 exp=1 n=4 prt=1 v5:て=1 w:から=1 w:が=204 w:この=1 w:し=1 w:たくさん=5 w:に=5 w:には=1 w:の=3 w:は=8 w:ほとんど=3 w:まで=2 w:も=1 w:を=1	BOUNDARY=85 adj-i:い=1 adj-no=4 adv=2 aux-v:き=1 aux-v:た=2 aux-v:る=4 aux:ば=5 conj=1 exp=24 exp-adj:い=3 exp-v:る=2 n=5 n-suf=1 n-vs=3 pn=1 prt=7 v5:く=1 v5:た=1 v5:り=8 w:いい=1 w:か=4 w:から=3 w:が=6 w:きた=3 w:こと=4 w:そう=9 w:その=1 w:ため=1 w:ために=1 w:だろう=10 w:で=1 w:でしょう=4 w:と=17 w:という=1 w:ない=1 w:なさい=1 w:なら=1 w:ね=1 w:の=5 w:ので=9 w:のです=1 w:も=14 w:よ=3 w:ん=1 w:んです=1
+限	かぎ	45	aux-v:い=1 aux-v:る=1 exp=1 exp-v:い=1 exp-v:る=2 v1:る=13 v5:い=6 v5:く=2 v5:ぶ=2 v5:る=1 w:いる=1 w:この=1 w:しない=2 w:する=3 w:である=1 w:という=1 w:ない=3 w:に=1 w:の=2	BOUNDARY=17 adj-pn=1 exp=1 exp-v:ん=1 n=6 n-vs=6 pn=2 w:あなた=2 w:その=1 w:で=1 w:に=1 w:の=2 w:は=4
+陰	かげ	13	BOUNDARY=3 w:の=10	BOUNDARY=1 w:から=2 w:で=3 w:に=6 w:の=1
+陶器	とうき	1	BOUNDARY=1	w:は=1
+陸	りく	8	BOUNDARY=2 adv=2 w:が=2 w:に=1 w:は=1	w:が=2 w:に=3 w:の=1 w:を=2
+階	かい	28	BOUNDARY=22 adv=1 num=3 w:の=2	exp=1 w:から=2 w:で=1 w:です=2 w:に=9 w:の=2 w:へ=5 w:まで=5 w:より=1
+隙	すき	1	exp-v:た=1	w:に=1
+際	さい	26	BOUNDARY=1 aux-v:る=1 exp-v:た=1 v5:す=1 v5:む=1 w:この=1 w:した=1 w:している=1 w:する=6 w:の=12	BOUNDARY=5 n-vs=1 w:に=5 w:には=8 w:の=1 w:は=6
+隠	かく	1	w:を=1	BOUNDARY=1
+雑	ざつ	2	w:が=2	suf=1 w:だ=1
+雛	ひよこ	1	w:が=1	w:に=1
+難	かた	1	w:の=1	n=1
+難	にく	3	n-suf=1 v5:い=1 w:し=1	BOUNDARY=3
+難	むずか	1	w:は=1	BOUNDARY=1
+雨	あめ	1	BOUNDARY=1	w:の=1
+雷	かみなり	16	BOUNDARY=6 w:で=1 w:に=3 w:には=1 w:は=5	w:が=10 w:で=1 w:に=2 w:は=2 w:を=1
+霊	れい	4	w:の=3 w:は=1	w:です=1 w:に=3
+露	つゆ	3	w:は=3	w:が=2 w:に=1
+面	つら	1	w:の=1	w:に=1
+面	めん	24	BOUNDARY=4 adj-i:い=3 adj-no=2 adj-pn=1 n=2 n-vs=1 w:の=10 w:は=1	w:から=3 w:が=5 w:で=8 w:と=1 w:に=2 w:の=1 w:は=1 w:を=3
+面倒	めんどう	1	w:の=1	w:を=1
+面白	おもしろ	1	w:ほど=1	w:と=1
+革	かわ	3	BOUNDARY=1 w:は=1 w:よい=1	w:で=1 w:の=1 w:は=1
+韓国	かんこく	2	BOUNDARY=2	n-vs=1 w:で=1
+音	おと	107	BOUNDARY=11 adj-i:い=4 adj-pn=6 adv=1 aux-v:る=2 exp=2 n-vs=1 v1:く=1 v1:る=4 v5:く=2 v5:た=1 v5:る=2 w:あの=2 w:いう=1 w:から=2 w:が=1 w:この=1 w:する=1 w:その=12 w:で=1 w:という=1 w:に=1 w:の=35 w:は=9 w:も=1 w:や=1 w:よい=1	BOUNDARY=1 adj-i:く=2 exp=3 prt=1 w:が=33 w:だ=1 w:だった=1 w:で=5 w:でも=1 w:に=9 w:には=2 w:の=4 w:は=8 w:も=3 w:や=1 w:より=2 w:よりも=1 w:を=29
+音声	おんせい	1	BOUNDARY=1	w:を=1
+頂	いただ	1	v1:て=1	w:か=1
+頃	ころ	59	BOUNDARY=1 adj-i:い=6 adj-i:た=1 adj-no=8 adv=1 aux-v:た=1 aux-v:る=2 ctr=1 exp=1 n=2 suf=2 v5:う=1 v5:く=4 v5:た=1 w:あの=4 w:いつ=3 w:この=4 w:だった=1 w:の=13 w:よい=2	BOUNDARY=7 adj-no=2 adj-pn=1 adv=2 aux-v:す=1 n=4 n-vs=1 v1:た=1 v5:す=1 w:あなた=2 w:その=1 w:だ=2 w:である=1 w:です=1 w:ですか=1 w:なら=1 w:に=3 w:には=6 w:の=4 w:は=11 w:まで=2 w:よ=1 w:よく=1 w:よりも=1 w:を=1
+頃	ごろ	1	adj-no=1	w:に=1
+項	こう	1	BOUNDARY=1	w:を=1
+頑強	がんきょう	1	w:の=1	w:な=1
+領	りょう	1	n=1	w:であった=1
+頬	ほお	10	BOUNDARY=4 adj-pn=2 w:の=2 w:は=2	w:に=1 w:の=1 w:は=1 w:を=7
+頭	あたま	118	BOUNDARY=33 adj-i:く=1 adj-pn=4 adv=2 exp=3 exp-v:て=1 prt=3 v1:て=2 v5:て=1 v5:ら=1 w:から=1 w:が=4 w:し=2 w:すぐ=1 w:その=1 w:そんな=1 w:で=6 w:に=4 w:には=1 w:の=19 w:は=19 w:まだ=2 w:を=6	adj-na=1 adj-no=1 w:から=6 w:が=23 w:で=3 w:に=18 w:には=1 w:の=23 w:は=7 w:も=3 w:を=32
+頭	とう	7	BOUNDARY=5 num=2	prt=1 v5:る=1 w:だけ=2 w:の=3
+頭数	あたまかず	1	w:も=1	w:に=1
+頭脳	ずのう	5	BOUNDARY=1 w:の=4	prt=1 w:が=1 w:に=2 w:を=1
+頼	たよ	2	w:に=2	exp-adj:い=1 prt=1
+額	がく	13	BOUNDARY=3 adj-na=1 adj-no=1 adj-pn=1 n=1 w:くれる=1 w:この=1 w:された=1 w:の=3	exp=1 v5:す=1 v5:た=1 v5:る=1 w:なら=1 w:に=4 w:の=1 w:は=1 w:を=2
+額	ひたい	12	BOUNDARY=5 adj-pn=3 w:の=1 w:は=3	w:から=2 w:に=2 w:には=1 w:の=4 w:は=3
+顎	あご	1	BOUNDARY=1	w:が=1
+顔	かお	189	BOUNDARY=73 adj-f=1 adj-i:い=10 adj-i:て=2 adj-pn=19 adv=7 exp=2 pn=1 v1:た=1 v5:す=1 v5:て=1 v5:で=1 v5:ぬ=1 v5:る=2 w:あの=1 w:いい=1 w:お=1 w:が=2 w:した=2 w:して=1 w:その=4 w:で=5 w:な=1 w:に=5 w:の=23 w:は=11 w:ような=9 w:を=1	BOUNDARY=2 adj-no=2 aux-v:で=1 exp=2 prt=1 w:から=4 w:が=17 w:しない=1 w:する=1 w:だけ=1 w:で=1 w:と=1 w:に=20 w:には=3 w:の=3 w:は=30 w:ほど=1 w:も=1 w:や=1 w:を=96
+類	たぐい	1	exp=1	w:の=1
+類	るい	11	n=9 n-suf=1 w:に=1	w:が=1 w:は=5 w:を=5
+風	かぜ	97	BOUNDARY=37 adj-i:い=19 adj-i:く=1 adv=1 conj=2 v5:う=1 v5:く=1 w:が=5 w:この=1 w:で=1 w:できる=1 w:に=3 w:の=6 w:は=12 w:ほとんど=1 w:ような=1 w:より=1 w:を=3	prt=1 w:が=42 w:だろう=1 w:で=7 w:である=1 w:と=3 w:に=14 w:にも=1 w:の=7 w:は=15 w:も=3 w:を=2
+風	ふう	23	BOUNDARY=1 adj-pn=8 n=5 w:その=1 w:そんな=4 w:どんな=4	BOUNDARY=1 aux-v:て=1 aux-v:り=1 n=1 n-vs=1 v1:て=1 v1:で=1 v5:う=3 v5:く=1 v5:て=2 v5:る=1 w:が=1 w:それ=1 w:に=4 w:の=2 w:を=1
+飛行	ひこう	1	w:の=1	w:に=1
+食堂	しょくどう	7	BOUNDARY=4 w:に=1 w:は=2	w:で=1 w:に=1 w:の=1 w:は=3 w:を=1
+食物	しょくもつ	1	w:の=1	w:を=1
+飲料	いんりょう	3	adj-no=1 adv=1 w:は=1	n=1 w:である=1 w:に=1
+飲酒	いんしゅ	1	w:に=1	w:を=1
+餅	もち	2	BOUNDARY=1 w:は=1	w:は=1 w:を=1
+首	くび	28	BOUNDARY=4 adj-i:い=1 adj-pn=1 exp=1 v5:て=1 w:が=1 w:と=1 w:に=1 w:の=4 w:は=9 w:よりも=1 w:を=3	w:が=1 w:だ=1 w:に=10 w:の=4 w:まで=1 w:を=11
+首脳	しゅのう	1	BOUNDARY=1	w:たち=1
+香水	こうすい	1	w:いつも=1	w:の=1
+駄目	だめ	1	w:と=1	w:だ=1
+騒々	そうぞう	1	w:は=1	BOUNDARY=1
+骨	ほね	16	BOUNDARY=4 adj-na=1 w:が=2 w:に=3 w:の=2 w:は=1 w:よく=1 w:を=2	aux-v:た=1 w:から=1 w:が=5 w:に=1 w:の=1 w:も=1 w:を=6
+高	こう	4	BOUNDARY=3 w:の=1	n=3 n-vs=1
+高	だか	6	n=1 n-vs=5	w:が=1 w:である=1 w:の=1 w:は=3
+魂	たましい	8	BOUNDARY=2 adj-pn=1 w:にも=1 w:の=3 w:は=1	w:が=2 w:に=1 w:の=1 w:は=3 w:を=1
+鯨	くじら	12	BOUNDARY=10 v1:る=1 w:その=1	w:が=1 w:には=1 w:は=7 w:も=1 w:を=2
+鵜呑	うの	1	w:を=1	w:に=1
+鹿	しか	7	BOUNDARY=3 adj-pn=1 w:その=2 w:の=1	w:は=4 w:を=3
+黒衣	こくい	1	w:は=1	w:を=1

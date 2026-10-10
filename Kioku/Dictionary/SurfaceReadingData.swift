@@ -6,6 +6,9 @@ nonisolated struct SurfaceReadingData: Sendable {
     let readings: [String]
     // Frequency metadata keyed by reading. Only populated for readings with at least one frequency signal.
     let frequencyByReading: [String: FrequencyData]
+    // The readings JMdict tags as a suffix or counter for this spelling (中 ちゅう, 時 じ, 羽 わ),
+    // in hiragana: the readings a word takes after another word, where context decides.
+    var suffixOrCounterReadings: Set<String> = []
 }
 
 // Reference-type wrapper so SwiftUI compares a single pointer instead of diffing 327k dictionary entries.

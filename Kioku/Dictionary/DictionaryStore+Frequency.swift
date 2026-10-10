@@ -152,7 +152,37 @@ extension DictionaryStore {
             // Flush the final surface group after the last row.
             flushSurface()
 
+            try addSuffixOrCounterReadings(to: &result)
             return result
+        }
+    }
+
+    // Marks, on each kanji spelling already in `result`, the readings of its entries JMdict tags as a
+    // suffix or counter (suf, n-suf, ctr). FuriganaResolver takes Apple's contextual reading for a word
+    // only when it is one of these: the readings that depend on the word before them. Runs inside
+    // fetchSurfaceReadingData's serialized database access.
+    private nonisolated func addSuffixOrCounterReadings(to result: inout [String: SurfaceReadingData]) throws {
+        let sql = """
+        SELECT DISTINCT k.text, kf.text
+        FROM kanji k
+        JOIN kana_forms kf ON kf.entry_id = k.entry_id
+        JOIN senses s ON s.entry_id = k.entry_id
+        WHERE ',' || s.pos || ',' LIKE '%,suf,%' OR ',' || s.pos || ',' LIKE '%,n-suf,%' OR ',' || s.pos || ',' LIKE '%,ctr,%'
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        try prepare(sql: sql, statement: &statement)
+        var stepCode = sqlite3_step(statement)
+        while stepCode == SQLITE_ROW {
+            if let surfacePointer = sqlite3_column_text(statement, 0), let readingPointer = sqlite3_column_text(statement, 1) {
+                let surface = String(cString: surfacePointer)
+                let reading = KanaNormalizer.katakanaToHiragana(String(cString: readingPointer))
+                result[surface]?.suffixOrCounterReadings.insert(reading)
+            }
+            stepCode = sqlite3_step(statement)
+        }
+        guard stepCode == SQLITE_DONE else {
+            throw DictionarySQLiteError.step(message: errorMessage()).logged()
         }
     }
 

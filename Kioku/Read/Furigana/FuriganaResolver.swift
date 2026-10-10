@@ -31,6 +31,8 @@ nonisolated struct FuriganaResolver {
         var resolvedFuriganaLengths: [Int: Int] = [:]
 
         var previousSurface: String?
+        // Ruby the after-の rule placed, which the contextual pass leaves alone.
+        var afterNoLocations = Set<Int>()
         for edge in edges {
             let segmentRange = edge.start..<edge.end
             let segmentSurface = edge.surface
@@ -48,6 +50,7 @@ nonisolated struct FuriganaResolver {
                 let nsRange = NSRange(segmentRange, in: sourceText)
                 resolvedFurigana[nsRange.location] = reading
                 resolvedFuriganaLengths[nsRange.location] = nsRange.length
+                afterNoLocations.insert(nsRange.location)
                 continue
             }
 
@@ -135,6 +138,14 @@ nonisolated struct FuriganaResolver {
             }
         }
 
+        applyContextualReadings(
+            to: &resolvedFurigana,
+            lengths: resolvedFuriganaLengths,
+            edges: edges,
+            sourceText: sourceText,
+            surfaceReadingData: surfaceReadingData,
+            fixedLocations: afterNoLocations
+        )
         return (byLocation: resolvedFurigana, lengthByLocation: resolvedFuriganaLengths)
     }
 

@@ -83,6 +83,14 @@ headwords by the JMdict maintainers. https://downloads.tatoeba.org/exports/jpn_i
 | lyric lines reviewed | 38 / 38 | | |
 | named cases | 62 / 63 | | |
 
+Readings (`segcli furigana` + `score_readings.py`, 2026-10-10): held2k 94.96%, fresh5k 96.87%. Frequency
+order alone was 91.09% / 94.79%; the rest is the context pass (FuriganaResolver+ContextualReadings): Tatoeba's
+reading counts (`scripts/calibration/count_reading_contexts.py` → `Kioku/Read/Furigana/reading-contexts.tsv`;
+94.50% / 96.97% on their own) and, where they keep the frequency reading, Apple's tokenizer for suffix and
+counter readings (94.03% / 95.90% on its own). Tried and worse: the transition table's classes on each
+reading's JMdict tags (no setting beat 91.09%: the table never saw a kanji's readings apart), and the
+on-device model writing sentences in kana (3 fixed, 10 broken).
+
 Without the model (`NO_BOUNDARY_MODEL=1`): held2k 88.87 / 75, kana2k 85.66 / 240, fresh5k 90.75 / 117,
 lyrics 35 / 38, named 61 / 63. Measured through `segcli run` with `SWIFT_DETERMINISTIC_HASHING=1`;
 `boundary/eval.sh` gives the same cut-throughs. The model, its training and the conventions it was
