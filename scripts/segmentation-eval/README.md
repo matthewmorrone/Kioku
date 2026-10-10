@@ -73,17 +73,24 @@ headwords by the JMdict maintainers. https://downloads.tatoeba.org/exports/jpn_i
   including the 281 they left as correct; the source the 38 gold lines were taken from.
   Never print whole lyric lines; the scorer prints only the differing fragments.
 
-## Numbers to beat (2026-10-08: boundary model, weight 4, dictionary-v15)
+## Numbers to beat (2026-10-10: boundary model, weight 4, dictionary-v15)
 
 | Set | exact | cut-through | split |
 |---|---|---|---|
-| held2k | 89.92 | 0.30 (62) | 2.71 |
-| fresh5k | 92.12 | 0.18 (71) | 2.49 |
-| kana2k | 86.37 | 1.10 (223) | 3.68 |
+| held2k | 90.00 | 0.30 (61) | 2.66 |
+| fresh5k | 92.15 | 0.18 (69) | 2.47 |
+| kana2k | 86.55 | 1.06 (216) | 3.69 |
 | lyric lines reviewed | 38 / 38 | | |
-| named cases | 62 / 63 | | |
+| named cases | 67 / 67 | | |
 
-Readings (`segcli furigana` + `score_readings.py`, 2026-10-10): held2k 95.19%, fresh5k 96.90%. Frequency
+An expression is not reached through a potential whose final verb is a dictionary verb of its own
+(Segmenter+PotentialExpressions): 口を開けて was 口を開く's potential, priced as one phrase (furigana ひら); now
+口|を|開けて. Against the same code without it: held2k exact +7 tokens / cut-through flat, fresh5k +18 / 71→69,
+kana2k +1 / 215→216 (てきとい deinflects to てきとう 適当 and undercuts てき|と|いえる once といえる is not という's
+potential). Refusing every expression reached through a potential broke 元に戻せなかった (戻せる is no word), and
+comparing any shorter verb stretch broke お目にかかれて (かれる/かる match by chance inside かかれる).
+
+Readings (`segcli furigana` + `score_readings.py`, 2026-10-10): held2k 95.27%, fresh5k 96.92%. Frequency
 order alone was 91.09% / 94.79%; the rest is the context pass (FuriganaResolver+ContextualReadings): Tatoeba's
 reading counts (`scripts/calibration/count_reading_contexts.py` → `Kioku/Read/Furigana/reading-contexts.tsv`;
 94.50% / 96.97% on their own) and, where they keep the frequency reading, Apple's tokenizer for suffix and

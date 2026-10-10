@@ -290,7 +290,15 @@ extension Segmenter {
                 if isKanaNormalized {
                     trusted.formUnion(matchedTrieLemmas(for: candidate))
                 } else {
-                    deinflected.formUnion(matchedTrieLemmas(for: candidate))
+                    var lemmas = matchedTrieLemmas(for: candidate)
+                    // An expression (口を開く) is not reached through a potential that spells another
+                    // dictionary verb (開ける); see reachesExpressionThroughVerbHomograph.
+                    if let candidatePaths = paths[candidate], candidatePaths.allSatisfy({
+                        reachesExpressionThroughVerbHomograph(from: surface, path: $0.transitions)
+                    }) {
+                        lemmas = lemmas.filter { PartOfSpeech.isExpression(trie.partOfSpeech(for: $0)) == false }
+                    }
+                    deinflected.formUnion(lemmas)
                 }
             }
 

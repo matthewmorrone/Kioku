@@ -33,6 +33,7 @@ Dictionary/PartOfSpeech.swift
 Dictionary/ScriptClassifier.swift
 Dictionary/Segmenter/SegmentationDemotions.swift
 Dictionary/Segmenter/Segmenter+LemmaResolution.swift
+Dictionary/Segmenter/Segmenter+PotentialExpressions.swift
 Dictionary/Segmenter/Segmenter.swift
 Dictionary/Segmenter/Segmenter+Viterbi.swift
 Dictionary/Segmenter/Segmenter+Names.swift
