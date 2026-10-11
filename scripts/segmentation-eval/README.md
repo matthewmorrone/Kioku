@@ -77,11 +77,20 @@ headwords by the JMdict maintainers. https://downloads.tatoeba.org/exports/jpn_i
 
 | Set | exact | cut-through | split |
 |---|---|---|---|
-| held2k | 89.94 | 0.30 (62) | 2.67 |
-| fresh5k | 92.10 | 0.17 (66) | 2.53 |
-| kana2k | 86.55 | 1.05 (213) | 3.70 |
+| held2k | 89.96 | 0.30 (61) | 2.65 |
+| fresh5k | 92.11 | 0.16 (63) | 2.51 |
+| kana2k | 86.57 | 0.99 (201) | 3.61 |
 | lyric lines reviewed | 38 / 38 | | |
 | named cases | 68 / 68 | | |
+
+Segmentation and readings draw on the same three sources in the same order: Tatoeba usage, then Apple's tokenizer,
+then the dictionary. Word classes: a spelling Tatoeba's index shows at least three times written as itself takes the
+first sense of the entry it most often is (matched by JMdict headword, so は is the particle, not 歯); other kanji
+spellings take their best-ranked entry's first sense; other kana spellings keep the union. Apple: P(cut) × 0.05 inside
+any token CFStringTokenizer keeps whole (Segmenter+BoundaryModel.withAppleTokenHint; its tokens are short, but it cut
+through 24 held2k gold words to our 62). Usage classes alone were +1 / +3 / +1 cut-throughs (noise); with the Apple hint
+held2k 63→61, kana2k 216→201, fresh5k 67→63. Readings: counts score, Apple's reading gets a 2.0 vote, dictionary order
+breaks ties (README "Readings" below).
 
 Kanji spellings class by the first sense of their most common entry, not the union of every entry
 (SegmenterClassOverrides, `segmenter-class-overrides.tsv` from `scripts/calibration/segmenter_class_overrides.py`):
