@@ -15,6 +15,10 @@ nonisolated final class ReadingContextTable: Sendable {
     // Pseudo-count for a class never seen next to a reading: fitted on train2k (0.05–2 all within
     // 0.4 points; 0.2 best), confirmed on held2k and fresh5k.
     static let classSmoothing = 0.2
+    // Log-odds added to the reading Apple's tokenizer gives (AppleTokenReadings): a vote that tips
+    // close calls without overriding what the counts are sure of. Fitted on train2k (0: 94.17%,
+    // 2: 94.57%, 4: 94.25%, 6: 93.85%), confirmed on held2k and fresh5k.
+    static let appleVote = 2.0
 
     // Counts by kanji run, then by its hiragana reading.
     private let countsByKanji: [String: [String: ReadingContextCounts]]
@@ -70,7 +74,7 @@ nonisolated final class ReadingContextTable: Sendable {
     // The likeliest of `candidates` (hiragana run readings, in the dictionary's frequency order) for
     // `kanji` between a word of class `previous` and one of class `next`; nil when the counts never
     // saw this kanji. Ties keep the earlier candidate, so the frequency order breaks them.
-    func choose(kanji: String, candidates: [String], previous: String, next: String) -> String? {
+    func choose(kanji: String, candidates: [String], previous: String, next: String, appleReading: String? = nil) -> String? {
         guard let seen = countsByKanji[kanji], candidates.isEmpty == false else { return nil }
         let total = seen.values.reduce(0) { $0 + $1.total }
         var best: (reading: String, score: Double)?
@@ -81,6 +85,7 @@ nonisolated final class ReadingContextTable: Sendable {
             for (observed, name) in [(counts?.previous, previous), (counts?.next, next)] {
                 score += log((Double(observed?[name] ?? 0) + Self.classSmoothing) / (n + Self.classSmoothing * Double(classCount)))
             }
+            if reading == appleReading { score += Self.appleVote }
             if let current = best, current.score >= score { continue }
             best = (reading, score)
         }

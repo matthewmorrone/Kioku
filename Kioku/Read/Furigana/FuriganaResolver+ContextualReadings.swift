@@ -1,58 +1,52 @@
 import Foundation
 
-// Context for the readings `build` picked by frequency alone. Two passes over the finished ruby:
-//   1. ReadingContextTable: each word with more than one dictionary reading takes the reading
-//      Tatoeba's counts favour between the classes of the words either side (方 after a verb →
-//      かた, 時 after a number → じ).
-//   2. Where the counts kept the frequency reading, Apple's tokenizer (AppleTokenReadings) may still
-//      swap in a suffix or counter reading of that spelling (SurfaceReadingData.suffixOrCounterReadings).
-// held2k 91.09% → 95.19%, fresh5k 94.79% → 96.90% on scripts/segmentation-eval/score_readings.py.
-// Readings the after-の rule set are left alone: that rule comes from JMdict's own expressions.
+// Context for the readings `build` picked by frequency alone. One rule for every word with more
+// than one dictionary reading, from three sources in order of authority:
+//   1. usage: Tatoeba's reading counts (ReadingContextTable) score each reading between the
+//      classes of the words either side (方 after a verb → かた, 時 after a number → じ);
+//   2. Apple's tokenizer (AppleTokenReadings) adds a fixed vote to the reading it gives, which tips
+//      close calls (後 → ご in 説明会後) but not clear ones (私 stays わたし);
+//   3. the dictionary: its frequency order breaks ties, and decides alone when neither has a say.
+// A kanji the counts never saw takes Apple's reading when the dictionary lists it.
+// held2k 91.09% → 95.27%, fresh5k 94.79% → 97.80% on scripts/segmentation-eval/score_readings.py.
 nonisolated extension FuriganaResolver {
-    // Rewrites `furigana` in place; `fixedLocations` are ruby the after-の rule placed.
+    // Rewrites `furigana` in place with the readings the three sources agree on.
     func applyContextualReadings(
         to furigana: inout [Int: String],
         lengths: [Int: Int],
         edges: [LatticeEdge],
         sourceText: String,
-        surfaceReadingData: SurfaceReadingDataMap,
-        fixedLocations: Set<Int>
+        surfaceReadingData: SurfaceReadingDataMap
     ) {
         let nsText = sourceText as NSString
-        var countsChanged = Set<Int>()
-        if let table = ReadingContextTable.bundled, let transitionTable = (segmenter as? Segmenter)?.transitionTable {
-            // A neighbour's class as the counts name it: text the dictionary doesn't cover and the
-            // ends of the text are BOUNDARY.
-            func className(_ edge: LatticeEdge?) -> String {
-                guard let edge, edge.isDictionaryMatch else { return TransitionClass.boundary }
-                return TransitionClass.name(surface: edge.surface, partOfSpeech: edge.partOfSpeech, lexical: transitionTable.lexical)
-            }
-            for (index, edge) in edges.enumerated() where edge.isDictionaryMatch {
-                guard let run = singleRunRange(of: edge, in: sourceText),
-                      fixedLocations.contains(run.location) == false,
-                      lengths[run.location] == run.length,
-                      let current = furigana[run.location] else { continue }
-                let candidates = runReadingCandidates(for: edge.surface, surfaceReadingData: surfaceReadingData)
-                guard candidates.count > 1,
-                      let chosen = table.choose(
-                        kanji: nsText.substring(with: run),
-                        candidates: candidates,
-                        previous: className(index > 0 ? edges[index - 1] : nil),
-                        next: className(index + 1 < edges.count ? edges[index + 1] : nil)
-                      ),
-                      chosen != KanaNormalizer.katakanaToHiragana(current) else { continue }
-                furigana[run.location] = chosen
-                countsChanged.insert(run.location)
-            }
-        }
-
+        let table = ReadingContextTable.bundled
+        let transitionTable = (segmenter as? Segmenter)?.transitionTable
         let appleReadings = AppleTokenReadings.runReadings(in: sourceText)
-        for (location, current) in furigana where countsChanged.contains(location) == false && fixedLocations.contains(location) == false {
-            guard let length = lengths[location], let apple = appleReadings[location], apple.length == length,
-                  apple.reading != KanaNormalizer.katakanaToHiragana(current) else { continue }
-            let kanji = nsText.substring(with: NSRange(location: location, length: length))
-            guard surfaceReadingData[kanji]?.suffixOrCounterReadings.contains(apple.reading) == true else { continue }
-            furigana[location] = apple.reading
+        // A neighbour's class as the counts name it: text the dictionary doesn't cover and the
+        // ends of the text are BOUNDARY.
+        func className(_ edge: LatticeEdge?) -> String {
+            guard let edge, edge.isDictionaryMatch, let transitionTable else { return TransitionClass.boundary }
+            let bits = edge.transitionPartOfSpeech != 0 ? edge.transitionPartOfSpeech : edge.partOfSpeech
+            return TransitionClass.name(surface: edge.surface, partOfSpeech: bits, lexical: transitionTable.lexical)
+        }
+        for (index, edge) in edges.enumerated() where edge.isDictionaryMatch {
+            guard let run = singleRunRange(of: edge, in: sourceText),
+                  lengths[run.location] == run.length,
+                  let current = furigana[run.location] else { continue }
+            let candidates = runReadingCandidates(for: edge.surface, surfaceReadingData: surfaceReadingData)
+            guard candidates.count > 1 else { continue }
+            // Apple's reading counts only when the dictionary lists it for this word.
+            let apple = appleReadings[run.location].flatMap { $0.length == run.length && candidates.contains($0.reading) ? $0.reading : nil }
+            let counted = transitionTable == nil ? nil : table?.choose(
+                kanji: nsText.substring(with: run),
+                candidates: candidates,
+                previous: className(index > 0 ? edges[index - 1] : nil),
+                next: className(index + 1 < edges.count ? edges[index + 1] : nil),
+                appleReading: apple
+            )
+            if let chosen = counted ?? apple, chosen != KanaNormalizer.katakanaToHiragana(current) {
+                furigana[run.location] = chosen
+            }
         }
     }
 

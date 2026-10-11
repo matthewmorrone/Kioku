@@ -2,9 +2,9 @@ import Foundation
 
 // Apple's own reading of each word in a text, from the system Japanese tokenizer
 // (CFStringTokenizer's Latin transcription, turned back into hiragana), which reads a word in its
-// context: 時 after a number as じ, 中 after a noun as ちゅう. FuriganaResolver takes it only for
-// readings JMdict tags as a suffix or counter (SurfaceReadingData.suffixOrCounterReadings), because
-// elsewhere it misreads common words (私 is always わたくし). On device, no network, no model of ours.
+// context: 時 after a number as じ, 中 after a noun as ちゅう. One of the three sources the furigana
+// context pass weighs (FuriganaResolver+ContextualReadings): a vote added to the usage counts, and
+// the reading outright for a kanji the counts never saw. On device, no network, no model of ours.
 nonisolated enum AppleTokenReadings {
     // Each token's single kanji run, keyed by the run's UTF-16 location: its UTF-16 length and the
     // hiragana reading of just the run (the token's reading less its kana before and after).
