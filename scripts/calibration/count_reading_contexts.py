@@ -19,7 +19,9 @@ next classes", each class list "name=count" separated by spaces. The reading is 
 (the headword's reading less its kana, 来る くる → く), in hiragana. As in the transition table, a
 token with a gap before or after it (a number, a name, punctuation) has BOUNDARY there.
 ReadingContextTable reads it. Counting the unused held-out sentences too (2026-10-10, 71,401 →
-137,836) moved score_readings.py from held2k 95.12% / fresh5k 96.85% to 95.19% / 96.90%.
+137,836) moved score_readings.py from held2k 95.12% / fresh5k 96.85% to 95.19% / 96.90%. Only tokens
+written as their headword are counted: a conjugated token is marked with its dictionary form's reading
+(来て as 来る(くる)), which counted 来 → く for 来て.
 """
 import collections, json, re, sys
 
@@ -73,6 +75,11 @@ def count(gold_path, classes_path):
         for i, (a, b, headword, reading, *_) in enumerate(record['g']):
             # Empty, or an entry-number pointer (#1392580) rather than a reading.
             if not reading or reading.startswith('#'):
+                continue
+            # Only tokens written as their headword: a conjugated token carries its dictionary
+            # form's reading (来て marked 来る(くる)), which is the kanji's reading in that form only
+            # when the verb doesn't change it, so 来る's き and こ were counted as く.
+            if record['s'][a:b] != headword:
                 continue
             runs, head_runs = list(KANJI.finditer(record['s'][a:b])), list(KANJI.finditer(headword))
             if len(runs) != 1 or len(head_runs) != 1 or head_runs[0].group() != runs[0].group():

@@ -74,7 +74,10 @@ nonisolated extension FuriganaResolver {
         }
         var readings: [String] = []
         for lemma in lemmas {
-            for candidate in FuriganaResolver.candidateReadingsForSegment(lemma, surfaceReadingData: surfaceReadingData) {
+            // A reading mixing katakana and hiragana (来る's クる) is a search spelling JMdict lists,
+            // not a reading; offered, it put 来 → く on 来て.
+            for candidate in FuriganaResolver.candidateReadingsForSegment(lemma, surfaceReadingData: surfaceReadingData)
+            where ScriptClassifier.isPureKatakana(candidate) || ScriptClassifier.isPureHiragana(candidate) {
                 guard let run = inflectedStemReading(surface: surface, lemma: lemma, lemmaReading: candidate)
                     ?? firstKanjiRunReading(in: lemma, using: candidate) else { continue }
                 let hiragana = KanaNormalizer.katakanaToHiragana(run)
