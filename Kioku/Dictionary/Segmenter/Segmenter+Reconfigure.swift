@@ -35,10 +35,8 @@ extension Segmenter {
     // instance rather than replacing it — see the property-group comment above.
     func reconfigure(from other: Segmenter) {
         // Before the main reconfigure, which opens the load gate: nothing released by it may
-        // segment without the boundary model or the class overrides the transition table was
-        // counted with.
+        // segment without the boundary model.
         boundaryModel = other.boundaryModel
-        transitionPartOfSpeechBySurface = other.transitionPartOfSpeechBySurface
         reconfigure(
             trie: other.trie,
             deinflector: other.deinflector,

@@ -14,9 +14,9 @@ import Foundation
 // Sixteen coarse classes were measured first and gained nothing at any weight (commit 8555cb1): a
 // class has to be this fine before "B after A" says anything the word costs don't already.
 //
-// The bits are a spelling's union over every entry and sense, except for the kanji spellings in
-// SegmenterClassOverrides (LatticeEdge.transitionPartOfSpeech), which class by the first sense of
-// their most common entry: 間 is a noun, not the conjunction its union would make it.
+// The bits are a spelling's union over every entry and sense. Classing kanji spellings by their
+// most common entry's first sense instead (間 as a noun) was tried on 2026-10-10: counted
+// consistently it was worse on readings (fresh5k 97.25% → 96.64%) and no better on segmentation.
 nonisolated enum TransitionClass {
     static let boundary = "BOUNDARY"
 

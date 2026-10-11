@@ -8,7 +8,7 @@ import Foundation
 //      close calls (後 → ご in 説明会後) but not clear ones (私 stays わたし);
 //   3. the dictionary: its frequency order breaks ties, and decides alone when neither has a say.
 // A kanji the counts never saw takes Apple's reading when the dictionary lists it.
-// held2k 91.09% → 95.27%, fresh5k 94.79% → 97.80% on scripts/segmentation-eval/score_readings.py.
+// held2k 91.09% → 95.19%, fresh5k 94.79% → 97.25% on scripts/segmentation-eval/score_readings.py.
 nonisolated extension FuriganaResolver {
     // Rewrites `furigana` in place with the readings the three sources agree on.
     func applyContextualReadings(
@@ -26,8 +26,7 @@ nonisolated extension FuriganaResolver {
         // ends of the text are BOUNDARY.
         func className(_ edge: LatticeEdge?) -> String {
             guard let edge, edge.isDictionaryMatch, let transitionTable else { return TransitionClass.boundary }
-            let bits = edge.transitionPartOfSpeech != 0 ? edge.transitionPartOfSpeech : edge.partOfSpeech
-            return TransitionClass.name(surface: edge.surface, partOfSpeech: bits, lexical: transitionTable.lexical)
+            return TransitionClass.name(surface: edge.surface, partOfSpeech: edge.partOfSpeech, lexical: transitionTable.lexical)
         }
         for (index, edge) in edges.enumerated() where edge.isDictionaryMatch {
             guard let run = singleRunRange(of: edge, in: sourceText),
