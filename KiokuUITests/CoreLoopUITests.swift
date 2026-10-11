@@ -1,96 +1,137 @@
 import XCTest
 
-// Drives Kioku's core loop through the real UI on a simulator: open a note, look a word up, save
-// it, find it on the Words tab. The store-level tests (CoreLoopSmokeTests) cover the same loop
-// without the UI; these catch what only the UI can break — a sheet that no longer opens, a tap that
-// lands nowhere, a tab that stops listing what was saved.
-final class CoreLoopUITests: XCTestCase {
-    // Launches Kioku with the repo's dictionary (Resources/dictionary.sqlite, fetched by
-    // scripts/ensure_dictionary.sh), so a fresh simulator skips the download, and without tours.
-    private func launchApp() -> XCUIApplication {
-        let app = XCUIApplication()
-        let dictionary = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Resources/dictionary.sqlite")
-        app.launchEnvironment["KIOKU_UITEST_DICTIONARY"] = dictionary.path
-        app.launch()
-        return app
-    }
-
-    // Keeps a screenshot and the element tree with the result, so a CI failure can be read
-    // without a simulator: what was on screen, and what the test could see of it.
-    private func record(_ app: XCUIApplication, _ name: String) {
-        let shot = XCTAttachment(screenshot: app.screenshot())
-        shot.name = name
-        shot.lifetime = .keepAlways
-        add(shot)
-        let tree = XCTAttachment(string: app.debugDescription)
-        tree.name = "\(name) — elements"
-        tree.lifetime = .keepAlways
-        add(tree)
-    }
-
-    // Opens the first sample note, taps its first word (キャラメル), saves it from the lookup sheet
-    // and checks the Words tab lists it.
+// Drives Kioku's core loop through the real UI on a simulator: look a word up in a note and save
+// it, study it, and carry everything through a backup. The store-level tests (CoreLoopSmokeTests)
+// cover the same loop without the UI; these catch what only the UI can break — a sheet that no
+// longer opens, a tap that lands nowhere, a tab that stops listing what was saved.
+//
+// XCTest runs a class's tests in name order, and the names keep that order meaningful: the backup
+// test erases everything before restoring it, so it runs last, where a failure halfway can't take
+// the other tests' sample note with it.
+final class CoreLoopUITests: KiokuUITestCase {
+    // Opens the sample note, taps its first word (キャラメル), saves it from the lookup sheet
+    // and checks the Words tab lists it under Saved.
     func testLookUpSaveAndListAWord() {
-        continueAfterFailure = false
         let app = launchApp()
-
-        // A cold first launch builds the dictionary index before the UI settles; wait for the
-        // tab bar rather than tapping into a busy app.
-        XCTAssertTrue(app.tabBars.buttons["Notes"].waitForExistence(timeout: 120), "app never finished launching")
-        app.tabBars.buttons["Notes"].tap()
-        let note = app.staticTexts["キャラメルと飴玉"].firstMatch
-        XCTAssertTrue(note.waitForExistence(timeout: 60), "sample note not listed")
-        note.tap()
-
-        // The note's body comes first; other text views (the title) reuse the same view.
-        let text = app.otherElements["readerText"].firstMatch
-        XCTAssertTrue(text.waitForExistence(timeout: 60), "note didn't open in the reader")
-
-        // The note segments once the dictionary has loaded; until then a tap has no word under
-        // it. Tap points across the first line (below its ruby) until the lookup sheet answers.
-        // The lookup sheet's star; its label says whether the word is saved.
-        let save = app.buttons["lookupSaveStar"].firstMatch
+        let text = openSampleNote(app)
         record(app, "reader opened")
-        let points = [(20, 28), (40, 28), (60, 40), (20, 50), (80, 50), (40, 70)]
-        var attempt = 0
-        while save.exists == false && attempt < points.count * 2 {
-            let (x, y) = points[attempt % points.count]
-            text.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: x, dy: y)).tap()
-            _ = save.waitForExistence(timeout: 5)
-            attempt += 1
-        }
-        if save.exists == false { record(app, "no lookup sheet") }
-        XCTAssertTrue(save.exists, "lookup sheet's save star never appeared")
-        XCTAssertEqual(save.label, "Save", "word was already saved")
-        save.tap()
-        let saved = NSPredicate(format: "label == %@", "Unsave")
-        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: saved, evaluatedWith: save)], timeout: 5), .completed, "word didn't save")
 
+        let star = openLookupForFirstWord(app, in: text)
+        // An earlier test in the run may have saved it already; start from unsaved.
+        if star.label == "Unsave" { toggleStar(star, expecting: "Save") }
+        toggleStar(star, expecting: "Unsave")
         record(app, "saved")
         app.swipeDown()
-        // A tab tap while the sheet is still animating away is dropped: wait for it to go, then
-        // tap Words until the tab bar shows it selected.
-        let gone = NSPredicate(format: "exists == false")
-        _ = XCTWaiter.wait(for: [expectation(for: gone, evaluatedWith: save)], timeout: 10)
-        let words = app.tabBars.buttons["Words"]
-        var tabTaps = 0
-        while words.isSelected == false && tabTaps < 3 {
-            words.tap()
-            _ = XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "isSelected == true"), evaluatedWith: words)], timeout: 5)
-            tabTaps += 1
-        }
-        record(app, "words tab")
+        wait(for: star, toMatch: "exists == false", timeout: 10)
 
-        // Words opens on History; saved words are under Saved, chosen in the filter sheet.
-        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "filter by Note or List")).firstMatch.tap()
-        let savedSegment = app.segmentedControls.buttons["Saved"].firstMatch
-        XCTAssertTrue(savedSegment.waitForExistence(timeout: 5), "filter sheet didn't open")
-        savedSegment.tap()
-        app.swipeDown()
+        selectTab(app, "Words")
+        record(app, "words tab")
+        showSavedWords(app)
         record(app, "saved list")
-        XCTAssertTrue(app.staticTexts["キャラメル"].firstMatch.waitForExistence(timeout: 15), "saved word missing from Words")
+        XCTAssertTrue(app.staticTexts[sampleWord].firstMatch.waitForExistence(timeout: 15), "saved word missing from Words")
+    }
+
+    // Saves a word, starts Flashcards from the Learn tab and grades every card Know until the
+    // session completes, which records each grade in the word's review stats.
+    func testGradeFlashcardsUntilTheSessionCompletes() {
+        let app = launchApp()
+        ensureSampleWordSaved(app)
+
+        selectTab(app, "Learn")
+        let start = app.buttons["Start Flashcards"].firstMatch
+        XCTAssertTrue(start.waitForExistence(timeout: 30), "Flashcards start screen missing")
+        record(app, "flashcards home")
+        XCTAssertTrue(wait(for: start, toMatch: "isEnabled == true", timeout: 15), "Start Flashcards stays disabled with a saved word")
+        start.tap()
+
+        let know = app.buttons["Know"].firstMatch
+        XCTAssertTrue(know.waitForExistence(timeout: 30), "session didn't start")
+        record(app, "first card")
+        let complete = app.staticTexts["Session complete"].firstMatch
+        var graded = 0
+        while complete.exists == false && know.exists && graded < 20 {
+            know.tap()
+            graded += 1
+            _ = complete.waitForExistence(timeout: 2)
+        }
+        record(app, "session end")
+        XCTAssertTrue(complete.exists, "session never completed after \(graded) Know grades")
+        let summary = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "\(graded) correct")).firstMatch
+        XCTAssertTrue(summary.exists, "session summary doesn't count \(graded) correct")
+    }
+
+    // Exports a backup, erases everything with Reset, then imports the backup and checks the
+    // sample note is back: the full export → validate → replace-all round trip, through the
+    // system file picker.
+    func testRoundTripABackupThroughResetAndImport() {
+        let app = launchApp()
+        selectTab(app, "Settings")
+
+        // Export: Kioku stages the backup, the system exporter saves it.
+        tapSettingsRow(app, "Export")
+        let save = app.buttons.matching(NSPredicate(format: "label IN %@", ["Save", "Move", "Done"])).firstMatch
+        XCTAssertTrue(save.waitForExistence(timeout: 30), "file exporter didn't open")
+        record(app, "exporter")
+        save.tap()
+        // Saving over an earlier run's file asks first.
+        let replace = app.buttons["Replace"].firstMatch
+        if replace.waitForExistence(timeout: 3) { replace.tap() }
+        acknowledgeAlert(app, titled: "Export Complete")
+
+        // Reset, and confirm the note is gone.
+        tapSettingsRow(app, "Reset")
+        let confirmReset = app.alerts.buttons["Reset"].firstMatch
+        XCTAssertTrue(confirmReset.waitForExistence(timeout: 10), "reset confirmation didn't appear")
+        confirmReset.tap()
+        acknowledgeAlert(app, titled: "Reset Complete")
+        selectTab(app, "Notes")
+        XCTAssertFalse(app.staticTexts[sampleNoteTitle].firstMatch.waitForExistence(timeout: 3), "reset left the sample note")
+
+        // Import the file just exported, and confirm the replace.
+        selectTab(app, "Settings")
+        tapSettingsRow(app, "Import")
+        let file = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "kioku-export")).firstMatch
+        XCTAssertTrue(file.waitForExistence(timeout: 30), "exported file not offered by the importer")
+        record(app, "importer")
+        file.tap()
+        let confirmImport = app.alerts.buttons["Import"].firstMatch
+        XCTAssertTrue(confirmImport.waitForExistence(timeout: 15), "import confirmation didn't appear")
+        confirmImport.tap()
+        acknowledgeAlert(app, titled: "Import Complete")
+
+        selectTab(app, "Notes")
+        XCTAssertTrue(app.staticTexts[sampleNoteTitle].firstMatch.waitForExistence(timeout: 15), "sample note not restored")
+    }
+
+    // Words opens on History; saved words are under Saved, chosen in the filter sheet.
+    private func showSavedWords(_ app: XCUIApplication) {
+        let filter = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "filter by Note or List")).firstMatch
+        XCTAssertTrue(filter.waitForExistence(timeout: 15), "Words filter button missing")
+        filter.tap()
+        let savedSegment = app.segmentedControls.buttons["Saved"].firstMatch
+        XCTAssertTrue(savedSegment.waitForExistence(timeout: 10), "filter sheet didn't open")
+        savedSegment.tap()
+        dismissSheet(app, above: app.segmentedControls.firstMatch)
+    }
+
+    // Taps one of Settings' rows, scrolling down to it first when it's below the fold.
+    private func tapSettingsRow(_ app: XCUIApplication, _ label: String) {
+        let row = app.buttons[label].firstMatch
+        var swipes = 0
+        while (row.exists && row.isHittable) == false && swipes < 8 {
+            app.swipeUp()
+            swipes += 1
+        }
+        XCTAssertTrue(row.exists && row.isHittable, "Settings row \(label) not found")
+        row.tap()
+    }
+
+    // Waits for the alert with this title and closes it with OK.
+    private func acknowledgeAlert(_ app: XCUIApplication, titled title: String) {
+        let alert = app.alerts[title].firstMatch
+        if alert.waitForExistence(timeout: 30) == false { record(app, "no \(title) alert") }
+        XCTAssertTrue(alert.exists, "\(title) alert didn't appear")
+        alert.buttons["OK"].tap()
+        wait(for: alert, toMatch: "exists == false", timeout: 10)
     }
 }

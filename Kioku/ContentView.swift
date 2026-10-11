@@ -278,10 +278,14 @@ struct ContentView: View {
     // itself would also no-op in that case, but without this guard rebuildReadResources() (an
     // expensive full SQLite scan + trie build) would still re-run on every single normal launch,
     // duplicating the rebuild loadReadResourcesIfNeeded() already kicked off moments earlier.
-    // Debug builds first ask the dev release whether it has a newer dictionary.
+    // Debug builds first ask the dev release whether it has a newer dictionary — except a UI-test
+    // launch, which brings its own: asking would flag the pinned release it installed as stale and
+    // download the dev one over it, rebuilding everything a second time while the tests wait.
     private func downloadDictionaryAndRebuildIfNeeded() async {
         #if DEBUG
-        await dictionaryDownloadManager.checkForDevUpdate()
+        if UITestDictionaryInstaller.isUITestLaunch == false {
+            await dictionaryDownloadManager.checkForDevUpdate()
+        }
         #endif
         guard !dictionaryDownloadManager.isInstalled || dictionaryDownloadManager.updateAvailable else { return }
         if await dictionaryDownloadManager.downloadIfNeeded() {

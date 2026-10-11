@@ -22,6 +22,7 @@ struct KiokuApp: App {
         CrashLogger.shared.install()
         // Before anything checks for the dictionary: a UI-test launch brings its own.
         UITestDictionaryInstaller.installIfRequested()
+        MainThreadStallWatch.startForUITests()
         // Install the Japanese nav/tab bar chrome before any UIKit-backed chrome is first laid out
         // — but only when the user has opted into the theme (otherwise leave the system defaults).
         Theme.refreshGlobalAppearance()

@@ -3,8 +3,9 @@ import Foundation
 // UI tests (KiokuUITests) run the app on a fresh simulator, where the dictionary would first be
 // downloaded (~384 MB). They pass the repo's Resources/dictionary.sqlite instead, as the launch
 // environment's KIOKU_UITEST_DICTIONARY; a simulator app can read the Mac's files, so the app copies
-// it into its install location and marks it as the pinned release. Everything after runs the real
-// code path. Debug builds only: a release build ignores the variable.
+// it into its install location and marks it as the pinned release. ContentView skips the debug
+// build's dev-channel check for these launches, which would otherwise replace it with a download.
+// Everything else runs the real code path. Debug builds only: a release build ignores the variable.
 nonisolated enum UITestDictionaryInstaller {
     static let environmentKey = "KIOKU_UITEST_DICTIONARY"
 
@@ -27,7 +28,9 @@ nonisolated enum UITestDictionaryInstaller {
             if FileManager.default.fileExists(atPath: DictionaryDownloadManager.installedDatabaseURL.path) {
                 try FileManager.default.removeItem(at: DictionaryDownloadManager.installedDatabaseURL)
             }
-            try FileManager.default.copyItem(at: URL(fileURLWithPath: path), to: DictionaryDownloadManager.installedDatabaseURL)
+            try StartupTimer.measure("UI test dictionary copy") {
+                try FileManager.default.copyItem(at: URL(fileURLWithPath: path), to: DictionaryDownloadManager.installedDatabaseURL)
+            }
             try DictionaryDownloadManager.releaseTag.write(to: DictionaryDownloadManager.installedReleaseMarkerURL, atomically: true, encoding: .utf8)
             AppLog.info(.dictionaryDownload, "UI test dictionary installed from \(path)")
         } catch {
