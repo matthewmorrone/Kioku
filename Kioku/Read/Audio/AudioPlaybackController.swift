@@ -222,20 +222,11 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // Starts or resumes playback. Begins polling for the current cue.
     // Starts from position 0 if not already mid-song (currentTimeMs == 0), otherwise resumes.
     func play() {
-        guard let player else {
+        guard player != nil else {
             KaraokeDebugLog.log("controller.play: NO player loaded — early exit")
             return
         }
-        configureAudioSession()
-        do {
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            AppLog.error(.audioPlayback, "[AudioPlaybackController] play setActive(true) failed: \(error.localizedDescription)")
-        }
-        ExclusivePlayback.claim(self)
-        player.play()
-        isPlaying = true
-        startTimer()
+        beginPlayback()
         updateNowPlayingInfo()
         KaraokeDebugLog.log("controller.play: started cuesCount=\(cues.count)")
     }
@@ -243,20 +234,26 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // Starts playback from the beginning regardless of current position.
     func playFromStart() {
         guard let player else { return }
+        player.currentTime = 0
+        currentTimeMs = 0
+        beginPlayback()
+        syncTimeAndCue()
+        updateNowPlayingInfo()
+    }
+
+    // Shared start-of-playback sequence for play() and playFromStart(): activates the session,
+    // claims exclusive playback, and starts the polling timer.
+    private func beginPlayback() {
         configureAudioSession()
         do {
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
-            AppLog.error(.audioPlayback, "[AudioPlaybackController] playFromStart setActive(true) failed: \(error.localizedDescription)")
+            AppLog.error(.audioPlayback, "[AudioPlaybackController] play setActive(true) failed: \(error.localizedDescription)")
         }
         ExclusivePlayback.claim(self)
-        player.currentTime = 0
-        currentTimeMs = 0
-        player.play()
+        player?.play()
         isPlaying = true
         startTimer()
-        syncTimeAndCue()
-        updateNowPlayingInfo()
     }
 
     // Pauses playback and takes one final time snapshot.

@@ -9,37 +9,6 @@ import SwiftDagre
 // per-path chip strip, and the node/edge lattice diagram. Extracted from WordDetailView+Helpers
 // so that file stays under the line-count invariant.
 extension WordDetailView {
-    // Visual chart for the "Paths" section, sitting above the flat text list (not replacing it):
-    // one row per candidate segmentation path, in sublatticePaths' most-divided-first order (see
-    // WordDetailView+Helpers's sort in the .task loader), each segment its own chip. One row per
-    // path, not a shared-edge arc diagram: with several divergent short segments, arcs come out
-    // small and needle-thin and stop reading as arcs, while a plain horizontal strip per row works
-    // regardless of how many paths there are or how much they diverge.
-    @ViewBuilder
-    var sublatticeDiagramRowsPerPath: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(sublatticePaths.enumerated()), id: \.offset) { _, path in
-                HStack(spacing: 4) {
-                    ForEach(Array(path.enumerated()), id: \.offset) { _, segment in
-                        Text(segment)
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: 5)
-                                    .fill(Color.accentColor.opacity(0.12))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 5)
-                                    .strokeBorder(Color.accentColor.opacity(0.35), lineWidth: 1)
-                            )
-                    }
-                }
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
     // Visual lattice diagram for the "Paths" section, sitting above the flat text list (not
     // replacing it). An actual node-and-edge graph: every distinct (position, text) segment any
     // candidate path picks is one NODE (a chip carrying the segment's own text) — segments two or

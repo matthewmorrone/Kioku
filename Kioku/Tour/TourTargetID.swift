@@ -4,7 +4,6 @@ import Foundation
 // `.tourTarget(_:)`; TourCatalog refers to the same cases when it lists each tab's steps.
 enum TourTargetID: String, Hashable {
     case readText
-    case readCorrection
     case readBreakdown
     case readLyrics
     case readExtractWords

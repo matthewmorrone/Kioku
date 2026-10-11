@@ -157,25 +157,12 @@ extension ReadView {
                 // surface and crop to per-kanji ruby — bare lemma readings can't align because
                 // their length is shorter than the okurigana tail of the surface.
                 sheetReadingsProvider: {
-                    let surface = currentSelectedSurface() ?? ""
-                    if let data = surfaceReadingData[surface], data.readings.isEmpty == false {
-                        return data.readings
-                    }
-                    guard let lexicon else {
-                        if let lemma = segmenter.preferredLemma(for: surface),
-                           let lemmaData = surfaceReadingData[lemma] {
-                            return lemmaData.readings
-                        }
-                        return []
-                    }
-                    var combinedReadings: [String] = []
-                    var seenReadings: Set<String> = []
-                    for group in lexicon.surfaceReadingsByLemma(surface: surface) {
-                        for reading in group.surfaceReadings where seenReadings.insert(reading).inserted {
-                            combinedReadings.append(reading)
-                        }
-                    }
-                    return combinedReadings
+                    ReadingVariants.orderedReadings(
+                        surface: currentSelectedSurface() ?? "",
+                        lexicon: lexicon,
+                        segmenter: segmenter,
+                        surfaceReadingData: surfaceReadingData
+                    )
                 },
                 // Sublattice is from pre-computed in-memory lattice edges — fast.
                 sheetSublatticeProvider: {
@@ -210,35 +197,21 @@ extension ReadView {
                 // Surface projection for #1 is critical because bare lemma readings are shorter
                 // than the inflected surface's okurigana tail (sheetReadingsProvider returns
                 // projected readings, so this map must key on the same strings).
+                // Path 1 disambiguates homographic kanji like 様 (さま honorific vs よう
+                // manner-suffix), 方 (かた vs ほう), 中 (なか vs ちゅう) by preferring the JMdict
+                // entry whose kana form matches the reading, falling back to the lemma's
+                // highest-priority entry when the reading is non-canonical (inflected surfaces
+                // project an okurigana tail onto the lemma reading, e.g. 触れる/ふれる →
+                // ふれられない, which won't match any JMdict kana form).
                 sheetLemmaInfoByReadingProvider: {
                     let surface = currentSelectedSurface() ?? ""
                     guard surface.isEmpty == false, let lexicon, let store = dictionaryStore else { return [:] }
-                    var byReading: [String: (lemma: String, chain: [String], entry: DictionaryEntry?)] = [:]
-
-                    // Path 1: lemma-projected readings. For each (lemma, reading), prefer the
-                    // JMdict entry whose kana form matches the reading — that disambiguates
-                    // homographic kanji like 様 (さま honorific vs よう manner-suffix), 方
-                    // (かた vs ほう), 中 (なか vs ちゅう), etc. Falls back to the lemma's
-                    // highest-priority entry when the reading is non-canonical (inflected
-                    // surfaces project an okurigana tail onto the lemma reading, e.g.
-                    // 触れる/ふれる → ふれられない, which won't match any JMdict kana form).
-                    for group in lexicon.surfaceReadingsByLemma(surface: surface) {
-                        let lemmaMode: LookupMode = ScriptClassifier.containsKanji(group.lemma) ? .kanjiAndKana : .kanaOnly
-                        let lemmaFallback = (try? store.lookup(surface: group.lemma, mode: lemmaMode))?.first
-                        for reading in group.surfaceReadings where byReading[reading] == nil {
-                            let perReadingEntry = lexicon.lookupLexeme(group.lemma, reading).first
-                            byReading[reading] = (lemma: group.lemma, chain: group.chain, entry: perReadingEntry ?? lemmaFallback)
-                        }
-                    }
-
-                    // Path 2: kana-only or dictionary surfaces not admitted as a lemma by Path 1.
-                    if let data = surfaceReadingData[surface], data.readings.isEmpty == false {
-                        for reading in data.readings where byReading[reading] == nil {
-                            let entry = lexicon.lookupLexeme(surface, reading).first
-                            byReading[reading] = (lemma: surface, chain: [], entry: entry)
-                        }
-                    }
-                    return byReading
+                    return ReadingVariants.lemmaInfoByReading(
+                        surface: surface,
+                        lexicon: lexicon,
+                        store: store,
+                        surfaceReadingData: surfaceReadingData
+                    )
                 },
                 onReadingSelected: { reading in
                     applyReadingOverride(reading: reading)

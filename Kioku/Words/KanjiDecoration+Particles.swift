@@ -180,30 +180,6 @@ enum KanjiParticleKind {
 // without needing image assets shipped in the bundle — each is drawn once per
 // kind via UIGraphicsImageRenderer and cached.
 enum ParticleImage {
-    // Vertical gradient streak — for rain. Transparent → white → transparent so
-    // the streak has soft top/bottom edges and reads as falling water rather than
-    // a hard tick. The emitter tints it via cell.color.
-    static func streak(length: CGFloat, width: CGFloat) -> CGImage {
-        let size = CGSize(width: width, height: length)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        let img = renderer.image { ctx in
-            let cg = ctx.cgContext
-            let colors = [
-                UIColor.white.withAlphaComponent(0).cgColor,
-                UIColor.white.cgColor,
-                UIColor.white.withAlphaComponent(0).cgColor
-            ]
-            let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
-                                      colors: colors as CFArray,
-                                      locations: [0, 0.5, 1])!
-            cg.drawLinearGradient(gradient,
-                                  start: .zero,
-                                  end: CGPoint(x: 0, y: length),
-                                  options: [])
-        }
-        return img.cgImage!
-    }
-
     // Teardrop — round drop at the bottom, fading tail at the top. Drawn pointy-
     // side-up so when the cell falls downward, the rounded "head" leads and the
     // tail trails behind it (classic falling-droplet silhouette with motion blur).

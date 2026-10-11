@@ -33,10 +33,7 @@ final class CustomWordStore: ObservableObject {
 
     // Adds a word, or replaces the one with the same id. A new word gets its stable ent_seq here.
     func save(_ word: CustomWord) {
-        var word = word
-        if word.sameAsEntSeq == nil, word.entSeq == nil {
-            word.entSeq = CustomWordIdentity.entSeq(forHeadword: CustomWordIdentity.headword(of: word))
-        }
+        let word = Self.assigningEntSeqIfNeeded(word)
         if let index = words.firstIndex(where: { $0.id == word.id }) {
             words[index] = word
         } else {
@@ -114,14 +111,19 @@ final class CustomWordStore: ObservableObject {
     // Replaces the list with an imported extras.json's words. Offered defaults are kept, so the
     // dictionary's defaults the import leaves out stay deleted.
     func replaceWords(with newWords: [CustomWord]) {
-        words = newWords.map { word in
-            var word = word
-            if word.sameAsEntSeq == nil, word.entSeq == nil {
-                word.entSeq = CustomWordIdentity.entSeq(forHeadword: CustomWordIdentity.headword(of: word))
-            }
-            return word
-        }
+        words = newWords.map(Self.assigningEntSeqIfNeeded)
         persist()
+    }
+
+    // Assigns a stable ent_seq to a new word (no sameAsEntSeq link, no ent_seq yet) derived from its
+    // headword; leaves an existing ent_seq or a same-word link untouched. Shared by save and
+    // replaceWords.
+    private static func assigningEntSeqIfNeeded(_ word: CustomWord) -> CustomWord {
+        var word = word
+        if word.sameAsEntSeq == nil, word.entSeq == nil {
+            word.entSeq = CustomWordIdentity.entSeq(forHeadword: CustomWordIdentity.headword(of: word))
+        }
+        return word
     }
 
     // Replaces everything after a validated backup import.

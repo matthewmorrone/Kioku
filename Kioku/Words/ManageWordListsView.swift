@@ -121,12 +121,7 @@ struct ManageWordListsView: View {
 
     // MARK: - Data helpers
 
-    // Counts saved members of a given list — words + kanji. Both record types share the same
-    // WordList ids (see SavedKanji.wordListIDs), so a kanji-only list registers a non-zero
-    // count instead of the misleading 0 we'd get from counting only SavedWord entries.
     private func wordCount(for listID: UUID) -> Int {
-        let words = wordsStore.words.reduce(0) { $0 + ($1.wordListIDs.contains(listID) ? 1 : 0) }
-        let kanji = savedKanjiStore.kanji.reduce(0) { $0 + ($1.wordListIDs.contains(listID) ? 1 : 0) }
-        return words + kanji
+        WordList.memberCount(for: listID, wordsStore: wordsStore, savedKanjiStore: savedKanjiStore)
     }
 }

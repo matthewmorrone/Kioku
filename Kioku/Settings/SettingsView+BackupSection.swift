@@ -113,9 +113,7 @@ extension SettingsView {
             } catch {
                 // Roll back files staged by this import; an ID also referenced by a
                 // live note predates the import and must survive the abort.
-                for stagedID in stagedAttachmentIDs where liveAttachmentIDs.contains(stagedID) == false {
-                    audioStore.deleteAttachment(stagedID)
-                }
+                rollbackStagedAttachments(stagedAttachmentIDs, excluding: liveAttachmentIDs, using: audioStore)
                 AppLog.error(
                     .backup,
                     "import: aborted — audio attachment \(attachment.attachmentID) restore failed, rolled back \(stagedAttachmentIDs.count) staged file(s): \(error.localizedDescription)"
@@ -132,9 +130,7 @@ extension SettingsView {
         // touching any other store instead of silently reporting success over stale notes.
         notesStore.replaceAll(with: payload.notes)
         if let notesError = notesStore.persistenceError {
-            for stagedID in stagedAttachmentIDs where liveAttachmentIDs.contains(stagedID) == false {
-                audioStore.deleteAttachment(stagedID)
-            }
+            rollbackStagedAttachments(stagedAttachmentIDs, excluding: liveAttachmentIDs, using: audioStore)
             AppLog.error(
                 .backup,
                 "import: aborted — notes persistence failed, rolled back \(stagedAttachmentIDs.count) staged file(s): \(notesError)"
@@ -173,5 +169,15 @@ extension SettingsView {
         }
 
         showTransferAlert(title: "Import Complete", message: message)
+    }
+
+    // Deletes every staged attachment that doesn't also belong to a note already on disk before
+    // the import started — an id in both sets predates this import and must survive the abort.
+    // Shared by the two abort paths in importAppBackup (attachment-restore failure, notes-persist
+    // failure), which otherwise repeated this exact loop.
+    private func rollbackStagedAttachments(_ stagedAttachmentIDs: [UUID], excluding liveAttachmentIDs: Set<UUID>, using audioStore: NotesAudioStore) {
+        for stagedID in stagedAttachmentIDs where liveAttachmentIDs.contains(stagedID) == false {
+            audioStore.deleteAttachment(stagedID)
+        }
     }
 }

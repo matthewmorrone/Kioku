@@ -5,8 +5,7 @@ extension ReadView {
 
     // Filters out non-lexical segments so punctuation and whitespace never trigger popovers.
     func shouldIgnoreSegmentForDefinitionLookup(_ segmentText: String) -> Bool {
-        let ignoredScalars = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
-        return segmentText.unicodeScalars.allSatisfy { ignoredScalars.contains($0) }
+        isLexicalSurface(segmentText) == false
     }
 
     // Validates whether two adjacent segments can be merged without crossing punctuation or newline boundaries.

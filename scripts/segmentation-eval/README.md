@@ -73,15 +73,48 @@ headwords by the JMdict maintainers. https://downloads.tatoeba.org/exports/jpn_i
   including the 281 they left as correct; the source the 38 gold lines were taken from.
   Never print whole lyric lines; the scorer prints only the differing fragments.
 
-## Numbers to beat (2026-10-08: boundary model, weight 4, dictionary-v15)
+## Numbers to beat (2026-10-10: boundary model, weight 4, dictionary-v15)
 
 | Set | exact | cut-through | split |
 |---|---|---|---|
-| held2k | 89.92 | 0.30 (62) | 2.71 |
-| fresh5k | 92.12 | 0.18 (71) | 2.49 |
-| kana2k | 86.37 | 1.10 (223) | 3.68 |
+| held2k | 90.02 | 0.29 (59) | 2.62 |
+| fresh5k | 92.17 | 0.16 (64) | 2.45 |
+| kana2k | 86.59 | 0.98 (200) | 3.60 |
 | lyric lines reviewed | 38 / 38 | | |
-| named cases | 62 / 63 | | |
+| named cases | 67 / 67 | | |
+
+Segmentation and readings draw on the same three sources in the same order: Tatoeba usage, then Apple's tokenizer,
+then the dictionary. Segmentation: the transition table (usage) and P(cut) × 0.05 inside any token CFStringTokenizer
+keeps whole (Segmenter+BoundaryModel.withAppleTokenHint; its tokens are short, but it cut through 24 held2k gold words to
+our 62), fitted on train2k (× 1: 74 cut-throughs, × 0.05: 68). Against the previous build: held2k 62→59, kana2k
+213→200, fresh5k 66→64. Readings: the counts score, Apple's reading gets a 2.0 vote, dictionary order breaks ties.
+
+Word classes stay the union of a spelling's entries and senses. Tried 2026-10-10 and dropped: classing spellings by
+the first sense of their usual entry (間 → noun; by rank, then by Tatoeba usage matched on JMdict headwords). It fixed
+中日|間, but it only measured as a gain while `segcli count` ignored the override (the table counted union classes, the
+app looked up overridden ones); counted consistently it was 62 / 210 / 65 cut-throughs and readings fresh5k 96.64%,
+against 59 / 200 / 64 and 97.25% without it. A conj-below-noun reordering alone was noise and only moved 間 to adv.
+
+An expression is not reached through a potential whose final verb is a dictionary verb of its own
+(Segmenter+PotentialExpressions): 口を開けて was 口を開く's potential, priced as one phrase (furigana ひら); now
+口|を|開けて. Against the same code without it: held2k exact +7 tokens / cut-through flat, fresh5k +18 / 71→69,
+kana2k +1 / 215→216 (てきとい deinflects to てきとう 適当 and undercuts てき|と|いえる once といえる is not という's
+potential). Refusing every expression reached through a potential broke 元に戻せなかった (戻せる is no word), and
+comparing any shorter verb stretch broke お目にかかれて (かれる/かる match by chance inside かかれる).
+
+Readings (`segcli furigana` + `score_readings.py`, 2026-10-10): held2k 95.19%, fresh5k 97.25%. Frequency
+order alone was 91.09% / 94.79%; the rest is the context pass (FuriganaResolver+ContextualReadings), one score
+over three sources: Tatoeba's reading counts (`scripts/calibration/count_reading_contexts.py` →
+`Kioku/Read/Furigana/reading-contexts.tsv`; 94.50% / 96.97% on their own), a 2.0 vote for Apple's tokenizer's
+reading (fitted on train2k: 0 → 94.17%, 2 → 94.57%; on its own Apple was 94.03% / 95.90%, and it reads 私 as
+わたくし every time, which the counts outvote), and dictionary frequency order to break ties. A kanji the counts never
+saw takes Apple's reading when the dictionary lists it. The after-の rule (JMdict の-expressions) was dropped as
+redundant once the counts were in: removing it changed nothing. Tried and worse: the transition table's classes on
+each reading's JMdict tags (no setting beat 91.09%: the table never saw a kanji's readings apart), the on-device model
+writing sentences in kana (3 fixed, 10 broken), strict "counts, else Apple" ordering (held2k −6, fresh5k +8: Apple
+lost its say on close calls), and blending neighbour classes with their broader class (−82 / ±2). Candidates come from
+every lemma a surface can be (甘く as 甘い, 入り as 入る). The counts take every indexed sentence no eval set uses
+(137,836: train minus train2k, plus the held-out half minus held2k, fresh and kana2k).
 
 Without the model (`NO_BOUNDARY_MODEL=1`): held2k 88.87 / 75, kana2k 85.66 / 240, fresh5k 90.75 / 117,
 lyrics 35 / 38, named 61 / 63. Measured through `segcli run` with `SWIFT_DETERMINISTIC_HASHING=1`;

@@ -93,10 +93,11 @@ nonisolated enum DownloadedModelsStore {
         return total
     }
 
-    // Removes every top-level entry under `root` (the model's contents) but leaves the empty
-    // directory in place — ModelStorage.directory(for:) always recreates it on next access
-    // anyway, and an empty directory costs nothing. Not private: see sizeBytes' comment on why
-    // tests target this directly instead of the real-path public API.
+    // Removes every top-level entry under `root` but leaves the empty directory in place —
+    // ModelStorage.directory(for:) always recreates it on next access anyway, and an empty
+    // directory costs nothing. Not private: besides this file's own deletes, CachesCleaner.clearAll
+    // calls through here too rather than keeping its own copy of the same loop; see sizeBytes'
+    // comment for the testability reason it stays non-private either way.
     static func removeContents(of root: URL?) {
         guard let root else { return }
         let fm = FileManager.default

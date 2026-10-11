@@ -77,7 +77,6 @@ extension WordDetailView {
         VStack(alignment: .leading, spacing: 10) {
             senseHeaderStrip(sense: sense, isSavedEntry: isSavedEntry)
                 .contentShape(Rectangle())
-                // .onTapGesture { if isSavedEntry { toggleSenseSelection(sense.senseID) } }
                 .onTapGesture {
                     if isSavedEntry {
                         // Already the saved entry → toggle the whole sense (existing behavior).
@@ -111,7 +110,6 @@ extension WordDetailView {
                                 )
                         )
                         .contentShape(Rectangle())
-                        // .onTapGesture { if isSavedEntry { toggleGlossSelection(...) } }
                         .onTapGesture {
                             if isSavedEntry {
                                 // Already the saved entry → toggle this gloss (existing behavior).

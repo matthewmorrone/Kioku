@@ -6,6 +6,11 @@ import SQLite3
 // (kana_forms, senses), grouped by surface — Swift-side OR-reduces each row's pos string
 // into the compact bit representation defined by PartOfSpeech.bits.
 extension DictionaryStore {
+    // Appends ",on-mim" to a sense's pos string when its misc field carries the on-mim tag —
+    // generate_db.py stores on-mim in `misc`, not `pos`, but POS-bit consumers need it folded
+    // into the pos string they parse. Shared by this file's per-form UNION ALL legs and
+    // fetchPartOfSpeechByEntryID's per-entry GROUP_CONCAT (DictionaryStore+SurfaceData.swift).
+    nonisolated static let posWithOnMimCaseSQL = "CASE WHEN ',' || COALESCE(misc, '') || ',' LIKE '%,on-mim,%' THEN ',on-mim' ELSE '' END"
 
     // Runs a single SQL query that emits one (surface, raw_pos) row per (form, sense)
     // pair, then reduces them in Swift into surface → UInt64 bits. The ~580k rows carry only a
@@ -14,11 +19,11 @@ extension DictionaryStore {
         try withSerializedDatabaseAccess {
             let sql = """
             SELECT surface, pos FROM (
-                SELECT k.text AS surface, s.pos || CASE WHEN ',' || COALESCE(misc, '') || ',' LIKE '%,on-mim,%' THEN ',on-mim' ELSE '' END AS pos
+                SELECT k.text AS surface, s.pos || \(Self.posWithOnMimCaseSQL) AS pos
                 FROM kanji k
                 JOIN senses s ON s.entry_id = k.entry_id
                 UNION ALL
-                SELECT n.text AS surface, s.pos || CASE WHEN ',' || COALESCE(misc, '') || ',' LIKE '%,on-mim,%' THEN ',on-mim' ELSE '' END AS pos
+                SELECT n.text AS surface, s.pos || \(Self.posWithOnMimCaseSQL) AS pos
                 FROM kana_forms n
                 JOIN senses s ON s.entry_id = n.entry_id
             )

@@ -47,7 +47,13 @@ struct VerbConjugator {
     // Returns the 3 key forms shown inline in WordDetailView before the "All conjugations" row.
     // Always: te-form, negative, past — in that order.
     static func keyForms(for dictionaryForm: String, verbClass: VerbClass) -> [ConjugationRow] {
-        let groups = conjugationGroups(for: dictionaryForm, verbClass: verbClass)
+        keyForms(from: conjugationGroups(for: dictionaryForm, verbClass: verbClass))
+    }
+
+    // Picks the te-form, negative, and past rows (in that order) out of any conjugation
+    // paradigm's groups. Shared by keyForms(for:verbClass:) and adjectiveKeyForms(for:), which
+    // differ only in which group builder produced `groups`.
+    private static func keyForms(from groups: [ConjugationGroup]) -> [ConjugationRow] {
         let teForm   = groups.first(where: { $0.name == "Te-form"  })?.rows.first
         let negative = groups.first(where: { $0.name == "Plain"    })?.rows.first(where: { $0.label == "Negative" })
         let past     = groups.first(where: { $0.name == "Plain"    })?.rows.first(where: { $0.label == "Past" })
@@ -69,11 +75,7 @@ struct VerbConjugator {
 
     // Key inline forms for an i-adjective: te-form, negative, past — mirroring keyForms(for:verbClass:).
     static func adjectiveKeyForms(for dictionaryForm: String) -> [ConjugationRow] {
-        let groups = adjectiveConjugationGroups(for: dictionaryForm)
-        let teForm   = groups.first(where: { $0.name == "Te-form" })?.rows.first
-        let negative = groups.first(where: { $0.name == "Plain"   })?.rows.first(where: { $0.label == "Negative" })
-        let past     = groups.first(where: { $0.name == "Plain"   })?.rows.first(where: { $0.label == "Past" })
-        return [teForm, negative, past].compactMap { $0 }
+        keyForms(from: adjectiveConjugationGroups(for: dictionaryForm))
     }
 }
 

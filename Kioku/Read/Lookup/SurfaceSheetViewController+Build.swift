@@ -441,16 +441,9 @@ extension SurfaceSheetViewController {
             } else {
                 return
             }
-            splitButton.isEnabled = currentSurface.count > 1
-            splitButton.alpha = splitButton.isEnabled ? 1 : 0.45
-            updateMergeButtonAvailability()
+            refreshSplitButtonAvailability()
             if isSplitEditorVisible { resetSplitInputs(using: currentSurface) }
-            sheet?.refreshSheetSupplementalData()
-            updateReadingFurigana()
-            updateLemmaChain()
-            updateMiddleContent()
-            updateSaveButtonAppearance()
-            updateOpenDetailButtonAppearance()
+            refreshSegmentDependentPanels()
         }, for: .touchUpInside)
 
         mergeRightButton.addAction(UIAction { [weak self] _ in
@@ -468,16 +461,9 @@ extension SurfaceSheetViewController {
             } else {
                 return
             }
-            splitButton.isEnabled = currentSurface.count > 1
-            splitButton.alpha = splitButton.isEnabled ? 1 : 0.45
-            updateMergeButtonAvailability()
+            refreshSplitButtonAvailability()
             if isSplitEditorVisible { resetSplitInputs(using: currentSurface) }
-            sheet?.refreshSheetSupplementalData()
-            updateReadingFurigana()
-            updateLemmaChain()
-            updateMiddleContent()
-            updateSaveButtonAppearance()
-            updateOpenDetailButtonAppearance()
+            refreshSegmentDependentPanels()
         }, for: .touchUpInside)
 
         splitButton.addAction(UIAction { [weak self] _ in
@@ -488,12 +474,7 @@ extension SurfaceSheetViewController {
                 let offset = String(characters[0]).utf16.count
                 if let splitResult = currentOnSplitApply?(offset) {
                     updateCurrentSurface(splitResult)
-                    sheet?.refreshSheetSupplementalData()
-                    updateReadingFurigana()
-                    updateLemmaChain()
-                    updateMiddleContent()
-                    updateSaveButtonAppearance()
-                    updateOpenDetailButtonAppearance()
+                    refreshSegmentDependentPanels()
                 }
                 return
             }
@@ -555,16 +536,9 @@ extension SurfaceSheetViewController {
                 currentSurface = leftSplitValue + rightSplitValue
                 syncFuriganaToCurrentIndex()
             }
-            splitButton.isEnabled = currentSurface.count > 1
-            splitButton.alpha = splitButton.isEnabled ? 1 : 0.45
-            updateMergeButtonAvailability()
+            refreshSplitButtonAvailability()
             setSplitEditorVisible(false)
-            sheet?.refreshSheetSupplementalData()
-            updateReadingFurigana()
-            updateLemmaChain()
-            updateMiddleContent()
-            updateSaveButtonAppearance()
-            updateOpenDetailButtonAppearance()
+            refreshSegmentDependentPanels()
         }, for: .touchUpInside)
 
         let swipeLeft = UISwipeGestureRecognizer(target: self, action: #selector(handleSheetSwipe(_:)))

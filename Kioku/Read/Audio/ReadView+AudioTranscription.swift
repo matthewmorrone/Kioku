@@ -178,14 +178,7 @@ extension ReadView {
             segments: nil
         )
 
-        if document.activeNoteID == id {
-            document.isLoadingSelectedNote = true
-            titleEdit.customTitle = titleToSave
-            titleEdit.fallbackTitle = titleToSave
-            document.text = noteContent
-            document.segments = nil
-            document.isLoadingSelectedNote = false
-        }
+        mirrorStreamingNoteIntoEditorIfActive(id: id, title: titleToSave, text: noteContent)
     }
 
     // Replaces the temporary status-prefixed content with the final transcript after chunked recognition is complete.
@@ -201,15 +194,7 @@ extension ReadView {
         )
         notesStore.updateAudioAttachment(id: id, attachmentID: attachmentID)
 
-        if document.activeNoteID == id {
-            document.isLoadingSelectedNote = true
-            titleEdit.customTitle = titleToSave
-            titleEdit.fallbackTitle = titleToSave
-            document.text = normalizedText
-            document.segments = nil
-            loadAudioAttachmentIfNeeded(attachmentID: attachmentID)
-            document.isLoadingSelectedNote = false
-        }
+        mirrorStreamingNoteIntoEditorIfActive(id: id, title: titleToSave, text: normalizedText, attachmentID: attachmentID, shouldLoadAttachment: true)
     }
 
     // Writes a free-form status line (and optional body) into the streaming note,
@@ -220,13 +205,30 @@ extension ReadView {
         let noteContent = bodyText.isEmpty ? "[\(statusLine)]" : "[\(statusLine)]\n\n\(bodyText)"
         let titleToSave = firstLineTitle(from: noteContent)
         _ = notesStore.upsertNote(id: id, title: titleToSave, content: noteContent, segments: nil)
-        if document.activeNoteID == id {
-            document.isLoadingSelectedNote = true
-            titleEdit.customTitle = titleToSave
-            titleEdit.fallbackTitle = titleToSave
-            document.text = noteContent
-            document.segments = nil
-            document.isLoadingSelectedNote = false
+        mirrorStreamingNoteIntoEditorIfActive(id: id, title: titleToSave, text: noteContent)
+    }
+
+    // Mirrors a streaming-transcription note's new title/text into the live editor state when
+    // it's the note currently open, guarded by isLoadingSelectedNote so the onChange(of: text)
+    // handler doesn't treat this as a user edit. Shared by updateStreamingTranscriptionNote,
+    // finalizeStreamingTranscriptionNote, and setTranscriptionStatusNote, which otherwise each
+    // repeated this block.
+    private func mirrorStreamingNoteIntoEditorIfActive(
+        id: UUID,
+        title: String,
+        text: String,
+        attachmentID: UUID? = nil,
+        shouldLoadAttachment: Bool = false
+    ) {
+        guard document.activeNoteID == id else { return }
+        document.isLoadingSelectedNote = true
+        titleEdit.customTitle = title
+        titleEdit.fallbackTitle = title
+        document.text = text
+        document.segments = nil
+        if shouldLoadAttachment {
+            loadAudioAttachmentIfNeeded(attachmentID: attachmentID)
         }
+        document.isLoadingSelectedNote = false
     }
 }

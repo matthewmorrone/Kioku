@@ -18,10 +18,8 @@ extension WordsView {
     var visibleSavedKanji: [SavedKanji] {
         var filtered = savedKanjiStore.kanji
         if !activeFilterNoteIDs.isEmpty || !activeFilterListIDs.isEmpty {
-            filtered = filtered.filter { kanji in
-                let matchesNote = activeFilterNoteIDs.isEmpty || activeFilterNoteIDs.contains { kanji.sourceNoteIDs.contains($0) }
-                let matchesList = activeFilterListIDs.isEmpty || activeFilterListIDs.contains { kanji.wordListIDs.contains($0) }
-                return matchesNote && matchesList
+            filtered = filtered.filter {
+                matchesNoteAndListFilter($0, noteIDs: activeFilterNoteIDs, listIDs: activeFilterListIDs)
             }
         }
         // Saved kanji are by definition kanji literals, so hiding kanji hides them entirely.
@@ -36,10 +34,8 @@ extension WordsView {
         var filtered = wordsStore.words
 
         if !activeFilterNoteIDs.isEmpty || !activeFilterListIDs.isEmpty {
-            filtered = filtered.filter { word in
-                let matchesNote = activeFilterNoteIDs.isEmpty || activeFilterNoteIDs.contains { word.sourceNoteIDs.contains($0) }
-                let matchesList = activeFilterListIDs.isEmpty || activeFilterListIDs.contains { word.wordListIDs.contains($0) }
-                return matchesNote && matchesList
+            filtered = filtered.filter {
+                matchesNoteAndListFilter($0, noteIDs: activeFilterNoteIDs, listIDs: activeFilterListIDs)
             }
         }
 

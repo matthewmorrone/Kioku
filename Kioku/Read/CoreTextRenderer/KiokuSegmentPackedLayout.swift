@@ -143,15 +143,10 @@ enum KiokuSegmentPackedLayout {
             guard segRange.location + segRange.length <= nsString.length else { continue }
             let surface = nsString.substring(with: segRange)
 
-            // Pure-newline segment: force a line break, no placement.
+            // Pure-newline segment: force a line break, no placement. Advances a line either
+            // way — finalizing the current line's content, or just a blank line in the source.
             if surface == "\n" || surface == "\r\n" || surface == "\r" {
-                if cursorX > inputs.leftInset {
-                    // We had content on this line — finalize it before wrapping.
-                    startNewLine()
-                } else {
-                    // Empty line (blank line in the source). Still advance one line.
-                    startNewLine()
-                }
+                startNewLine()
                 continue
             }
 

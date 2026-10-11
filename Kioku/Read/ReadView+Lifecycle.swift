@@ -27,26 +27,6 @@ extension ReadView {
             } message: {
                 Text("We recommend finding the song's lyrics online.")
             }
-            .alert("AI Correction", isPresented: $llmCorrection.isShowingLLMCorrectionError) {
-                Button("OK", role: .cancel) {
-                    llmCorrection.llmCorrectionErrorMessage = ""
-                }
-            } message: {
-                Text(llmCorrection.llmCorrectionErrorMessage)
-            }
-            .alert("Run AI Correction?", isPresented: $llmCorrection.isShowingLLMRunConfirm) {
-                Button("Run") { requestLLMCorrection() }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This sends the note to \(LLMSettings.remoteProvider().displayName), billed to your API key.")
-            }
-            .alert("Apply AI Changes?", isPresented: $llmCorrection.isShowingLLMConfirmAll) {
-                Button("Apply All") { confirmLLMChanges() }
-                Button("Reject All", role: .destructive) { rejectAllPendingLLMChanges() }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("\(llmCorrection.pendingLLMChangedLocations.count) suggested change(s) are highlighted. Tap one to decide on it individually.")
-            }
             // The reset button opens this; Reset here is what restores Kioku's own segmentation.
             .alert("Changes from Default", isPresented: $readSheets.isShowingChangesFromDefault) {
                 if readSheets.changesFromDefault.isEmpty {
@@ -57,21 +37,6 @@ extension ReadView {
                 }
             } message: {
                 Text(readSheets.changesFromDefault.isEmpty ? "None" : readSheets.changesFromDefault.joined(separator: "\n"))
-            }
-            .alert("AI Correction", isPresented: $llmCorrection.isShowingLLMChangePopover) {
-                Button("Confirm") {
-                    if let loc = llmCorrection.llmChangePopoverLocation {
-                        confirmLLMChange(at: loc)
-                    }
-                }
-                Button("Reject", role: .destructive) {
-                    if let loc = llmCorrection.llmChangePopoverLocation {
-                        rejectLLMChange(at: loc)
-                    }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text(llmCorrection.llmChangePopoverText)
             }
     }
 
@@ -134,19 +99,7 @@ extension ReadView {
                         reconciled = nil
                     }
                     document.segments = reconciled
-                    segmentSelection.illegalMergeBoundaryLocation = nil
-                    segmentSelection.illegalMergeFlashTask?.cancel()
-                    document.segmentationRefreshTask?.cancel()
-                    document.segmentationRefreshTask = nil
-                    document.furiganaComputationTask?.cancel()
-                    document.furiganaComputationTask = nil
-                    document.segmentLatticeEdges = []
-                    document.segmentEdges = []
-                    document.segmentRanges = []
-                    segmentSelection.selectedSegmentLocation = nil
-                    segmentSelection.selectedHighlightRangeOverride = nil
-                    segmentSelection.selectedBounds = nil
-                    SegmentLookupSheet.shared.dismissPopover()
+                    clearTransientSegmentationState()
                     // Rebuild the runtime furigana map from the reconciled segments so annotations
                     // in surviving regions are not dropped and their absolute offsets reflect any
                     // shift caused by length changes in the edited region.
@@ -207,19 +160,7 @@ extension ReadView {
                     // doesn't read the map during editing, and keeping the user's chosen
                     // readings in memory means we never have to "restore" them on exit.
                     // onChange(of: text) handles real text edits via reconcileSegments.
-                    segmentSelection.illegalMergeBoundaryLocation = nil
-                    segmentSelection.illegalMergeFlashTask?.cancel()
-                    document.segmentationRefreshTask?.cancel()
-                    document.segmentationRefreshTask = nil
-                    document.furiganaComputationTask?.cancel()
-                    document.furiganaComputationTask = nil
-                    document.segmentLatticeEdges = []
-                    document.segmentEdges = []
-                    document.segmentRanges = []
-                    segmentSelection.selectedSegmentLocation = nil
-                    segmentSelection.selectedHighlightRangeOverride = nil
-                    segmentSelection.selectedBounds = nil
-                    SegmentLookupSheet.shared.dismissPopover()
+                    clearTransientSegmentationState()
                 } else {
                     // Always flush pending edits when leaving edit mode so no changes are lost.
                     flushPendingNotePersistenceIfNeeded()
@@ -280,6 +221,25 @@ extension ReadView {
                     )
                 }
             }
+    }
+
+    // Cancels in-flight segmentation/furigana work and clears transient selection state —
+    // shared by the two moments that invalidate it: a text edit while already in edit mode,
+    // and the transition into edit mode itself.
+    private func clearTransientSegmentationState() {
+        segmentSelection.illegalMergeBoundaryLocation = nil
+        segmentSelection.illegalMergeFlashTask?.cancel()
+        document.segmentationRefreshTask?.cancel()
+        document.segmentationRefreshTask = nil
+        document.furiganaComputationTask?.cancel()
+        document.furiganaComputationTask = nil
+        document.segmentLatticeEdges = []
+        document.segmentEdges = []
+        document.segmentRanges = []
+        segmentSelection.selectedSegmentLocation = nil
+        segmentSelection.selectedHighlightRangeOverride = nil
+        segmentSelection.selectedBounds = nil
+        SegmentLookupSheet.shared.dismissPopover()
     }
 
     var presentedReadView: some View {

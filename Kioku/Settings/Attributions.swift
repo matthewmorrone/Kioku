@@ -47,7 +47,7 @@ nonisolated enum Attributions {
         ),
         Dataset(
             name: "Tatoeba Sentence Pairs",
-            description: "Bilingual Japanese–English example sentences; its word-split Japanese index also trains the segmenter's word-transition costs.",
+            description: "Bilingual Japanese–English example sentences; its word-split Japanese index also trains the segmenter's word-transition costs and which reading furigana picks in context.",
             license: "CC BY 2.0 FR",
             sourceURL: "https://tatoeba.org"
         ),

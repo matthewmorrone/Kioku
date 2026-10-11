@@ -74,16 +74,13 @@ struct SongLineCard: View {
     // For each field, prefer the line's own value; fall back to the referenced line's
     // when this line is a reference and the field is empty. This is the load-bearing piece
     // for "= line N" repeats: without fall-through they render as empty cards.
-    private var effectiveGist: String? {
-        if let g = line.gist, g.isEmpty == false { return g }
-        if line.reference != nil { return referencedLine?.gist }
+    private func effectiveValue(_ field: (SongLine) -> String?) -> String? {
+        if let own = field(line), own.isEmpty == false { return own }
+        if line.reference != nil { return referencedLine.flatMap(field) }
         return nil
     }
-    private var effectiveGrammarNote: String? {
-        if let g = line.grammarNote, g.isEmpty == false { return g }
-        if line.reference != nil { return referencedLine?.grammarNote }
-        return nil
-    }
+    private var effectiveGist: String? { effectiveValue(\.gist) }
+    private var effectiveGrammarNote: String? { effectiveValue(\.grammarNote) }
     private var effectiveWords: [SongWord] {
         if let wordsOverride { return wordsOverride }
         let words: [SongWord]

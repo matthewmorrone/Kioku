@@ -257,9 +257,7 @@ struct WordsFilterView: View {
     // list registers a non-zero count instead of the misleading "Animated (0)"
     // we'd get from counting only SavedWord entries.
     private func wordCount(for listID: UUID) -> Int {
-        let words = wordsStore.words.reduce(0) { $0 + ($1.wordListIDs.contains(listID) ? 1 : 0) }
-        let kanji = savedKanjiStore.kanji.reduce(0) { $0 + ($1.wordListIDs.contains(listID) ? 1 : 0) }
-        return words + kanji
+        WordList.memberCount(for: listID, wordsStore: wordsStore, savedKanjiStore: savedKanjiStore)
     }
 
     // Only notes that have at least one saved word in the store are shown.

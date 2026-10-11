@@ -125,12 +125,6 @@ extension ReadView {
         segmentSelection.transientBlankReadingSegmentLocation = nil
         segmentSelection.selectedHighlightRangeOverride = nil
         segmentSelection.selectedBounds = nil
-        llmCorrection.pendingLLMChangedLocations = []
-        llmCorrection.pendingLLMChangedReadingLocations = []
-        llmCorrection.pendingLLMChangesByLocation = [:]
-        llmCorrection.pendingLLMRebuiltEdges = []
-        llmCorrection.pendingLLMWorkingEntries = []
-        llmCorrection.hasPendingLLMChanges = false
         // Always drop user-edited readings so the reset is total. Re-segmentation will
         // backfill defaults from the lexicon below.
         document.furiganaBySegmentLocation = [:]
@@ -162,6 +156,22 @@ extension ReadView {
         notesStore.flushPendingSave()
     }
 
+    // Restores segment edges directly from already-fully-segmented persisted segments, skipping
+    // the segmenter entirely. Returns true when it did so — the caller should stop there.
+    // Shared by refreshSegmentationRanges's fast path and performRefreshSegmentationRanges's
+    // identical early-exit check.
+    private func restoreFullySegmentedEdgesIfAvailable() -> Bool {
+        guard let segments = document.segments, SegmentRange.isFullySegmented(segments),
+              let edges = edgesFromSegmentRanges(segments, in: document.text) else {
+            return false
+        }
+        document.segmentEdges = edges
+        document.segmentRanges = edges.map { $0.start..<$0.end }
+        document.unknownSegmentLocations = []
+        recordRuntimeSegmentationSnapshot(for: edges)
+        return true
+    }
+
     // Public entry point. Two paths:
     //   - Fast path: persisted segments validate against current text → restore edges
     //     synchronously, NO prompt. This is restoration, not automatic segmentation.
@@ -169,15 +179,7 @@ extension ReadView {
     // Empty text is a no-op in either path.
     func refreshSegmentationRanges(reason: String = #function) {
         guard document.text.isEmpty == false else { return }
-
-        if let segments = document.segments, SegmentRange.isFullySegmented(segments),
-           let edges = edgesFromSegmentRanges(segments, in: document.text) {
-            document.segmentEdges = edges
-            document.segmentRanges = edges.map { $0.start..<$0.end }
-            document.unknownSegmentLocations = []
-            recordRuntimeSegmentationSnapshot(for: edges)
-            return
-        }
+        guard restoreFullySegmentedEdgesIfAvailable() == false else { return }
 
         requestAutoSegConfirm(
             reason: "refreshSegmentationRanges ← \(reason)",
@@ -190,15 +192,7 @@ extension ReadView {
     func performRefreshSegmentationRanges() {
         document.segmentationRefreshTask?.cancel()
         document.segmentationRefreshTask = nil
-
-        if let segments = document.segments, SegmentRange.isFullySegmented(segments),
-           let edges = edgesFromSegmentRanges(segments, in: document.text) {
-            document.segmentEdges = edges
-            document.segmentRanges = edges.map { $0.start..<$0.end }
-            document.unknownSegmentLocations = []
-            recordRuntimeSegmentationSnapshot(for: edges)
-            return
-        }
+        guard restoreFullySegmentedEdgesIfAvailable() == false else { return }
 
         guard readResourcesReady else {
             segmentSelection.illegalMergeBoundaryLocation = nil
@@ -357,16 +351,6 @@ extension ReadView {
         TapDiagnostics.beginTap()
         TapDiagnostics.mark("handleReadModeSegmentTap entered")
         defer { TapDiagnostics.mark("handleReadModeSegmentTap returning") }
-        // If the tapped segment has a pending LLM change, show what changed instead of the lookup sheet.
-        if let tappedSegmentLocation,
-           let changeDescription = llmCorrection.pendingLLMChangesByLocation[tappedSegmentLocation] {
-            TapDiagnostics.mark("BAIL: pendingLLMChangesByLocation match, showing LLM change popover instead")
-            llmCorrection.llmChangePopoverText = changeDescription
-            llmCorrection.llmChangePopoverLocation = tappedSegmentLocation
-            llmCorrection.isShowingLLMChangePopover = true
-            return
-        }
-
         // Spaces, punctuation and symbols (a full-width space, ＆) are segments too, since every
         // character belongs to one, but there's nothing to look up; a tap on one is a tap on
         // empty space.

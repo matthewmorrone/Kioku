@@ -382,7 +382,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         }
 
         edges += honorificStemEdges(in: text, lattice: edges)
-        return edges
+        return collapsingReadingGlosses(in: edges, of: text)
     }
 
     // Prints lattice edges grouped by start position. Uses buildLattice as the single

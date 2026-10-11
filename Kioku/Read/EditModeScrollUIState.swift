@@ -4,9 +4,8 @@ import CoreGraphics
 
 // Owns ReadView's edit-mode transition and scroll-position state: whether the read/edit toggle
 // is active, the sheet-swipe transition flag, and the scroll offset shared between the read and
-// edit surfaces (snapshotted into the memo when edit mode is entered). Extracted from ReadView's
-// own @State — see LLMCorrectionUIState for the same rationale applied to the LLM-correction
-// feature.
+// edit surfaces (snapshotted into the memo when edit mode is entered).
+// Extracted from ReadView's own @State so it reads as one unit.
 @Observable
 final class EditModeScrollUIState {
     var isEditMode = false

@@ -3,8 +3,7 @@ import Observation
 
 // Owns ReadView's audio-attachment playback state: the controller, the attached note's cues
 // and karaoke highlight ranges, the live playback highlight override, and which attachment/cue
-// is currently active. Extracted from ReadView's own @State — see LLMCorrectionUIState for the
-// same rationale applied to the LLM-correction feature.
+// is currently active. Extracted from ReadView's own @State so it reads as one unit.
 @Observable
 final class AudioPlaybackUIState {
     var audioController = AudioPlaybackController()

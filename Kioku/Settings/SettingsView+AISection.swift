@@ -7,13 +7,13 @@ import SwiftUI
 extension SettingsView {
     // The Provider picker and the selected provider's API key.
     @ViewBuilder
-    var aiCorrectionSection: some View {
+    var aiSection: some View {
         Section {
             // Label, ⓘ and picker laid out by hand: inside a menu picker's own label the ⓘ would
             // open the menu instead of its popover.
             HStack {
                 Text("Provider")
-                InfoButton(text: "The AI service Kioku sends these requests to. With None, song breakdowns and AI corrections are off. OpenAI needs your own API key from platform.openai.com: requests are billed to that account, and the key stays on this device in the Keychain.")
+                InfoButton(text: "The AI service Kioku sends these requests to. With None, song breakdowns are off and word meanings come from the on-device model. OpenAI needs your own API key from platform.openai.com: requests are billed to that account, and the key stays on this device in the Keychain.")
                 Spacer()
                 Picker("Provider", selection: $llmProviderRaw) {
                     ForEach(LLMProvider.allCases, id: \.rawValue) { provider in
@@ -28,39 +28,41 @@ extension SettingsView {
             // A persistent leading label, not just the SecureField's own placeholder text — a
             // placeholder disappears the moment a key is typed in, leaving the row unlabeled.
             if selectedRemoteProvider == .openAI {
-                HStack {
-                    Text("OpenAI API Key")
-                    Spacer()
-                    SecureField("Required", text: $openAIKey)
-                        .multilineTextAlignment(.trailing)
-                        .textContentType(.password)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .onChange(of: openAIKey) {
-                            LLMSettings.setAPIKey(openAIKey, for: .openAI)
-                            llmKeysRevision += 1
-                        }
-                }
+                apiKeyField(label: "OpenAI API Key", key: $openAIKey, provider: .openAI)
             }
             if selectedRemoteProvider == .claude {
-                HStack {
-                    Text("Claude API Key")
-                    Spacer()
-                    SecureField("Required", text: $claudeKey)
-                        .multilineTextAlignment(.trailing)
-                        .textContentType(.password)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .onChange(of: claudeKey) {
-                            LLMSettings.setAPIKey(claudeKey, for: .claude)
-                            llmKeysRevision += 1
-                        }
-                }
+                apiKeyField(label: "Claude API Key", key: $claudeKey, provider: .claude)
+            }
+            NavigationLink {
+                APIKeyHelpView()
+            } label: {
+                Label("Getting an API Key", systemImage: "key")
             }
         } header: {
             Text("AI")
         } footer: {
-            Text("Used for song breakdowns, AI corrections to a note's word splits and readings, and meanings for words the dictionary doesn't have.")
+            Text("Used for song breakdowns and meanings for words the dictionary doesn't have.")
+        }
+    }
+
+    // One provider's API key row: a persistent leading label (not just the SecureField's own
+    // placeholder, which disappears once a key is typed) and a write-through to the Keychain on
+    // every edit. Shared by the OpenAI and Claude rows above, which otherwise repeated this
+    // exact shape differing only in label, binding and provider.
+    @ViewBuilder
+    private func apiKeyField(label: String, key: Binding<String>, provider: LLMProvider) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            SecureField("Required", text: key)
+                .multilineTextAlignment(.trailing)
+                .textContentType(.password)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .onChange(of: key.wrappedValue) {
+                    LLMSettings.setAPIKey(key.wrappedValue, for: provider)
+                    llmKeysRevision += 1
+                }
         }
     }
 

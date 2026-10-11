@@ -19,10 +19,7 @@ enum ReadToggleAppearance {
 
 // Toolbar buttons and display options popover for ReadView.
 extension ReadView {
-    // Renders action buttons for segmentation and display controls. The lyrics (♪) and
-    // LLM correction (sparkles) buttons that used to live here moved up to the title
-    // row; extract-words (list.bullet) moved the other way, down from the title row,
-    // so this row now hosts extract-words / reset / edit.
+    // Renders action buttons for segmentation and display controls: extract-words / reset / edit.
     var toolbarButtons: some View {
         HStack {
             Spacer()
@@ -35,88 +32,24 @@ extension ReadView {
         }
     }
 
-    // The AI correction button. Idle: requests a correction for this note. While one streams:
-    // a spinner, and tapping cancels. While suggestions are pending: sparkles + checkmark, which
-    // opens the "apply all?" popup — nothing is applied without a decision there or in a single
-    // change's popup. Disabled (not hidden) with no provider configured, so its absence doesn't
-    // read as "this feature doesn't exist".
-    var llmCorrectionButton: some View {
-        Button {
-            if llmCorrection.isRequestingLLMCorrection {
-                cancelLLMCorrection()
-            } else if llmCorrection.hasPendingLLMChanges {
-                llmCorrection.isShowingLLMConfirmAll = true
-            } else if LLMSettings.isPaid() {
-                llmCorrection.isShowingLLMRunConfirm = true
-            } else {
-                requestLLMCorrection()
-            }
-        } label: {
-            Group {
-                if llmCorrection.isRequestingLLMCorrection {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .scaleEffect(0.7)
-                } else if llmCorrection.hasPendingLLMChanges {
-                    ZStack(alignment: .bottomTrailing) {
-                        Image(systemName: "sparkles")
-                            .scaledFont(size: 16, weight: .semibold)
-                        Image(systemName: "checkmark.circle.fill")
-                            .scaledFont(size: 10, weight: .bold)
-                            .offset(x: 4, y: 4)
-                    }
-                } else {
-                    Image(systemName: "sparkles")
-                        .scaledFont(size: 16, weight: .semibold)
-                }
-            }
-            .foregroundStyle(llmCorrection.hasPendingLLMChanges ? Color.green : Color.accentColor)
-            .frame(width: 36, height: 36)
-            .background(Circle().fill(ReadToggleAppearance.background))
-        }
-        .buttonStyle(PlainButtonStyle())
-        .disabled(editModeScroll.isEditMode || isCorrectionConfigured == false)
-        .opacity(editModeScroll.isEditMode || isCorrectionConfigured == false ? 0.5 : 1.0)
-        .accessibilityLabel(llmCorrection.hasPendingLLMChanges ? "Review AI Changes" : (llmCorrection.isRequestingLLMCorrection ? "Cancel AI Correction" : "Request AI Correction"))
-        .accessibilityHint(isCorrectionConfigured ? "" : "Set up an AI provider in Settings to use this")
-    }
-
     // Opens Changes from Default, which lists how the note differs from Kioku's own segmentation
-    // and readings and holds the Reset that restores them. While LLM changes are pending, shows a
-    // red X badge and rejects all AI changes instead.
+    // and readings and holds the Reset that restores them.
     var resetButton: some View {
-        // Enabled only when the user has actually changed this note's segmentation or readings, the
-        // note no longer matches what the segmenter produces (differsFromDefault — a segmenter
-        // change with no edit to the note), or there are pending AI changes to reject; and the note
-        // isn't in edit mode. Uses the
-        // explicit edit marker rather than `segments != nil`, which is true even for imported /
-        // precomputed notes that were never touched. Per the toggle standard, an enabled reset
-        // reads as "on" (accent) and a disabled one as "off" (secondary); the red reject badge
-        // overrides while AI changes are pending.
-        let isEnabled = (document.hasManualSegmentationEdits || document.differsFromDefault || llmCorrection.hasPendingLLMChanges)
+        // Enabled only when the user has actually changed this note's segmentation or readings or
+        // the note no longer matches what the segmenter produces (differsFromDefault — a segmenter
+        // change with no edit to the note), and the note isn't in edit mode. Uses the explicit edit
+        // marker rather than `segments != nil`, which is true even for imported / precomputed notes
+        // that were never touched. Per the toggle standard, an enabled reset reads as "on" (accent)
+        // and a disabled one as "off" (secondary).
+        let isEnabled = (document.hasManualSegmentationEdits || document.differsFromDefault)
             && editModeScroll.isEditMode == false
         // Segmentation or its furigana pass is still running: the icon becomes a spinner.
         let isSegmenting = document.segmentationRefreshTask != nil || document.furiganaComputationTask != nil
         return Button {
-            if llmCorrection.hasPendingLLMChanges {
-                // Nothing has been written to the document yet — just drop the proposal,
-                // without touching any manual segmentation edits made before it.
-                rejectAllPendingLLMChanges()
-            } else {
-                showChangesFromDefault()
-            }
+            showChangesFromDefault()
         } label: {
             Group {
-                if llmCorrection.hasPendingLLMChanges {
-                    ZStack(alignment: .bottomTrailing) {
-                        Image(systemName: "arrow.counterclockwise")
-                            .scaledFont(size: 16, weight: .semibold)
-                        Image(systemName: "xmark.circle.fill")
-                            .scaledFont(size: 10, weight: .bold)
-                            .offset(x: 4, y: 4)
-                    }
-                    .foregroundStyle(Color.red)
-                } else if isSegmenting {
+                if isSegmenting {
                     ProgressView()
                         .controlSize(.small)
                 } else {
@@ -131,21 +64,36 @@ extension ReadView {
         .buttonStyle(PlainButtonStyle())
         .disabled(!isEnabled)
         .opacity(isEnabled || isSegmenting ? 1.0 : 0.5)
-        .accessibilityLabel(llmCorrection.hasPendingLLMChanges ? "Reject AI Changes" : "Changes from Default")
+        .accessibilityLabel("Changes from Default")
     }
 
     // Title-row buttons. New-note + OCR migrated to the Notes tab; this row hosts the
     // per-note quick actions: open the lyrics view (♪), open the segment list / extract-words
-    // (list.bullet), and open the LLM breakdown sheet (sparkles in a circle). All three are
+    // (list.bullet), and open the breakdown sheet (sparkles in a circle). All three are
     // visual peers — same capsule background, same accent treatment — so the row reads as
     // "actions for the currently-open note."
     // Accent (blue) once the note has an alignment — any timed lyric line, not just ♪ markers —
     // or while the lyrics view is open; secondary otherwise.
+    // While the song aligns, a spinner stands in for the ♪.
     var titleLyricsButton: some View {
         let isAligned = audioPlayback.audioAttachmentCues.contains { SubtitleParser.isNonSpeechCue($0.text.trimmingCharacters(in: .whitespacesAndNewlines)) == false }
-        return titleActionLabel(systemImage: "music.note", foreground: ReadToggleAppearance.foreground(isOn: isAligned || audioPlayback.isShowingLyricsView))
+        return Group {
+            if lyricAlignment.isAligning {
+                titleActionLabel {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            } else {
+                titleActionLabel(systemImage: "music.note", foreground: ReadToggleAppearance.foreground(isOn: isAligned || audioPlayback.isShowingLyricsView))
+            }
+        }
             .contentShape(Capsule())
             .onTapGesture {
+                // A first import's attachment doesn't exist until its alignment finishes, so the
+                // spinner ignores taps then rather than reopening the media picker underneath it.
+                // A note that already has audio still toggles: the lyric view shows the
+                // alignment's progress and its Cancel button.
+                guard lyricAlignment.isAligning == false || audioPlayback.activeAudioAttachmentID != nil else { return }
                 // Nothing attached yet → the lyric view would be empty, so jump straight to the
                 // media picker (mp3 / srt / textgrid) instead of toggling a blank overlay. Once an
                 // attachment exists, the tap reverts to its normal show/hide-lyrics behavior; opening
@@ -159,7 +107,7 @@ extension ReadView {
                     DispatchQueue.main.async { StartupTimer.mark("lyrics toggle: main thread free") }
                 }
             }
-            .accessibilityLabel(audioPlayback.isShowingLyricsView ? "Hide Lyrics" : "Show Lyrics")
+            .accessibilityLabel(lyricAlignment.isAligning ? "Aligning Lyrics" : (audioPlayback.isShowingLyricsView ? "Hide Lyrics" : "Show Lyrics"))
             .accessibilityAddTraits(.isButton)
     }
 
@@ -250,11 +198,10 @@ extension ReadView {
             readSheets.isShowingBreakdownSheet = true
         } label: {
             if isBreakdownGeneratingForActiveNote {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(width: 36, height: 36)
-                    .background(Capsule().fill(ReadToggleAppearance.background))
-                    .contentShape(Rectangle())
+                titleActionLabel {
+                    ProgressView()
+                        .controlSize(.small)
+                }
             } else {
                 // Accent (blue) once the note has a breakdown, secondary before — as the ♪ button does
                 // for an alignment.
@@ -277,9 +224,17 @@ extension ReadView {
     // reused by ReadView+MiniPlayer.swift's inline play/pause button so it matches the other
     // title-row icons exactly.
     func titleActionLabel(systemImage: String, foreground: Color) -> some View {
-        Image(systemName: systemImage)
-            .scaledFont(size: 16, weight: .semibold)
-            .foregroundStyle(foreground)
+        titleActionLabel {
+            Image(systemName: systemImage)
+                .scaledFont(size: 16, weight: .semibold)
+                .foregroundStyle(foreground)
+        }
+    }
+
+    // Same frame/background/hit-area as above, around arbitrary content — lets a busy state
+    // (e.g. titleLyricsButton's spinner while a song aligns) share the box without duplicating it.
+    func titleActionLabel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
             .frame(width: 36, height: 36)
             .background(Capsule().fill(ReadToggleAppearance.background))
             .contentShape(Rectangle())
@@ -520,30 +475,19 @@ extension ReadView {
 
     // One icon button whose visual treatment reflects active edit state. Tap toggles
     // edit mode; long press opens the display-options popover (which now hosts furigana
-    // alongside the other view-mode toggles). Locked while an LLM correction is in flight:
-    // entering edit mode mid-call would let the user mutate `text` out from under the
-    // apply pipeline, which validates the response against the text that was originally
-    // submitted. Cheaper than threading a background task across view transitions — the
-    // call only survives a couple of minutes, and the user can still navigate elsewhere;
-    // they just can't edit until the correction lands. The popover stays available even
-    // while the button is disabled would feel wrong, so the long-press is gated on the
-    // same condition as the tap.
+    // alongside the other view-mode toggles).
     var editModeButton: some View {
         editModeButtonLabel
             .contentShape(Circle())
             .onTapGesture {
-                // Editing mid-correction would invalidate the text the answer is being staged against.
-                guard llmCorrection.isRequestingLLMCorrection == false else { return }
                 editModeScroll.isEditMode.toggle()
             }
             .onLongPressGesture(minimumDuration: 0.35) {
-                guard llmCorrection.isRequestingLLMCorrection == false else { return }
                 readSheets.isShowingDisplayOptions = true
             }
-            .disabled(llmCorrection.isRequestingLLMCorrection)
-            .opacity(llmCorrection.isRequestingLLMCorrection ? 0.4 : (editModeScroll.isEditMode ? 1 : 0.7))
+            .opacity(editModeScroll.isEditMode ? 1 : 0.7)
             .accessibilityLabel(editModeScroll.isEditMode ? "Disable Edit Mode" : "Enable Edit Mode")
-            .accessibilityHint(llmCorrection.isRequestingLLMCorrection ? "Disabled while AI correction runs" : "Long press for display options")
+            .accessibilityHint("Long press for display options")
             .accessibilityAddTraits(.isButton)
             .popover(isPresented: $readSheets.isShowingDisplayOptions, arrowEdge: .bottom) {
                 displayOptionsPopover

@@ -6,9 +6,9 @@ import UIKit
 // `FuriganaResolver`; this extension keeps:
 //   • the throttle / confirm / cancel pipeline around generation,
 //   • the in-memory map merge passes (apply-overlap backfill and compound synthesis),
-//   • thin instance-method wrappers so `ReadView+LLMCorrection` and `ReadViewFuriganaTests` can call
-//     `kanjiRuns(in:)` / `firstKanjiRunReading` / `buildFuriganaBySegmentLocation` directly on a
-//     ReadView.
+//   • thin instance-method wrappers so `ReadViewFuriganaTests` can call `kanjiRuns(in:)` /
+//     `firstKanjiRunReading` / `buildFuriganaBySegmentLocation` directly on a ReadView,
+//   • reconstructedReading, a segment's full reading for the lookup sheet.
 extension ReadView {
     // Public entry point: queues a furigana-generation request for user confirmation. The
     // actual work happens in performScheduleFuriganaGeneration once the user taps Confirm.
@@ -160,10 +160,38 @@ extension ReadView {
         FuriganaResolver(segmenter: segmenter).firstKanjiRunReading(in: surface, using: reading)
     }
 
-    // Wrapper kept so `ReadView+LLMCorrection` keeps calling on a ReadView. Delegates to the
-    // canonical implementation in `FuriganaAttributedString`.
+    // Instance-method wrapper for callers holding a ReadView. Delegates to the canonical
+    // implementation in `FuriganaAttributedString`.
     func kanjiRuns(in surface: String) -> [(start: Int, end: Int)] {
         FuriganaAttributedString.kanjiRuns(in: surface)
+    }
+
+    // A segment's full reading for the lookup sheet: its kanji runs' furigana from
+    // furiganaBySegmentLocation, interleaved with the kana between them. Empty when any run has
+    // no furigana, since a partial reading is unusable.
+    func reconstructedReading(for surface: String, at segmentLocation: Int) -> String {
+        let characters = Array(surface)
+        let runs = kanjiRuns(in: surface)
+        guard runs.isEmpty == false else { return "" }
+
+        var reading = ""
+        var index = 0
+        for run in runs {
+            // Kana between the previous run and this one belongs in the reading as-is.
+            if index < run.start {
+                reading += String(characters[index..<run.start])
+            }
+            let runLocation = segmentLocation + String(characters[..<run.start]).utf16.count
+            guard let runReading = document.furiganaBySegmentLocation[runLocation], runReading.isEmpty == false else {
+                return ""
+            }
+            reading += runReading
+            index = run.end
+        }
+        if index < characters.count {
+            reading += String(characters[index...])
+        }
+        return reading
     }
 
     // Writes per-kanji-run furigana entries for `surface` at UTF-16 `location` using `reading`.
@@ -175,9 +203,8 @@ extension ReadView {
     // there are no kanji runs — the caller decides what to do (currently both callers fall back
     // to leaving the location empty, letting the next recompute backfill).
     //
-    // Shared by `applyReadingOverride` (user pin via the lookup sheet) and the LLM correction's
-    // per-segment reading apply, so the kanji-run projection + stale-clear sequence lives in
-    // one place.
+    // Used by `applyReadingOverride` (user pin via the lookup sheet), which keeps the kanji-run
+    // projection + stale-clear sequence in one place.
     @discardableResult
     func applyPerRunFurigana(surface: String, reading: String, at location: Int) -> Bool {
         let surfaceUTF16Length = surface.utf16.count

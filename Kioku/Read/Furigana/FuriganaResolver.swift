@@ -30,24 +30,11 @@ nonisolated struct FuriganaResolver {
         var resolvedFurigana: [Int: String] = [:]
         var resolvedFuriganaLengths: [Int: Int] = [:]
 
-        var previousSurface: String?
         for edge in edges {
             let segmentRange = edge.start..<edge.end
             let segmentSurface = edge.surface
-            defer { previousSurface = segmentSurface }
             // Skip non-kanji segments to avoid redundant ruby annotations.
             guard ScriptClassifier.containsKanji(segmentSurface) else {
-                continue
-            }
-
-            // A kanji word right after の reads as JMdict's の-expressions read it (様 after の is
-            // よう, not the more common さま; SurfaceReadingDataMap.readingAfterNo).
-            if previousSurface == "の",
-               segmentSurface.allSatisfy({ ScriptClassifier.containsKanji(String($0)) }),
-               let reading = surfaceReadingData.readingAfterNo[segmentSurface] {
-                let nsRange = NSRange(segmentRange, in: sourceText)
-                resolvedFurigana[nsRange.location] = reading
-                resolvedFuriganaLengths[nsRange.location] = nsRange.length
                 continue
             }
 
@@ -135,12 +122,19 @@ nonisolated struct FuriganaResolver {
             }
         }
 
+        applyContextualReadings(
+            to: &resolvedFurigana,
+            lengths: resolvedFuriganaLengths,
+            edges: edges,
+            sourceText: sourceText,
+            surfaceReadingData: surfaceReadingData
+        )
         return (byLocation: resolvedFurigana, lengthByLocation: resolvedFuriganaLengths)
     }
 
     // Extracts the reading that maps to the first contiguous kanji run of a dictionary
     // surface. Internal access so the ReadView extension wrapper (kept for test
-    // compatibility) and the LLM correction path can both call through here.
+    // compatibility) and the contextual reading pass can call through here.
     func firstKanjiRunReading(in surface: String, using reading: String) -> String? {
         let characters = Array(surface)
         let runs = FuriganaAttributedString.kanjiRuns(in: surface)

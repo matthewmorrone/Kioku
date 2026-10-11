@@ -56,7 +56,6 @@ Short list — anything not below was evaluated and rejected.
 
 - **USearch** — semantic similarity over embeddings; no embedding pipeline planned.
 - **mlx-swift / soniqo speech-swift** — removed 2026-09-27: only the iOS 18–25 Qwen3-ASR fallback used them, and they (plus ~20 transitive packages: swift-transformers, swift-huggingface, swift-crypto, swift-collections, Jinja, swift-argument-parser for MLX's CudaBuild plugin) were most of every package build. Transcription is SpeechTranscriber, iOS 26+ only.
-- **SwiftLCS** — LLM correction reconciliation already works with custom diff.
 - **swift-subtitle-kit / SwiftSubtitles** — we're SRT-only, server-generated; custom parsing suffices.
 - **swift-audio-marker** — LyricAlignment already covers per-word timing markers.
 - **TextFormation** — notes are Japanese plain text; indentation/bracket helpers don't apply.

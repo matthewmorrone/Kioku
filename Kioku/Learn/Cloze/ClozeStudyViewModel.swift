@@ -414,7 +414,7 @@ final class ClozeStudyViewModel: ObservableObject {
             let trimmed = token.surface.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty == false && isMostlyPunctuation(trimmed) == false
         }
-        let japanese = picks.filter { containsJapanese($0.surface) }
+        let japanese = picks.filter { ScriptClassifier.containsJapanese($0.surface) }
         return japanese.isEmpty ? picks : japanese
     }
 
@@ -424,11 +424,6 @@ final class ClozeStudyViewModel: ObservableObject {
         guard scalars.isEmpty == false else { return true }
         let punctCount = scalars.filter { CharacterSet.punctuationCharacters.contains($0) }.count
         return punctCount == scalars.count
-    }
-
-    // Guards that a candidate sentence has at least some Japanese script before building a question from it.
-    private func containsJapanese(_ string: String) -> Bool {
-        ScriptClassifier.containsJapanese(string)
     }
 
     // Splits note text into sentences using SentenceRangeResolver, optionally deduplicating lines.

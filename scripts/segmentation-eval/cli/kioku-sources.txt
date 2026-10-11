@@ -33,6 +33,7 @@ Dictionary/PartOfSpeech.swift
 Dictionary/ScriptClassifier.swift
 Dictionary/Segmenter/SegmentationDemotions.swift
 Dictionary/Segmenter/Segmenter+LemmaResolution.swift
+Dictionary/Segmenter/Segmenter+PotentialExpressions.swift
 Dictionary/Segmenter/Segmenter.swift
 Dictionary/Segmenter/Segmenter+Viterbi.swift
 Dictionary/Segmenter/Segmenter+Names.swift
@@ -70,6 +71,9 @@ Dictionary/Deinflection/Deinflector+EndingGrammar.swift
 Dictionary/Deinflection/ConjugationClass.swift
 Read/Furigana/FuriganaResolver.swift
 Read/Furigana/FuriganaResolver+InflectedStem.swift
+Read/Furigana/FuriganaResolver+ContextualReadings.swift
+Read/Furigana/ReadingContextTable.swift
+Read/Furigana/AppleTokenReadings.swift
 Read/Furigana/FuriganaAttributedString.swift
 Dictionary/KanjiReadingFallbackMap.swift
 Settings/TypographySettings.swift
@@ -85,3 +89,5 @@ Dictionary/CustomWords/CustomWordsExtrasCodec.swift
 Dictionary/CustomWords/CustomWordsExtrasDecodeError.swift
 Dictionary/Segmenter/SegmenterLoadGate.swift
 Dictionary/Segmenter/Segmenter+HonorificPrefix.swift
+UserDefaultsBool.swift
+Dictionary/Segmenter/Segmenter+ReadingGlosses.swift

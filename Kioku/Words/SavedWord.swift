@@ -19,7 +19,7 @@ nonisolated enum LearnedState: String, Codable, Hashable {
 
 // Represents one saved word that can belong to multiple note-linked lists and user-created word lists.
 // `nonisolated` so import pipelines (CSV, bulk) can construct it from detached tasks.
-nonisolated struct SavedWord: Codable, Hashable, Identifiable {
+nonisolated struct SavedWord: Codable, Hashable, Identifiable, NoteAndListAttributed {
     static let currentSchemaVersion = 1
 
     let canonicalEntryID: Int64

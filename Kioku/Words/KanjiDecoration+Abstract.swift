@@ -433,59 +433,6 @@ struct DownDecoration: View {
     }
 }
 
-// Direction enum + arrow-field helper shared by 行 / 上 / 下. Each arrow scrolls
-// across the sheet in `direction`, fading in/out at the edges via sin(progress·π).
-enum ArrowDirection { case right, up, down }
-
-// Renders a field of arrows scrolling in `direction` across the sheet. Each
-// arrow has its own lane + speed jitter so the field reads as motion rather
-// than a parade. Alpha fades in/out at the edges via sin(progress·π).
-func drawArrowField(ctx: GraphicsContext, size: CGSize, t: Double, count: Int,
-                    direction: ArrowDirection, color: Color) {
-    let cycleSeconds: Double = 3.0
-    for i in 0..<count {
-        let phase = kanjiSeedFraction(i, 7)
-        let lane = kanjiSeedFraction(i, 11)
-        let speedJitter = kanjiSeedFraction(i, 17)
-        let cycle = cycleSeconds * (0.8 + speedJitter * 0.6)
-        let prog = ((t / cycle) + phase).truncatingRemainder(dividingBy: 1.0)
-        let alpha = 0.65 * sin(prog * .pi)
-        let arrowSize: CGFloat = 12 + CGFloat(speedJitter) * 6
-        let center: CGPoint
-        let rotation: Double
-        switch direction {
-        case .right:
-            let x = -arrowSize + (size.width + 2 * arrowSize) * CGFloat(prog)
-            let y = (0.10 + lane * 0.80) * size.height
-            center = CGPoint(x: x, y: y)
-            rotation = 0
-        case .up:
-            let x = (0.05 + lane * 0.90) * size.width
-            let y = size.height + arrowSize - (size.height + 2 * arrowSize) * CGFloat(prog)
-            center = CGPoint(x: x, y: y)
-            rotation = -.pi / 2
-        case .down:
-            let x = (0.05 + lane * 0.90) * size.width
-            let y = -arrowSize + (size.height + 2 * arrowSize) * CGFloat(prog)
-            center = CGPoint(x: x, y: y)
-            rotation = .pi / 2
-        }
-        ctx.drawLayer { layer in
-            layer.translateBy(x: center.x, y: center.y)
-            layer.rotate(by: .radians(rotation))
-            var arrow = Path()
-            arrow.move(to: CGPoint(x: -arrowSize, y: 0))
-            arrow.addLine(to: CGPoint(x: arrowSize * 0.4, y: 0))
-            arrow.move(to: CGPoint(x: arrowSize * 0.4, y: -arrowSize * 0.5))
-            arrow.addLine(to: CGPoint(x: arrowSize, y: 0))
-            arrow.addLine(to: CGPoint(x: arrowSize * 0.4, y: arrowSize * 0.5))
-            layer.stroke(arrow,
-                         with: .color(color.opacity(alpha)),
-                         style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-        }
-    }
-}
-
 // MARK: - 走 Run (speed lines)
 
 // Owned by KanjiDecoration.view(for:) — registered for the literal 走.

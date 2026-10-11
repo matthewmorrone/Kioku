@@ -606,20 +606,14 @@ struct NotesView: View {
         return "\(title)\n\n\(note.content)"
     }
 
-    // Builds a pipe-delimited view of the note's segmentation for sharing/export, reusing
-    // LLMCorrectionDiagnostics.buildCompactFormat — the exact same "(kanji)[reading]" / "|"
-    // compact format sent to the LLM for corrections — instead of a parallel formatter, so this
-    // export always matches what the correction pipeline actually sees. Falls back to shareText
-    // when the note has no persisted segmentation yet.
+    // Builds a pipe-delimited view of the note's segmentation for sharing/export, in
+    // NoteSegmentationExport's "(kanji)[reading]" / "|" format. Falls back to shareText when the
+    // note has no persisted segmentation yet.
     //
     // Whitespace-only segments (a bare space before a parenthetical aside, say) are dropped
     // before formatting — they're semantically empty in Japanese and just noise as their own
-    // "| |" token in a display meant for reviewing word boundaries. This is unlike the LLM
-    // response parser, which must preserve them exactly: that path validates the reconstructed
-    // text against the note's stored content character-for-character, so dropping a real space
-    // there breaks the match and sends the whole line to baseline fallback. This export has no
-    // such round-trip requirement, so it's free to omit them. "\n" entries are kept regardless —
-    // buildCompactFormat relies on them to know where note lines break.
+    // "| |" token in a display meant for reviewing word boundaries. "\n" entries are kept —
+    // the formatter relies on them to know where note lines break.
     private func pipeSegmentedText(for note: Note) -> String {
         guard let segments = note.segments, segments.isEmpty == false else {
             return shareText(for: note)
@@ -628,9 +622,9 @@ struct NotesView: View {
         let entries = segments
             .filter { $0.surface == "\n" || $0.surface.trimmingCharacters(in: .whitespaces).isEmpty == false }
             .map { segment in
-                LLMSegmentEntry(surface: segment.surface, reading: reconstructedReading(for: segment))
+                NoteSegmentationExportEntry(surface: segment.surface, reading: reconstructedReading(for: segment))
             }
-        let compact = LLMCorrectionDiagnostics.buildCompactFormat(from: entries)
+        let compact = NoteSegmentationExport.compactText(from: entries)
 
         return "\(note.resolvedTitle)\n\n\(compact)"
     }

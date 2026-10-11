@@ -368,9 +368,6 @@ extension ReadView {
                         unknownSegmentLocations: document.unknownSegmentLocations,
                         isHighlightUnknownEnabled: isHighlightUnknownEnabled,
                         unknownSegmentColor: .label,
-                        changedSegmentLocations: llmCorrection.pendingLLMChangedLocations,
-                        changedReadingLocations: llmCorrection.pendingLLMChangedReadingLocations,
-                        inFlightSegmentLocations: inFlightLineSegmentLocations,
                         // Sing results take over the Saved Highlight slots: heard green, missed red.
                         isSavedHighlightEnabled: isShowingSingResults || isSavedHighlightEnabled,
                         savedSegmentLocations: isShowingSingResults ? [] : savedSegmentLocations,
@@ -428,10 +425,6 @@ extension ReadView {
                     segmentationRanges: document.segmentRanges,
                     furiganaBySegmentLocation: displayedFuriganaBySegmentLocation,
                     furiganaLengthBySegmentLocation: displayedFuriganaLengthBySegmentLocation,
-                    isVisualEnhancementsEnabled: readResourcesReady || hasRendererSegmentation,
-                    isColorAlternationEnabled: isColorAlternationEnabled,
-                    isHighlightUnknownEnabled: isHighlightUnknownEnabled,
-                    segmenter: segmenter,
                     isEditMode: editModeScroll.isEditMode,
                     externalContentOffsetY: editModeScroll.sharedScrollOffsetY,
                     onScrollOffsetYChanged: { newOffsetY in

@@ -30,7 +30,7 @@ struct SettingsView: View {
     private var prefersSheetDirectSegmentActions: Bool = DictionarySettings.defaultPrefersSheetDirectSegmentActions
 
     // No `private` modifiers below: the AI section's UI lives in
-    // SettingsView+AICorrectionSection.swift and needs to read these as
+    // SettingsView+AISection.swift and needs to read these as
     // bindings. Extensions in other source files can't reach `private`
     // members, so these stay at module-internal access.
     // The remote provider song breakdowns use.
@@ -182,8 +182,8 @@ struct SettingsView: View {
                     Text("Lookup")
                 }
 
-                // MARK: AI — body lives in SettingsView+AICorrectionSection.swift
-                aiCorrectionSection
+                // MARK: AI — body lives in SettingsView+AISection.swift
+                aiSection
 
                 // MARK: Learning — auto-mark words as learned once every kind of question about
                 // them has been answered right, and whether the Learn tab keeps drilling them.
@@ -301,6 +301,11 @@ struct SettingsView: View {
                         .disabled(hasResetTours)
                         Spacer()
                         InfoButton(text: "Show each tab's walkthrough again the next time you open it.")
+                    }
+                    NavigationLink {
+                        FileImportHelpView()
+                    } label: {
+                        Label("Importing Files", systemImage: "tray.and.arrow.down")
                     }
                     NavigationLink {
                         AboutView()
