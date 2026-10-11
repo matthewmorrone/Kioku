@@ -57,7 +57,10 @@ subtitle carries the three terms people search for that the name doesn't.
 > • Fine-tune any word's timing by hand
 >
 > READ
-> • Paste or import text and get instant furigana
+> • Paste or import text and get instant furigana, chosen for the sentence: 方 reads かた or ほう,
+>   時 じ or とき, depending on what's around it
+> • Words split where words really end: on web text, 96.5% of Kioku's word splits fall on a real
+>   word boundary, against about 90% for the open-source analyzers many apps use
 > • Tap any word for its dictionary entry, conjugation breakdown, and pitch accent
 > • Smart segmentation understands conjugated forms — tap できない, see できる
 > • Adjustable typography: text size, line spacing, furigana size and gap
@@ -75,11 +78,32 @@ subtitle carries the three terms people search for that the name doesn't.
 >
 > PRIVATE BY DESIGN
 > • No accounts, no analytics, no tracking
+> • Furigana and word splitting run fully offline, with no AI language model
 > • Alignment, transcription, and the dictionary all run on your phone
 > • Optional AI features use Apple Intelligence or your own API key
 >
+> How we measured accuracy: github.com/matthewmorrone/Kioku/blob/main/docs/ACCURACY.md
+>
 > Dictionary data from JMdict (EDRDG), used under Creative Commons
 > Attribution-ShareAlike. Full attributions in Settings → About.
+
+## Accuracy claims
+
+Every accuracy statement in the listing must come from `docs/ACCURACY.md` (reproduce with
+`scripts/benchmark/run.sh`; rerun it before reusing a number in a new release, since the code moves).
+Claims the evidence supports, with the wording to use:
+
+| Claim | Evidence (ACCURACY.md) |
+|---|---|
+| "On web text, 96.5% of Kioku's word splits fall on a real word boundary, against about 90% for the open-source analyzers many apps use" | Word splits on KWDLC: 96.49% vs 90.09–90.97%, 16,051 sentences |
+| "Furigana chosen for the sentence" (方 as かた or ほう) | The context pass; describes behaviour, not a comparison |
+| "On classic Japanese literature, Kioku picks the right furigana for ambiguous kanji more often than leading open-source analyzers" | Aozora: 74.23% vs 71.99–73.01%, significant against each (p ≤ 0.045). Margin is small — keep it off the subtitle and promo text |
+| "Furigana and word splitting run fully offline, with no AI language model" | No network and no language model in either path; the dictionary downloads once |
+
+Don't claim: more accurate furigana in general, or than a named app (KWDLC web text shows Kioku
+*behind* on readings; no app was tested); "no AI" (Kioku's statistics and boundary model are learned —
+"no AI language model" is the accurate form); offline song breakdowns (they need a provider and network).
+Keep competitor names off the listing: say "open-source analyzers" and let the linked page name them.
 
 ## Keywords (100 chars max)
 
@@ -140,7 +164,7 @@ Store Connect will not ask.
 >
 > Optional features, off until configured:
 >
-> 1. AI FEATURES (correction, song breakdowns): run on Apple Intelligence, or on OpenAI / Anthropic with an API key the user supplies. The app sends only the text the user asks about.
+> 1. AI FEATURES (song breakdowns; meanings for words the dictionary lacks): song breakdowns run on OpenAI or Anthropic with an API key the user supplies; missing-word meanings use Apple Intelligence on the device when no key is set. The app sends only the text the user asks about. Furigana and word splitting use no language model.
 >
 > 2. SUBTITLE SEARCH (needs the user's own jimaku.cc API key): searches a community subtitle index so users can study song lyrics and dialogue alongside audio they already have. The app does not bundle, host, or distribute any copyrighted media.
 >
