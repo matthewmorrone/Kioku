@@ -62,6 +62,7 @@ Dictionary/DictionaryStore+FrequencyRanking.swift
 Dictionary/PartOfSpeechDetail.swift
 Dictionary/Segmenter/TransitionClass.swift
 Dictionary/Segmenter/SegmenterTransitionTable.swift
+Dictionary/Segmenter/SegmenterClassOverrides.swift
 Dictionary/DerivationAnalyzer.swift
 Dictionary/CompoundVerbSplitter.swift
 Dictionary/Conjugation/VerbConjugator.swift

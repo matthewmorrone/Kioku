@@ -13,6 +13,10 @@ import Foundation
 //
 // Sixteen coarse classes were measured first and gained nothing at any weight (commit 8555cb1): a
 // class has to be this fine before "B after A" says anything the word costs don't already.
+//
+// The bits are a spelling's union over every entry and sense, except for the kanji spellings in
+// SegmenterClassOverrides (LatticeEdge.transitionPartOfSpeech), which class by the first sense of
+// their most common entry: 間 is a noun, not the conjunction its union would make it.
 nonisolated enum TransitionClass {
     static let boundary = "BOUNDARY"
 

@@ -289,11 +289,30 @@
       "derived": true,
       "url": null,
       "sha256": null,
-      "provenance": "Counted from the training half of tatoeba-jpn-indices, minus its first 2,000 sentences (train2k, kept out for fitting): every gold token is classed by the app's own TransitionClass through segcli count, and fit_transition_costs.py turns class-pair counts into smoothed PMI. The 120 commonest short kana words get a class of their own. Recount whenever deinflection rules, POS bits, edge construction or the dictionary change — the classes come from the running code, so a table counted under older code silently prices words by classes the segmenter no longer assigns. Recipe: \"Regenerating the transition table\" in scripts/segmentation-eval/README.md.",
+      "provenance": "Counted from the training half of tatoeba-jpn-indices, minus its first 2,000 sentences (train2k, kept out for fitting): every gold token is classed by the app's own TransitionClass (with segmenter-class-overrides applied) through segcli count, and fit_transition_costs.py turns class-pair counts into smoothed PMI. The 120 commonest short kana words get a class of their own. Recount whenever deinflection rules, POS bits, edge construction or the dictionary change — the classes come from the running code, so a table counted under older code silently prices words by classes the segmenter no longer assigns. Recipe: \"Regenerating the transition table\" in scripts/segmentation-eval/README.md.",
       "derivedFrom": [
         "tatoeba-jpn-indices"
       ],
       "derivation": "segcli count + scripts/calibration/fit_transition_costs.py (lexical, pairs)",
+      "feedsDictionary": false
+    },
+    {
+      "name": "segmenter-class-overrides",
+      "description": "Kanji spellings the transition table classes by their usual sense rather than by everything they can be (間 as a noun, not the conjunction \"while\"), so word classes reflect how a word is normally used.",
+      "license": "Inherits jmdict-eng (EDRDG, CC BY-SA 4.0) and jiten-frequency-global (CC BY-SA 4.0)",
+      "type": "class-overrides",
+      "path": "Kioku/Dictionary/Segmenter/segmenter-class-overrides.tsv",
+      "required": false,
+      "derived": true,
+      "url": null,
+      "sha256": null,
+      "provenance": "Generated from the dictionary by scripts/calibration/segmenter_class_overrides.py: for every kanji-bearing spelling, the first sense's POS of its best-ranked entry (word_frequency), where that differs from the union over every entry and sense. Kana spellings are left out (shared by unrelated words). Regenerate after a dictionary change, then recount segmenter-transitions and reading-contexts, which count the classes it produces. Without the file every word classes by its union POS (SegmenterClassOverrides.bundled is empty).",
+      "derivedFrom": [
+        "dictionary",
+        "jmdict-eng",
+        "jiten-frequency-global"
+      ],
+      "derivation": "scripts/calibration/segmenter_class_overrides.py",
       "feedsDictionary": false
     },
     {

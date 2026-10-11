@@ -18,6 +18,9 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     private let scoring: SegmenterScoring
     // Per-entry POS bitfields loaded from the dictionary; empty when built without metadata.
     var partOfSpeechByEntryID: [Int: UInt64]
+    // Spellings whose transition class comes from their most common entry's first sense rather
+    // than the union of every entry (LatticeEdge.transitionPartOfSpeech).
+    var transitionPartOfSpeechBySurface: [String: UInt64] = [:]
     // Surface → unified frequency score (~0–7 Zipf-equivalent; higher = more common), derived from
     // frequency_rank (and wordfreq Zipf when present). Two consumers:
     //   • edgeCost — the core statistical node cost of the global path (rare words cost more).
@@ -116,6 +119,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             transitionTable: SegmenterTransitionTable.bundled()
         )
         boundaryModel = BoundaryModel.bundled()
+        transitionPartOfSpeechBySurface = SegmenterClassOverrides.bundled()
         do {
             useNameSurfaces(try dictionaryStore?.fetchSegmenterNameSurfaces() ?? [])
         } catch {
@@ -305,6 +309,11 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     }
                     edge.inflectionSteps = reading.inflectionSteps
                     edge.partOfSpeech |= reading.lemmaPartOfSpeech
+                    // A surface read as itself classes by its primary sense; one read as an
+                    // inflection of a lemma keeps the lemma's bits.
+                    if reading.inflectionSteps == 0 {
+                        edge.transitionPartOfSpeech = transitionPartOfSpeechBySurface[surface] ?? 0
+                    }
                     // Flag entries that bundle a known grammatical kana as their final char
                     // when the rest of the surface is its own dict entry — these are the rare
                     // "たいよ"-style bundles that need to lose to the compositional path.
@@ -325,6 +334,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                             : other.score
                         alternate.inflectionSteps = other.inflectionSteps
                         alternate.partOfSpeech = other.isLemma ? other.lemmaPartOfSpeech : posBits
+                        alternate.transitionPartOfSpeech = other.inflectionSteps == 0 ? (transitionPartOfSpeechBySurface[surface] ?? 0) : 0
                         edges.append(alternate)
                     }
                     keptMatches += 1

@@ -12,6 +12,10 @@ struct LatticeEdge {
     var indices: [Int] = []
     // Bitfield of PartOfSpeech flags for this edge; 0 when trie was built without metadata.
     var partOfSpeech: UInt64 = 0
+    // POS bits the transition table classes this edge by, when they differ from partOfSpeech: the
+    // first sense of the spelling's most common entry (間 → noun, not the union's conjunction).
+    // 0 means class by partOfSpeech.
+    var transitionPartOfSpeech: UInt64 = 0
     // True when the surface resolves through the dictionary trie (including deinflection).
     var isDictionaryMatch: Bool = false
     // Unified frequency score (~0–7 Zipf-equivalent; higher = more common) for this surface/lemma,

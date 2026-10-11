@@ -77,11 +77,19 @@ headwords by the JMdict maintainers. https://downloads.tatoeba.org/exports/jpn_i
 
 | Set | exact | cut-through | split |
 |---|---|---|---|
-| held2k | 90.00 | 0.30 (61) | 2.66 |
-| fresh5k | 92.15 | 0.18 (69) | 2.47 |
-| kana2k | 86.55 | 1.06 (216) | 3.69 |
+| held2k | 89.94 | 0.30 (62) | 2.67 |
+| fresh5k | 92.10 | 0.17 (66) | 2.53 |
+| kana2k | 86.55 | 1.05 (213) | 3.70 |
 | lyric lines reviewed | 38 / 38 | | |
-| named cases | 67 / 67 | | |
+| named cases | 68 / 68 | | |
+
+Kanji spellings class by the first sense of their most common entry, not the union of every entry
+(SegmenterClassOverrides, `segmenter-class-overrides.tsv` from `scripts/calibration/segmenter_class_overrides.py`):
+間 was classed conj (あいだ's "while") and then adv, so 中日|間 lost to 中|日間. With the transition table recounted
+under both codes from the same Tatoeba export: held2k 61→62 cut-throughs, kana2k 213→213, fresh5k 69→66; readings
+held2k 95.19%→95.43%, fresh5k 96.90%→97.51%. A conj-below-noun reordering alone was noise (61→64 / 213→210 /
+69→68) and only moved 間 to adv. Regenerate the overrides, then recount the transition table and the reading
+contexts — all three count classes the running code assigns.
 
 An expression is not reached through a potential whose final verb is a dictionary verb of its own
 (Segmenter+PotentialExpressions): 口を開けて was 口を開く's potential, priced as one phrase (furigana ひら); now

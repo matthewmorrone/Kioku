@@ -99,7 +99,8 @@ nonisolated final class SegmenterTransitionTable: Sendable {
     // exactly that material, so the counts treat it as a break between word runs.
     func classIDs(for edge: LatticeEdge?) -> ClassIDs {
         guard let edge, edge.isDictionaryMatch else { return boundaryIDs }
-        return classIDs(surface: edge.surface, partOfSpeech: edge.partOfSpeech)
+        let bits = edge.transitionPartOfSpeech != 0 ? edge.transitionPartOfSpeech : edge.partOfSpeech
+        return classIDs(surface: edge.surface, partOfSpeech: bits)
     }
 
     // Cost of `next` directly after `previous`. Backs off from the full classes to the coarse ones
