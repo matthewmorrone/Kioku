@@ -100,8 +100,8 @@ class KiokuUITestCase: XCTestCase {
         wait(for: element, toMatch: "exists == false", timeout: 10)
     }
 
-    // Opens the sample note from the Notes tab and returns its text view, once it shows.
-    func openSampleNote(_ app: XCUIApplication) -> XCUIElement {
+    // Opens the sample note from the Notes tab and waits for its text view.
+    func openSampleNote(_ app: XCUIApplication) {
         selectTab(app, "Notes")
         let note = app.staticTexts[sampleNoteTitle].firstMatch
         XCTAssertTrue(note.waitForExistence(timeout: 60), "sample note not listed")
@@ -109,25 +109,30 @@ class KiokuUITestCase: XCTestCase {
         // The note's body comes first; other text views (the title) reuse the same view.
         let text = app.otherElements["readerText"].firstMatch
         XCTAssertTrue(text.waitForExistence(timeout: 60), "note didn't open in the reader")
-        return text
     }
 
-    // Opens the lookup sheet for the note's first word and returns its save star. The note
-    // segments once the dictionary has loaded; until then a tap has no word under it, so this
-    // taps points across the first line (below its ruby) until the sheet answers.
-    func openLookupForFirstWord(_ app: XCUIApplication, in text: XCUIElement) -> XCUIElement {
-        // The lookup sheet's star; its label says whether the word is saved.
+    // Opens the lookup sheet for the note's first word (キャラメル) and returns its save star. The
+    // reader exposes each laid-out line as a static text; this taps inside the first line's first
+    // word. The note segments once the dictionary has loaded, and until then a tap has no word
+    // under it, so this retries until the sheet answers for キャラメル.
+    func openLookupForFirstWord(_ app: XCUIApplication) -> XCUIElement {
+        let firstLine = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "キャラメルと飴玉とが")).firstMatch
+        XCTAssertTrue(firstLine.waitForExistence(timeout: 60), "note's first line not laid out")
+        // The lookup sheet's star (its label says whether the word is saved), and the word it's for.
         let star = app.buttons["lookupSaveStar"].firstMatch
-        let points = [(20, 28), (40, 28), (60, 40), (20, 50), (80, 50), (40, 70)]
+        let sheetWord = app.buttons["Speak \(sampleWord)"].firstMatch
+        // キャラメル is the line's first five characters, about 20 points each.
+        let offsets: [CGFloat] = [50, 30, 70]
         var attempt = 0
-        while star.exists == false && attempt < points.count * 2 {
-            let (x, y) = points[attempt % points.count]
-            text.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: x, dy: y)).tap()
-            _ = star.waitForExistence(timeout: 5)
+        while sheetWord.exists == false && attempt < offsets.count * 3 {
+            let start = firstLine.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.6))
+            start.withOffset(CGVector(dx: offsets[attempt % offsets.count], dy: 0)).tap()
+            _ = sheetWord.waitForExistence(timeout: 5)
             attempt += 1
         }
-        if star.exists == false { record(app, "no lookup sheet") }
-        XCTAssertTrue(star.exists, "lookup sheet's save star never appeared")
+        if sheetWord.exists == false { record(app, "no lookup sheet for \(sampleWord)") }
+        XCTAssertTrue(sheetWord.exists, "lookup sheet for \(sampleWord) never appeared")
+        XCTAssertTrue(star.exists, "lookup sheet has no save star")
         return star
     }
 
@@ -140,8 +145,8 @@ class KiokuUITestCase: XCTestCase {
     // Leaves the sample note's first word saved: opens the note, looks the word up, stars it if it
     // isn't starred, and closes the sheet.
     func ensureSampleWordSaved(_ app: XCUIApplication) {
-        let text = openSampleNote(app)
-        let star = openLookupForFirstWord(app, in: text)
+        openSampleNote(app)
+        let star = openLookupForFirstWord(app)
         if star.label == "Save" { toggleStar(star, expecting: "Unsave") }
         app.swipeDown()
         wait(for: star, toMatch: "exists == false", timeout: 10)

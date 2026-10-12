@@ -36,13 +36,20 @@ extension ReadView {
         }
 
         document.furiganaComputationTask = Task(priority: .userInitiated) {
-            let furiganaResult = StartupTimer.measure("buildFuriganaBySegmentLocation (\(edges.count) edges)") {
-                buildFuriganaBySegmentLocation(
-                    for: sourceText,
-                    edges: edges,
-                    surfaceReadingData: currentSurfaceReadingData
-                )
+            // Detached: this Task inherits ReadView's main actor, and resolving a long note's
+            // readings held the main thread for seconds (7.3 s for 446 edges on the CI simulator).
+            let resolved = await Task.detached(priority: .userInitiated) {
+                [segmenter = self.segmenter, kanjiReadingFallback = self.kanjiReadingFallback] in
+                StartupTimer.measure("buildFuriganaBySegmentLocation (\(edges.count) edges)") {
+                    FuriganaResolver(segmenter: segmenter, kanjiReadingFallback: kanjiReadingFallback).build(
+                        for: sourceText,
+                        edges: edges,
+                        surfaceReadingData: currentSurfaceReadingData
+                    )
+                }
             }
+            .value
+            let furiganaResult = (furiganaByLocation: resolved.byLocation, lengthByLocation: resolved.lengthByLocation)
 
             guard !Task.isCancelled else {
                 return

@@ -13,10 +13,10 @@ final class CoreLoopUITests: KiokuUITestCase {
     // and checks the Words tab lists it under Saved.
     func testLookUpSaveAndListAWord() {
         let app = launchApp()
-        let text = openSampleNote(app)
+        openSampleNote(app)
         record(app, "reader opened")
 
-        let star = openLookupForFirstWord(app, in: text)
+        let star = openLookupForFirstWord(app)
         // An earlier test in the run may have saved it already; start from unsaved.
         if star.label == "Unsave" { toggleStar(star, expecting: "Save") }
         toggleStar(star, expecting: "Unsave")
@@ -91,7 +91,7 @@ final class CoreLoopUITests: KiokuUITestCase {
         selectTab(app, "Settings")
         tapSettingsRow(app, "Import")
         let file = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "kioku-export")).firstMatch
-        XCTAssertTrue(file.waitForExistence(timeout: 30), "exported file not offered by the importer")
+        findInImporter(app, file)
         record(app, "importer")
         file.tap()
         let confirmImport = app.alerts.buttons["Import"].firstMatch
@@ -112,6 +112,19 @@ final class CoreLoopUITests: KiokuUITestCase {
         XCTAssertTrue(savedSegment.waitForExistence(timeout: 10), "filter sheet didn't open")
         savedSegment.tap()
         dismissSheet(app, above: app.segmentedControls.firstMatch)
+    }
+
+    // The importer opens on Recents, empty on a fresh simulator; the export went to On My iPhone,
+    // reached through Browse. Steps there until the file shows.
+    private func findInImporter(_ app: XCUIApplication, _ file: XCUIElement) {
+        let steps = [app.buttons["Browse"].firstMatch, app.staticTexts["On My iPhone"].firstMatch]
+        var step = 0
+        while file.waitForExistence(timeout: 10) == false && step < steps.count {
+            if steps[step].exists { steps[step].tap() }
+            step += 1
+        }
+        if file.exists == false { record(app, "importer without the file") }
+        XCTAssertTrue(file.exists, "exported file not offered by the importer")
     }
 
     // Taps one of Settings' rows, scrolling down to it first when it's below the fold.

@@ -26,6 +26,9 @@ struct ContentView: View {
     @State private var shouldActivateReadEditMode = false
     @State private var readResources = ReadResources()
     @State private var hasLoadedReadResources = false
+    // The Custom Words the latest rebuild wrote into the dictionary. onAppear syncs the built-ins
+    // just before the first rebuild, and the change that sync makes must not start a second one.
+    @State private var customWordsInLatestRebuild: [CustomWord]?
     @State private var dictionaryDownloadManager = DictionaryDownloadManager()
     @AppStorage("kioku.lastActiveNoteID") private var lastActiveNoteID = ""
     // Drives the live re-apply of nav/tab bar chrome when the user toggles the theme in Settings.
@@ -215,8 +218,11 @@ struct ContentView: View {
             rebuildReadResources()
         }
         // A custom word added, edited or removed: the rebuild writes the new list into the
-        // dictionary first (CustomWordApplier), then re-segments with it.
-        .onChange(of: customWordStore.words) { _, _ in
+        // dictionary first (CustomWordApplier), then re-segments with it. A list the latest
+        // rebuild already applied (the launch-time built-in sync) starts nothing: two concurrent
+        // rebuilds doubled the launch's ~20 s trie build and wrote the dictionary file at once.
+        .onChange(of: customWordStore.words) { _, words in
+            guard words != customWordsInLatestRebuild else { return }
             rebuildReadResources()
         }
         // Validate WOTD scheduling after startup has settled rather than on the critical path.
@@ -474,6 +480,7 @@ struct ContentView: View {
     private func rebuildReadResources() {
         let currentRevision = readResources.segmenterRevision
         let customWords = customWordStore.words
+        customWordsInLatestRebuild = customWords
         Task.detached(priority: .userInitiated) {
             // Custom Words go into the dictionary file before anything reads it. A failure leaves
             // the file as it was: lookups and segmentation work, minus the list.
