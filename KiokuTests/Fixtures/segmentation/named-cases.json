@@ -1,0 +1,247 @@
+{
+  "about": "Named segmentation cases: each text must segment into exactly these pieces under the shipped segmenter, and a case with a lemma must also resolve to it (one-segment cases only). Checked in seconds on the Mac by scripts/segmentation-eval/named_cases.py and in the test suite by NamedSegmentationCasesTests. Known errors (cases that should hold but don't) are listed in docs/todo.md, not here.",
+  "groups": [
+    {
+      "why": "だけ + どきっと are both real words; だけど + きっと wins only when だけ, だけど and きっと carry the ranks of those spellings as written. Found on device when the app was mis-wired.",
+      "cases": [
+        {"text": "だけどきっと", "segments": ["だけど", "きっと"]}
+      ]
+    },
+    {
+      "why": "つ始める resolves as a conjugated form of a common verb; the inflection-step cost is what stops it pulling はい off the front of はいつ.",
+      "cases": [
+        {"text": "問題はいつ始めるか", "segments": ["問題", "は", "いつ", "始める", "か"]}
+      ]
+    },
+    {
+      "why": "The same two kana, opposite answers: はい is \"yes\" here…",
+      "cases": [
+        {"text": "はい、そうです", "segments": ["はい", "、", "そう", "です"]}
+      ]
+    },
+    {
+      "why": "…and は + いつも here. A per-surface denylist can only get one of the pair right.",
+      "cases": [
+        {"text": "はいつも笑っている", "segments": ["は", "いつも", "笑っている"]}
+      ]
+    },
+    {
+      "why": "があ is a dictionary entry (onomatopoeia); taking it strands ります.",
+      "cases": [
+        {"text": "視力障害があります", "segments": ["視力障害", "が", "あります"]}
+      ]
+    },
+    {
+      "why": "がそ is the reading of 画素, which nobody writes in kana; it is not a common JMdict reading, so it pays the two-kana penalty even though the frequency list ranks it.",
+      "cases": [
+        {"text": "私たちがそこへ行く", "segments": ["私たち", "が", "そこ", "へ", "行く"]}
+      ]
+    },
+    {
+      "why": "はだ is the reading of 肌; in kana it is far rarer than は + a following verb.",
+      "cases": [
+        {"text": "ほんとうはだきしめたい", "segments": ["ほんとう", "は", "だきしめたい"]}
+      ]
+    },
+    {
+      "why": "結婚 + 式を挙げました are both dictionary units and cheaper by word cost alone; what follows a noun (を) and what follows を (a verb) is what the transition costs add.",
+      "cases": [
+        {"text": "結婚式を挙げました", "segments": ["結婚式", "を", "挙げました"]}
+      ]
+    },
+    {
+      "why": "なかったら is ない in the たら-conditional. Without an い-adjective たら rule it resolved only to a non-word, and がな + かったら won.",
+      "cases": [
+        {"text": "嵐がなかったら", "segments": ["嵐", "が", "なかったら"]}
+      ]
+    },
+    {
+      "why": "Negative past of an ichidan verb is one conjugated form, not 食べられ + なかった.",
+      "cases": [
+        {"text": "食べられなかった", "segments": ["食べられなかった"]}
+      ]
+    },
+    {
+      "why": "The たり form belongs to its verb; り must not be pulled onto する.",
+      "cases": [
+        {"text": "減ったりする", "segments": ["減ったり", "する"]}
+      ]
+    },
+    {
+      "why": "A particle-cluster entry is one segment when the path search picks it: segmentation alone decides granularity, and nothing splits a chosen segment afterwards.",
+      "cases": [
+        {"text": "そこには誰もいない", "segments": ["そこ", "には", "誰も", "いない"]}
+      ]
+    },
+    {
+      "why": "An entry that merely looks like particles keeps its own meaning: なのに is \"even though\".",
+      "cases": [
+        {"text": "雨なのに", "segments": ["雨", "なのに"]},
+        {"text": "でも行く", "segments": ["でも", "行く"]}
+      ]
+    },
+    {
+      "why": "Conjugations that stack one class-changing ending on another — polite over progressive, past over passive, negative over progressive — are one verb form each. They resolve only when a rule's rulesIn names the class of the INFLECTED form (ている conjugates as ichidan, ない as an い-adjective); typed by the lemma's class, none of these had a lattice edge at all.",
+      "cases": [
+        {"text": "知っています", "segments": ["知っています"]},
+        {"text": "彼に言われた", "segments": ["彼", "に", "言われた"]},
+        {"text": "まだ持っていない", "segments": ["まだ", "持っていない"]}
+      ]
+    },
+    {
+      "why": "Godan polite negative and volitional, and なさい on a godan stem.",
+      "cases": [
+        {"text": "お金がありません", "segments": ["お金", "が", "ありません"]},
+        {"text": "本を読もう", "segments": ["本", "を", "読もう"]},
+        {"text": "早くおきなさい", "segments": ["早く", "おきなさい"]}
+      ]
+    },
+    {
+      "why": "An ichidan verb's bare stem is a segment of its own before a separate word — 食べ + に + 行く — and an adjective stem carries すぎる / そう as one form.",
+      "cases": [
+        {"text": "ラーメンを食べに行きます", "segments": ["ラーメン", "を", "食べ", "に", "行きます"]},
+        {"text": "仕事が忙しすぎる", "segments": ["仕事", "が", "忙しすぎる"]},
+        {"text": "歩きながら話す", "segments": ["歩きながら", "話す"]}
+      ]
+    },
+    {
+      "why": "考え and 過ぎ are dictionary words AND ichidan stems. They must not borrow 考える / 過ぎる's frequency through stem recovery, or 考え|事ができない and 過ぎ|て become the cheaper paths.",
+      "cases": [
+        {"text": "考え事ができない", "segments": ["考え事", "が", "できない"]},
+        {"text": "時間が過ぎて", "segments": ["時間", "が", "過ぎて"]},
+        {"text": "していて", "segments": ["していて"]}
+      ]
+    },
+    {
+      "why": "A word written across katakana and hiragana is one segment — the dictionary entry ウソつき, and katakana-stem verbs through their lemma (サボった → サボる)…",
+      "cases": [
+        {"text": "ウソつきな君", "segments": ["ウソつき", "な", "君"]},
+        {"text": "授業をサボった", "segments": ["授業", "を", "サボった"]},
+        {"text": "消しゴムを買った", "segments": ["消しゴム", "を", "買った"]}
+      ]
+    },
+    {
+      "why": "…while a span that merely runs across the script switch is still refused: ビロード+の must not become どの, nor ケンカ+もした 醸す. Their lemmas are not written across any switch.",
+      "cases": [
+        {"text": "ビロードの闇", "segments": ["ビロード", "の", "闇"]},
+        {"text": "ケンカもしたけど", "segments": ["ケンカ", "も", "した", "けど"]}
+      ]
+    },
+    {
+      "why": "して, した and せよ are dictionary words AND conjugated forms of する. Priced as する itself with no inflection step, they made なら|して and 恋|せよ cheaper than ならして and 恋せよ; they now pay the step when their lemma prices them, and are classed as that reading (a verb's て-form after を, not the adverb 均して). Both lines came from reviewing real lyrics.",
+      "cases": [
+        {"text": "ベルをならして", "segments": ["ベル", "を", "ならして"]},
+        {"text": "恋せよ乙女", "segments": ["恋せよ", "乙女"]},
+        {"text": "勉強していた", "segments": ["勉強", "していた"]}
+      ]
+    },
+    {
+      "why": "なる after an adjective's く-form is its own word (\"become\"), not part of the adjective — and the く-form must not be swallowed by なくなる (\"to disappear\"): not 切|なくなったり, でき|なくなる.",
+      "cases": [
+        {"text": "切なくなったり", "segments": ["切なく", "なったり"]},
+        {"text": "制御ができなくなる。", "segments": ["制御", "が", "できなく", "なる", "。"]},
+        {"text": "泣きたくなるようなムーンライト", "segments": ["泣きたく", "なる", "ような", "ムーンライト"]}
+      ]
+    },
+    {
+      "why": "A number is a token of its own, priced like a common word — not unknown text — so the counter after it is read whole (２ + 時間, not ２時 + 間). ヶ月 keeps its ヶ even though ヶ can never start a word on its own. A digit + counter that is a dictionary word still wins on its frequency.",
+      "cases": [
+        {"text": "２時間かかった", "segments": ["２", "時間", "かかった"]},
+        {"text": "５ヶ月前", "segments": ["５", "ヶ月", "前"]},
+        {"text": "３年間住んだ", "segments": ["３", "年間", "住んだ"]},
+        {"text": "１日中寝ていた", "segments": ["１日中", "寝ていた"]},
+        {"text": "２人で行く", "segments": ["２人", "で", "行く"]}
+      ]
+    },
+    {
+      "why": "て-form + よ must split even when よ is immediately followed by a bare noun with no punctuation between them, as lyric line breaks routinely are. つたえ is also a common noun (message/legend) and てよ is its own dictionary particle-expression, so つたえ｜てよ is a real competing parse; it wins whenever a w:よ→noun transition, rare in the prose-trained table, is priced above the clamp. Real line: あいたいとささやく（つたえてよ スターライト）. See transitionClampNats in SegmenterScoring.swift.",
+      "cases": [
+        {"text": "あいたいとささやく（つたえてよスターライト）", "segments": ["あいたい", "と", "ささやく", "（", "つたえて", "よ", "スターライト", "）"]},
+        {"text": "伝えてよ星", "segments": ["伝えて", "よ", "星"]},
+        {"text": "見てよ空", "segments": ["見て", "よ", "空"]}
+      ]
+    },
+    {
+      "why": "A lone kana with no transition class of its own is priced below its frequency rank (SegmenterScoring.loneKanaPenalty): ま|って beat 待って on a line of its own. Kana-written 間 must still stand alone, and full-width English must stay one word per run.",
+      "cases": [
+        {"text": "まって", "segments": ["まって"]},
+        {"text": "まってよ", "segments": ["まって", "よ"]},
+        {"text": "すこしのまおつきあいください", "segments": ["すこし", "の", "ま", "おつきあい", "ください"]},
+        {"text": "ＬＯＶＥがほしい", "segments": ["ＬＯＶＥ", "が", "ほしい"]}
+      ]
+    },
+    {
+      "why": "The ichidan imperative よ deinflection rule (よ→る for a v1 stem) was tried and reverted (commit 4851340): on kana-only text it let および／いよ resolve as imperatives of おる／いる, breaking these three sentences. The rule stays out; these guard against it — or an equivalent — being reintroduced without re-checking kana2k.",
+      "cases": [
+        {"text": "およせください", "segments": ["お", "よせ", "ください"]},
+        {"text": "およみになる", "segments": ["お", "よみ", "に", "なる"]},
+        {"text": "がいようのみにしよう", "segments": ["がいよう", "のみ", "に", "しよう"]}
+      ]
+    },
+    {
+      "why": "An unknown katakana word whose first kana is also a one-character entry (リ is a prefix, シ a noun) lost its whole-run lattice edge once single kana stopped being gated for the path search, and came out as リ + ュミエール. See the katakana fallback in Segmenter.buildLattice.",
+      "cases": [
+        {"text": "その物語リュミエール", "segments": ["その", "物語", "リュミエール"]},
+        {"text": "涙色のシェノン", "segments": ["涙", "色", "の", "シェノン"]}
+      ]
+    },
+    {
+      "why": "Words that must be chosen as one segment and resolve to their dictionary form (lemma): lattice, path search and lemma scoring together.",
+      "cases": [
+        {"text": "つないだ", "segments": ["つないだ"], "lemma": "つなぐ", "why": "つないだ — past tense of つなぐ. One segment, not つな|いだ."},
+        {"text": "まけない", "segments": ["まけない"], "lemma": "まける", "why": "まけない — negative of まける. One segment, not まけ|ない."},
+        {"text": "その度", "segments": ["その度"], "lemma": "その度", "why": "その度 — adverbial phrase, one entry. One segment, not その|度."},
+        {"text": "抱かれ", "segments": ["抱かれ"], "lemma": "抱く", "why": "抱かれ — passive of 抱く. One segment resolving to 抱く."},
+        {"text": "トキメク", "segments": ["トキメク"], "lemma": "ときめく", "why": "トキメク — katakana spelling of ときめく. One segment, not トキ|メク."},
+        {"text": "月色", "segments": ["月色"], "lemma": "月色", "why": "月色 — compound noun, one entry."},
+        {"text": "しょげちゃうんだ", "segments": ["しょげちゃうんだ"], "lemma": "しょげる", "why": "しょげちゃうんだ — colloquial contracted form of しょげる; deinflection reaches the base lemma."},
+        {"text": "プレイヤーズ", "segments": ["プレイヤーズ"], "lemma": "プレイヤーズ", "why": "プレイヤーズ — katakana loanword. Was missing from the lexicon; added to extras.json so it now resolves."},
+        {"text": "ティアーズ", "segments": ["ティアーズ"], "lemma": "ティアー", "why": "ティアーズ — katakana plural of ティアー (tear); a plural resolves to its singular (Segmenter+KatakanaPlurals)."},
+        {"text": "済まれないで", "segments": ["済まれないで"], "lemma": "済む", "why": "済まれないで — passive (-れる) + negative (-ない) + linking で on 済む. Pinned by the passiveNegativeTeForms rule set added 2026-05-25 (12 rules, one per v5 stem ending + v1 + vk + vs)."},
+        {"text": "かけましょ", "segments": ["かけましょ"], "lemma": "かける", "why": "かけましょ — 〜ましょ volitional of かける, resolved by the ましょ deinflection chain."},
+        {"text": "ショーブ", "segments": ["ショーブ"], "lemma": "しょうぶ", "why": "ショーブ — katakana spelling of しょうぶ via long-vowel expansion (ョー → ょう). Follows the same convention as testTokimeku: lemma resolves to the hiragana headword, not the kanji 勝負 (which would require a kana→kanji promotion not currently done by this path)."}
+      ]
+    },
+    {
+      "why": "Lyric lines and reviewed sentences; each pins one decision the segmenter must keep.",
+      "cases": [
+        {"text": "がいようのみにしよう", "segments": ["がいよう", "のみ", "に", "しよう"]},
+        {"text": "あいたいとささやく", "segments": ["あいたい", "と", "ささやく"]},
+        {"text": "顔を上げて飛び込んでゆくの", "segments": ["顔を上げて", "飛び込んでゆく", "の"]},
+        {"text": "自信持ってクリアしてゆくの", "segments": ["自信", "持って", "クリアしてゆく", "の"]},
+        {"text": "彼は飛び込んでいった", "segments": ["彼", "は", "飛び込んでいった"]},
+        {"text": "あなたについてく", "segments": ["あなた", "に", "ついてく"]},
+        {"text": "本を持ってった", "segments": ["本", "を", "持ってった"]},
+        {"text": "ナカナイヨ", "segments": ["ナカナイ", "ヨ"]},
+        {"text": "歌い続けてゆく", "segments": ["歌い続けてゆく"]},
+        {"text": "思春期エイジかきかえOK", "segments": ["思春期", "エイジ", "かきかえ", "OK"]},
+        {"text": "旋律(おと)を奏でる", "segments": ["旋律", "(", "おと", ")", "を", "奏でる"]},
+        {"text": "２０２メートルを出せる", "segments": ["２０２", "メートル", "を", "出せる"]},
+        {"text": "私は１９７４年に生まれた", "segments": ["私", "は", "１９７４", "年", "に", "生まれた"]},
+        {"text": "はい、お口を開けてください", "segments": ["はい", "、", "お", "口", "を", "開けて", "ください"]},
+        {"text": "命は闇の中のまたたく光だ", "segments": ["命", "は", "闇", "の", "中", "の", "またたく", "光", "だ"]},
+        {"text": "とささやく声", "segments": ["と", "ささやく", "声"]},
+        {"text": "流されてたゆたうのこのまま", "segments": ["流されて", "たゆたう", "の", "このまま"]},
+        {"text": "もっともっと愛している", "segments": ["もっと", "もっと", "愛している"]},
+        {"text": "今すぐ会いたいよ", "segments": ["今すぐ", "会いたい", "よ"]},
+        {"text": "同じ地球に生まれたの", "segments": ["同じ", "地球", "に", "生まれた", "の"]},
+        {"text": "ハートは万華鏡", "segments": ["ハート", "は", "万華鏡"]},
+        {"text": "あなたのことが好き", "segments": ["あなた", "の", "こと", "が", "好き"]},
+        {"text": "それはなのか", "segments": ["それ", "は", "な", "の", "か"]},
+        {"text": "君にも会いたい", "segments": ["君", "にも", "会いたい"]},
+        {"text": "そうだよね", "segments": ["そうだよね"]},
+        {"text": "その物語", "segments": ["その", "物語"]},
+        {"text": "か弱い声", "segments": ["か弱い", "声"]},
+        {"text": "もしも願いが叶うなら", "segments": ["もしも", "願い", "が", "叶う", "なら"]},
+        {"text": "したじゃない", "segments": ["した", "じゃない"]},
+        {"text": "つないだ手", "segments": ["つないだ", "手"]},
+        {"text": "その度に", "segments": ["その度", "に"]},
+        {"text": "トキメク心", "segments": ["トキメク", "心"]},
+        {"text": "ニュームーン", "segments": ["ニュー", "ムーン"]},
+        {"text": "キスして", "segments": ["キスして"]},
+        {"text": "愛している", "segments": ["愛している"]},
+        {"text": "食べてしまった", "segments": ["食べて", "しまった"]}
+      ]
+    }
+  ]
+}

@@ -17,7 +17,7 @@ python3 unpack-data.py              # data/*.jsonl.gz → work/data/<set>.jsonl 
 ./work/segcli run < work/data/held2k.txt > work/held2k.out      # ~1 min per 2k sentences; run long sets in the background
 python3 score.py work/data/held2k.jsonl work/held2k.out --examples 10
 python3 lyrics/score_lyrics.py      # the user-reviewed lyric lines
-python3 named_cases.py              # named cases (data/named-cases.tsv): each pins one decision; seconds
+python3 named_cases.py              # named cases (KiokuTests/Fixtures/segmentation/named-cases.json); seconds
 ```
 
 Run all of these before a segmentation change goes up — they are the check; CI's Tests workflow is
@@ -163,7 +163,7 @@ the common exemption the penalty only worked between 0.29 and 0.40 (よみ and �
 8.25/8.75): cut-through flat at 90–91 throughout, exact only trades split for merged — not changed.
 Against JPDB on the same code: held2k 79 vs 82 cut-throughs, kana2k 250 vs 237 (55 Jiten-only, 42
 JPDB-only: word-by-word rank disagreement on kana strings like では / ですが / してやる, no pattern).
-Named-case failure: がいよう|の|み, a real error. Jiten ranks kana み (#6244, JPDB left it unranked), and み
+Named-case failure (holds again as of 2026-10-12): がいよう|の|み. Jiten ranks kana み (#6244, JPDB left it unranked), and み
 escapes the lone-kana penalty through its JMdict counter entry. Limiting that exemption to kana after a
 numeral fixes 外用|のみ|に but costs kana2k (こ for 子 loses it: 250 → 253 cut-throughs with particles exempt),
 and the line then flips to がい|よ|うのみにしよう because Jiten ranks kana がいよう at #348,063 — not shipped.
