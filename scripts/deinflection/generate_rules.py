@@ -111,14 +111,17 @@ def read_unidic(lex_lines, aux_words):
         pos1, ctype, cform = row[LEX_POS1], row[LEX_CTYPE], row[LEX_CFORM]
         if pos1 == '助動詞' and row[LEX_KANA_BASE] != '*':
             all_aux[hiragana(row[LEX_KANA_BASE])].add(ctype)
-        if ctype == '*' or ctype.startswith('文語'):
-            continue
-        if pos1 == '助動詞':
+        classical = ctype.startswith('文語')
+        if pos1 == '助動詞' and ctype != '*':
             surface = row[LEX_SURFACE]
-            base = row[LEX_SURFACE] if cform == '終止形-一般' else None
             lemma = hiragana(row[LEX_KANA_BASE])
-            if lemma in aux_words and KANA.match(surface) and not STYLISED.search(surface) and not is_drawn_out(surface):
-                aux_forms[lemma].add((surface, cform))
+            # A classical auxiliary's forms are read only for the auxiliaries the table names as
+            # classical (auxiliaryConjugations, classicalForms); verbs stay modern either way.
+            wanted = lemma in aux_words and (not classical or aux_words[lemma].get('classicalForms'))
+            if wanted and KANA.match(surface) and not STYLISED.search(surface) and not is_drawn_out(surface):
+                aux_forms[lemma].add((surface, cform, classical))
+            continue
+        if ctype == '*' or classical:
             continue
         if pos1 not in ('動詞', '形容詞'):
             continue
@@ -240,7 +243,7 @@ def build_rules(lex_lines, grammar_path, extras_path, unidic_sha):
     standalone_group = grammar['standaloneForms']['forms']
     standalone = set(standalone_group)
 
-    endings, stem_last_kana, aux_forms, all_aux = read_unidic(lex_lines, set(aux_grammar))
+    endings, stem_last_kana, aux_forms, all_aux = read_unidic(lex_lines, aux_words)
     check_auxiliary_coverage(grammar, all_aux)
 
     forms = collections.defaultdict(list)  # cType → [(cForm, ending, base ending)]
@@ -250,7 +253,7 @@ def build_rules(lex_lines, grammar_path, extras_path, unidic_sha):
                 forms[ctype].append((cform, ending, base_ending))
     # ます takes further auxiliaries the way a verb does (まし + た, ませ + ぬ): its forms join the
     # conjugating words, written out whole since ます is a word of its own.
-    forms['助動詞-マス'] = [(cform, surface, 'ます') for surface, cform in aux_forms['ます']]
+    forms['助動詞-マス'] = [(cform, surface, 'ます') for surface, cform, _ in aux_forms['ます']]
 
     rules = {}  # (group, kanaIn, kanaOut, rulesIn, rulesOut) → (helper, source)
 
@@ -309,10 +312,16 @@ def build_rules(lex_lines, grammar_path, extras_path, unidic_sha):
                 'UniDic 一段 連用形-一般 (bare stem, by its last kana)')
 
     # The auxiliaries' own forms: ました → ます (masu), なかった → ない (adj-i, through the adj-i rules).
+    # A classical auxiliary (classicalForms) gets every classical form: none of them is a fragment of
+    # a modern word ending, and the measured exceptions are in omitted.
     for aux, aux_word_grammar in aux_grammar.items():
-        for surface, cform in sorted(aux_forms[aux]):
-            if surface != aux and (cform in standalone or cform in aux_words[aux].get('forms', [])):
-                add(aux_words[aux]['group'], surface, aux, [aux_word_grammar], [aux_word_grammar], f'UniDic 助動詞 {aux} {cform}')
+        for surface, cform, classical in sorted(aux_forms[aux]):
+            if surface != aux and (cform in standalone or cform in aux_words[aux].get('forms', [])
+                                   or (classical and aux_words[aux].get('classicalForms'))):
+                # A classical form goes in classicalForms whatever its auxiliary's group, so the segmenter
+                # can price classical steps above modern ones (ぬ's classical ぬる beside its modern ざる).
+                group = grammar['classicalGroup'] if classical else aux_words[aux]['group']
+                add(group, surface, aux, [aux_word_grammar], [aux_word_grammar], f'UniDic 助動詞 {aux} {cform}')
 
     for row in grammar['fixedSequences']:
         add(row['group'], row['kanaIn'], row['kanaOut'], row['rulesIn'], row['rulesOut'], f"fixedSequences: {row['note']}")
@@ -335,6 +344,11 @@ def build_rules(lex_lines, grammar_path, extras_path, unidic_sha):
             rule['source'] = 'deinflection-extras.json: ' + section['about'].split(':')[0]
             groups[row['group']].append(rule)
     out = merged(groups)
+    # Classical forms go last: the app keeps this order between rules of equal length, so a modern
+    # reading of a surface (したら as した + ら) reaches each state before a classical one (したり).
+    classical_rules = out.pop(grammar['classicalGroup'], None)
+    if classical_rules:
+        out[grammar['classicalGroup']] = classical_rules
     out['nonIchidanRuVerbs'] = grammar['nonIchidanRuVerbs']
     out['intermediateForms'] = grammar['intermediateForms']
     out['build'] = {

@@ -41,6 +41,7 @@ extension DictionaryStore {
             }
             return DeinflectionRuleSet(
                 groupedRules: groupedRules,
+                orderedRules: rows.map { (label: $0.0, rule: $0.1) },
                 nonIchidanRuVerbs: Set(lists.filter { $0.0 == "nonIchidanRuVerbs" }.map(\.1)),
                 intermediateForms: Set(lists.filter { $0.0 == "intermediateForms" }.map(\.1))
             )

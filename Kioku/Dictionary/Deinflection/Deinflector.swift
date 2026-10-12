@@ -51,9 +51,13 @@ nonisolated final class Deinflector {
         nonIchidanRuVerbs: Set<String>,
         intermediateForms: Set<String>
     ) {
-        let sortedLabeledRules = labeledRules.sorted { lhs, rhs in
-            lhs.rule.kanaIn.count > rhs.rule.kanaIn.count
-        }
+        // Longest kanaIn first; rules of equal length keep their given order, so traversal (and which
+        // path first reaches a state) never depends on hashing.
+        let sortedLabeledRules = labeledRules.enumerated().sorted { lhs, rhs in
+            lhs.element.rule.kanaIn.count != rhs.element.rule.kanaIn.count
+                ? lhs.element.rule.kanaIn.count > rhs.element.rule.kanaIn.count
+                : lhs.offset < rhs.offset
+        }.map(\.element)
         self.labeledRules = sortedLabeledRules
         self.rules = sortedLabeledRules.map(\.rule)
         (self.ruleIndicesByLastCharacter, self.emptyInputRuleIndices) = Self.lastCharacterIndex(sortedLabeledRules)
@@ -77,7 +81,7 @@ nonisolated final class Deinflector {
     // Stores grouped deinflection rules while preserving group labels used for chain reporting.
     convenience init(groupedRules: [String: [DeinflectionRule]], trie: DictionaryTrie, nonIchidanRuVerbs: Set<String> = [], intermediateForms: Set<String> = []) {
         self.init(
-            labeledRules: groupedRules.flatMap { label, grouped in grouped.map { (label: label, rule: $0) } },
+            labeledRules: groupedRules.sorted { $0.key < $1.key }.flatMap { label, grouped in grouped.map { (label: label, rule: $0) } },
             trie: trie,
             nonIchidanRuVerbs: nonIchidanRuVerbs,
             intermediateForms: intermediateForms
@@ -87,7 +91,7 @@ nonisolated final class Deinflector {
     // Builds a deinflector from the rules the dictionary carries (DictionaryStore.fetchDeinflectionRuleSet).
     convenience init(ruleSet: DeinflectionRuleSet, trie: DictionaryTrie) {
         self.init(
-            groupedRules: ruleSet.groupedRules,
+            labeledRules: ruleSet.orderedRules,
             trie: trie,
             nonIchidanRuVerbs: ruleSet.nonIchidanRuVerbs,
             intermediateForms: ruleSet.intermediateForms

@@ -143,8 +143,12 @@ extension Segmenter {
                 // A potential under further inflection (動けなく: potential + negative) isn't charged
                 // for the potential; a bare potential (おける from 置く) still is, so it doesn't
                 // undercut a dictionary word (における).
-                let counted = path.transitions.filter { Self.uncountedStepGroups.contains($0.label) == false }.count
-                let steps = counted == 0 ? path.transitions.count : counted
+                // A classical step (過ぎし, 泣かしめる) counts as several: classical endings are rare in
+                // modern text, so one should win only where no modern reading fits — not 会い|に read
+                // as 会う + ぬ's に, or よ|ね as ず's ね.
+                let priced = path.transitions.filter { Self.uncountedStepGroups.contains($0.label) == false }
+                let counted = priced.reduce(0) { $0 + ($1.label == Self.classicalStepGroup ? SegmenterScoring.classicalStepWeight : 1) }
+                let steps = priced.isEmpty ? path.transitions.count : counted
                 if fewestSteps == nil || steps < fewestSteps! {
                     fewestSteps = steps
                 }
@@ -161,6 +165,10 @@ extension Segmenter {
     // 動く) is a verb of its own in UniDic, so 動けなく costs what できなく does rather than a step
     // more. Path transitions carry normalized group labels.
     static let uncountedStepGroups: Set<String> = [Deinflector.normalizedRuleLabel("potentialForms")]
+
+    // The rule group every classical form is generated into (deinflection-grammar.json classicalGroup),
+    // as path transitions label it.
+    static let classicalStepGroup = Deinflector.normalizedRuleLabel("classicalForms")
 
     // A run of digits (ASCII or full-width) starting at `index`, as a lattice edge of its own. It is
     // offered at every digit even when dictionary words start there, because those words are what go

@@ -47,6 +47,12 @@ nonisolated struct SegmenterScoring {
     // conjugated forms.
     static let inflectionStepNats = 3.0
 
+    // How many steps one classical deinflection step (classicalForms: き, けり, む, ず's ざり …) counts
+    // as. Fitted on train2k (scripts/segmentation-eval, 2026-10-12): at 1 classical readings undercut
+    // modern ones (した|ら read through たり, 会い|に through ぬ); 3 is the smallest weight where
+    // train2k stops improving, and higher weights change nothing further.
+    static let classicalStepWeight = 3
+
     // Score assumed for a dictionary word with no frequency rank at all: rarer than any ranked word.
     static let unrankedDictionaryScore = 1.0
 

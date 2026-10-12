@@ -30,7 +30,27 @@
     {"attach": "さ", "gives": null, "after": ["adj-i"], "form": "語幹-一般", "group": "adjectiveForms"},
     {"attach": "げ", "gives": null, "after": ["adj-i"], "form": "語幹-一般", "group": "adjectiveForms"},
     {"attach": "そう", "gives": null, "after": ["adj-i"], "form": "語幹-一般", "helper": "そう", "group": "adjectiveForms"},
-    {"attach": "すぎる", "gives": "v1", "after": ["adj-i"], "form": "語幹-一般", "helper": "すぎる", "group": "adjectiveForms"}
+    {"attach": "すぎる", "gives": "v1", "after": ["adj-i"], "form": "語幹-一般", "helper": "すぎる", "group": "adjectiveForms"},
+    {"attach": "む", "gives": "mu", "after": ["v5", "v1", "vk"], "form": "未然形-一般", "group": "classicalForms", "note": "volitional/conjecture む, written ん (行かん, 見ん)"},
+    {"attach": "む", "gives": "mu", "after": ["vs"], "form": "未然形-セ", "group": "classicalForms"},
+    {"attach": "じ", "gives": "ji", "after": ["v5", "v1", "vk"], "form": "未然形-一般", "group": "classicalForms", "note": "negative volitional (負けじ)"},
+    {"attach": "じ", "gives": "ji", "after": ["vs"], "form": "未然形-セ", "group": "classicalForms"},
+    {"attach": "しむ", "gives": "shimu", "after": ["v5", "v1", "vk"], "form": "未然形-一般", "group": "classicalForms", "note": "literary causative (泣かしむ)"},
+    {"attach": "しむ", "gives": "shimu", "after": ["vs"], "form": "未然形-セ", "group": "classicalForms"},
+    {"attach": "しめる", "gives": "v1", "after": ["v5"], "form": "未然形-一般", "group": "classicalForms", "note": "literary causative, modern ichidan (泣かしめる)"},
+    {"attach": "しめる", "gives": "v1", "after": ["vs"], "form": "未然形-セ", "group": "classicalForms"},
+    {"attach": "らる", "gives": "raru", "after": ["v1", "vk"], "form": "未然形-一般", "group": "classicalForms", "note": "classical passive (見らる)"},
+    {"attach": "き", "gives": "ki", "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般", "group": "classicalForms", "note": "past, written し before a noun (過ぎし日)"},
+    {"attach": "けり", "gives": "keri", "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般", "group": "classicalForms", "note": "recollective past (来にけり)"},
+    {"attach": "つ", "gives": "tsu", "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般", "group": "classicalForms", "note": "perfective (見つ)"},
+    {"attach": "たり", "gives": "tari", "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般", "group": "classicalForms", "note": "perfective たり, not the representative たり (書きたる)"},
+    {"attach": "けむ", "gives": "kemu", "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般", "group": "classicalForms", "note": "past conjecture"},
+    {"attach": "たし", "gives": "tashi", "after": ["v5", "v1", "vk", "vs"], "form": "連用形-一般", "group": "classicalForms", "note": "classical たい (会いたし)"},
+    {"attach": "ぬ", "gives": "nu", "after": ["v5", "vk", "vs"], "form": "連用形-一般", "group": "classicalForms", "note": "perfective ぬ (散りぬ); the negative ぬ takes the 未然形, and an ichidan's are the same"},
+    {"attach": "り", "gives": "ri", "after": ["v5"], "form": "仮定形-一般", "group": "classicalForms", "note": "perfective/continuous り after a godan え-form (咲ける, 書けり)"},
+    {"attach": "り", "gives": "ri", "after": ["vs"], "form": "未然形-セ", "group": "classicalForms"},
+    {"attach": "らむ", "gives": "ramu", "after": ["v5", "v1", "vk", "vs"], "form": "終止形-一般", "group": "classicalForms", "note": "present conjecture"},
+    {"attach": "らし", "gives": "rashi", "after": ["v5", "v1", "vk", "vs"], "form": "終止形-一般", "group": "classicalForms", "note": "inference"}
   ],
   "voicing": {
     "about": "た/て/たり after ん, and after a ガ行 イ音便 (泳いだ), are voiced.",
@@ -84,7 +104,7 @@
     "ichidanStemGroup": "ichidanStemForms"
   },
   "auxiliaryConjugations": {
-    "about": "Auxiliaries whose own forms get rules, with the grammar a word ending in them has. Only their standalone forms (standaloneForms: なきゃ, ましょう): their other forms take further auxiliaries, which the attachment rules cover (ない conjugates like an adjective; ます takes た/ぬ itself, まし + た). A rule for every form would admit fragments like なけれ, cutting なければならない. A row may name further forms that do end a word (forms, with formsWhy).",
+    "about": "Auxiliaries whose own forms get rules, with the grammar a word ending in them has. Only their standalone forms (standaloneForms: なきゃ, ましょう): their other forms take further auxiliaries, which the attachment rules cover (ない conjugates like an adjective; ます takes た/ぬ itself, まし + た). A rule for every form would admit fragments like なけれ, cutting なければならない. A row may name further forms that do end a word (forms, with formsWhy); a classical auxiliary (classicalForms) gets all of its classical forms, less the measured exceptions in omitted.",
     "words": {
       "ない": {"grammar": "adj-i", "group": "negativeForms"},
       "たい": {"grammar": "adj-i", "group": "desireForms"},
@@ -95,21 +115,38 @@
       "ます": {"grammar": "masu", "group": "politeForms"},
       "た": {"grammar": "ta", "group": "pastForms"},
       "だ": {"grammar": "ta", "group": "pastForms"},
-      "ぬ": {"grammar": "nu", "group": "literaryNegativeForms", "forms": ["連体形-補助"], "formsWhy": "ざる before a noun or を (望まざる, 許されざる, 言わざるを得ない) ends a word; it is not a fragment like なけれ"}
+      "ぬ": {"grammar": "nu", "group": "literaryNegativeForms", "forms": ["連体形-補助"], "formsWhy": "ざる before a noun or を (望まざる, 許されざる, 言わざるを得ない) ends a word; it is not a fragment like なけれ", "classicalForms": true},
+      "ず": {"grammar": "nu", "group": "classicalForms", "classicalForms": true},
+      "き": {"grammar": "ki", "group": "classicalForms", "classicalForms": true},
+      "けり": {"grammar": "keri", "group": "classicalForms", "classicalForms": true},
+      "つ": {"grammar": "tsu", "group": "classicalForms", "classicalForms": true},
+      "たり": {"grammar": "tari", "group": "classicalForms", "classicalForms": true},
+      "り": {"grammar": "ri", "group": "classicalForms", "classicalForms": true},
+      "む": {"grammar": "mu", "group": "classicalForms", "classicalForms": true},
+      "じ": {"grammar": "ji", "group": "classicalForms", "classicalForms": true},
+      "けむ": {"grammar": "kemu", "group": "classicalForms", "classicalForms": true},
+      "らむ": {"grammar": "ramu", "group": "classicalForms", "classicalForms": true},
+      "らし": {"grammar": "rashi", "group": "classicalForms", "classicalForms": true},
+      "たし": {"grammar": "tashi", "group": "classicalForms", "classicalForms": true},
+      "しむ": {"grammar": "shimu", "group": "classicalForms", "classicalForms": true},
+      "らる": {"grammar": "raru", "group": "classicalForms", "classicalForms": true}
     }
   },
+  "classicalGroup": "classicalForms",
   "auxiliaryCoverage": {
     "about": "Every auxiliary (助動詞) UniDic lists must be covered by a row above or named here with the reason it gets no rules; the generator fails the build otherwise (check_auxiliary_coverage).",
     "leftOut": {
+      "べし": "its own word, as JMdict lists it (べき): checked 2026-10-12, 行く|べき segments right without a rule",
+      "まじ": "its own word, as JMdict lists it (まじき): checked 2026-10-12, あるまじき segments right without a rule",
+      "ごとし": "its own word, as JMdict lists it (ごとき): checked 2026-10-12, 夢|の|ごとき segments right without a rule",
+      "なり": "the classical copula: its own word after a noun or 連体形 (行く|なり, JMdict なり)",
+      "べらなり": "Heian-period only (べらなり): no use outside classical texts",
       "です": "its own word: segmented separately, as JMdict and Tatoeba do",
       "っす": "its own word: segmented separately, as JMdict and Tatoeba do",
       "らしい": "its own word: segmented separately, as JMdict and Tatoeba do",
       "まい": "its own word: segmented separately, as JMdict and Tatoeba do",
       "たがる": "its own word: segmented separately, as JMdict and Tatoeba do",
       "やがる": "its own word: segmented separately, as JMdict and Tatoeba do",
-      "べし": "its own word: segmented separately, as JMdict and Tatoeba do",
-      "まじ": "its own word: segmented separately, as JMdict and Tatoeba do",
-      "ごとし": "its own word: segmented separately, as JMdict and Tatoeba do",
       "じゃ": "its own word: segmented separately, as JMdict and Tatoeba do",
       "つう": "a contraction of という, quoting a word: its own segment, like という",
       "っつう": "a contraction of という, quoting a word: its own segment, like という",
@@ -156,21 +193,6 @@
       "でつ": "baby talk or playful spellings of です/ます",
       "まちゅ": "baby talk or playful spellings of です/ます",
       "まつ": "baby talk or playful spellings of です/ます",
-      "き": "classical (文語): not written in modern text except inside set phrases JMdict lists whole",
-      "けむ": "classical (文語): not written in modern text except inside set phrases JMdict lists whole",
-      "けり": "classical (文語): not written in modern text except inside set phrases JMdict lists whole",
-      "じ": "classical (文語): not written in modern text except inside set phrases JMdict lists whole",
-      "つ": "classical (文語): not written in modern text except inside set phrases JMdict lists whole",
-      "なり": "classical (文語): not written in modern text except inside set phrases JMdict lists whole",
-      "べらなり": "classical (文語): not written in modern text except inside set phrases JMdict lists whole",
-      "む": "classical (文語): not written in modern text except inside set phrases JMdict lists whole",
-      "らむ": "classical (文語): not written in modern text except inside set phrases JMdict lists whole",
-      "らし": "classical (文語): not written in modern text except inside set phrases JMdict lists whole",
-      "らる": "classical (文語): not written in modern text except inside set phrases JMdict lists whole",
-      "り": "classical (文語): not written in modern text except inside set phrases JMdict lists whole",
-      "たし": "classical (文語): not written in modern text except inside set phrases JMdict lists whole",
-      "しむ": "classical (文語): not written in modern text except inside set phrases JMdict lists whole",
-      "しめる": "classical (文語): not written in modern text except inside set phrases JMdict lists whole",
       "す": "the short causative (パシらす, パシらされる): a rule for it reads every transitive 〜す verb as a causative (動かす → 動く, 減らす → 減る, 2026-10-12), so it waits for a gate that admits it only where no 〜す verb exists",
       "ちゃえる": "the potential of a contraction already covered (食べちゃえる, やっとける, 行ってける): rare enough to add only when a sentence needs it",
       "とける": "the potential of a contraction already covered (食べちゃえる, やっとける, 行ってける): rare enough to add only when a sentence needs it",
@@ -178,6 +200,8 @@
     }
   },
   "fixedSequences": [
+    {"kanaIn": "ずに", "kanaOut": "ず", "rulesIn": ["nu"], "rulesOut": ["nu"], "note": "ず + に", "group": "literaryNegativeForms"},
+    {"kanaIn": "ずとも", "kanaOut": "ず", "rulesIn": ["nu"], "rulesOut": ["nu"], "note": "ず + とも", "group": "literaryNegativeForms"},
     {"kanaIn": "ゃあ", "kanaOut": "ゃ", "rulesIn": ["v5", "v1", "vk", "vs", "adj-i", "nu"], "rulesOut": ["v5", "v1", "vk", "vs", "adj-i", "nu"], "note": "a ゃ contraction drawn out with あ (悪けりゃあ, 行かなきゃあ, すりゃあ, 行かにゃあ)", "group": "contractionForms"},
     {"kanaIn": "ないで", "kanaOut": "ない", "rulesIn": ["te"], "rulesOut": ["adj-i"], "note": "ない + で (しないで)", "group": "negativeTeForms"},
     {"kanaIn": "ませんでした", "kanaOut": "ます", "rulesIn": ["masu"], "rulesOut": ["masu"], "note": "ません + でした", "group": "politeForms"},
@@ -187,8 +211,6 @@
     {"kanaIn": "だら", "kanaOut": "だ", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "voiced (読んだら)", "group": "conditionalForms"},
     {"kanaIn": "たなら", "kanaOut": "た", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "conditional なら after た (したなら)", "group": "conditionalForms"},
     {"kanaIn": "だなら", "kanaOut": "だ", "rulesIn": ["ta"], "rulesOut": ["ta"], "note": "voiced (読んだなら)", "group": "conditionalForms"},
-    {"kanaIn": "ずに", "kanaOut": "ず", "rulesIn": ["nu"], "rulesOut": ["nu"], "note": "ず + に", "group": "literaryNegativeForms"},
-    {"kanaIn": "ずとも", "kanaOut": "ず", "rulesIn": ["nu"], "rulesOut": ["nu"], "note": "ず + とも", "group": "literaryNegativeForms"},
     {
       "kanaIn": "たち",
       "kanaOut": "",
@@ -199,6 +221,16 @@
     }
   ],
   "omitted": [
+    {"kanaIn": "に", "kanaOut": "ず", "rulesOut": ["nu"], "why": "a single kana that is also one of the commonest particles: it changed modern sentences at every classical step weight from 2 to 8 (よ|ね → よね, へ|と → へと, あて|に → あてに, held2k/fresh, 2026-10-12), so pricing cannot keep it"},
+    {"kanaIn": "に", "kanaOut": "ぬ", "rulesOut": ["nu"], "why": "a single kana that is also one of the commonest particles: it changed modern sentences at every classical step weight from 2 to 8 (よ|ね → よね, へ|と → へと, あて|に → あてに, held2k/fresh, 2026-10-12), so pricing cannot keep it"},
+    {"kanaIn": "ね", "kanaOut": "ず", "rulesOut": ["nu"], "why": "a single kana that is also one of the commonest particles: it changed modern sentences at every classical step weight from 2 to 8 (よ|ね → よね, へ|と → へと, あて|に → あてに, held2k/fresh, 2026-10-12), so pricing cannot keep it"},
+    {"kanaIn": "ね", "kanaOut": "ぬ", "rulesOut": ["nu"], "why": "a single kana that is also one of the commonest particles: it changed modern sentences at every classical step weight from 2 to 8 (よ|ね → よね, へ|と → へと, あて|に → あてに, held2k/fresh, 2026-10-12), so pricing cannot keep it"},
+    {"kanaIn": "と", "kanaOut": "たり", "rulesOut": ["tari"], "why": "a single kana that is also one of the commonest particles: it changed modern sentences at every classical step weight from 2 to 8 (よ|ね → よね, へ|と → へと, あて|に → あてに, held2k/fresh, 2026-10-12), so pricing cannot keep it"},
+    {"kanaIn": "て", "kanaOut": "つ", "rulesOut": ["tsu"], "why": "a single kana that is also one of the commonest particles: it changed modern sentences at every classical step weight from 2 to 8 (よ|ね → よね, へ|と → へと, あて|に → あてに, held2k/fresh, 2026-10-12), so pricing cannot keep it"},
+    {"kanaIn": "てよ", "kanaOut": "つ", "rulesOut": ["tsu"], "why": "a single kana that is also one of the commonest particles: it changed modern sentences at every classical step weight from 2 to 8 (よ|ね → よね, へ|と → へと, あて|に → あてに, held2k/fresh, 2026-10-12), so pricing cannot keep it"},
+    {"kanaIn": "し", "kanaOut": "き", "rulesOut": ["ki"], "why": "a single kana that is also one of the commonest particles: it changed modern sentences at every classical step weight from 2 to 8 (よ|ね → よね, へ|と → へと, あて|に → あてに, held2k/fresh, 2026-10-12), so pricing cannot keep it"},
+    {"kanaIn": "ま", "kanaOut": "む", "rulesOut": ["mu"], "why": "む's ク語法 ま: no modern use, and through katakana it cut オバマ into オバ|マ (train2k, 2026-10-12)"},
+    {"kanaIn": "まく", "kanaOut": "む", "rulesOut": ["mu"], "why": "む's ク語法 まく: no modern use (same as ま)"},
     {"kanaIn": "よ", "kanaOut": "る", "rulesOut": ["v1"], "why": "Ichidan imperative よ (見よ): it swallows the sentence particle in 見て | よ, 伝えて | よ, まって | よ (named cases)."},
     {
       "kanaIn": "ければ",
@@ -225,5 +257,5 @@
     ]
   },
   "nonIchidanRuVerbs": ["知る", "しる", "識る", "走る", "はしる", "限る", "かぎる", "参る", "まいる", "蹴る", "ける"],
-  "intermediateForms": ["te", "masu", "ta", "nu"]
+  "intermediateForms": ["te", "masu", "ta", "nu", "ki", "keri", "tsu", "tari", "ri", "mu", "ji", "kemu", "ramu", "rashi", "tashi", "shimu", "raru"]
 }
