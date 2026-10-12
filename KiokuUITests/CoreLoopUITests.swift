@@ -128,14 +128,28 @@ final class CoreLoopUITests: KiokuUITestCase {
         XCTAssertTrue(file.exists, "exported file not offered by the importer")
     }
 
-    // Opens the file from the importer's grid: a tap on its thumbnail (the top of the cell; the
-    // name label below it doesn't open it), then Open if the picker asks for one.
+    // Opens the file from the importer's grid. Single taps on the cell's label and on its
+    // thumbnail's coordinates have each left the picker open on CI, so this tries the ways in
+    // turn (thumbnail image, cell, label, a short press) and records which one the picker took.
     private func pickInImporter(_ app: XCUIApplication, _ file: XCUIElement) {
-        file.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)).tap()
-        if wait(for: file, toMatch: "exists == false", timeout: 8) { return }
-        record(app, "importer after tapping the file")
-        let open = app.buttons["Open"].firstMatch
-        if open.exists { open.tap() }
+        XCTAssertTrue(wait(for: file, toMatch: "hittable == true", timeout: 15), "exported file never hittable in the importer")
+        let attempts: [(String, () -> Void)] = [
+            ("thumbnail", { file.images.firstMatch.tap() }),
+            ("cell", { file.tap() }),
+            ("label", { file.staticTexts.firstMatch.tap() }),
+            ("press", { file.press(forDuration: 0.4) }),
+        ]
+        for (name, tap) in attempts {
+            guard file.exists else { return }
+            tap()
+            if wait(for: file, toMatch: "exists == false", timeout: 8) {
+                record(app, "importer took a \(name) tap")
+                return
+            }
+            record(app, "importer ignored a \(name) tap")
+            let open = app.buttons["Open"].firstMatch
+            if open.exists { open.tap() }
+        }
     }
 
     // Taps one of Settings' rows, scrolling down to it first when it's below the fold.
