@@ -46,6 +46,7 @@ extension SettingsView {
         switch result {
         case .success(let url):
             AppLog.info(.backup, "export: saved to \(url.lastPathComponent)")
+            UITestBackupShortcut.rememberExport(at: url)
             showTransferAlert(title: "Export Complete", message: "Your app backup was saved successfully.")
         case .failure(let error):
             AppLog.error(.backup, "export: failed — \(error.localizedDescription)")

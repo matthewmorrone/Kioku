@@ -253,7 +253,12 @@ struct SettingsView: View {
                     }
                     HStack {
                         Button {
-                            isShowingImporter = true
+                            // A UI-test launch restores its own export without the importer.
+                            if let url = UITestBackupShortcut.importURL {
+                                handleImportResult(.success([url]))
+                            } else {
+                                isShowingImporter = true
+                            }
                         } label: {
                             Label("Import", systemImage: "square.and.arrow.down")
                         }

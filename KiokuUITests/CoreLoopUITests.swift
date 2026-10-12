@@ -61,8 +61,8 @@ final class CoreLoopUITests: KiokuUITestCase {
     }
 
     // Exports a backup, erases everything with Reset, then imports the backup and checks the
-    // sample note is back: the full export → validate → replace-all round trip, through the
-    // system file picker.
+    // sample note is back: the export → validate → replace-all round trip. The export goes
+    // through the system exporter; the restore skips the importer (see UITestBackupShortcut).
     func testRoundTripABackupThroughResetAndImport() {
         let app = launchApp()
         selectTab(app, "Settings")
@@ -87,14 +87,11 @@ final class CoreLoopUITests: KiokuUITestCase {
         selectTab(app, "Notes")
         XCTAssertFalse(app.staticTexts[sampleNoteTitle].firstMatch.waitForExistence(timeout: 3), "reset left the sample note")
 
-        // Import the file just exported, and confirm the replace.
+        // Import the file just exported, and confirm the replace. XCUITest can't open a file in
+        // the system importer on CI, so a UI-test launch's Import restores its own export directly
+        // (UITestBackupShortcut); everything after the file pick runs as usual.
         selectTab(app, "Settings")
         tapSettingsRow(app, "Import")
-        // The file's cell; a tap on its name label alone doesn't open it.
-        let file = app.cells.matching(NSPredicate(format: "label BEGINSWITH %@", "kioku-export")).firstMatch
-        findInImporter(app, file)
-        record(app, "importer")
-        pickInImporter(app, file)
         let confirmImport = app.alerts.buttons["Import"].firstMatch
         XCTAssertTrue(confirmImport.waitForExistence(timeout: 15), "import confirmation didn't appear")
         confirmImport.tap()
@@ -113,43 +110,6 @@ final class CoreLoopUITests: KiokuUITestCase {
         XCTAssertTrue(savedSegment.waitForExistence(timeout: 10), "filter sheet didn't open")
         savedSegment.tap()
         dismissSheet(app, above: app.segmentedControls.firstMatch)
-    }
-
-    // The importer opens on Recents, empty on a fresh simulator; the export went to On My iPhone,
-    // reached through Browse. Steps there until the file shows.
-    private func findInImporter(_ app: XCUIApplication, _ file: XCUIElement) {
-        let steps = [app.buttons["Browse"].firstMatch, app.staticTexts["On My iPhone"].firstMatch]
-        var step = 0
-        while file.waitForExistence(timeout: 10) == false && step < steps.count {
-            if steps[step].exists { steps[step].tap() }
-            step += 1
-        }
-        if file.exists == false { record(app, "importer without the file") }
-        XCTAssertTrue(file.exists, "exported file not offered by the importer")
-    }
-
-    // Opens the file from the importer's grid. Single taps on the cell's label and on its
-    // thumbnail's coordinates have each left the picker open on CI, so this tries the ways in
-    // turn (thumbnail image, cell, label, a short press) and records which one the picker took.
-    private func pickInImporter(_ app: XCUIApplication, _ file: XCUIElement) {
-        XCTAssertTrue(wait(for: file, toMatch: "hittable == true", timeout: 15), "exported file never hittable in the importer")
-        let attempts: [(String, () -> Void)] = [
-            ("thumbnail", { file.images.firstMatch.tap() }),
-            ("cell", { file.tap() }),
-            ("label", { file.staticTexts.firstMatch.tap() }),
-            ("press", { file.press(forDuration: 0.4) }),
-        ]
-        for (name, tap) in attempts {
-            guard file.exists else { return }
-            tap()
-            if wait(for: file, toMatch: "exists == false", timeout: 8) {
-                record(app, "importer took a \(name) tap")
-                return
-            }
-            record(app, "importer ignored a \(name) tap")
-            let open = app.buttons["Open"].firstMatch
-            if open.exists { open.tap() }
-        }
     }
 
     // Taps one of Settings' rows, scrolling down to it first when it's below the fold.
