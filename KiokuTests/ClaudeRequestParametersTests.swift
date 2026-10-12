@@ -10,7 +10,7 @@ final class ClaudeRequestParametersTests: XCTestCase {
     func testEffortCapableModelGetsLowEffortAndHeadroom() {
         var body: [String: Any] = [:]
         ClaudeRequestParameters.apply(to: &body, model: "claude-sonnet-5", maxTokens: 8192)
-        XCTAssertEqual(body["max_tokens"] as? Int, 8192 + ClaudeRequestParameters.reasoningHeadroomTokens)
+        XCTAssertEqual(body["max_tokens"] as? Int, 8192 + LLMReasoningHeadroom.tokens)
         XCTAssertEqual((body["output_config"] as? [String: String])?["effort"], "low")
     }
 

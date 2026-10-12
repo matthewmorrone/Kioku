@@ -18,7 +18,7 @@ final class OpenAIRequestParametersTests: XCTestCase {
     func testReasoningModelParameters() {
         for model in ["gpt-5", "gpt-5-mini", "gpt-5.6-luna"] {
             let b = body(for: model)
-            XCTAssertEqual(b["max_completion_tokens"] as? Int, 8192 + OpenAIRequestParameters.reasoningHeadroomTokens, model)
+            XCTAssertEqual(b["max_completion_tokens"] as? Int, 8192 + LLMReasoningHeadroom.tokens, model)
             XCTAssertEqual(b["reasoning_effort"] as? String, "low", model)
             XCTAssertNil(b["max_tokens"], model)
             XCTAssertNil(b["temperature"], model)
