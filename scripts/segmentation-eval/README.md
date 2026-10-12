@@ -1,5 +1,7 @@
 # Segmentation eval
 
+Known errors (segmentation and furigana) are listed in `docs/todo.md`.
+
 Measures the Kioku segmenter against gold tokens at JMdict granularity, from a Mac command line —
 no app or device build. `cli/build.sh` compiles the app's **real** segmenter sources, so a number
 here is a number about the shipped code.
@@ -232,6 +234,11 @@ now fixes; see "Numbers to beat").
   inheritance (1 token in 20k), refitting unknown-text and unranked costs (flat), per-word overhead
   below 8.5 (trades merged for split), inflection-step cost other than 3 (re-fitted twice: flat).
 
+- **Apple's on-device model as a second opinion** (2026-10-07…11): choosing between two cuts (position
+  bias: picked A 28/30 in both orders), translating then matching JMdict glosses in code (fixed 7 of 22
+  real errors, broke 6 of 30 right near-ties), and "is X a word here?" (answered "word" 246/249 and
+  "fragment" 0/249, whatever was asked). Harness on branch `claude/gracious-tereshkova-7230e4`.
+
 ## Not yet tried
 
 Per-pair transition weights trained on the real lattice (structured perceptron) with a
@@ -276,12 +283,3 @@ python3 lyrics/mecab_gold.py work/lyrics-lines.txt | ./work/segcli relabel > wor
 python3 -c "import json;[print(json.loads(l)['s']) for l in open('work/lyrics-gold.jsonl')]" | ./work/segcli run > work/lyrics.out
 python3 score.py work/lyrics-gold.jsonl work/lyrics.out
 ```
-
-## Known fails, left on purpose
-
-- **あめ|だ|の|せんべい** (want あめ|だの|せんべい, the listing particle; sample note キャラメルと飴玉).
-  Not a frequency error: on the same scale as the rank list (wordfreq runs ~1.7 Zipf higher for
-  function words), だの's rank is accurate — it's a rare particle losing a near-tie. Raising function
-  words to their raw wordfreq fixed it only by inflating every particle (broke 雨|なのに → 雨|な|のに).
-  The only remaining fix is a rule for the paired AだのBだの pattern, which would be a one-particle
-  exception; dropped 2026-10-08.
