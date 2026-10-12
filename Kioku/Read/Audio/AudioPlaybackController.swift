@@ -65,9 +65,14 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // `nil` leaves the previous track's title in place, which never happens in practice since
     // `load()` is always called with one before playback can start.
     private var nowPlayingTitle: String?
+    // Wall-clock time and file position of the latest playback start, until the playhead is first
+    // seen moving; the debug log records how long that took (silent-start reports).
+    private var playStartedAt: CFAbsoluteTime?
+    private var playStartPosition: TimeInterval = 0
     override init() {
         super.init()
         configureAudioSession()
+        AudioRouteDescription.startLoggingRouteChanges()
         RemoteCommandRouter.registerIfNeeded()
         NotificationCenter.default.addObserver(self, selector: #selector(otherPlayerStarted(_:)), name: ExclusivePlayback.didStart, object: nil)
     }
@@ -211,6 +216,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         currentTimeMs = 0
         activeCueIndex = nil
         nowPlayingTitle = nil
+        AppLog.info(.audioPlayback, "controller.unload: deactivating the audio session")
         do {
             try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         } catch {
@@ -244,14 +250,21 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // Shared start-of-playback sequence for play() and playFromStart(): activates the session,
     // claims exclusive playback, and starts the polling timer.
     private func beginPlayback() {
+        let session = AVAudioSession.sharedInstance()
+        let categoryBefore = session.category.rawValue
+        let activationStart = CFAbsoluteTimeGetCurrent()
         configureAudioSession()
         do {
-            try AVAudioSession.sharedInstance().setActive(true)
+            try session.setActive(true)
         } catch {
             AppLog.error(.audioPlayback, "[AudioPlaybackController] play setActive(true) failed: \(error.localizedDescription)")
         }
+        let activationMs = Int((CFAbsoluteTimeGetCurrent() - activationStart) * 1000)
+        AppLog.info(.audioPlayback, "controller.start: route=\(AudioRouteDescription.current()) category \(categoryBefore)→\(session.category.rawValue) setup+activate=\(activationMs)ms at \(Int((player?.currentTime ?? 0) * 1000))ms otherAudio=\(session.isOtherAudioPlaying)")
         ExclusivePlayback.claim(self)
         player?.play()
+        playStartedAt = CFAbsoluteTimeGetCurrent()
+        playStartPosition = player?.currentTime ?? 0
         isPlaying = true
         startTimer()
     }
@@ -400,6 +413,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
             return
         }
 
+        logFirstPlayheadMovement(player)
         syncTimeAndCue()
 
         // Auto-pause at the line-range upper bound when `playRange` armed one.
@@ -408,6 +422,16 @@ final class AudioPlaybackController: NSObject, ObservableObject {
             pause()
             onDidFinishRange?()
         }
+    }
+
+    // Logs, once per playback start, how long after play() the player's position first advanced.
+    // A long wait here means the player itself started late; a short one with a reported silent
+    // start points at the output route (e.g. Bluetooth waking up) instead.
+    private func logFirstPlayheadMovement(_ player: AVAudioPlayer) {
+        guard let startedAt = playStartedAt, player.currentTime > playStartPosition else { return }
+        playStartedAt = nil
+        let waitedMs = Int((CFAbsoluteTimeGetCurrent() - startedAt) * 1000)
+        AppLog.info(.audioPlayback, "controller.start: playhead moving after \(waitedMs)ms, outputLatency=\(Int(AVAudioSession.sharedInstance().outputLatency * 1000))ms route=\(AudioRouteDescription.current())")
     }
 
     // Analyzes the file's beats and loudness off the main thread for the interlude notes. The
