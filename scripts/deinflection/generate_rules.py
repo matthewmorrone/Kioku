@@ -98,15 +98,19 @@ def common_prefix(a, b):
 
 
 def read_unidic(lex_lines, aux_words):
-    """Endings per (cType, cForm), the last stem kana of empty-ending forms, and auxiliaries' forms,
-    from UniDic lex.csv's lines (an open file or any iterable of text lines)."""
+    """Endings per (cType, cForm), the last stem kana of empty-ending forms, auxiliaries' forms, and
+    every auxiliary UniDic lists (classical ones included, for the coverage check), from UniDic
+    lex.csv's lines (an open file or any iterable of text lines)."""
     endings = collections.defaultdict(collections.Counter)
     stem_last_kana = collections.defaultdict(collections.Counter)
     aux_forms = collections.defaultdict(set)
+    all_aux = collections.defaultdict(set)  # auxiliary (hiragana base form) → its conjugation types
     for row in csv.reader(lex_lines):
         if len(row) <= LEX_KANA_BASE:
             continue
         pos1, ctype, cform = row[LEX_POS1], row[LEX_CTYPE], row[LEX_CFORM]
+        if pos1 == '助動詞' and row[LEX_KANA_BASE] != '*':
+            all_aux[hiragana(row[LEX_KANA_BASE])].add(ctype)
         if ctype == '*' or ctype.startswith('文語'):
             continue
         if pos1 == '助動詞':
@@ -137,7 +141,24 @@ def read_unidic(lex_lines, aux_words):
         endings[(ctype, cform)][(ending, base_ending)] += 1
         if not ending and p:
             stem_last_kana[(ctype, cform)][surface[p - 1]] += 1
-    return endings, stem_last_kana, aux_forms
+    return endings, stem_last_kana, aux_forms, all_aux
+
+
+def check_auxiliary_coverage(grammar, all_aux):
+    """Every auxiliary UniDic lists must be accounted for by the grammar table: covered by a row, or
+    named in auxiliaryCoverage.leftOut with the reason. Raises on a gap or a stale left-out entry, so a
+    missing auxiliary fails the build instead of going unnoticed."""
+    covered = {row['attach'] for row in grammar['attachments']} | set(grammar['auxiliaryConjugations']['words'])
+    covered |= {w['word'] for w in grammar['teHelpers']['words']}
+    covered |= {c[k] for c in grammar['teHelpers']['contractions'] for k in ('plain', 'voiced')}
+    covered |= {s for w in grammar['stemCompounds']['words'] for s in w['spellings']}
+    left_out = grammar['auxiliaryCoverage']['leftOut']
+    missing = sorted(a for a in all_aux if a not in covered and a not in left_out)
+    stale = sorted(a for a in left_out if a in covered or a not in all_aux)
+    if missing or stale:
+        raise SystemExit('deinflection-grammar.json auxiliaryCoverage: '
+                         + (f'UniDic auxiliaries neither covered nor left out with a reason: {missing}. ' if missing else '')
+                         + (f'left out but covered, or not a UniDic auxiliary: {stale}.' if stale else ''))
 
 
 def one_rule_per_line(data):
@@ -219,7 +240,8 @@ def build_rules(lex_lines, grammar_path, extras_path, unidic_sha):
     standalone_group = grammar['standaloneForms']['forms']
     standalone = set(standalone_group)
 
-    endings, stem_last_kana, aux_forms = read_unidic(lex_lines, set(aux_grammar))
+    endings, stem_last_kana, aux_forms, all_aux = read_unidic(lex_lines, set(aux_grammar))
+    check_auxiliary_coverage(grammar, all_aux)
 
     forms = collections.defaultdict(list)  # cType → [(cForm, ending, base ending)]
     for (ctype, cform), counter in endings.items():
@@ -289,7 +311,7 @@ def build_rules(lex_lines, grammar_path, extras_path, unidic_sha):
     # The auxiliaries' own forms: ました → ます (masu), なかった → ない (adj-i, through the adj-i rules).
     for aux, aux_word_grammar in aux_grammar.items():
         for surface, cform in sorted(aux_forms[aux]):
-            if surface != aux and cform in standalone:
+            if surface != aux and (cform in standalone or cform in aux_words[aux].get('forms', [])):
                 add(aux_words[aux]['group'], surface, aux, [aux_word_grammar], [aux_word_grammar], f'UniDic 助動詞 {aux} {cform}')
 
     for row in grammar['fixedSequences']:
