@@ -6,6 +6,7 @@ import XCTest
 //
 // Every test in a run shares one simulator, so what one saves or resets the next one sees. The
 // steps here therefore end in a state ("the word is saved") rather than assume where they start.
+@MainActor
 class KiokuUITestCase: XCTestCase {
     // The sample note every fresh install starts with, and the word at the start of its text.
     let sampleNoteTitle = "キャラメルと飴玉"
@@ -23,7 +24,7 @@ class KiokuUITestCase: XCTestCase {
             .appendingPathComponent("Resources/dictionary.sqlite")
         app.launchEnvironment["KIOKU_UITEST_DICTIONARY"] = dictionary.path
         app.launch()
-        addTeardownBlock { [weak self] in self?.attachAppStartupLog() }
+        addTeardownBlock { Self.attachAppStartupLog() }
         // A cold first launch loads the dictionary before the UI settles; wait for the tab bar
         // rather than tapping into a busy app.
         XCTAssertTrue(app.tabBars.buttons["Notes"].waitForExistence(timeout: 120), "app never finished launching")
@@ -45,30 +46,29 @@ class KiokuUITestCase: XCTestCase {
 
     // Attaches Kioku's startup-timing.log (StartupTimer's marks, and MainThreadStallWatch's stalls
     // in UI-test launches). The test runner and the app are both apps on the same simulator, so
-    // the runner finds the log in its sibling app containers.
-    private func attachAppStartupLog() {
+    // the runner finds the log in its sibling app containers. Static, attaching through an
+    // activity, so the teardown block that calls it captures nothing.
+    private static func attachAppStartupLog() {
         let containers = URL(fileURLWithPath: NSHomeDirectory()).deletingLastPathComponent()
-        let note: String
+        let attachment: XCTAttachment
         do {
             let names = try FileManager.default.contentsOfDirectory(atPath: containers.path)
             let logs = names
                 .map { containers.appendingPathComponent($0).appendingPathComponent("Library/Caches/startup-timing.log") }
                 .filter { FileManager.default.fileExists(atPath: $0.path) }
             if let log = logs.first {
-                let attachment = XCTAttachment(contentsOfFile: log)
+                attachment = XCTAttachment(contentsOfFile: log)
                 attachment.name = "app startup log"
-                attachment.lifetime = .keepAlways
-                add(attachment)
-                return
+            } else {
+                attachment = XCTAttachment(string: "no startup-timing.log among \(names.count) containers in \(containers.path)")
+                attachment.name = "app startup log missing"
             }
-            note = "no startup-timing.log among \(names.count) containers in \(containers.path)"
         } catch {
-            note = "couldn't list \(containers.path): \(error)"
+            attachment = XCTAttachment(string: "couldn't list \(containers.path): \(error)")
+            attachment.name = "app startup log missing"
         }
-        let attachment = XCTAttachment(string: note)
-        attachment.name = "app startup log missing"
         attachment.lifetime = .keepAlways
-        add(attachment)
+        XCTContext.runActivity(named: "App startup log") { $0.add(attachment) }
     }
 
     // Taps a tab until the tab bar shows it selected: a tap that lands while a sheet is still
