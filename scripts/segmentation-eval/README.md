@@ -63,7 +63,6 @@ headwords by the JMdict maintainers. https://downloads.tatoeba.org/exports/jpn_i
   `kana2k` = held2k with every kanji-bearing token replaced by its MeCab reading (gold boundaries
   kept): a stress test for kana-heavy text. It cannot be regenerated from a script — keep it.
 - `data/train2k` — first 2,000 training sentences; fit knobs here, confirm on held-out.
-- `data/known.txt` — hand-picked problem lines; check for regressions.
 - The full training half (`train.jsonl`, 73k sentences, 22 MB) is not checked in and no copy is kept.
   Rebuild it with `prep.py <dir>` after downloading Tatoeba's current `jpn_indices.csv` into `<dir>`
   (https://downloads.tatoeba.org/exports/jpn_indices.tar.bz2; odd sentence ids → held-out, even →
@@ -189,7 +188,7 @@ python3 ../calibration/fit_transition_costs.py pairs work/classes.txt > ../../Ki
 ```
 
 Before shipping any model change: the repo path (`run`) must reproduce the experiment's output
-sentence for sentence; check `data/known.txt` and the named cases in `SegmentationQualityTests`;
+sentence for sentence; check the named cases (`named_cases.py`);
 and confirm both segmenter construction sites (`ContentView.makeReadResources`, `TestReadResources`)
 get the change — they once diverged, CI green while the phone ran the wrong frequency map.
 

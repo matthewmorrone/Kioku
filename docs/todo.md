@@ -28,6 +28,10 @@ Segmentation first, then readings (the "Reading errors (remaining)" note on the 
 - ブチキレ|ないほう → ブチキレない|ほう — ブチキレないほうがおかしい。 (ないほう resolves to 内包)
 - 新年|度に|は → 新|年度|には — 零細小売店などは新年度には利益を上げるでしょう。
 
+### Segmentation: other lines
+
+- よい|ま|会い|に|行く → よ|いま|会い|に|行く — よいま会いに行く
+
 ### Segmentation: kana2k (sample of 15 of its 106 "error" straddles; the rest are unaudited)
 
 - と|しまえ → とし|まえ — ３年前に東京へ来て以来
