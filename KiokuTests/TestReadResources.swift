@@ -39,7 +39,7 @@ final class TestReadResources {
 
     // Builds the real dictionary-backed segmenter pipeline used by integration tests.
     private init() throws {
-        let dictionaryStore = try DictionaryStore(databaseURL: Self.dictionaryDatabaseURL())
+        let dictionaryStore = try DictionaryStore(databaseURL: Self.dictionaryWithBuiltInCustomWords())
         // The app populates this at startup (ContentView); without it Lexicon's POS-bit
         // lookups (posBits(forSurface:)) all return 0, silently disabling the deinflection
         // shadow gate — so tests must populate it too to exercise real behavior.
@@ -85,6 +85,28 @@ final class TestReadResources {
     // DictionaryDownloadManager) — unreliable in a fresh test environment.
     static func dictionaryDatabaseURL() throws -> URL {
         try resolveResourceURL(fileName: "dictionary.sqlite")
+    }
+
+    // The app writes its built-in Custom Words (Resources/extras.json) into the downloaded dictionary at
+    // startup (ContentView → CustomWordApplier), and that changes what words exist: a Custom Word adds
+    // entries, and one the list dropped is removed (ティアーズ, now read as the plural of ティアー). The
+    // shared pipeline segments with the same dictionary the app does, so it applies the same list to a
+    // temp copy; the checked-in path stays untouched for tests that need the raw file.
+    private static func dictionaryWithBuiltInCustomWords() throws -> URL {
+        let copy = FileManager.default.temporaryDirectory.appendingPathComponent("test-dictionary-\(ProcessInfo.processInfo.processIdentifier).sqlite")
+        if FileManager.default.fileExists(atPath: copy.path) {
+            try FileManager.default.removeItem(at: copy)
+        }
+        try FileManager.default.copyItem(at: try dictionaryDatabaseURL(), to: copy)
+        guard let resources = Bundle(path: repositoryRootURL().appendingPathComponent("Resources").path) else {
+            throw TestReadResourcesError.missingReadableResource(fileName: "extras.json", checkedPaths: [repositoryRootURL().appendingPathComponent("Resources").path])
+        }
+        let builtIns = CustomWordStore.bundledDefaults(bundle: resources)
+        guard builtIns.isEmpty == false else {
+            throw TestReadResourcesError.missingReadableResource(fileName: "extras.json", checkedPaths: [resources.bundlePath])
+        }
+        try CustomWordApplier.apply(builtIns, toDatabaseAt: copy)
+        return copy
     }
 
     // Loads the grouped deinflection rules from the test dictionary, where the app reads them too.
