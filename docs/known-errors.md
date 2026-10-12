@@ -41,14 +41,13 @@ Segmentation first, then readings (the "Reading errors (remaining)" note on the 
 
 ## Readings (the "Reading errors (remaining)" note on the phone)
 
-The note's 31 entries and its grouping, unchanged. All 31 still showed the wrong reading in the app's
-saved furigana for the note on 2026-10-12. Each line: the snippet, what the app shows, and the right
+The note's entries and grouping, minus は何回目 (the app reads 何 as なん now; the note still lists it).
+The other 30 still showed the wrong reading in the app's saved furigana for the note on 2026-10-12. Each line: the snippet, what the app shows, and the right
 reading. The "Disputed" group lists cases where our reading is standard or both readings are; they are
 kept here because the note keeps them.
 
-### Fixable: segmentation (2)
+### Fixable: segmentation (1)
 
-- は何回目 — なに, should be なん
 - 中日間は — 中|日間 ちゅう|にっかん, should be 中日|間 ちゅうにち|かん
 
 ### Fixable: too few examples (1)
