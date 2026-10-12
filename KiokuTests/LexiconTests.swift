@@ -267,11 +267,13 @@ final class LexiconTests: XCTestCase {
         XCTAssertEqual(forms, ["聞いた"])
     }
 
-    // する's own forms come from its own rules: して and しない, never the ichidan rule's すた.
+    // する's own forms come from its own rules: して and しない, never the ichidan rule's すた. The limit
+    // covers every form: otherForms returns a random sample once there are more forms than the limit
+    // (する has over 500), and a sample may miss して or しない.
     func testOtherFormsOfSuruStayInItsClass() throws {
         let lexicon = try reinflectionLexicon()
 
-        let forms = Set(lexicon.otherForms(of: "する", besides: "した", limit: 500))
+        let forms = Set(lexicon.otherForms(of: "する", besides: "した", limit: .max))
         XCTAssertTrue(forms.contains("して"))
         XCTAssertTrue(forms.contains("しない"))
         XCTAssertFalse(forms.contains("すた"))
@@ -282,7 +284,7 @@ final class LexiconTests: XCTestCase {
     func testOtherFormsOfIkuUseItsIrregularPast() throws {
         let lexicon = try reinflectionLexicon()
 
-        let forms = Set(lexicon.otherForms(of: "行く", besides: "行かない", limit: 500))
+        let forms = Set(lexicon.otherForms(of: "行く", besides: "行かない", limit: .max))
         XCTAssertTrue(forms.contains("行った"))
         XCTAssertFalse(forms.contains("行いた"))
     }
