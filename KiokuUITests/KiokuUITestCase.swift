@@ -25,9 +25,12 @@ class KiokuUITestCase: XCTestCase {
         app.launchEnvironment["KIOKU_UITEST_DICTIONARY"] = dictionary.path
         app.launch()
         addTeardownBlock { Self.attachAppStartupLog() }
-        // A cold first launch loads the dictionary before the UI settles; wait for the tab bar
-        // rather than tapping into a busy app.
-        XCTAssertTrue(app.tabBars.buttons["Notes"].waitForExistence(timeout: 120), "app never finished launching")
+        // A cold first launch loads the dictionary before the UI settles, and on CI a blank system
+        // overlay sometimes covers the app for its first ~30 s (the tab bar exists but has no hit
+        // point). Wait until the tab bar takes taps rather than tapping into it.
+        let notes = app.tabBars.buttons["Notes"]
+        XCTAssertTrue(notes.waitForExistence(timeout: 120), "app never finished launching")
+        if wait(for: notes, toMatch: "hittable == true", timeout: 90) == false { record(app, "tab bar never hittable") }
         return app
     }
 
@@ -76,6 +79,7 @@ class KiokuUITestCase: XCTestCase {
     func selectTab(_ app: XCUIApplication, _ name: String) {
         let tab = app.tabBars.buttons[name]
         XCTAssertTrue(tab.waitForExistence(timeout: 30), "\(name) tab missing")
+        wait(for: tab, toMatch: "hittable == true", timeout: 30)
         var taps = 0
         while tab.isSelected == false && taps < 3 {
             tab.tap()

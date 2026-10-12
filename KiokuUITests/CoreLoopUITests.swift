@@ -90,7 +90,8 @@ final class CoreLoopUITests: KiokuUITestCase {
         // Import the file just exported, and confirm the replace.
         selectTab(app, "Settings")
         tapSettingsRow(app, "Import")
-        let file = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "kioku-export")).firstMatch
+        // The file's cell; a tap on its name label alone doesn't open it.
+        let file = app.cells.matching(NSPredicate(format: "label BEGINSWITH %@", "kioku-export")).firstMatch
         findInImporter(app, file)
         record(app, "importer")
         file.tap()
