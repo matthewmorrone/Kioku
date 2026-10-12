@@ -19,11 +19,12 @@ Segmentation first, then readings (the "Reading errors (remaining)" note on the 
 ### Segmentation: held2k
 
 - ６|月末 → ６月|末 — ６月末に参加者を募ったら…
-- 望|まざる → 望ま|ざる — 自分が望むと望まざるとにかかわらず
 - 中|日間 → 中日|間 — 中日間は本当にお互いを知り合うところまでは到達していない。
 - オート|ロックする → オートロック|する — ドアを閉めたらオートロックするということはありません。
 - どう|やらない → どうやら|ない — 資質は、どうやらないようだ。
-- パシ|ら|されなきゃ → パシらされ|なきゃ — ジュース買う為にパシらされなきゃなんないんだか
+- パシ|ら|されなきゃ → パシらされ|なきゃ — ジュース買う為にパシらされなきゃなんないんだか (the short causative パシらす has no rule: as a grammar-table row it reads every transitive 〜す verb
+  as a causative, 動かす → 動く, 減らす → 減る (2026-10-12), so it needs a gate admitting it only where JMdict has
+  no 〜す verb of that spelling; see deinflection-grammar.json auxiliaryCoverage.leftOut)
 - ５|日間 → ５日|間 — このオファーは５日間有効です。 (JMdict's 日間 is only "daytime")
 - ブチキレ|ないほう → ブチキレない|ほう — ブチキレないほうがおかしい。 (ないほう resolves to 内包)
 - 新年|度に|は → 新|年度|には — 零細小売店などは新年度には利益を上げるでしょう。
