@@ -94,7 +94,7 @@ final class CoreLoopUITests: KiokuUITestCase {
         let file = app.cells.matching(NSPredicate(format: "label BEGINSWITH %@", "kioku-export")).firstMatch
         findInImporter(app, file)
         record(app, "importer")
-        file.tap()
+        pickInImporter(app, file)
         let confirmImport = app.alerts.buttons["Import"].firstMatch
         XCTAssertTrue(confirmImport.waitForExistence(timeout: 15), "import confirmation didn't appear")
         confirmImport.tap()
@@ -126,6 +126,16 @@ final class CoreLoopUITests: KiokuUITestCase {
         }
         if file.exists == false { record(app, "importer without the file") }
         XCTAssertTrue(file.exists, "exported file not offered by the importer")
+    }
+
+    // Opens the file from the importer's grid: a tap on its thumbnail (the top of the cell; the
+    // name label below it doesn't open it), then Open if the picker asks for one.
+    private func pickInImporter(_ app: XCUIApplication, _ file: XCUIElement) {
+        file.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)).tap()
+        if wait(for: file, toMatch: "exists == false", timeout: 8) { return }
+        record(app, "importer after tapping the file")
+        let open = app.buttons["Open"].firstMatch
+        if open.exists { open.tap() }
     }
 
     // Taps one of Settings' rows, scrolling down to it first when it's below the fold.
