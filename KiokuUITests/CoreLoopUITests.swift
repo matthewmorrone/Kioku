@@ -112,13 +112,17 @@ final class CoreLoopUITests: KiokuUITestCase {
         dismissSheet(app, above: app.segmentedControls.firstMatch)
     }
 
-    // Taps one of Settings' rows, scrolling down to it first when it's below the fold.
+    // Taps one of Settings' rows, scrolling to it first. Scrolls by short held drags, which stop
+    // where they end: a swipe's momentum carried the row past while it was still moving, so it
+    // never once counted as hittable. Goes down first, then back up if it overshot.
     private func tapSettingsRow(_ app: XCUIApplication, _ label: String) {
         let row = app.buttons[label].firstMatch
-        var swipes = 0
-        while (row.exists && row.isHittable) == false && swipes < 8 {
-            app.swipeUp()
-            swipes += 1
+        let middle = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+        var drags = 0
+        while (row.exists && row.isHittable) == false && drags < 20 {
+            let distance: CGFloat = drags < 10 ? -250 : 250
+            middle.press(forDuration: 0.1, thenDragTo: middle.withOffset(CGVector(dx: 0, dy: distance)), withVelocity: .slow, thenHoldForDuration: 0.3)
+            drags += 1
         }
         XCTAssertTrue(row.exists && row.isHittable, "Settings row \(label) not found")
         row.tap()
