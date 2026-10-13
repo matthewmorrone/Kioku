@@ -329,7 +329,7 @@
         "cacheName": "KWDLC-c6ae49d2.zip",
         "archiveSha256": "96c500d57ea8f079fd45241c8be3d6bdb1535188d119c63c28c630bdf95cf066"
       },
-      "provenance": "GitHub archive of ku-nlp/KWDLC at commit c6ae49d29eca4e1134c6676d682adf5ed6a25f5a. Only the id/train.id documents are counted; the id/test.id documents are the benchmark's KWDLC set (scripts/benchmark). Input to Resources/reading_registers.py (reading_register_counts, register_grams).",
+      "provenance": "GitHub archive of ku-nlp/KWDLC at commit c6ae49d29eca4e1134c6676d682adf5ed6a25f5a. Only the id/train.id documents are counted; the id/test.id documents are the benchmark's KWDLC set (scripts/benchmark). Input to import_reading_registers in generate_db.py (reading_register_counts, register_grams).",
       "feedsDictionary": true
     },
     {
@@ -347,7 +347,7 @@
         "format": "zip",
         "cacheName": "aozora-list_person_all_extended_utf8.zip"
       },
-      "provenance": "The catalogue is fetched fresh on every rebuild (Aozora updates it continually, so no hash is pinned); the works it selects are downloaded by Resources/reading_registers.py into the run's work folder, about 2,100 of them, four at a time. Input to reading_register_counts and register_grams.",
+      "provenance": "The catalogue is fetched fresh on every rebuild (Aozora updates it continually, so no hash is pinned); the works it selects are downloaded by generate_db.py (import_reading_registers), about 2,100 of them, four at a time. Input to reading_register_counts and register_grams.",
       "feedsDictionary": true
     },
     {

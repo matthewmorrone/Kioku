@@ -5,7 +5,7 @@
 #   scripts/benchmark/run.sh [WORK]        (default: a new temp folder; ~1 GB, deleted only by you)
 # Needs: the `mecab` command with IPADic (Homebrew `mecab` + `mecab-ipadic`), python3, git, curl, and
 # Resources/dictionary.sqlite (scripts/ensure_dictionary.sh). Kioku reads DB=<path> instead when set: the
-# furigana's web and literature counts live in the dictionary (Resources/reading_registers.py), so measure
+# furigana's web and literature counts live in the dictionary (generate_db.py, import_reading_registers), so measure
 # with one built since they were added. Heavy: run it on an idle, cool Mac.
 set -e
 HERE=${0:a:h}; ROOT=${HERE:h:h}; EVAL=$ROOT/scripts/segmentation-eval

@@ -2,8 +2,8 @@ import Foundation
 
 // Tells which kind of text a note is: everyday (Tatoeba's sentences), web (KWDLC's web pages) or
 // literature (Aozora Bunko), by naive Bayes over character unigrams and bigrams counted from each
-// (Resources/reading_registers.py). Furigana uses it to decide which reading counts to add to
-// Tatoeba's (ReadingRegisters). No model and no network: a table lookup per character.
+// (Resources/generate_db.py, import_reading_registers). Furigana uses it to decide which reading counts
+// to add to Tatoeba's (ReadingRegisters). No model and no network: a table lookup per character.
 nonisolated final class RegisterClassifier: Sendable {
     // The register names, in the order of each gram's counts.
     let registers: [String]

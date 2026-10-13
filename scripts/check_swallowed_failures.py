@@ -7,9 +7,8 @@ Flags, as path:line: message:
     reads as end-of-rows); step into a variable and check SQLITE_DONE after the loop
   - catch blocks that are empty, comment-only, or only return/continue/break a default
     (`catch is CancellationError` is exempt: cancellation is not a failure)
-  - tables named in the app's SQL that neither the dictionary build (Resources/generate_db.py and
-    Resources/reading_registers.py, which it imports) nor the app's own CREATE TABLE statements create
-    (CTE names are exempt)
+  - tables named in the app's SQL that neither Resources/generate_db.py nor the app's own
+    CREATE TABLE statements create (CTE names are exempt)
 
 Usage: check_swallowed_failures.py [swift files...]   (no args = every Swift file under Kioku/)
 Exit status 1 when anything is flagged.
@@ -126,11 +125,10 @@ def sql_literals(text):
 
 
 def created_tables(swift_texts):
-    """Tables the dictionary build or the app itself creates, plus every CTE name the app defines."""
+    """Tables generate_db.py or the app itself creates, plus every CTE name the app defines."""
     names = {'sqlite_master', 'sqlite_schema'}
     create = re.compile(r'CREATE\s+(?:VIRTUAL\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)', re.I)
-    for builder in ('generate_db.py', 'reading_registers.py'):
-        names.update(create.findall((ROOT / 'Resources' / builder).read_text()))
+    names.update(create.findall((ROOT / 'Resources' / 'generate_db.py').read_text()))
     for text in swift_texts:
         for _, sql in sql_literals(text):
             names.update(create.findall(sql))

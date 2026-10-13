@@ -120,7 +120,7 @@ every lemma a surface can be (甘く as 甘い, 入り as 入る). The counts ta
 Registers (2026-10-13, ReadingRegisters): Tatoeba is everyday text, so web and business writing (方 かた, その後 ご,
 等 とう) and literature were read in its register. The dictionary now carries reading counts from KWDLC's training
 documents (web) and Aozora ruby by authors the benchmark doesn't sample (literature), and a character-bigram naive
-Bayes classifier over the three corpora (`Resources/reading_registers.py`, built by generate_db.py). A note the
+Bayes classifier over the three corpora (`import_reading_registers` in `Resources/generate_db.py`). A note the
 classifier calls web or literature adds that register's counts to Tatoeba's in P(reading | kanji); the class terms
 stay Tatoeba's; an everyday note is untouched. Weights fitted on held-out data only (KWDLC's split_for_pas dev
 documents, Aozora's every-tenth held-out works, train2k), web 4 and literature 8: the largest that left train2k level.

@@ -5,7 +5,7 @@ import Foundation
 // (RegisterClassifier) names a note's register once; a web or literary note then adds that register's
 // counts, scaled by its weight, to Tatoeba's reading counts (ReadingContextTable.choose). An everyday
 // note gets Tatoeba's alone, exactly as before. Built from the dictionary's register tables
-// (Resources/reading_registers.py); nil for a dictionary without them.
+// (Resources/generate_db.py, import_reading_registers); nil for a dictionary without them.
 nonisolated final class ReadingRegisters: Sendable {
     // How much a register's counts weigh beside Tatoeba's. Fitted on held-out data only (KWDLC's dev
     // documents, Aozora's held-out works, Tatoeba's train2k): the largest weight that left train2k level.
