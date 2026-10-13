@@ -60,16 +60,16 @@ def corpus(train_path, held_path, excluded_paths):
             sys.stdout.write(line)
 
 
-def kwdlc(kwdlc_path, dictionary_path):
-    """Writes KWDLC's training documents (its own id/train.id; id/test.id is the benchmark's) in the
-    gold-set format: every morpheme a span with its dictionary form and its annotated reading. Only
+def kwdlc(kwdlc_path, dictionary_path, ids='id/train.id'):
+    """Writes KWDLC's training documents (its own id/train.id; id/test.id is the benchmark's; for fitting
+    the table's weight, id/split_for_pas/train.id, which leaves out the dev documents) in the gold-set format: every morpheme a span with its dictionary form and its annotated reading. Only
     kanji runs the dictionary lists with several readings keep theirs, so the table holds no rows the
     app would never ask about; the other spans stay as neighbours."""
     db = sqlite3.connect(f'file:{dictionary_path}?mode=ro', uri=True)
     readings = collections.defaultdict(set)
     for surface, reading in db.execute('SELECT surface, reading FROM surface_readings'):
         readings[surface].add(to_hiragana(reading))
-    for document in open(f'{kwdlc_path}/id/train.id').read().split():
+    for document in open(f'{kwdlc_path}/{ids}').read().split():
         morphemes = []
         for line in open(f'{kwdlc_path}/knp/{document[:13]}/{document}.knp'):
             if line.startswith('EOS'):
@@ -131,6 +131,6 @@ if __name__ == '__main__':
     if sys.argv[1] == 'corpus':
         corpus(sys.argv[2], sys.argv[3], sys.argv[4:])
     elif sys.argv[1] == 'kwdlc':
-        kwdlc(sys.argv[2], sys.argv[3])
+        kwdlc(*sys.argv[2:5])
     else:
         count(sys.argv[2], sys.argv[3])
