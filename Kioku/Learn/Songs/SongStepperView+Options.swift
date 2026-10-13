@@ -33,6 +33,9 @@ extension SongStepperView {
                 Toggle(isOn: $showVocalizations) {
                     Label("Vocalizations", systemImage: "music.note")
                 }
+                Toggle(isOn: $showPatterns) {
+                    Label("Patterns to Bank", systemImage: "lightbulb")
+                }
             }
             Divider()
             Button {

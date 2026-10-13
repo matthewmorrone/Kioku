@@ -1,7 +1,7 @@
 import Foundation
 
-// Which of a breakdown's words and lines are shown and spoken, from the Breakdown options menu
-// (BreakdownListenSettings). The breakdown itself always carries everything — particles,
+// Which of a breakdown's words, lines and pattern notes are shown and spoken, from the Breakdown
+// options menu (BreakdownListenSettings). The breakdown itself always carries everything — particles,
 // katakana words, vocalizations — so flipping an option is instant and never needs a
 // regenerate. One rule, used by both SongLineCard (through SongStepperView) and
 // SongListenScript, so what is shown and what is spoken can't disagree.
@@ -14,6 +14,8 @@ nonisolated struct SongWordVisibility: Equatable, Sendable {
     var showsParticles: Bool
     var showsKatakana: Bool
     var showsVocalizations: Bool
+    // Whether each line's "Pattern to Bank" note is shown and spoken.
+    var showsPatterns: Bool
 
     // The bracketed tag the prompt puts on a vocalization's word bullet (`[vocalization]`,
     // parsed into SongWord.grammarTag) and at the start of a vocalization line's gist.
@@ -26,7 +28,8 @@ nonisolated struct SongWordVisibility: Equatable, Sendable {
     static let defaults = SongWordVisibility(
         showsParticles: BreakdownListenSettings.defaultShowParticles,
         showsKatakana: BreakdownListenSettings.defaultShowKatakana,
-        showsVocalizations: BreakdownListenSettings.defaultShowVocalizations
+        showsVocalizations: BreakdownListenSettings.defaultShowVocalizations,
+        showsPatterns: BreakdownListenSettings.defaultShowPatterns
     )
 
     // Whether `word` is shown and spoken. A particle is a bullet tagged `[particle]`, or — for

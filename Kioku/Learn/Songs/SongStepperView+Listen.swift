@@ -122,7 +122,8 @@ extension SongStepperView {
         SongWordVisibility(
             showsParticles: showParticles,
             showsKatakana: showKatakana,
-            showsVocalizations: showVocalizations
+            showsVocalizations: showVocalizations,
+            showsPatterns: showPatterns
         )
     }
 

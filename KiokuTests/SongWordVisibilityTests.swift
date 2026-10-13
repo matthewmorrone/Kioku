@@ -5,8 +5,8 @@ import XCTest
 // only by its own option, English bullets are always hidden, and vocalization lines (and
 // repeats pointing at one) drop out while vocalizations are hidden.
 final class SongWordVisibilityTests: XCTestCase {
-    private let showAll = SongWordVisibility(showsParticles: true, showsKatakana: true, showsVocalizations: true)
-    private let hideAll = SongWordVisibility(showsParticles: false, showsKatakana: false, showsVocalizations: false)
+    private let showAll = SongWordVisibility(showsParticles: true, showsKatakana: true, showsVocalizations: true, showsPatterns: true)
+    private let hideAll = SongWordVisibility(showsParticles: false, showsKatakana: false, showsVocalizations: false, showsPatterns: false)
 
     // Builds a bare line for visibility checks.
     private func line(_ index: Int, vocalization: Bool = false, reference: LineReference? = nil) -> SongLine {

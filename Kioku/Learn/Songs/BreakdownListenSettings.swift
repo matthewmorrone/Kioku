@@ -17,6 +17,7 @@ nonisolated enum BreakdownListenSettings {
     static let showParticlesKey = "breakdown.showParticles"
     static let showKatakanaKey = "breakdown.showKatakana"
     static let showVocalizationsKey = "breakdown.showVocalizations"
+    static let showPatternsKey = "breakdown.showPatterns"
 
     static let defaultPauseAfterLine = false
     static let defaultWordRepeatCount = 1
@@ -24,5 +25,6 @@ nonisolated enum BreakdownListenSettings {
     static let defaultShowParticles = false
     static let defaultShowKatakana = true
     static let defaultShowVocalizations = false
+    static let defaultShowPatterns = true
     static let wordRepeatChoices = [1, 2, 3]
 }

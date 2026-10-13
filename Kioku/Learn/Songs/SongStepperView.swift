@@ -71,6 +71,7 @@ struct SongStepperView: View {
     @AppStorage(BreakdownListenSettings.showParticlesKey) var showParticles = BreakdownListenSettings.defaultShowParticles
     @AppStorage(BreakdownListenSettings.showKatakanaKey) var showKatakana = BreakdownListenSettings.defaultShowKatakana
     @AppStorage(BreakdownListenSettings.showVocalizationsKey) var showVocalizations = BreakdownListenSettings.defaultShowVocalizations
+    @AppStorage(BreakdownListenSettings.showPatternsKey) var showPatterns = BreakdownListenSettings.defaultShowPatterns
     // Plays the breakdown's script live (sung clips + TTS narration), one step at a time —
     // see SongLiveListenController. Owned by this view, not the environment: it has no
     // cross-session position of its own to persist, so a fresh sheet gets a fresh controller
@@ -583,7 +584,8 @@ struct SongStepperView: View {
                                     proxy.scrollTo(target.id, anchor: .center)
                                 }
                             },
-                            words: visibleWords[item.line.index] ?? []
+                            words: visibleWords[item.line.index] ?? [],
+                            showsPatternNote: showPatterns
                         )
                         .id(item.id)
                     }

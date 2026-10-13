@@ -108,10 +108,9 @@ nonisolated enum SongListenScript {
                 }
             }
 
-            // Previously omitted entirely — the pattern-bank note (displayed by
-            // SongLineCard.patternNote) never had a corresponding script step, so listen-along
-            // silently skipped it no matter how "listenable" its prose was.
-            if let pattern = effectivePatternNote(for: line, linesByIndex: linesByIndex), pattern.isEmpty == false {
+            // The pattern-bank note (displayed by SongLineCard.patternNote), unless the options
+            // menu hides patterns.
+            if visibility.showsPatterns, let pattern = effectivePatternNote(for: line, linesByIndex: linesByIndex), pattern.isEmpty == false {
                 let cleaned = SongLineCard.stripInlineMarkdown(SongLineCard.strippingPatternToBankPrefix(pattern))
                 if cleaned.isEmpty == false {
                     steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .patternNote, text: "Pattern to bank: \(ttsFriendlyText(cleaned))", language: .english)))

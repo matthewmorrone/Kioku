@@ -67,6 +67,8 @@ struct SongLineCard: View {
     // removed when "Show Repeated Words" is off (SongCoveredWords) — the same list listen-along
     // speaks, so the card never re-derives it.
     let words: [SongWord]
+    // Whether the "Pattern to Bank" note is shown (the options menu's Patterns to Bank toggle).
+    let showsPatternNote: Bool
 
     @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
     // Width the Japanese row has to fit into, measured so long lines shrink instead of wrapping
@@ -82,7 +84,9 @@ struct SongLineCard: View {
         return nil
     }
     private var effectiveGist: String? { effectiveValue(\.gist) }
-    private var effectiveGrammarNote: String? { effectiveValue(\.grammarNote) }
+    private var effectiveGrammarNote: String? {
+        showsPatternNote ? effectiveValue(\.grammarNote) : nil
+    }
     // The line index whose words `words` is actually drawing from — this line's own, or (for a
     // "= line N" chorus fall-through) the referenced line's. Mirrors SongListenScript's
     // effectiveWords fallback so wordFurigana lookups use the same line identity the cache was
