@@ -9,7 +9,7 @@ final class SongBreakdownPromptTests: XCTestCase {
         XCTAssertEqual(SongBreakdownPrompt.userTurn(lyrics: "歌詞", userNote: "  \n"), "## Lyrics\n\n歌詞")
     }
 
-    // A note comes before the lyrics under the header rule 12 names, so the model reads it first.
+    // A note comes before the lyrics under the header rule 11 names, so the model reads it first.
     func testNoteComesBeforeLyrics() {
         let turn = SongBreakdownPrompt.userTurn(lyrics: "歌詞", userNote: "ignore parentheses")
         XCTAssertEqual(turn, "## Instructions for this song\n\nignore parentheses\n\n## Lyrics\n\n歌詞")

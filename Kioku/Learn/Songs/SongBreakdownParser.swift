@@ -204,8 +204,9 @@ nonisolated final class SongBreakdownParser: Sendable {
             }
         }
 
-        // Optional grammar tag: `[past]`, `[te-form]`, etc. — only present for inflected
-        // verbs/adjectives (see SongBreakdownPrompt rule 11). Must come before the dash strip
+        // Optional bracketed tag: `[past]`, `[te-form]`, etc. The prompt doesn't ask for
+        // these, but cached breakdowns carry them and the model emits one now and then;
+        // lifting it out keeps it from leaking into the definition. Must come before the dash strip
         // below, since the tag sits between the romaji parenthetical and the separator dash.
         var grammarTag: String? = nil
         if remainder.hasPrefix("[") {
