@@ -8,7 +8,8 @@ offsets into the text — the format scripts/segmentation-eval reads.
   aozora: public-domain fiction from Aozora Bunko; gold = the readings the texts' editors put in ruby
       (｜漢字《かんじ》), one kanji run each. Ruby marks the words a reader might stumble on, so it's hard.
   kwdlc: the Kyoto University Web Document Leads Corpus (web pages); gold = every morpheme with its
-      annotated reading and boundaries.
+      annotated reading and boundaries. Only the 700 documents of KWDLC's own test split (id/test.id):
+      Kioku's reading counts come from its training split (scripts/calibration/count_reading_contexts.py).
 
     build_gold.py WORK      (after fetch.sh has filled WORK/aozora and WORK/KWDLC)"""
 import glob, gzip, json, os, re, sys
@@ -68,9 +69,10 @@ def aozora(work):
 
 
 def kwdlc(work):
-    """Every KWDLC sentence, each morpheme a gold span with its reading."""
+    """Every sentence of KWDLC's test documents, each morpheme a gold span with its reading."""
     records = []
-    for path in sorted(glob.glob(f'{work}/KWDLC/knp/**/*.knp', recursive=True)):
+    for document in open(f'{work}/KWDLC/id/test.id').read().split():
+        path = f'{work}/KWDLC/knp/{document[:13]}/{document}.knp'
         morphemes = []
         for line in open(path):
             if line.startswith('EOS'):

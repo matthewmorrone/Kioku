@@ -23,7 +23,7 @@ ReadingContextTable reads it. Counting the unused held-out sentences too (2026-1
 written as their headword are counted: a conjugated token is marked with its dictionary form's reading
 (来て as 来る(くる)), which counted 来 → く for 来て.
 """
-import collections, json, re, sys
+import collections, json, re, sqlite3, sys
 
 KANJI = re.compile(r'[㐀-䶿一-鿿豈-﫿々]+')
 BOUNDARY = 'BOUNDARY'
@@ -58,6 +58,34 @@ def corpus(train_path, held_path, excluded_paths):
         record = json.loads(line)
         if record['id'] not in excluded_ids and record['s'] not in excluded_text:
             sys.stdout.write(line)
+
+
+def kwdlc(kwdlc_path, dictionary_path):
+    """Writes KWDLC's training documents (its own id/train.id; id/test.id is the benchmark's) in the
+    gold-set format: every morpheme a span with its dictionary form and its annotated reading. Only
+    kanji runs the dictionary lists with several readings keep theirs, so the table holds no rows the
+    app would never ask about; the other spans stay as neighbours."""
+    db = sqlite3.connect(f'file:{dictionary_path}?mode=ro', uri=True)
+    readings = collections.defaultdict(set)
+    for surface, reading in db.execute('SELECT surface, reading FROM surface_readings'):
+        readings[surface].add(to_hiragana(reading))
+    for document in open(f'{kwdlc_path}/id/train.id').read().split():
+        morphemes = []
+        for line in open(f'{kwdlc_path}/knp/{document[:13]}/{document}.knp'):
+            if line.startswith('EOS'):
+                text, gold = '', []
+                for surface, reading, headword in morphemes:
+                    runs = KANJI.findall(surface)
+                    kept = len(runs) == 1 and len(readings.get(runs[0], ())) > 1
+                    gold.append([len(text), len(text) + len(surface), headword, to_hiragana(reading) if kept else '', 0])
+                    text += surface
+                if gold:
+                    print(json.dumps({'s': text, 'g': gold}, ensure_ascii=False))
+                morphemes = []
+            elif line[0] not in '#*+':
+                fields = line.split(' ')
+                if len(fields) > 3 and fields[0] != '\\':
+                    morphemes.append((fields[0], fields[1], fields[2]))
 
 
 def count(gold_path, classes_path):
@@ -102,5 +130,7 @@ def count(gold_path, classes_path):
 if __name__ == '__main__':
     if sys.argv[1] == 'corpus':
         corpus(sys.argv[2], sys.argv[3], sys.argv[4:])
+    elif sys.argv[1] == 'kwdlc':
+        kwdlc(sys.argv[2], sys.argv[3])
     else:
         count(sys.argv[2], sys.argv[3])
