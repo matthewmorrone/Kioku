@@ -118,19 +118,15 @@ every lemma a surface can be (甘く as 甘い, 入り as 入る). The counts ta
 (137,836: train minus train2k, plus the held-out half minus held2k, fresh and kana2k).
 
 Registers (2026-10-13, ReadingRegisters): Tatoeba is everyday text, so web and business writing (方 かた, その後 ご,
-等 とう) and literature were read in its register. The dictionary now carries reading counts from KWDLC's training
-documents (web) and Aozora ruby by authors the benchmark doesn't sample (literature), and a character-bigram naive
-Bayes classifier over the three corpora (`import_reading_registers` in `Resources/generate_db.py`). A note the
-classifier calls web or literature adds that register's counts to Tatoeba's in P(reading | kanji); the class terms
-stay Tatoeba's; an everyday note is untouched. Weights fitted on held-out data only (KWDLC's split_for_pas dev
-documents, Aozora's every-tenth held-out works, train2k), web 4 and literature 8: the largest that left train2k level.
-On the benchmark's held-out test sets (scripts/benchmark, several readings, against no registers): KWDLC test 90.44 →
-92.15% (67 fixed / 16 broken, p = 1e-8), Aozora 74.29 → 76.73% (69 / 21, p = 4e-7), held2k 96.03 → 95.73% (4 / 7,
-p = 0.55), fresh5k 99.02 → 98.92% (0 / 3, p = 0.25). Tried first: KWDLC counts with their own neighbour classes, added
-to every note (KWDLC test 94.35%, but fresh5k 1 fixed / 9 broken, p = 0.02: 他の → た, 場 → じょう on everyday
-sentences); routing those per note fixed fresh5k but needed segcli to class KWDLC's tokens, which a dictionary build
-can't do before the dictionary exists. The on-device model as the classifier labelled 27% of fresh5k sentences formal
-and 75% of KWDLC dev sentences casual (no order bias, 2–8% refused); the bigram counts got 2% and 33%.
+等 とう) was read in its register. The dictionary now carries reading counts from KWDLC's training documents and a
+character-bigram naive Bayes classifier over Tatoeba vs KWDLC (`import_reading_registers` in
+`Resources/generate_db.py`). A note that beats everyday by at least 0.3 nats per gram
+(RegisterClassifier.minimumMargin) adds the web counts ×4 to Tatoeba's in P(reading | kanji); the class terms stay
+Tatoeba's; any other note is untouched. Weight fitted on held-out data only (KWDLC's split_for_pas dev documents,
+train2k): the largest that left train2k level (0.5–8: KWDLC dev +1.2 → +1.6 points, train2k −2 at 8). The margin
+keeps song lyrics everyday (the 12 songs of the alignment reference set, whole lyrics per song, scored −0.27 to +0.26; KWDLC test pages median
++0.47). Same dictionary with vs without the tables (scripts/benchmark, several readings): KWDLC test 90.64 → 93.12%
+(75 fixed / 2 broken, p = 4e-20), held2k 1 / 3, fresh5k 0 / 0, Aozora 0 / 1, the songs unchanged.
 
 Without the model (`NO_BOUNDARY_MODEL=1`): held2k 88.87 / 75, kana2k 85.66 / 240, fresh5k 90.75 / 117,
 lyrics 35 / 38, named 61 / 63. Measured through `segcli run` with `SWIFT_DETERMINISTIC_HASHING=1`;
@@ -227,6 +223,18 @@ now fixes; see "Numbers to beat").
 
 ## Tried and dropped — don't repeat without a new reason
 
+- **Aozora ruby as a literature register** (2026-10-13; also the 2026-10-11 aozora-ruby-readings branch): counts
+  from ruby in ~2,100 works, routed to notes classed as literature (weight 8), lifted the benchmark's Aozora set
+  74.29 → 76.73% — but editors add ruby where a reading is unusual, and the benchmark's gold is the same ruby, so
+  the counts and the test share the bias. On song lyrics (half of 12 songs classed literature) 10 of 11 changes
+  were wrong: 私 → わたくし, 理由 → わけ, 方が → かた. It also added 8 minutes to every dictionary build.
+- **KWDLC counts on every note**, with their own neighbour classes from `segcli count`: KWDLC test 94.35%, but
+  fresh5k 1 fixed / 9 broken (p = 0.02: 他の → た, 場 → じょう). Routing per note fixed that, and the classes
+  need segcli, which a dictionary build can't run before the dictionary exists.
+- **On-device model as the register classifier**: labelled 27% of fresh5k sentences formal and 75% of KWDLC
+  dev sentences casual (no order bias, 2–8% refused); character bigram counts got 2% and 33%.
+- **Web counts without a margin** (two-way classifier, argmax): 8 of 12 songs classed web, 4 of 5 changes wrong
+  (あの日 → にち, 切なくて → き, 方が → かた).
 - **16 POS classes** for transitions (any weight, penalties-only, + an expression class): flat. Class
   granularity is the whole result — ~1,100 classes work (own class per common function word, JMdict
   tag + last character for conjugating words, fine → coarse backoff). Weight: cut-through bottoms out

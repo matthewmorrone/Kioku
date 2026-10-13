@@ -163,12 +163,12 @@ Claims the evidence supports, with the wording to use:
 |---|---|
 | "On web text, 97% of Kioku's word splits fall on a real word boundary, against about 91% for the open-source analyzers many apps use" | Word splits on KWDLC's test documents: 97.37% vs 90.47–91.18%, 2,195 sentences |
 | "Furigana chosen for the sentence" (方 as かた or ほう) | The context pass; describes behaviour, not a comparison |
-| "Furigana adapts to what you're reading: everyday Japanese, web and business writing, or literature" | ReadingRegisters: a note is classed by its text and gets that kind's reading counts; describes behaviour, not a comparison |
-| "On classic Japanese literature, Kioku picks the right furigana for ambiguous kanji more often than leading open-source analyzers" | Aozora: 76.65% vs 72.00–73.02%, significant against each (p < 10⁻⁶) |
+| "Furigana adapts to web and business writing" (その後 as ご, 方 as かた) | ReadingRegisters: a note that clearly reads like web pages adds web reading counts; describes behaviour, not a comparison |
+| "On classic Japanese literature, Kioku picks the right furigana for ambiguous kanji more often than MeCab and UniDic" | Aozora: 74.14% vs 72.61% / 72.00%, significant (p = 0.046, 0.004). Not significant against Sudachi (73.02%, p = 0.065), so never say "than leading analyzers" or "than all". Margin is small — keep it off the subtitle and promo text |
 | "Furigana and word splitting run fully offline, with no AI language model" | No network and no language model in either path; the dictionary downloads once |
 
-Don't claim: more accurate furigana in general, or than a named app (on KWDLC web text Kioku is only
-*level* on readings, and behind UniDic on all words; no app was tested); "no AI" (Kioku's statistics and boundary model are learned —
+Don't claim: more accurate furigana in general, or than a named app (on KWDLC web text Kioku is ahead
+of MeCab but only level with UniDic and Sudachi; no app was tested); "no AI" (Kioku's statistics and boundary model are learned —
 "no AI language model" is the accurate form); offline song breakdowns (they need a provider and network).
 Keep competitor names off the listing: say "open-source analyzers" and let the linked page name them.
 
