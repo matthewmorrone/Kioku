@@ -333,24 +333,6 @@
       "feedsDictionary": true
     },
     {
-      "name": "aozora-bunko-ruby",
-      "description": "Aozora Bunko's catalogue of public-domain works and the works' ruby (漢字《かんじ》): up to ten works per author in modern spelling with ruby, leaving out the authors the benchmark samples and every tenth work (held out for fitting). Gives the literature reading counts and the literature column of the register classifier.",
-      "license": "Public domain works (Aozora Bunko, 作品著作権フラグ なし). Statistics only, no text is shipped.",
-      "type": "source-archive",
-      "path": null,
-      "required": false,
-      "derived": false,
-      "url": "https://www.aozora.gr.jp/",
-      "sha256": null,
-      "fetch": {
-        "url": "https://www.aozora.gr.jp/index_pages/list_person_all_extended_utf8.zip",
-        "format": "zip",
-        "cacheName": "aozora-list_person_all_extended_utf8.zip"
-      },
-      "provenance": "The catalogue is fetched fresh on every rebuild (Aozora updates it continually, so no hash is pinned); the works it selects are downloaded by generate_db.py (import_reading_registers), about 2,100 of them, four at a time. Input to reading_register_counts and register_grams.",
-      "feedsDictionary": true
-    },
-    {
       "name": "unidic-kana-accent-src",
       "description": "The UniDic source archive the pitch-accent table is derived from. Pinned as its own entry so the derivation's input is reproducible rather than implied.",
       "license": "BSD-3-Clause, GPL or LGPL, at your choice (The UniDic Consortium; COPYING in the archive)",

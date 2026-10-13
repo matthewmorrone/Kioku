@@ -1,10 +1,16 @@
 import Foundation
 
-// Tells which kind of text a note is: everyday (Tatoeba's sentences), web (KWDLC's web pages) or
-// literature (Aozora Bunko), by naive Bayes over character unigrams and bigrams counted from each
+// Tells which kind of text a note is: everyday (Tatoeba's sentences) or web (KWDLC's web pages), by
+// naive Bayes over character unigrams and bigrams counted from each
 // (Resources/generate_db.py, import_reading_registers). Furigana uses it to decide which reading counts
 // to add to Tatoeba's (ReadingRegisters). No model and no network: a table lookup per character.
 nonisolated final class RegisterClassifier: Sendable {
+    // How clearly a note must read like another register before it leaves everyday: the average log
+    // likelihood ratio per gram against everyday. Song lyrics scored −0.27 to +0.26 and read worse with
+    // the web counts (あの日 → にち, 方が → かた); KWDLC's web pages score a median +0.47, three quarters
+    // above +0.23; Tatoeba's held2k sentences a median −0.19, nine in ten below +0.31.
+    static let minimumMargin = 0.3
+
     // The register names, in the order of each gram's counts.
     let registers: [String]
     private let counts: [String: [Int]]
@@ -19,8 +25,9 @@ nonisolated final class RegisterClassifier: Sendable {
     }
 
     // The register whose text `text` most resembles: the largest sum of log P(gram | register), with
-    // add-one smoothing, over the text's grams with ^ and $ marking its ends. Unicode scalars, as the
-    // generator counts them. Ties and empty text go to the first register.
+    // add-one smoothing, over the text's grams with ^ and $ marking its ends (Unicode scalars, as the
+    // generator counts them), unless it beats everyday by less than minimumMargin per gram. Ties and
+    // empty text go to the first register.
     func register(of text: String) -> String? {
         guard registers.isEmpty == false else { return nil }
         let scalars = ["^"] + text.unicodeScalars.map { String($0) } + ["$"]
@@ -38,6 +45,11 @@ nonisolated final class RegisterClassifier: Sendable {
         }
         var best = 0
         for index in scores.indices where scores[index] > scores[best] { best = index }
+        let gramCount = Double(2 * scalars.count - 1)
+        if let everyday = registers.firstIndex(of: "everyday"), best != everyday,
+           (scores[best] - scores[everyday]) / gramCount < Self.minimumMargin {
+            return registers[everyday]
+        }
         return registers[best]
     }
 }

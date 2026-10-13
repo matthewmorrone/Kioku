@@ -1,10 +1,10 @@
 import Foundation
 import SQLite3
 
-// The register tables Resources/generate_db.py builds into the dictionary (import_reading_registers): reading counts from web
-// and literary text (reading_register_counts), and the character-gram counts RegisterClassifier tells a
-// note's register by (register_grams, register_totals). A dictionary built before them has none, and
-// furigana then counts Tatoeba alone.
+// The register tables Resources/generate_db.py builds into the dictionary (import_reading_registers):
+// reading counts from web text (reading_register_counts), and the character-gram counts
+// RegisterClassifier tells a note's register by (register_grams, register_totals). A dictionary built
+// before them has none, and furigana then counts Tatoeba alone.
 extension DictionaryStore {
     // Reading counts by register, then kanji run, then hiragana reading. Empty without the table.
     nonisolated func fetchReadingRegisterCounts() throws -> [String: [String: [String: Int]]] {

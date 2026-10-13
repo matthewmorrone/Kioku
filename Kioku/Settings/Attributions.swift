@@ -58,12 +58,6 @@ nonisolated enum Attributions {
             sourceURL: "https://github.com/ku-nlp/KWDLC"
         ),
         Dataset(
-            name: "Aozora Bunko",
-            description: "Ruby readings in public-domain literature; counted (no text kept) for the readings furigana picks in literary text.",
-            license: "Public domain works",
-            sourceURL: "https://www.aozora.gr.jp"
-        ),
-        Dataset(
             name: "Jiten Frequency List",
             description: "Word-frequency rankings from anime, drama, film, novels and visual novels, for difficulty grading and ranking.",
             license: "Jiten — CC BY-SA 4.0",

@@ -73,7 +73,7 @@ nonisolated final class ReadingContextTable: Sendable {
 
     // The likeliest of `candidates` (hiragana run readings, in the dictionary's frequency order) for
     // `kanji` between a word of class `previous` and one of class `next`; nil when no counts saw this
-    // kanji. `addedCounts` (ReadingRegisters: a web or literary note's own register) join Tatoeba's in
+    // kanji. `addedCounts` (ReadingRegisters: a web note's web counts) join Tatoeba's in
     // P(reading | kanji); the class terms stay Tatoeba's, the only counts with classes. Ties keep the
     // earlier candidate, so the frequency order breaks them.
     func choose(

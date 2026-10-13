@@ -4,7 +4,7 @@ import Foundation
 // than one dictionary reading, from three sources in order of authority:
 //   1. usage: Tatoeba's reading counts (ReadingContextTable) score each reading between the
 //      classes of the words either side (方 after a verb → かた, 時 after a number → じ); a note that
-//      reads like web pages or literature adds that register's counts (ReadingRegisters);
+//      reads like web pages adds the web counts (ReadingRegisters);
 //   2. Apple's tokenizer (AppleTokenReadings) adds a fixed vote to the reading it gives, which tips
 //      close calls (後 → ご in 説明会後) but not clear ones (私 stays わたし);
 //   3. the dictionary: its frequency order breaks ties, and decides alone when neither has a say.
@@ -23,7 +23,7 @@ nonisolated extension FuriganaResolver {
         let table = ReadingContextTable.bundled
         let transitionTable = (segmenter as? Segmenter)?.transitionTable
         let appleReadings = AppleTokenReadings.runReadings(in: sourceText)
-        // The note's register (everyday, web, literature), told once for the whole text.
+        // The note's register (everyday or web), told once for the whole text.
         let registers = (segmenter as? Segmenter)?.readingRegisters
         let register = registers?.classifier.register(of: sourceText)
         // A neighbour's class as the counts name it: text the dictionary doesn't cover and the
