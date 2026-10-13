@@ -223,9 +223,10 @@ nonisolated final class SongBreakdownParser: Sendable {
             }
         }
 
-        // Optional bracketed tag: `[vocalization]` (SongBreakdownPrompt rule 7, read by
-        // SongWordVisibility), or a form tag like `[past]` that cached breakdowns carry and the
-        // model emits now and then; lifting it out keeps it from leaking into the definition.
+        // Optional bracketed tag: `[particle]` / `[vocalization]` (SongBreakdownPrompt rule 7,
+        // read by SongWordVisibility), or a form tag like `[past]` that cached breakdowns carry
+        // and the model emits now and then; lifting it out keeps it from leaking into the
+        // definition.
         // Must come before the dash strip below, since the tag sits between the romaji
         // parenthetical and the separator dash.
         var grammarTag: String? = nil

@@ -45,8 +45,8 @@ nonisolated struct SongWord: Codable, Equatable, Sendable {
     let surface: String
     let sungRomaji: String
     let definition: String
-    // The bullet's bracketed tag: "vocalization" for a sung sound with no lexical meaning
-    // (read by SongWordVisibility), or a form tag like "past" in breakdowns that carry one.
+    // The bullet's bracketed tag: "particle" or "vocalization" (read by SongWordVisibility),
+    // or a form tag like "past" in breakdowns that carry one.
     // Nil for an untagged bullet (missing in cached JSON decodes to nil).
     let grammarTag: String?
 

@@ -18,6 +18,9 @@ nonisolated struct SongWordVisibility: Equatable, Sendable {
     // The bracketed tag the prompt puts on a vocalization's word bullet (`[vocalization]`,
     // parsed into SongWord.grammarTag) and at the start of a vocalization line's gist.
     static let vocalizationTag = "vocalization"
+    // The bracketed tag the prompt puts on a particle's word bullet (`[particle]`) — judged
+    // in context by the model, so compounds like よね count and content-word こと doesn't.
+    static let particleTag = "particle"
 
     // The options menu's out-of-the-box choices (BreakdownListenSettings defaults).
     static let defaults = SongWordVisibility(
@@ -26,19 +29,20 @@ nonisolated struct SongWordVisibility: Equatable, Sendable {
         showsVocalizations: BreakdownListenSettings.defaultShowVocalizations
     )
 
-    // Whether `word` is shown and spoken. Particles are checked against the canonical
-    // KanaData.particleSet the Read-tab vocab extractor uses; katakana means the whole surface
+    // Whether `word` is shown and spoken. A particle is a bullet tagged `[particle]`, or — for
+    // breakdowns generated before the tag — a surface in the canonical single-kana
+    // KanaData.particleSet the Read-tab vocab extractor uses. Katakana means the whole surface
     // is katakana (loanwords, and native words written in katakana for effect).
     func shows(_ word: SongWord) -> Bool {
         let surface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
         guard surface.isEmpty == false else { return false }
         guard ScriptClassifier.containsJapanese(surface) else { return false }
-        if showsParticles == false, KanaData.particleSet.contains(surface) { return false }
-        if showsKatakana == false, ScriptClassifier.isPureKatakana(surface) { return false }
-        if showsVocalizations == false,
-           word.grammarTag?.lowercased() == Self.vocalizationTag {
+        let tag = word.grammarTag?.lowercased()
+        if showsParticles == false, tag == Self.particleTag || KanaData.particleSet.contains(surface) {
             return false
         }
+        if showsKatakana == false, ScriptClassifier.isPureKatakana(surface) { return false }
+        if showsVocalizations == false, tag == Self.vocalizationTag { return false }
         return true
     }
 

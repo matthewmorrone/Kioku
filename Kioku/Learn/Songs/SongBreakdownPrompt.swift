@@ -20,7 +20,7 @@ enum SongBreakdownPrompt {
         *[romaji matching what is actually sung, not what is written]*
 
         - **[word in kanji/kana]** ([romaji]) — [plain dictionary gloss, no quotation marks; add one short note after it only when rule 5's (a)-(c) applies]
-        - [repeat for every word/morpheme in the line, in order — particles included (を/が/に/は/も/の…), each glossed by its function in a few words, e.g. object marker, topic marker]
+        - [repeat for every word/morpheme in the line, in order — particles included (を/が/に/は/も/の…, and compound or sentence-ending ones like よね/かな/のに/って), each tagged [particle] right after its romaji and glossed by its function in a few words, e.g. object marker, topic marker]
 
         **Gist:** [for a vocalization line, start with [vocalization] — see rule 7] [natural English rendering of the whole line — interpreted IN CONTEXT of the entire song]
 
@@ -52,7 +52,7 @@ enum SongBreakdownPrompt {
 
         6. **No extra commentary**: No intros, no outros, no "here's the song!" or "enjoy!" — just the breakdown. End when the song ends.
 
-        7. **Skip nothing**: Cover every line in order and every word in each line — particles, katakana loanwords, and vocalizations included; the reader hides what they don't want, so leave nothing out on their behalf — unless rule 11 says to leave something out. A vocalization is an exclamation or sung sound rather than a content word (ああ, 嗚呼, おお, ラララ, oh, la la, humming), in any spelling — kana, katakana, or kanji like 嗚呼 (= ああ); give it its own bullet tagged [vocalization] right after its romaji, glossed as what it is (e.g. sigh, wordless refrain). A line made up only of vocalizations still gets its header and bullets, and its gist starts with [vocalization] (e.g. **Gist:** [vocalization] Wordless refrain).
+        7. **Skip nothing**: Cover every line in order and every word in each line — particles (tagged [particle], judged by the role the word plays in this line: こと as a sentence-ending particle is tagged, こと meaning "thing" is not), katakana loanwords, and vocalizations included; the reader hides what they don't want, so leave nothing out on their behalf — unless rule 11 says to leave something out. A vocalization is an exclamation or sung sound rather than a content word (ああ, 嗚呼, おお, ラララ, oh, la la, humming), in any spelling — kana, katakana, or kanji like 嗚呼 (= ああ); give it its own bullet tagged [vocalization] right after its romaji, glossed as what it is (e.g. sigh, wordless refrain). A line made up only of vocalizations still gets its header and bullets, and its gist starts with [vocalization] (e.g. **Gist:** [vocalization] Wordless refrain).
 
         8. **Tone**: Direct, concise, occasionally dry. No filler praise. Correctness over politeness — call out wrong common interpretations. Don't manufacture interpretation for a word that doesn't need it — a plain, self-explanatory word (今夜 tonight, パレード parade, and per rule 5, most single nouns and verbs even when they sound evocative) gets a plain, short definition and stops there; save evocative or interpretive language for words that actually meet one of rule 5's three exceptions. If you notice a bullet's definition is followed by a sentence explaining what the word "suggests" or "implies" or "can imply," delete that sentence before emitting the line — this pattern is the single most common way this rule gets violated.
 

@@ -17,13 +17,15 @@ final class SongWordVisibilityTests: XCTestCase {
     // Each kind is shown when its option is on and hidden when off; plain vocabulary always shows.
     func testWordKindsFollowTheirOptions() {
         let particle = SongWord(surface: "を", sungRomaji: "wo", definition: "object marker")
+        let taggedParticle = SongWord(surface: "よね", sungRomaji: "yone", definition: "seeking agreement", grammarTag: "particle")
         let katakana = SongWord(surface: "パレード", sungRomaji: "pareedo", definition: "parade")
         let vocal = SongWord(surface: "ああ", sungRomaji: "aa", definition: "sigh", grammarTag: "vocalization")
         let noun = SongWord(surface: "夕凪", sungRomaji: "yuunagi", definition: "evening calm")
-        for word in [particle, katakana, vocal, noun] {
+        for word in [particle, taggedParticle, katakana, vocal, noun] {
             XCTAssertTrue(showAll.shows(word), word.surface)
         }
         XCTAssertFalse(hideAll.shows(particle))
+        XCTAssertFalse(hideAll.shows(taggedParticle))
         XCTAssertFalse(hideAll.shows(katakana))
         XCTAssertFalse(hideAll.shows(vocal))
         XCTAssertTrue(hideAll.shows(noun))
