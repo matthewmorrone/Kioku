@@ -442,17 +442,66 @@ struct SongLineCard: View {
         .padding(.top, 2)
     }
 
-    // Word entries as a vertical list with surface, sungRomaji, and the LLM definition.
-    // Iterates `effectiveWords` so chorus repeats display the referenced line's vocabulary.
-    // Identifies rows by positional offset because a single line can repeat the same word
-    // (chorus, refrain) and value-based identity would collide and break SwiftUI's diffing.
+    // Word entries as a two-column glossary table: headword (with furigana) on the left in a
+    // column sized to the widest headword, gloss on the right sharing one left edge down the
+    // list. Iterates `effectiveWords` so chorus repeats display the referenced line's
+    // vocabulary. Identifies rows by positional offset because a single line can repeat the
+    // same word (chorus, refrain) and value-based identity would collide and break SwiftUI's
+    // diffing.
     private var wordsList: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let columnWidth = headwordColumnWidth
+        return VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(effectiveWords.enumerated()), id: \.offset) { offset, word in
-                wordEntryRow(word)
+                if offset > 0 {
+                    Divider()
+                }
+                wordEntryRow(word, headwordWidth: columnWidth)
                     .id(wordRowScrollID(for: word, at: offset))
             }
         }
+    }
+
+    // Headword point size in the table — smaller than the old stacked layout's 20pt so the
+    // headword column stays narrow enough to leave the gloss most of the row.
+    private static let headwordSize: CGFloat = 18
+    // Upper bound on the headword column; longer headwords wrap inside it rather than
+    // squeezing the gloss column.
+    private static let maxHeadwordColumnWidth: CGFloat = 140
+
+    // Vertical geometry the furigana renderer gives a single line of headword text — the same
+    // RenderGeometry the renderer resolves, so the plain-Text headword and the gloss can be
+    // offset to sit on the renderer's baseline.
+    private var headwordGeometry: RenderGeometry {
+        RenderGeometry.resolve(
+            textSize: Double(Self.headwordSize),
+            userLineSpacing: 4,
+            furiganaGap: furiganaGap
+        )
+    }
+
+    // Width of the headword column: the widest headword's natural width, counting the extra
+    // room ruby wider than its kanji forces the renderer to open, plus the renderer's side
+    // insets. One width for the whole list keeps the gloss column aligned.
+    private var headwordColumnWidth: CGFloat {
+        let bodyFont = ReadingFont.body(size: Self.headwordSize)
+        let rubyFont = UIFont.systemFont(ofSize: Self.headwordSize * 0.5)
+        let widest = effectiveWords.map { word -> CGFloat in
+            let surface = word.surface as NSString
+            var width = surface.size(withAttributes: [.font: bodyFont]).width
+            let key = WordFuriganaKey(lineIndex: effectiveWordsLineIndex, surface: word.surface)
+            if let cache = wordFurigana[key] {
+                for (location, reading) in cache.furiganaBySegmentLocation {
+                    let length = cache.furiganaLengthBySegmentLocation[location] ?? 0
+                    guard location + length <= surface.length else { continue }
+                    let baseWidth = surface.substring(with: NSRange(location: location, length: length))
+                        .size(withAttributes: [.font: bodyFont]).width
+                    let rubyWidth = (reading as NSString).size(withAttributes: [.font: rubyFont]).width
+                    width += max(0, rubyWidth - baseWidth)
+                }
+            }
+            return ceil(width)
+        }.max() ?? 0
+        return min(widest + 12, Self.maxHeadwordColumnWidth)
     }
 
     // The scroll id for one word row. A word's first occurrence in the line gets the id
@@ -537,27 +586,31 @@ struct SongLineCard: View {
         return trimmed
     }
 
-    // Renders one word entry: surface (with furigana when available), LLM definition wrapped
-    // beneath. Tapping the row opens the shared lookup sheet (via onWordTapped) so the
-    // breakdown's vocabulary is a jumping-off point into the dictionary, like tapping a
-    // segment in the read view.
-    private func wordEntryRow(_ word: SongWord) -> some View {
-        Button {
+    // Renders one table row: headword (with furigana when available) in the fixed-width left
+    // column, LLM gloss in the right column, its first line on the headword's baseline.
+    // Tapping the row opens the shared lookup sheet (via onWordTapped) so the breakdown's
+    // vocabulary is a jumping-off point into the dictionary, like tapping a segment in the
+    // read view.
+    private func wordEntryRow(_ word: SongWord, headwordWidth: CGFloat) -> some View {
+        let geometry = headwordGeometry
+        let headwordFont = ReadingFont.body(size: Self.headwordSize)
+        let glossFont = UIFont.preferredFont(forTextStyle: .callout)
+        return Button {
             onWordTapped(word)
         } label: {
-            VStack(alignment: .leading, spacing: 2) {
-                wordHeadword(word)
-                if let tag = word.grammarTag, tag.isEmpty == false {
-                    Text(tag)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
-                }
+            HStack(alignment: .top, spacing: 8) {
+                wordHeadword(word, topInset: geometry.topInset)
+                    .frame(width: headwordWidth, alignment: .leading)
                 if word.definition.isEmpty == false {
                     // Just the gloss — see SongDefinitionCleaner.
                     Text(SongDefinitionCleaner.clean(word.definition))
-                        .font(.footnote)
+                        .font(.callout)
                         .foregroundStyle(.primary.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        // Drops the gloss's first baseline onto the headword's.
+                        .padding(.top, geometry.topInset + headwordFont.ascender - glossFont.ascender)
+                        .padding(.bottom, 8)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -579,8 +632,12 @@ struct SongLineCard: View {
     // The renderer intercepts its own touches (a UIViewRepresentable wrapping a UITextView, same
     // as furiganaRow), so tapping the headword itself wouldn't reach wordEntryRow's surrounding
     // Button — onSegmentTapped routes it to the same onWordTapped callback instead.
+    //
+    // `topInset` is the renderer's own space above the text (ruby reserve + margin); the
+    // plain-Text branch pads by the same amount so every headword in the table shares one
+    // baseline whether or not it has furigana.
     @ViewBuilder
-    private func wordHeadword(_ word: SongWord) -> some View {
+    private func wordHeadword(_ word: SongWord, topInset: CGFloat) -> some View {
         let key = WordFuriganaKey(lineIndex: effectiveWordsLineIndex, surface: word.surface)
         if let cache = wordFurigana[key], cache.furiganaBySegmentLocation.isEmpty == false {
             KiokuCoreTextRendererView(
@@ -591,7 +648,7 @@ struct SongLineCard: View {
                 isFuriganaVisible: true,
                 isVisualEnhancementsEnabled: true,
                 isColorAlternationEnabled: false,
-                textSize: .constant(20),
+                textSize: .constant(Double(Self.headwordSize)),
                 lineSpacing: 4,
                 kerning: 0,
                 furiganaGap: furiganaGap,
@@ -613,18 +670,22 @@ struct SongLineCard: View {
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             // RenderGeometry.resolve() bakes a fixed 4pt leftInset into every
-            // KiokuCoreTextRendererView instance. wordEntryRow's own VStack already adds
-            // .padding(.horizontal, 4) around the whole row (headword + definition below),
+            // KiokuCoreTextRendererView instance. wordEntryRow's own HStack already adds
+            // .padding(.horizontal, 4) around the whole row (headword + gloss beside it),
             // so without this the two 4pt insets stack: the headword sits 8pt from the row's
-            // edge while the definition text and the "Show/Hide explanations" toggle above it
-            // sit at 4pt, reading as an unexplained extra indent before kanji-bearing headwords
+            // edge while the "Show/Hide explanations" toggle above it sits at 4pt, reading as
+            // an unexplained extra indent before kanji-bearing headwords
             // specifically (pure-kana words fall to the plain-Text branch below, which has no
             // such built-in inset). Cancels the renderer's own inset so it lines up with its
             // plain-Text siblings instead of compounding with the row's padding.
             .padding(.leading, -4)
         } else {
             Text(word.surface)
-                .font(.title3.weight(.semibold))
+                .font(Font(ReadingFont.body(size: Self.headwordSize)))
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, topInset)
+                .padding(.bottom, 8)
         }
     }
 }
