@@ -40,6 +40,7 @@ JMDICT_PATH = None
 DEINFLECTION_GRAMMAR_PATH = RESOURCES_DIR / "deinflection-grammar.json"
 DEINFLECTION_EXTRAS_PATH = RESOURCES_DIR / "deinflection-extras.json"
 DEINFLECTION_GENERATOR_PATH = PROJECT_ROOT / "scripts" / "deinflection" / "generate_rules.py"
+READING_REGISTERS_PATH = PROJECT_ROOT / "Resources" / "reading_registers.py"
 # Jiten's global frequency list (Yomitan term_meta_bank "freq" layout), read by import_frequency_ranks
 # and materialize_surface_frequency.
 FREQUENCY_PATH = None
@@ -1293,6 +1294,20 @@ def import_deinflection_rules(conn):
     print(f"  Done: {count} deinflection rules")
 
 
+# Reading counts from web pages (KWDLC) and literature (Aozora Bunko ruby), and the character-gram counts
+# that tell a note's register, for furigana (ReadingRegisters in the app). Needs surface_readings and
+# sentence_pairs. Steps and choices: the docstring of Resources/reading_registers.py.
+def import_reading_registers(conn):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("reading_registers", READING_REGISTERS_PATH)
+    reading_registers = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(reading_registers)
+    manifest = load_manifest()
+    kwdlc = fetch_archive(manifest["kwdlc"])
+    catalogue = fetch_archive(manifest["aozora-bunko-ruby"])
+    reading_registers.build(conn, kwdlc, catalogue, WORK_DIR)
+
+
 def import_sentence_pairs(conn):
     # Populates sentence_pairs from Japanese-English pairs derived out of Tatoeba's exports
     # (derive_sentence_pairs_rows): ja_id, japanese, en_id, english.
@@ -1903,6 +1918,9 @@ def build_database():
     with phase("Materializing canonical entry id lookup table..."):
         materialize_canonical_entry_ids(conn)
 
+    with phase("Counting readings by register (web, literature) and the register classifier..."):
+        import_reading_registers(conn)
+
     with phase("Recording build provenance..."):
         record_build_provenance(conn)
 
@@ -1962,7 +1980,7 @@ def build_info():
         "mecab": run("mecab", "--version"),
     }
     for local in (MANIFEST_PATH, SCRIPT_CLASSIFIER_SWIFT_PATH, DEINFLECTION_GRAMMAR_PATH,
-                  DEINFLECTION_EXTRAS_PATH, DEINFLECTION_GENERATOR_PATH, Path(__file__).resolve()):
+                  DEINFLECTION_EXTRAS_PATH, DEINFLECTION_GENERATOR_PATH, READING_REGISTERS_PATH, Path(__file__).resolve()):
         if local.exists():
             info[f"sha256 {local.relative_to(PROJECT_ROOT)}"] = sha256_of_file(local)
     return info
