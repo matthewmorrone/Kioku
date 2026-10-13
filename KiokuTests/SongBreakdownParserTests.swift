@@ -368,4 +368,21 @@ final class SongBreakdownParserTests: XCTestCase {
         XCTAssertEqual(line.words[3].definition, "emphasis particle")
         XCTAssertNil(line.grammarNote)
     }
+
+    // A gist opening with [vocalization] marks the line and is stripped from the gist; a
+    // [vocalization] word tag lands in grammarTag.
+    func testParsesVocalizationMarkers() throws {
+        let markdown = """
+        **Line 1: ラララ**
+        *rarara*
+
+        - **ラララ** (rarara) [vocalization] — wordless refrain
+
+        **Gist:** [vocalization] Wordless refrain.
+        """
+        let line = try XCTUnwrap(try parser().parse(markdown: markdown).first)
+        XCTAssertEqual(line.isVocalization, true)
+        XCTAssertEqual(line.gist, "Wordless refrain.")
+        XCTAssertEqual(line.words.first?.grammarTag, "vocalization")
+    }
 }

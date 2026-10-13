@@ -26,21 +26,23 @@ nonisolated enum SongListenScript {
     // matched cue, SongLineCueMatcher.matchedCues) is what word snippets are cut from;
     // `wordRepeatCount` is how many times each word is heard before its definition;
     // `repeatEarlierWords` false skips words already covered earlier in the song (SongCoveredWords)
-    // while still playing every line.
+    // while still playing every line; `visibility` drops the words and lines the options menu
+    // hides (SongWordVisibility), so narration never says what the cards don't show.
     static func build(
         from breakdown: SongBreakdown,
         lineRanges: [Int: (startMs: Int, endMs: Int)] = [:],
         lineCues: [Int: SubtitleCue] = [:],
         wordRepeatCount: Int = 1,
-        repeatEarlierWords: Bool = true
+        repeatEarlierWords: Bool = true,
+        visibility: SongWordVisibility = .defaults
     ) -> [SongListenStep] {
         var steps: [SongListenStep] = []
         let linesByIndex = Dictionary(uniqueKeysWithValues: breakdown.lines.map { ($0.index, $0) })
         let uncovered = repeatEarlierWords ? nil : SongCoveredWords.uncoveredWords(
-            in: breakdown.lines, words: { effectiveWords(for: $0, linesByIndex: linesByIndex) }
+            in: breakdown.lines, words: { effectiveWords(for: $0, linesByIndex: linesByIndex, visibility: visibility) }
         )
 
-        for line in breakdown.lines {
+        for line in breakdown.lines where visibility.showsLine(line, linesByIndex: linesByIndex) {
             let original = line.original.trimmingCharacters(in: .whitespacesAndNewlines)
             guard original.isEmpty == false else { continue }
 
@@ -71,7 +73,7 @@ nonisolated enum SongListenScript {
             // the snippet, or the reading when there's no snippet. `searchFrom` walks the cue text
             // forward so a word sung twice maps in order.
             var searchFrom = 0
-            for word in uncovered?[line.index] ?? effectiveWords(for: line, linesByIndex: linesByIndex) {
+            for word in uncovered?[line.index] ?? effectiveWords(for: line, linesByIndex: linesByIndex, visibility: visibility) {
                 let surface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard surface.isEmpty == false else { continue }
                 let spoken = SongListenSegment(
@@ -180,10 +182,9 @@ nonisolated enum SongListenScript {
         return nil
     }
 
-    // Same fall-through as SongLineCard.effectiveWords, plus the same particle/English
-    // exclusion (SongWordFilter) so listen-along narration never says out loud a bullet the
-    // on-screen card wouldn't even show.
-    static func effectiveWords(for line: SongLine, linesByIndex: [Int: SongLine]) -> [SongWord] {
+    // A line's words with the "= line N" fall-through SongLineCard also draws on, filtered by
+    // the visibility options — the one list both the card shows and listen-along speaks.
+    static func effectiveWords(for line: SongLine, linesByIndex: [Int: SongLine], visibility: SongWordVisibility) -> [SongWord] {
         let words: [SongWord]
         if line.words.isEmpty == false {
             words = line.words
@@ -192,7 +193,7 @@ nonisolated enum SongListenScript {
         } else {
             words = []
         }
-        return words.filter(SongWordFilter.isVocabularyWord)
+        return words.filter(visibility.shows)
     }
 
     // Resolves a `.sameAsLine` / `.parallelTo` reference to its target line, if present.

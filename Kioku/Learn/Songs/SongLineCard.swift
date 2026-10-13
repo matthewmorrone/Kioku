@@ -62,9 +62,11 @@ struct SongLineCard: View {
     // the ScrollViewReader's proxy and the full items array needed to resolve a line index to
     // a scroll target) so this card stays a pure renderer.
     let onJumpToLine: (Int) -> Void
-    // The words to show when "Repeat Earlier Words" is off (already-covered ones removed, see
-    // SongCoveredWords); nil shows the line's full list.
-    var wordsOverride: [SongWord]? = nil
+    // The words this card lists, already resolved by the parent: the visibility options applied
+    // (SongWordVisibility), "= line N" repeats borrowing their target's words, and covered words
+    // removed when "Repeat Earlier Words" is off (SongCoveredWords) — the same list listen-along
+    // speaks, so the card never re-derives it.
+    let words: [SongWord]
 
     @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
     // Width the Japanese row has to fit into, measured so long lines shrink instead of wrapping
@@ -81,22 +83,11 @@ struct SongLineCard: View {
     }
     private var effectiveGist: String? { effectiveValue(\.gist) }
     private var effectiveGrammarNote: String? { effectiveValue(\.grammarNote) }
-    private var effectiveWords: [SongWord] {
-        if let wordsOverride { return wordsOverride }
-        let words: [SongWord]
-        if line.words.isEmpty == false {
-            words = line.words
-        } else if line.reference != nil {
-            words = referencedLine?.words ?? []
-        } else {
-            words = []
-        }
-        return words.filter(SongWordFilter.isVocabularyWord)
-    }
-    // The line index whose words `effectiveWords` is actually drawing from — this line's own,
-    // or (for a "= line N" chorus fall-through) the referenced line's. Mirrors effectiveWords'
-    // own fallback so wordFurigana lookups use the same line identity the cache was built with.
-    private var effectiveWordsLineIndex: Int {
+    // The line index whose words `words` is actually drawing from — this line's own, or (for a
+    // "= line N" chorus fall-through) the referenced line's. Mirrors SongListenScript's
+    // effectiveWords fallback so wordFurigana lookups use the same line identity the cache was
+    // built with.
+    private var wordsLineIndex: Int {
         if line.words.isEmpty == false { return line.index }
         if line.reference != nil, let referencedLine { return referencedLine.index }
         return line.index
@@ -404,7 +395,7 @@ struct SongLineCard: View {
     // True when expanding this card would reveal anything — words to drill into or a
     // pattern note. Lines with neither don't show the toggle at all.
     private var hasExpandableDetail: Bool {
-        effectiveWords.isEmpty == false || (effectiveGrammarNote?.isEmpty == false)
+        words.isEmpty == false || (effectiveGrammarNote?.isEmpty == false)
     }
 
     // Single per-line toggle for the drill-down detail (vocabulary + pattern note).
@@ -432,7 +423,7 @@ struct SongLineCard: View {
     @ViewBuilder
     private var expandableDetailContent: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if effectiveWords.isEmpty == false {
+            if words.isEmpty == false {
                 wordsList
             }
             if let grammar = effectiveGrammarNote, grammar.isEmpty == false {
@@ -444,14 +435,14 @@ struct SongLineCard: View {
 
     // Word entries as a two-column glossary table: headword (with furigana) on the left in a
     // column sized to the widest headword, gloss on the right sharing one left edge down the
-    // list. Iterates `effectiveWords` so chorus repeats display the referenced line's
+    // list. Iterates `words` so chorus repeats display the referenced line's
     // vocabulary. Identifies rows by positional offset because a single line can repeat the
     // same word (chorus, refrain) and value-based identity would collide and break SwiftUI's
     // diffing.
     private var wordsList: some View {
         let columnWidth = headwordColumnWidth
         return VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(effectiveWords.enumerated()), id: \.offset) { offset, word in
+            ForEach(Array(words.enumerated()), id: \.offset) { offset, word in
                 if offset > 0 {
                     Divider()
                 }
@@ -485,10 +476,10 @@ struct SongLineCard: View {
     private var headwordColumnWidth: CGFloat {
         let bodyFont = ReadingFont.body(size: Self.headwordSize)
         let rubyFont = UIFont.systemFont(ofSize: Self.headwordSize * 0.5)
-        let widest = effectiveWords.map { word -> CGFloat in
+        let widest = words.map { word -> CGFloat in
             let surface = word.surface as NSString
             var width = surface.size(withAttributes: [.font: bodyFont]).width
-            let key = WordFuriganaKey(lineIndex: effectiveWordsLineIndex, surface: word.surface)
+            let key = WordFuriganaKey(lineIndex: wordsLineIndex, surface: word.surface)
             if let cache = wordFurigana[key] {
                 for (location, reading) in cache.furiganaBySegmentLocation {
                     let length = cache.furiganaLengthBySegmentLocation[location] ?? 0
@@ -509,7 +500,7 @@ struct SongLineCard: View {
     // same surface get a positional id that can't collide with it.
     private func wordRowScrollID(for word: SongWord, at offset: Int) -> String {
         let surface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
-        let isFirstOccurrence = effectiveWords.prefix(offset).contains {
+        let isFirstOccurrence = words.prefix(offset).contains {
             $0.surface.trimmingCharacters(in: .whitespacesAndNewlines) == surface
         } == false
         return isFirstOccurrence
@@ -638,7 +629,7 @@ struct SongLineCard: View {
     // baseline whether or not it has furigana.
     @ViewBuilder
     private func wordHeadword(_ word: SongWord, topInset: CGFloat) -> some View {
-        let key = WordFuriganaKey(lineIndex: effectiveWordsLineIndex, surface: word.surface)
+        let key = WordFuriganaKey(lineIndex: wordsLineIndex, surface: word.surface)
         if let cache = wordFurigana[key], cache.furiganaBySegmentLocation.isEmpty == false {
             KiokuCoreTextRendererView(
                 text: word.surface,

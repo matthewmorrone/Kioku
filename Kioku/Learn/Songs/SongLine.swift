@@ -19,6 +19,10 @@ nonisolated struct SongLine: Codable, Equatable, Identifiable, Sendable {
     let gist: String?
     let grammarNote: String?
     let reference: LineReference?
+    // True when the model marked the whole line as a vocalization (a gist starting with
+    // `[vocalization]`, see SongBreakdownParser) — "la la la", "ah", humming. Optional so
+    // breakdowns cached before the marker existed decode as unmarked.
+    var isVocalization: Bool? = nil
 
     var id: Int { index }
 

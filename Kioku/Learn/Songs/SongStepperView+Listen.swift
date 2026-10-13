@@ -101,13 +101,14 @@ extension SongStepperView {
         let ranges = effectiveListenLineRanges
         // Word snippets are cut from the same cues the line clips come from, so they exist only
         // when line clips do.
-        let lineCues = ranges.isEmpty ? [:] : SongLineCueMatcher.matchedCues(lines: displayItems.map(\.line), cues: noteCues)
+        let lineCues = ranges.isEmpty ? [:] : SongLineCueMatcher.matchedCues(lines: currentLines, cues: noteCues)
         let steps = SongListenScript.build(
             from: breakdown,
             lineRanges: ranges,
             lineCues: lineCues,
             wordRepeatCount: wordRepeatCount,
-            repeatEarlierWords: repeatEarlierWords
+            repeatEarlierWords: repeatEarlierWords,
+            visibility: wordVisibility
         )
         let originalByIndex = Dictionary(breakdown.lines.map { ($0.index, $0.original) }, uniquingKeysWith: { first, _ in first })
         liveListen.pauseAfterEachLine = pauseAfterEachLine
@@ -115,15 +116,29 @@ extension SongStepperView {
         liveListen.configure(steps: steps, sourceAudioURL: listenSourceAudioURL, originalByLineIndex: originalByIndex)
     }
 
-    // With "Repeat Earlier Words" off, each shown line's words minus those covered earlier in the
-    // song (SongCoveredWords) for the cards — from the lines on screen, which during a stream are
-    // the ones parsed so far. Nil when the option is on, so cards show their full lists.
-    func uncoveredWordsByLine(for lines: [SongLine]) -> [Int: [SongWord]]? {
-        guard repeatEarlierWords == false else { return nil }
+    // The options menu's word/line visibility choices, as the one value both the cards and
+    // listen-along filter by.
+    var wordVisibility: SongWordVisibility {
+        SongWordVisibility(
+            showsParticles: showParticles,
+            showsKatakana: showKatakana,
+            showsVocalizations: showVocalizations
+        )
+    }
+
+    // Each line's words as its card shows them: the same list listen-along speaks (visibility
+    // options applied, "= line N" repeats borrowing their target's words), minus those covered
+    // earlier in the song (SongCoveredWords) when "Repeat Earlier Words" is off. Built from
+    // every line parsed so far, so a word counts as covered even when it came on a hidden line.
+    func visibleWordsByLine(for lines: [SongLine]) -> [Int: [SongWord]] {
         let linesByIndex = Dictionary(lines.map { ($0.index, $0) }, uniquingKeysWith: { first, _ in first })
-        return SongCoveredWords.uncoveredWords(in: lines) {
-            SongListenScript.effectiveWords(for: $0, linesByIndex: linesByIndex)
+        let words: (SongLine) -> [SongWord] = {
+            SongListenScript.effectiveWords(for: $0, linesByIndex: linesByIndex, visibility: self.wordVisibility)
         }
+        if repeatEarlierWords == false {
+            return SongCoveredWords.uncoveredWords(in: lines, words: words)
+        }
+        return Dictionary(lines.map { ($0.index, words($0)) }, uniquingKeysWith: { first, _ in first })
     }
 
     // The clip ranges to actually splice in — none without an audio file.

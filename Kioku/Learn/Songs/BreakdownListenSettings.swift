@@ -12,9 +12,17 @@ nonisolated enum BreakdownListenSettings {
     // Whether a word already covered earlier in the song is shown and spoken again on later
     // lines (SongCoveredWords); applies to the cards as well as listen-along.
     static let repeatEarlierWordsKey = "breakdown.repeatEarlierWords"
+    // Which kinds of word (and, for vocalizations, whole lines) are shown and spoken — see
+    // SongWordVisibility. The breakdown always carries them; these only hide.
+    static let showParticlesKey = "breakdown.showParticles"
+    static let showKatakanaKey = "breakdown.showKatakana"
+    static let showVocalizationsKey = "breakdown.showVocalizations"
 
     static let defaultPauseAfterLine = false
     static let defaultWordRepeatCount = 1
     static let defaultRepeatEarlierWords = true
+    static let defaultShowParticles = false
+    static let defaultShowKatakana = true
+    static let defaultShowVocalizations = false
     static let wordRepeatChoices = [1, 2, 3]
 }

@@ -127,6 +127,14 @@ nonisolated final class SongBreakdownParser: Sendable {
             grammarParts.append(trimmed)
         }
 
+        // A vocalization line's gist opens with the `[vocalization]` marker (SongBreakdownPrompt
+        // rule 7); lift it into the line's flag so the gist reads clean.
+        var isVocalization = false
+        if let rawGist = gist, let marked = Self.strippingVocalizationMarker(rawGist) {
+            isVocalization = true
+            gist = marked.isEmpty ? nil : marked
+        }
+
         let grammarNote: String? = grammarParts.isEmpty
             ? nil
             : grammarParts.joined(separator: " ").trimmingCharacters(in: .whitespaces)
@@ -138,8 +146,19 @@ nonisolated final class SongBreakdownParser: Sendable {
             words: words,
             gist: gist,
             grammarNote: grammarNote,
-            reference: reference
+            reference: reference,
+            isVocalization: isVocalization ? true : nil
         )
+    }
+
+    // Returns the gist with a leading `[vocalization]` marker removed, or nil when the gist
+    // doesn't open with one. Case-insensitive, tolerant of emphasis around the brackets.
+    private static func strippingVocalizationMarker(_ gist: String) -> String? {
+        let pattern = #"^\*{0,2}\[\s*vocali[sz]ation\s*\]\*{0,2}\s*[:—–-]?\s*"#
+        guard let range = gist.range(of: pattern, options: [.regularExpression, .caseInsensitive]) else {
+            return nil
+        }
+        return String(gist[range.upperBound...]).trimmingCharacters(in: .whitespaces)
     }
 
     // Parses "**Line N: <original>**" → (N, <original>). Tolerates `**Line N:** <original>` too,
@@ -204,10 +223,11 @@ nonisolated final class SongBreakdownParser: Sendable {
             }
         }
 
-        // Optional bracketed tag: `[past]`, `[te-form]`, etc. The prompt doesn't ask for
-        // these, but cached breakdowns carry them and the model emits one now and then;
-        // lifting it out keeps it from leaking into the definition. Must come before the dash strip
-        // below, since the tag sits between the romaji parenthetical and the separator dash.
+        // Optional bracketed tag: `[vocalization]` (SongBreakdownPrompt rule 7, read by
+        // SongWordVisibility), or a form tag like `[past]` that cached breakdowns carry and the
+        // model emits now and then; lifting it out keeps it from leaking into the definition.
+        // Must come before the dash strip below, since the tag sits between the romaji
+        // parenthetical and the separator dash.
         var grammarTag: String? = nil
         if remainder.hasPrefix("[") {
             if let endBracket = remainder.firstIndex(of: "]") {

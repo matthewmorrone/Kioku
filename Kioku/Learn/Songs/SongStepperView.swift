@@ -68,6 +68,9 @@ struct SongStepperView: View {
     @AppStorage(BreakdownListenSettings.pauseAfterLineKey) var pauseAfterEachLine = BreakdownListenSettings.defaultPauseAfterLine
     @AppStorage(BreakdownListenSettings.wordRepeatCountKey) var wordRepeatCount = BreakdownListenSettings.defaultWordRepeatCount
     @AppStorage(BreakdownListenSettings.repeatEarlierWordsKey) var repeatEarlierWords = BreakdownListenSettings.defaultRepeatEarlierWords
+    @AppStorage(BreakdownListenSettings.showParticlesKey) var showParticles = BreakdownListenSettings.defaultShowParticles
+    @AppStorage(BreakdownListenSettings.showKatakanaKey) var showKatakana = BreakdownListenSettings.defaultShowKatakana
+    @AppStorage(BreakdownListenSettings.showVocalizationsKey) var showVocalizations = BreakdownListenSettings.defaultShowVocalizations
     // Plays the breakdown's script live (sung clips + TTS narration), one step at a time —
     // see SongLiveListenController. Owned by this view, not the environment: it has no
     // cross-session position of its own to persist, so a fresh sheet gets a fresh controller
@@ -153,9 +156,10 @@ struct SongStepperView: View {
         isRunning && songBreakdownStore.partialLines(forNoteID: note.id).isEmpty == false
     }
 
-    // Lines currently on screen: the streamed partial parse once it has content, otherwise
-    // the cached breakdown (kept visible while a regenerate waits for its first line).
-    private var currentLines: [SongLine] {
+    // Every line the breakdown has so far: the streamed partial parse once it has content,
+    // otherwise the cached breakdown (kept visible while a regenerate waits for its first
+    // line). Includes lines the visibility options hide — cue matching walks all of them.
+    var currentLines: [SongLine] {
         if isStreamingCards { return songBreakdownStore.partialLines(forNoteID: note.id) }
         return cachedBreakdown?.lines ?? []
     }
@@ -164,8 +168,10 @@ struct SongStepperView: View {
     // being spoken marked while listening. Internal (not private): also read by
     // SongStepperView+MiniPlayer for next/previous line navigation.
     var displayItems: [SongLineDisplayItem] {
-        SongBreakdownProgressComposer.items(
-            lines: currentLines,
+        let lines = currentLines
+        let linesByIndex = Dictionary(lines.map { ($0.index, $0) }, uniquingKeysWith: { first, _ in first })
+        return SongBreakdownProgressComposer.items(
+            lines: lines.filter { wordVisibility.showsLine($0, linesByIndex: linesByIndex) },
             isStreaming: isStreamingCards,
             playingLineIndex: activeListenSegment?.lineIndex
         )
@@ -187,7 +193,7 @@ struct SongStepperView: View {
     // ~30 cues) so the O(N·M) walk is cheap.
     var lineRangesByIndex: [Int: (startMs: Int, endMs: Int)] {
         guard noteCues.isEmpty == false else { return [:] }
-        return SongLineCueMatcher.computeRanges(lines: displayItems.map(\.line), cues: noteCues)
+        return SongLineCueMatcher.computeRanges(lines: currentLines, cues: noteCues)
     }
 
     // MARK: - Body
@@ -511,7 +517,8 @@ struct SongStepperView: View {
     // MARK: - Listen control
 
     // The toolbar's options menu: listen-along behaviour (pause at line ends, how many times each
-    // word is heard before its definition) plus Regenerate. Changing the repeat count rebuilds
+    // word is heard before its definition), which kinds of word and line are shown (see
+    // SongWordVisibility), plus Regenerate. Changing the repeat count or what's shown rebuilds
     // the script, since it changes which steps exist.
     private var optionsMenu: some View {
         Menu {
@@ -529,6 +536,17 @@ struct SongStepperView: View {
             Toggle(isOn: $repeatEarlierWords) {
                 Label("Repeat Earlier Words", systemImage: "text.badge.checkmark")
             }
+            Section("Show") {
+                Toggle(isOn: $showParticles) {
+                    Label("Particles", systemImage: "link")
+                }
+                Toggle(isOn: $showKatakana) {
+                    Label("Katakana Words", systemImage: "textformat")
+                }
+                Toggle(isOn: $showVocalizations) {
+                    Label("Vocalizations", systemImage: "music.note")
+                }
+            }
             Divider()
             Button {
                 isRegenerateConfirmationPresented = true
@@ -541,6 +559,7 @@ struct SongStepperView: View {
         .accessibilityLabel("Options")
         .onChange(of: wordRepeatCount) { _, _ in configureLiveListen() }
         .onChange(of: repeatEarlierWords) { _, _ in configureLiveListen() }
+        .onChange(of: wordVisibility) { _, _ in configureLiveListen() }
         .onChange(of: pauseAfterEachLine) { _, pause in liveListen.pauseAfterEachLine = pause }
     }
 
@@ -583,7 +602,7 @@ struct SongStepperView: View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: true) {
                 LazyVStack(spacing: 14) {
-                    let uncoveredWords = uncoveredWordsByLine(for: items.map(\.line))
+                    let visibleWords = visibleWordsByLine(for: currentLines)
                     ForEach(items) { item in
                         SongLineCard(
                             line: item.line,
@@ -611,7 +630,7 @@ struct SongStepperView: View {
                                     proxy.scrollTo(target.id, anchor: .center)
                                 }
                             },
-                            wordsOverride: uncoveredWords.map { $0[item.line.index] ?? [] }
+                            words: visibleWords[item.line.index] ?? []
                         )
                         .id(item.id)
                     }
