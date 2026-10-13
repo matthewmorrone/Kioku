@@ -11,8 +11,9 @@ Each line: Kioku's cut → the right cut, then the sentence (kana2k: the kanji o
 
 Not listed: cut-throughs that are only convention differences with the gold data. In these, Kioku's
 piece is itself a JMdict suffix or expression used as such (２|回目, 知らない|振りをしています, 冷め|ないうちに,
-足りない|っていう, 理性|の|タガがはずれる, 名状|すべからず). `score.py` still counts those as "error", so its
-error count overstates the real ones (held2k: 15 reported, 9 real).
+足りない|っていう, 理性|の|タガがはずれる, 名状|すべからず). `score.py` counts them as "convention" when the
+cutting piece is a JMdict suffix, expression or conjunction as written; an inflected one (振りをしています)
+still shows as "error", since the scorer has no lemmas.
 
 Segmentation first, then readings (the "Reading errors (remaining)" note on the phone).
 
@@ -118,3 +119,13 @@ Wrong, but every fix found so far breaks more than it fixes.
   words to their raw wordfreq fixed it only by inflating every particle (broke 雨|なのに → 雨|な|のに).
   The only remaining fix is a rule for the paired AだのBだの pattern, which would be a one-particle
   exception; dropped 2026-10-08.
+
+## Classical forms that are also particles
+
+過ぎし日 comes out 過ぎ|し|日: the classical past し (き's 連体形) has no rule. Neither do ず's and ぬ's に and
+ね, たり's と, つ's て/てよ. Each is a single kana that is also one of the commonest particles, and with a rule
+it changed modern sentences at every classical step weight tried, 2 to 8 (よ|ね → よね, へ|と → へと,
+あて|に → あてに; 2026-10-12, held2k/fresh), so pricing (SegmenterScoring.classicalStepWeight) cannot keep
+it. A fix needs a different signal: for instance admitting the form only right after a verb's 連用形/未然形
+in the lattice, never as a bare edge. The omissions are in deinflection-grammar.json omitted, each with the
+measurement. Also still split at weight 3, and worth rechecking with any such change: 散りぬる, 消えぬれば, 来にけり.

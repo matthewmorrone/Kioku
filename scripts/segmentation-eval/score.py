@@ -5,7 +5,8 @@
 #   straddle — one of our segments partially overlaps it (cuts through it and extends outside), split into:
 #     error      — the token cut through is a content word (望ま, どうやら, 中日): a real mistake
 #     convention — it is grammar, not content (is_convention: そうな, んだ, はっきりと, 化する): Tatoeba
-#                  places that boundary differently from Kioku's convention (悲し|そうな vs 悲しそう|な)
+#                  places that boundary differently from Kioku's convention (悲し|そうな vs 悲しそう|な);
+#                  or our cutting piece is a JMdict suffix/expression/conjunction (is_unit_of_its_own: 回目)
 #   split    — we cut inside it, all pieces nested inside the gold span (over-split)
 #   merged   — one of our segments strictly contains it (under-split / long unit)
 import sys, json, collections, os, sqlite3
@@ -53,6 +54,11 @@ def is_convention(token, head):
     lead = TAGS.get(token[0], set())
     return bool(lead & {"suf", "pref"}) and not lead & {"n", "v5r", "v1"} or (token[0] in "おご" and "pref" in lead)
 
+def is_unit_of_its_own(piece):
+    # Our cutting piece is itself a JMdict suffix, expression or conjunction (２|回目, 冷め|ないうちに,
+    # 足りない|っていう, 名状|すべからず): a defensible cut at another convention's boundary, not an error.
+    return TAGS is not None and bool(TAGS.get(piece, set()) & {"suf", "exp", "conj"})
+
 gold_path, out_path = sys.argv[1], sys.argv[2]
 n_examples = int(sys.argv[sys.argv.index("--examples") + 1]) if "--examples" in sys.argv else 0
 
@@ -84,7 +90,7 @@ with open(gold_path, encoding="utf-8") as gf, open(out_path, encoding="utf-8") a
             bad = [s for s in overlapping if (s[0] < a or s[1] > b) and not (s[0] <= a and s[1] >= b)]
             if bad:
                 counts["straddle"] += 1
-                kind = "convention" if is_convention(sentence[a:b], head) else "error"
+                kind = "convention" if is_convention(sentence[a:b], head) or any(is_unit_of_its_own(s[2]) for s in bad) else "error"
                 counts[kind] += 1
                 for s in bad:
                     straddlers[s[2]] += 1
