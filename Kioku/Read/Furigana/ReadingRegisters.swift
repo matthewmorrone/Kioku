@@ -7,13 +7,11 @@ import Foundation
 // note gets Tatoeba's alone, exactly as before. Built from the dictionary's register tables
 // (Resources/reading_registers.py); nil for a dictionary without them.
 nonisolated final class ReadingRegisters: Sendable {
-    // How much a register's counts weigh beside Tatoeba's. Fitted on held-out data: KWDLC's dev
-    // documents, Aozora's held-out works and Tatoeba's train2k (scripts/segmentation-eval README).
-    // EXPERIMENT: overridable by KIOKU_WEB_WEIGHT / KIOKU_LITERATURE_WEIGHT.
-    static let weights: [String: Double] = [
-        "web": Double(ProcessInfo.processInfo.environment["KIOKU_WEB_WEIGHT"] ?? "") ?? 0.75,
-        "literature": Double(ProcessInfo.processInfo.environment["KIOKU_LITERATURE_WEIGHT"] ?? "") ?? 1.0,
-    ]
+    // How much a register's counts weigh beside Tatoeba's. Fitted on held-out data only (KWDLC's dev
+    // documents, Aozora's held-out works, Tatoeba's train2k): the largest weight that left train2k level.
+    // Web 0.5–8: KWDLC dev +1.2 → +1.6 points, train2k −2 at 8; literature 0.5–32: Aozora dev +3.7 →
+    // +5.5, flat from 8. Weights above 1 make up for the class terms, which stay Tatoeba's.
+    static let weights: [String: Double] = ["web": 4, "literature": 8]
 
     let classifier: RegisterClassifier
     // Register → kanji run → hiragana reading → count.

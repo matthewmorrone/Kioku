@@ -22,6 +22,8 @@ final class AttributionsTests: XCTestCase {
             "Tegaki-Zinnia (Japanese)",
             "JLPT Vocabulary Lists",
             "OpenCC Japanese Shinjitai Table",
+            "KWDLC (Kyoto University Web Document Leads Corpus)",
+            "Aozora Bunko",
         ]
         let missing = required.subtracting(names)
         XCTAssertTrue(missing.isEmpty, "Missing dataset attributions: \(missing.sorted())")
