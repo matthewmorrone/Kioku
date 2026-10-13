@@ -128,7 +128,7 @@ extension SongStepperView {
 
     // Each line's words as its card shows them: the same list listen-along speaks (visibility
     // options applied, "= line N" repeats borrowing their target's words), minus those covered
-    // earlier in the song (SongCoveredWords) when "Repeat Earlier Words" is off. Built from
+    // earlier in the song (SongCoveredWords) when "Show Repeated Words" is off. Built from
     // every line parsed so far, so a word counts as covered even when it came on a hidden line.
     func visibleWordsByLine(for lines: [SongLine]) -> [Int: [SongWord]] {
         let linesByIndex = Dictionary(lines.map { ($0.index, $0) }, uniquingKeysWith: { first, _ in first })

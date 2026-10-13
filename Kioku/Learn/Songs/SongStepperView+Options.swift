@@ -20,10 +20,10 @@ extension SongStepperView {
                 Label("Repeat Each Word", systemImage: "repeat")
             }
             .pickerStyle(.menu)
-            Toggle(isOn: $repeatEarlierWords) {
-                Label("Repeat Earlier Words", systemImage: "text.badge.checkmark")
-            }
             Section("Show") {
+                Toggle(isOn: $repeatEarlierWords) {
+                    Label("Repeated Words", systemImage: "text.badge.checkmark")
+                }
                 Toggle(isOn: $showParticles) {
                     Label("Particles", systemImage: "link")
                 }

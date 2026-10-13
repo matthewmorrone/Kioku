@@ -64,7 +64,7 @@ struct SongLineCard: View {
     let onJumpToLine: (Int) -> Void
     // The words this card lists, already resolved by the parent: the visibility options applied
     // (SongWordVisibility), "= line N" repeats borrowing their target's words, and covered words
-    // removed when "Repeat Earlier Words" is off (SongCoveredWords) — the same list listen-along
+    // removed when "Show Repeated Words" is off (SongCoveredWords) — the same list listen-along
     // speaks, so the card never re-derives it.
     let words: [SongWord]
 

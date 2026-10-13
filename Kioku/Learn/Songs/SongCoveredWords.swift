@@ -1,6 +1,6 @@
 import Foundation
 
-// The Breakdown option "Repeat Earlier Words": when it's off, a word whose written form already
+// The Breakdown option "Show Repeated Words": when it's off, a word whose written form already
 // came up earlier in the song (on an earlier line, or earlier in the same line) is hidden from
 // that line's card and skipped by listen-along. Lines themselves are never dropped — a line whose
 // every word was covered before still plays its clip and gist. One rule, used by both the cards
