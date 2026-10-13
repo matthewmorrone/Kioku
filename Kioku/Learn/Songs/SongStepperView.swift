@@ -52,7 +52,7 @@ struct SongStepperView: View {
     // Keyed by `line.index` (not array offset) so it survives regenerate / breakdown rebuilds.
     // Lines are auto-expanded as they stream in; reset when a new generation starts.
     @State var expandedByLineIndex: Set<Int> = []
-    @State private var isRegenerateConfirmationPresented: Bool = false
+    @State var isRegenerateConfirmationPresented: Bool = false
     @State private var isCancelConfirmationPresented: Bool = false
     // Editable copy of the user's per-song LLM note (SongBreakdownUserNote), saved on generate.
     @State private var userNoteDraft: String = ""
@@ -515,53 +515,6 @@ struct SongStepperView: View {
     }
 
     // MARK: - Listen control
-
-    // The toolbar's options menu: listen-along behaviour (pause at line ends, how many times each
-    // word is heard before its definition), which kinds of word and line are shown (see
-    // SongWordVisibility), plus Regenerate. Changing the repeat count or what's shown rebuilds
-    // the script, since it changes which steps exist.
-    private var optionsMenu: some View {
-        Menu {
-            Toggle(isOn: $pauseAfterEachLine) {
-                Label("Pause After Each Line", systemImage: "pause.circle")
-            }
-            Picker(selection: $wordRepeatCount) {
-                ForEach(BreakdownListenSettings.wordRepeatChoices, id: \.self) { count in
-                    Text("\(count)×").tag(count)
-                }
-            } label: {
-                Label("Repeat Each Word", systemImage: "repeat")
-            }
-            .pickerStyle(.menu)
-            Toggle(isOn: $repeatEarlierWords) {
-                Label("Repeat Earlier Words", systemImage: "text.badge.checkmark")
-            }
-            Section("Show") {
-                Toggle(isOn: $showParticles) {
-                    Label("Particles", systemImage: "link")
-                }
-                Toggle(isOn: $showKatakana) {
-                    Label("Katakana Words", systemImage: "textformat")
-                }
-                Toggle(isOn: $showVocalizations) {
-                    Label("Vocalizations", systemImage: "music.note")
-                }
-            }
-            Divider()
-            Button {
-                isRegenerateConfirmationPresented = true
-            } label: {
-                Label("Regenerate", systemImage: "arrow.clockwise")
-            }
-        } label: {
-            Image(systemName: "ellipsis.circle")
-        }
-        .accessibilityLabel("Options")
-        .onChange(of: wordRepeatCount) { _, _ in configureLiveListen() }
-        .onChange(of: repeatEarlierWords) { _, _ in configureLiveListen() }
-        .onChange(of: wordVisibility) { _, _ in configureLiveListen() }
-        .onChange(of: pauseAfterEachLine) { _, pause in liveListen.pauseAfterEachLine = pause }
-    }
 
     // The listen button: headphones plays every line in sequence, pause while anything is
     // playing, a warning (missing voices, or the audio session couldn't activate) that retries
