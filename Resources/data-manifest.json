@@ -314,6 +314,43 @@
       "feedsDictionary": false
     },
     {
+      "name": "kwdlc",
+      "description": "The Kyoto University Web Document Leads Corpus: the opening three sentences of about 5,000 web pages (shops, services, blogs, news), hand-annotated with morphology and readings. Its training documents give the web reading counts furigana adds for notes that read like web or business writing (方 → かた, その後 → ご, 等 → とう), and the web column of the register classifier.",
+      "license": "Released by Kyoto University (Kurohashi-Chu-Murawaki Lab, ku-nlp) for natural language processing research; no licence file. Statistics only, no text is shipped: reading counts and character-pair counts (information analysis, Japanese Copyright Act Art. 30-4).",
+      "type": "source-archive",
+      "path": null,
+      "required": false,
+      "derived": false,
+      "url": "https://github.com/ku-nlp/KWDLC",
+      "sha256": null,
+      "fetch": {
+        "url": "https://github.com/ku-nlp/KWDLC/archive/c6ae49d29eca4e1134c6676d682adf5ed6a25f5a.zip",
+        "format": "zip",
+        "cacheName": "KWDLC-c6ae49d2.zip",
+        "archiveSha256": "96c500d57ea8f079fd45241c8be3d6bdb1535188d119c63c28c630bdf95cf066"
+      },
+      "provenance": "GitHub archive of ku-nlp/KWDLC at commit c6ae49d29eca4e1134c6676d682adf5ed6a25f5a. Only the id/train.id documents are counted; the id/test.id documents are the benchmark's KWDLC set (scripts/benchmark). Input to import_reading_registers in generate_db.py (reading_register_counts, register_grams).",
+      "feedsDictionary": true
+    },
+    {
+      "name": "aozora-bunko-ruby",
+      "description": "Aozora Bunko's catalogue of public-domain works and the works' ruby (漢字《かんじ》): up to ten works per author in modern spelling with ruby, leaving out the authors the benchmark samples and every tenth work (held out for fitting). Gives the literature reading counts and the literature column of the register classifier.",
+      "license": "Public domain works (Aozora Bunko, 作品著作権フラグ なし). Statistics only, no text is shipped.",
+      "type": "source-archive",
+      "path": null,
+      "required": false,
+      "derived": false,
+      "url": "https://www.aozora.gr.jp/",
+      "sha256": null,
+      "fetch": {
+        "url": "https://www.aozora.gr.jp/index_pages/list_person_all_extended_utf8.zip",
+        "format": "zip",
+        "cacheName": "aozora-list_person_all_extended_utf8.zip"
+      },
+      "provenance": "The catalogue is fetched fresh on every rebuild (Aozora updates it continually, so no hash is pinned); the works it selects are downloaded by generate_db.py (import_reading_registers), about 2,100 of them, four at a time. Input to reading_register_counts and register_grams.",
+      "feedsDictionary": true
+    },
+    {
       "name": "unidic-kana-accent-src",
       "description": "The UniDic source archive the pitch-accent table is derived from. Pinned as its own entry so the derivation's input is reproducible rather than implied.",
       "license": "BSD-3-Clause, GPL or LGPL, at your choice (The UniDic Consortium; COPYING in the archive)",

@@ -9,6 +9,7 @@ import Foundation
 //   segcli helpers < surfaces                    → "surface<TAB>lemma + helper…": the words deinflection folds into each surface
 //   segcli compounds < surfaces                  → "surface<TAB>base + auxiliary" for each surface the lookup sheet names as a compound verb
 //   segcli furigana < sentences                  → per sentence, a JSON list of [utf16Location, utf16Length, reading]: the Read view's furigana for dictionary words
+//   segcli registers < sentences                 → per sentence, the register furigana gives it (RegisterClassifier), or "none"
 // NO_EXTRAS=1                                  → skip the built-in Custom Words (Resources/extras.json)
 // NO_BOUNDARY_MODEL=1                          → the path search without the boundary model
 // Repo root: four levels up from this file (scripts/segmentation-eval/cli/main.swift), unless KIOKU_CHECKOUT says otherwise.
@@ -105,6 +106,13 @@ if mode == "compounds" {
         if let parts = CompoundVerbSplitter.parts(surface: line, edges: edges, segmenter: segmenter, posTags: posTags) {
             print("\(line)\t\(parts.base) + \(parts.auxiliary)")
         }
+    }
+    exit(0)
+}
+
+if mode == "registers" {
+    while let line = readLine() {
+        print(segmenter.readingRegisters?.classifier.register(of: line) ?? "none")
     }
     exit(0)
 }

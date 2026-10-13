@@ -4,7 +4,9 @@
     score.py WORK DICTIONARY.sqlite set1,set2,... tool1,tool2,...
 
 Expects WORK/<set>.jsonl (build_gold.py) and WORK/<set>.<tool>.fur / .seg (Kioku's segcli or
-run_analyzer.py).
+run_analyzer.py). Writes WORK/<set>.misses.tsv: the first tool's wrong readings on words with several
+readings, grouped by kanji run, gold reading and the tool's reading, most frequent first. Under each readings line: McNemar's test of the first tool against each
+other tool, on the words only one of the two got right.
 
 Readings. A gold span counts when its surface has one kanji run and its reading crops cleanly to that
 run (the headword's reading less its kana). It is scored only where EVERY tool put ruby over exactly that
@@ -18,7 +20,7 @@ Segmentation. Cut precision: of the cuts a tool makes, the share that fall on a 
 Cut-throughs: tool segments that partly overlap a gold word (cutting into it while also crossing its edge).
 For KWDLC, whose word units attach な/に/だ to adjectives and fuse のだ/ので, cut-throughs whose gold word is
 such a unit are counted apart as convention differences."""
-import json, re, sqlite3, sys
+import collections, json, math, re, sqlite3, sys
 
 KANJI = re.compile(r'[㐀-䶿一-鿿豈-﫿々〆ヶ]+')
 EXCLUDED = {'私', '来'}
@@ -34,11 +36,19 @@ def utf16(text, index):
     return len(text[:index].encode('utf-16-le')) // 2
 
 
+def mcnemar(only_first, only_second):
+    """Exact two-sided McNemar p-value from the words only one of two tools got right."""
+    n, k = only_first + only_second, min(only_first, only_second)
+    if n == 0:
+        return 1.0
+    return min(1.0, 2 * sum(math.comb(n, i) for i in range(k + 1)) / 2 ** n)
+
+
 def readings(work, name, tools, listed):
     """Reading accuracy per tool on the spans all of them cover, overall and on ambiguous words."""
     gold = [json.loads(line) for line in open(f'{work}/{name}.jsonl')]
     ruby = {t: [{l: (n, r) for l, n, r in json.loads(x)} for x in open(f'{work}/{name}.{t}.fur')] for t in tools}
-    rows = []
+    rows, misses = [], collections.Counter()
     for i, record in enumerate(gold):
         text = record['s']
         for start, end, headword, reading, *_ in record['g']:
@@ -59,9 +69,18 @@ def readings(work, name, tools, listed):
                 continue
             ambiguous = len(listed.get(runs[0].group(), ())) > 1
             rows.append((ambiguous, {t: hira(g[1]) == want for t, g in got.items()}))
+            if ambiguous and hira(got[tools[0]][1]) != want:
+                misses[(runs[0].group(), want, hira(got[tools[0]][1]))] += 1
     for label, subset in (('all words', rows), ('several readings', [r for r in rows if r[0]])):
         cells = '  '.join(f'{t} {100 * sum(r[1][t] for r in subset) / max(len(subset), 1):.2f}%' for t in tools)
         print(f'  readings, {label} ({len(subset)}): {cells}')
+        for other in tools[1:]:
+            wins = sum(r[1][tools[0]] and not r[1][other] for r in subset)
+            losses = sum(r[1][other] and not r[1][tools[0]] for r in subset)
+            print(f'    {tools[0]} vs {other}: right only for {tools[0]} {wins}, only for {other} {losses}, McNemar p = {mcnemar(wins, losses):.2g}')
+    with open(f'{work}/{name}.misses.tsv', 'w') as out:
+        for (kanji, want, got), n in misses.most_common():
+            out.write(f'{n}\t{kanji}\t{want}\t{got}\n')
 
 
 def segmentation(work, name, tools):

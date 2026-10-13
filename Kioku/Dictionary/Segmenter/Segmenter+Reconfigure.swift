@@ -37,6 +37,7 @@ extension Segmenter {
         // Before the main reconfigure, which opens the load gate: nothing released by it may
         // segment without the boundary model.
         boundaryModel = other.boundaryModel
+        readingRegisters = other.readingRegisters
         reconfigure(
             trie: other.trie,
             deinflector: other.deinflector,

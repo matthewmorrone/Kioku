@@ -7,23 +7,25 @@ the method and scripts to reproduce every number.
 
 ## Summary
 
-- **Word splits.** On web text Kioku was never tuned on, **96.5%** of the places Kioku splits a word fall
-  on a real word boundary, against **90.1–91.0%** for MeCab, UniDic and Sudachi.
+- **Word splits.** On web text Kioku was never tuned on, **97.4%** of the places Kioku splits a word fall
+  on a real word boundary, against **90.5–91.2%** for MeCab, UniDic and Sudachi.
 - **Furigana on literature.** On Japanese fiction, where editors marked the harder words with furigana,
-  Kioku chose the right reading for words with more than one reading **74.2%** of the time, against
-  **72.0–73.0%** for the others. The lead is small but statistically significant against each of them.
-- **Furigana on web and business text.** Here Kioku was **less** accurate: **91.0%** against
-  **92.5–93.1%**. Its reading statistics come from everyday sentences, so it leans towards everyday
-  readings where formal writing wants others (その後 → ご, その他 → た, 等 → とう).
+  Kioku chose the right reading for words with more than one reading **76.7%** of the time, against
+  **72.0–73.0%** for the others. The lead is statistically significant against each of them.
+- **Furigana on everyday sentences.** On held-out Tatoeba sentences Kioku leads each of the others
+  (95.7% and 98.9% against 91.2–94.2% and 95.8–96.6%), but Tatoeba is Kioku's home ground; see Data.
+- **Furigana on web and business text.** Here Kioku is **level** with the others: **92.2%** against
+  **91.9–92.7%**, with no significant difference against any of them. Before Kioku learned to recognize
+  web writing it was significantly behind (90.4% on the same test pages).
 
 ## What was compared
 
 | Tool | Version | Notes |
 |---|---|---|
-| **Kioku** | commit `165b3a35` | The app's own furigana and word-splitting code, run on a Mac |
+| **Kioku** | commit `bb5adc2d`, dictionary built 2026-10-13 | The app's own furigana and word-splitting code, run on a Mac |
 | MeCab + IPADic | MeCab 0.996, IPADic (Homebrew) | The long-standing default setup |
 | UniDic | fugashi 1.5.2, UniDic 3.1.0 | Current standard dictionary for MeCab |
-| Sudachi | SudachiPy 0.7.0, sudachidict_core 20260723 | Current; short (A) and long (C) word modes |
+| Sudachi | SudachiPy 0.6.11, sudachidict_core 20260723 | Current; short (A) and long (C) word modes |
 
 Sudachi's two modes gave identical readings, so the readings tables list it once.
 
@@ -32,12 +34,21 @@ Sudachi's two modes gave identical readings, so the readings tables list it once
 | Set | What it is | Size | Gold standard |
 |---|---|---|---|
 | **Aozora** | 36 public-domain works by 12 authors from Aozora Bunko (Natsume Sōseki, Akutagawa Ryūnosuke, Miyazawa Kenji, Dazai Osamu, …), modern spelling | 1,340 paragraphs | The furigana the texts' editors added (6,677 words) |
-| **KWDLC** | The Kyoto University Web Document Leads Corpus: opening sentences of web pages (shops, services, blogs, news) | 16,051 sentences | Every word's boundaries and reading, annotated by hand |
+| **KWDLC** | The Kyoto University Web Document Leads Corpus: opening sentences of web pages (shops, services, blogs, news). Only its 700 **test** documents | 2,195 sentences | Every word's boundaries and reading, annotated by hand |
 | **Tatoeba** | Kioku's held-out test sentences from Tatoeba's word index | 2,000 + 5,000 sentences | Readings of words with several readings |
 
-Kioku's reading statistics were counted from other Tatoeba sentences, never from these test sentences, but
-Tatoeba is its home ground: the Tatoeba results are shown for completeness, and the claims above rest on
-Aozora and KWDLC.
+Where Kioku's statistics come from, and why none of it is in these test sets:
+
+- **Everyday readings** are counted from other Tatoeba sentences, never these. Tatoeba is Kioku's home
+  ground, so the Tatoeba results are shown for completeness; the claims above rest on Aozora and KWDLC.
+- **Web readings** are counted from KWDLC's own **training** documents (its `id/train.id` list).
+  KWDLC's authors split the corpus by document into training and test parts; this benchmark scores only
+  the test part, so no test page was ever counted.
+- **Literary readings** are counted from Aozora Bunko works by authors this benchmark does **not** sample.
+- **Recognizing the kind of text.** Kioku decides whether a note reads like everyday sentences, web
+  pages or literature by comparing its characters with each of the three sources above, and adds that
+  kind's reading counts. The weights were chosen on separate held-out data (KWDLC's development documents,
+  a tenth of the counted Aozora works kept aside, and 2,000 Tatoeba sentences), not on these test sets.
 
 ## Method
 
@@ -53,7 +64,7 @@ It needs a gold that marks every boundary, so it is reported for KWDLC only. *Cu
 tool's split cuts into partway.
 
 **Significance.** Each comparison was checked with McNemar's test on the words where exactly one of the two
-tools was right.
+tools was right. The script prints every p-value.
 
 ## Results
 
@@ -61,36 +72,50 @@ tools was right.
 
 | Set | Words | Kioku | MeCab + IPADic | UniDic | Sudachi |
 |---|---|---|---|---|---|
-| **Aozora** (literature) | 1,960 | **74.23%** | 72.55% | 71.99% | 73.01% |
-| **KWDLC** (web) | 20,968 | 91.00% | 92.51% | 92.95% | **93.05%** |
-| Tatoeba held2k | 1,002 | **96.01%** | 91.22% | 93.71% | 94.21% |
-| Tatoeba fresh5k | 2,947 | **99.02%** | 95.89% | 96.57% | 96.64% |
+| **Aozora** (literature) | 1,957 | **76.65%** | 72.61% | 72.00% | 73.02% |
+| **KWDLC** (web, test documents) | 2,883 | 92.20% | 91.88% | **92.72%** | 92.65% |
+| Tatoeba held2k | 1,002 | **95.71%** | 91.22% | 93.71% | 94.21% |
+| Tatoeba fresh5k | 2,949 | **98.91%** | 95.83% | 96.51% | 96.58% |
 
-On Aozora, Kioku is significantly better than MeCab (p = 0.028), UniDic (p = 0.002) and Sudachi
-(p = 0.045). On KWDLC it is significantly worse than each (p < 10⁻¹⁷).
+On Aozora, Kioku is significantly better than MeCab (p < 10⁻⁶), UniDic (p < 10⁻⁹) and Sudachi
+(p < 10⁻⁶). On KWDLC none of the differences is significant (Kioku against MeCab p = 0.58, UniDic
+p = 0.31, Sudachi p = 0.34).
+
+What changed on KWDLC: with everyday reading counts alone, Kioku read 90.44% of these test words right
+and was significantly behind each analyzer, leaning towards everyday readings where web writing wants
+others (方 → ほう for かた, 日本 → にっぽん for にほん, 等 → など for とう, その後 → あと for ご). Adding
+the web counts for notes that read like web pages fixed 67 of those words and broke 16 (p < 10⁻⁷).
+On Aozora the literary counts fixed 69 and broke 21 (p < 10⁻⁶); on the Tatoeba sets the changes were
+4 fixed / 7 broken and 0 / 3, neither significant. (These before/after counts compare the same code with and
+without the register counts, on the previous dictionary; the tables use the current one.)
 
 ### Furigana: all words
 
 | Set | Words | Kioku | MeCab + IPADic | UniDic | Sudachi |
 |---|---|---|---|---|---|
-| **Aozora** | 5,065 | **85.09%** | 82.11% | 83.14% | 84.09% |
-| **KWDLC** | 63,407 | 96.46% | 97.06% | 97.19% | **97.20%** |
+| **Aozora** | 5,123 | **86.04%** | 82.18% | 83.17% | 84.13% |
+| **KWDLC** | 9,096 | 96.81% | 96.92% | **97.25%** | 97.12% |
 
-### Word splits on web text (KWDLC)
+On all KWDLC words Kioku is level with MeCab (p = 0.57) and Sudachi (p = 0.06) and behind UniDic
+(p = 0.01). Since the words with several readings are level, that gap is in the words whose kanji
+Kioku's dictionary lists with a single reading.
+
+### Word splits on web text (KWDLC test documents)
 
 | | Kioku | MeCab + IPADic | UniDic | Sudachi (A) | Sudachi (C) |
 |---|---|---|---|---|---|
-| **Cut precision** | **96.49%** | 90.09% | 90.34% | 90.61% | 90.97% |
-| Splits inside a word | 7,106 of 202,543 | 25,066 of 252,933 | 25,020 of 259,103 | 24,271 of 258,495 | 22,400 of 248,073 |
-| Cut-throughs | 1,016 | 554 | 522 | 330 | 838 |
-| … of them KWDLC's convention | 614 | 59 | 43 | 14 | 341 |
-| … other | 402 | 495 | 479 | 316 | 497 |
+| **Cut precision** | **97.37%** | 90.47% | 90.54% | 90.86% | 91.18% |
+| Splits inside a word | 743 of 28,279 | 3,417 of 35,865 | 3,484 of 36,816 | 3,351 of 36,662 | 3,095 of 35,099 |
+| Cut-throughs | 146 | 64 | 58 | 31 | 101 |
+| … of them KWDLC's convention | 93 | 9 | 6 | 1 | 52 |
+| … other | 53 | 55 | 52 | 30 | 49 |
 
 KWDLC treats な/に/だ as part of the word before (本格的な, 一般的に) and fuses のだ/ので; Kioku, like
 the JMdict dictionary, keeps 本格的 whole and splits off な. Most of Kioku's cut-throughs are that
-difference, which the "convention" row separates. On the rest Kioku is second, behind Sudachi's
-short-word mode. Short words are the hardest to cut into, and they are also the splitting a learner
-doesn't want: Sudachi (A) splits a word into pieces about three and a half times as often as Kioku does.
+difference, which the "convention" row separates. On the rest Kioku is level with MeCab, UniDic and
+Sudachi's long-word mode, and behind its short-word mode. Short words are the hardest to cut into, and
+they are also the splitting a learner doesn't want: Sudachi (A) splits a word into pieces about four and a
+half times as often as Kioku does.
 
 ### Splitting the words editors gave furigana (Aozora)
 
@@ -98,7 +123,7 @@ How often a tool's split cuts into one of the 6,677 words the editors marked wit
 
 | Kioku | MeCab + IPADic | UniDic | Sudachi (A) | Sudachi (C) |
 |---|---|---|---|---|
-| **64** | 94 | 70 | 101 | 67 |
+| **61** | 94 | 70 | 101 | 67 |
 
 ## Caveats
 
@@ -106,16 +131,21 @@ How often a tool's split cuts into one of the 6,677 words the editors marked wit
   corrections.
 - Kioku aims at learner-sized words (食べている as one word), the others at linguistic units
   (食べ|て|いる); the measures above are chosen so that neither is penalized for word size alone.
-- Gold standards contain choices people disagree on (なりうる / なりえる, 何だか), which count against every
-  tool alike.
+- Gold standards contain choices people disagree on (なりうる / なりえる, 何だか, 等 as とう or など),
+  which count against every tool alike.
+- Kioku's literary and web counts come from the same kinds of source as the Aozora and KWDLC test sets
+  (other works, other web pages), so those two results show how well it handles text like its sources.
 - Kioku's furigana for a word you've corrected by hand is yours; these numbers are its automatic choices.
 
 ## Reproducing
 
 `scripts/benchmark/run.sh` downloads the data (KWDLC from GitHub, the Aozora works from the Aozora Bunko
 catalogue) and the analyzers into a temporary folder, runs every tool, and prints these tables. It needs
-the `mecab` command with IPADic, Python 3, and Kioku's dictionary (`scripts/ensure_dictionary.sh`).
-Measured 2026-10-11 at Kioku commit `165b3a35`.
+the `mecab` command with IPADic, Python 3, and a Kioku dictionary that has the reading-register tables
+(built by `Resources/generate_db.py` since 2026-10-13; `DB=<path>` points the run at it), plus
+`Resources/dictionary.sqlite` for the list of words with several readings. Measured 2026-10-13 at Kioku
+commit `bb5adc2d`.
 
-KWDLC is released by Kyoto University for language research. Aozora Bunko texts are in the public domain.
-Tatoeba is CC BY 2.0 FR.
+KWDLC is released by Kyoto University's Kurohashi-Chu-Murawaki Lab for language research; Kioku ships
+only counts derived from it, no text. Aozora Bunko texts are in the public domain. Tatoeba is
+CC BY 2.0 FR.

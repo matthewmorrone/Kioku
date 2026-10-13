@@ -72,16 +72,26 @@ nonisolated final class ReadingContextTable: Sendable {
     }()
 
     // The likeliest of `candidates` (hiragana run readings, in the dictionary's frequency order) for
-    // `kanji` between a word of class `previous` and one of class `next`; nil when the counts never
-    // saw this kanji. Ties keep the earlier candidate, so the frequency order breaks them.
-    func choose(kanji: String, candidates: [String], previous: String, next: String, appleReading: String? = nil) -> String? {
-        guard let seen = countsByKanji[kanji], candidates.isEmpty == false else { return nil }
-        let total = seen.values.reduce(0) { $0 + $1.total }
+    // `kanji` between a word of class `previous` and one of class `next`; nil when no counts saw this
+    // kanji. `addedCounts` (ReadingRegisters: a web or literary note's own register) join Tatoeba's in
+    // P(reading | kanji); the class terms stay Tatoeba's, the only counts with classes. Ties keep the
+    // earlier candidate, so the frequency order breaks them.
+    func choose(
+        kanji: String,
+        candidates: [String],
+        previous: String,
+        next: String,
+        appleReading: String? = nil,
+        addedCounts: [String: Double] = [:]
+    ) -> String? {
+        let seen = countsByKanji[kanji] ?? [:]
+        guard seen.isEmpty == false || addedCounts.isEmpty == false, candidates.isEmpty == false else { return nil }
+        let total = Double(seen.values.reduce(0) { $0 + $1.total }) + addedCounts.values.reduce(0, +)
         var best: (reading: String, score: Double)?
         for reading in candidates {
             let counts = seen[reading]
             let n = Double(counts?.total ?? 0)
-            var score = log((n + 1) / Double(total + candidates.count))
+            var score = log((n + (addedCounts[reading] ?? 0) + 1) / (total + Double(candidates.count)))
             for (observed, name) in [(counts?.previous, previous), (counts?.next, next)] {
                 score += log((Double(observed?[name] ?? 0) + Self.classSmoothing) / (n + Self.classSmoothing * Double(classCount)))
             }

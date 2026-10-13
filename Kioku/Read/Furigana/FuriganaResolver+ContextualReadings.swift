@@ -3,7 +3,8 @@ import Foundation
 // Context for the readings `build` picked by frequency alone. One rule for every word with more
 // than one dictionary reading, from three sources in order of authority:
 //   1. usage: Tatoeba's reading counts (ReadingContextTable) score each reading between the
-//      classes of the words either side (方 after a verb → かた, 時 after a number → じ);
+//      classes of the words either side (方 after a verb → かた, 時 after a number → じ); a note that
+//      reads like web pages or literature adds that register's counts (ReadingRegisters);
 //   2. Apple's tokenizer (AppleTokenReadings) adds a fixed vote to the reading it gives, which tips
 //      close calls (後 → ご in 説明会後) but not clear ones (私 stays わたし);
 //   3. the dictionary: its frequency order breaks ties, and decides alone when neither has a say.
@@ -22,6 +23,9 @@ nonisolated extension FuriganaResolver {
         let table = ReadingContextTable.bundled
         let transitionTable = (segmenter as? Segmenter)?.transitionTable
         let appleReadings = AppleTokenReadings.runReadings(in: sourceText)
+        // The note's register (everyday, web, literature), told once for the whole text.
+        let registers = (segmenter as? Segmenter)?.readingRegisters
+        let register = registers?.classifier.register(of: sourceText)
         // A neighbour's class as the counts name it: text the dictionary doesn't cover and the
         // ends of the text are BOUNDARY.
         func className(_ edge: LatticeEdge?) -> String {
@@ -36,12 +40,14 @@ nonisolated extension FuriganaResolver {
             guard candidates.count > 1 else { continue }
             // Apple's reading counts only when the dictionary lists it for this word.
             let apple = appleReadings[run.location].flatMap { $0.length == run.length && candidates.contains($0.reading) ? $0.reading : nil }
+            let kanji = nsText.substring(with: run)
             let counted = transitionTable == nil ? nil : table?.choose(
-                kanji: nsText.substring(with: run),
+                kanji: kanji,
                 candidates: candidates,
                 previous: className(index > 0 ? edges[index - 1] : nil),
                 next: className(index + 1 < edges.count ? edges[index + 1] : nil),
-                appleReading: apple
+                appleReading: apple,
+                addedCounts: registers?.addedCounts(kanji: kanji, register: register) ?? [:]
             )
             if let chosen = counted ?? apple, chosen != KanaNormalizer.katakanaToHiragana(current) {
                 furigana[run.location] = chosen

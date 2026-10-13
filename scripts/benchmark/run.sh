@@ -4,7 +4,9 @@
 # scripts/segmentation-eval's segcli) and each analyzer, and scores them all with the same rules.
 #   scripts/benchmark/run.sh [WORK]        (default: a new temp folder; ~1 GB, deleted only by you)
 # Needs: the `mecab` command with IPADic (Homebrew `mecab` + `mecab-ipadic`), python3, git, curl, and
-# Resources/dictionary.sqlite (scripts/ensure_dictionary.sh). Heavy: run it on an idle, cool Mac.
+# Resources/dictionary.sqlite (scripts/ensure_dictionary.sh). Kioku reads DB=<path> instead when set: the
+# furigana's web and literature counts live in the dictionary (generate_db.py, import_reading_registers), so measure
+# with one built since they were added. Heavy: run it on an idle, cool Mac.
 set -e
 HERE=${0:a:h}; ROOT=${HERE:h:h}; EVAL=$ROOT/scripts/segmentation-eval
 WORK=${1:-$(mktemp -d)}; mkdir -p $WORK
@@ -26,6 +28,7 @@ SETS=(tatoeba-held2k tatoeba-fresh5k aozora kwdlc)
 $EVAL/cli/build.sh > $WORK/segcli-build.log 2>&1
 export SWIFT_DETERMINISTIC_HASHING=1
 for set in $SETS; do
+  echo "$(date +%T)  $set: kioku, mecab, unidic, sudachi"
   $EVAL/work/segcli furigana < $WORK/$set.txt > $WORK/$set.kioku.fur 2>/dev/null
   $EVAL/work/segcli run < $WORK/$set.txt > $WORK/$set.kioku.seg 2>/dev/null
   python3 -I $HERE/run_analyzer.py mecab $WORK/$set.txt $WORK/$set.mecab

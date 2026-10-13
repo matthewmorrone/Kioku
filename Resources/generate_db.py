@@ -1,5 +1,7 @@
 import argparse
 import bz2
+import collections
+import concurrent.futures
 import csv
 import gzip
 import io
@@ -1293,6 +1295,189 @@ def import_deinflection_rules(conn):
     print(f"  Done: {count} deinflection rules")
 
 
+# ---------------------------------------------------------------------------------------------
+# Reading counts by register, and the register classifier
+#
+# Furigana chooses among a word's readings with Tatoeba's usage counts (ReadingContextTable), which
+# are everyday sentences. Web and business writing (その後 → ご, 方 → かた, 等 → とう) and literature
+# read some kanji differently, so the dictionary also carries:
+#   reading_register_counts (register, kanji, reading, count)
+#     web: KWDLC (Kyoto University Web Document Leads Corpus), its training documents (id/train.id;
+#       its id/test.id documents are the benchmark's): every morpheme written as its dictionary form
+#       whose one kanji run the dictionary lists with several readings, with its annotated reading.
+#     literature: Aozora Bunko ruby (漢字《かんじ》) in public-domain works by authors the benchmark
+#       doesn't sample, every tenth work (by work id) held out for fitting: a ruby whose base is one
+#       kanji run the dictionary lists with several readings.
+#   register_grams (gram, everyday, web, literature), register_totals (register, grams, vocabulary)
+#     Character unigram and bigram counts of each register's text (everyday: Tatoeba's sentences
+#     with even ids, the training half; web and literature: the texts above), pruned to grams seen
+#     REGISTER_MIN_GRAM_COUNT times; the totals are before pruning. RegisterClassifier (the app) picks
+#     a note's register from them by naive Bayes.
+# Only counts are stored, never text.
+# ---------------------------------------------------------------------------------------------
+
+REGISTER_KANJI_RUN = re.compile(r'[㐀-䶿一-鿿豈-﫿々〆ヶ]+')
+REGISTER_RUBY = re.compile(r'(?:｜([^《｜]+)|([㐀-䶿一-鿿豈-﫿々〆ヶ]+))《([^》]+)》')
+# The benchmark's authors (scripts/benchmark/fetch_aozora.py): their works are its gold, so never counted.
+REGISTER_BENCHMARK_AUTHORS = {('夏目', '漱石'), ('芥川', '竜之介'), ('宮沢', '賢治'), ('太宰', '治'), ('中島', '敦'),
+                              ('梶井', '基次郎'), ('坂口', '安吾'), ('新美', '南吉'), ('小川', '未明'), ('岡本', '綺堂'),
+                              ('寺田', '寅彦'), ('林', '芙美子')}
+REGISTER_WORKS_PER_AUTHOR = 10
+REGISTER_MIN_GRAM_COUNT = 5
+REGISTERS = ('everyday', 'web', 'literature')
+
+
+# The character unigrams and bigrams RegisterClassifier scores, with ^ and $ marking the ends.
+def register_grams(text):
+    marked = f'^{text}$'
+    return [marked[i:i + 2] for i in range(len(marked) - 1)] + list(marked)
+
+
+# Kanji runs the dictionary lists with more than one reading: the only ones furigana chooses for.
+def kanji_runs_with_several_readings(conn):
+    readings = collections.defaultdict(set)
+    for surface, reading in conn.execute('SELECT surface, reading FROM surface_readings'):
+        readings[surface].add(katakana_to_hiragana(reading))
+    return {surface for surface, values in readings.items() if len(values) > 1}
+
+
+# KWDLC's training sentences from its GitHub archive, each a list of (surface, reading, dictionary
+# form) morphemes. A backslash morpheme is KWDLC's escaped space and is skipped.
+def kwdlc_training_sentences(archive):
+    with zipfile.ZipFile(archive) as z:
+        root = z.namelist()[0].split('/')[0]
+        for document in z.read(f'{root}/id/train.id').decode().split():
+            morphemes = []
+            for line in z.read(f'{root}/knp/{document[:13]}/{document}.knp').decode().splitlines():
+                if line.startswith('EOS'):
+                    if morphemes:
+                        yield morphemes
+                    morphemes = []
+                elif line and line[0] not in '#*+':
+                    fields = line.split(' ')
+                    if len(fields) > 3 and fields[0] != '\\':
+                        morphemes.append((fields[0], fields[1], fields[2]))
+
+
+# The kanji run of a word with one, and the run's own reading: `reading` less the kana before and
+# after it (来る くる → 来, く). (None, None) when the word has no single run or the kana don't match.
+def kanji_run_reading(word, reading):
+    runs = list(REGISTER_KANJI_RUN.finditer(word))
+    if len(runs) != 1:
+        return None, None
+    before = katakana_to_hiragana(word[:runs[0].start()])
+    after = katakana_to_hiragana(word[runs[0].end():])
+    reading = katakana_to_hiragana(reading)
+    if not reading.startswith(before) or not reading.endswith(after):
+        return None, None
+    return runs[0].group(), reading[len(before):len(reading) - len(after)] or None
+
+
+# Downloads the counted Aozora works the catalogue selects (four at a time, gentle on a
+# volunteer-run server) and returns their texts. A work that fails three times is skipped and logged.
+def aozora_counted_works(catalogue):
+    with zipfile.ZipFile(catalogue) as z:
+        rows = list(csv.DictReader(io.StringIO(z.read(z.namelist()[0]).decode('utf-8-sig'))))
+    picked, per_author, seen = [], collections.Counter(), set()
+    for row in rows:
+        author = (row['姓'], row['名'])
+        if (author not in REGISTER_BENCHMARK_AUTHORS and row['役割フラグ'] == '著者'
+                and row['文字遣い種別'] == '新字新仮名' and row['作品著作権フラグ'] == 'なし'
+                and 'ruby' in row['テキストファイルURL'] and row['作品ID'] not in seen
+                and per_author[author] < REGISTER_WORKS_PER_AUTHOR):
+            seen.add(row['作品ID'])
+            per_author[author] += 1
+            if int(row['作品ID']) % 10:
+                picked.append(row['テキストファイルURL'])
+
+    # One work's text from its ruby zip, or None after three failed tries.
+    def download(url):
+        for attempt in range(3):
+            try:
+                request = urllib.request.Request(url, headers={"User-Agent": "Kioku-dictionary-builder"})
+                data = urllib.request.urlopen(request, timeout=60).read()
+                with zipfile.ZipFile(io.BytesIO(data)) as z:
+                    return ''.join(z.read(n).decode('shift_jis', errors='replace') for n in z.namelist() if n.endswith('.txt'))
+            except (OSError, zipfile.BadZipFile) as error:
+                if attempt == 2:
+                    print(f'  skipped {url}: {error}')
+        return None
+
+    with concurrent.futures.ThreadPoolExecutor(4) as pool:
+        texts = [text for text in pool.map(download, picked) if text]
+    print(f'  {len(texts)} of {len(picked)} Aozora works from {len(per_author)} authors')
+    return texts
+
+
+# A work's body paragraphs as (plain text, [(ruby base, reading)]), markup removed: the body sits
+# between the second dashed separator line and the 底本 colophon.
+def aozora_paragraphs(text):
+    lines = text.replace('\r', '').split('\n')
+    separators = [i for i, line in enumerate(lines) if line.startswith('-------')]
+    body = lines[separators[1] + 1:] if len(separators) >= 2 else lines[1:]
+    end = next((i for i, line in enumerate(body) if line.startswith('底本：')), len(body))
+    for raw in body[:end]:
+        raw = re.sub(r'［＃[^］]*］', '', raw).replace('　', '').strip()
+        if raw:
+            ruby = [(m.group(1) or m.group(2), m.group(3)) for m in REGISTER_RUBY.finditer(raw)]
+            plain = REGISTER_RUBY.sub(lambda m: m.group(1) or m.group(2), raw)
+            yield plain.replace('《', '').replace('》', '').replace('｜', ''), ruby
+
+
+# Builds reading_register_counts, register_grams and register_totals (see the section comment).
+# Needs surface_readings and sentence_pairs.
+def import_reading_registers(conn):
+    manifest = load_manifest()
+    kwdlc = fetch_archive(manifest["kwdlc"])
+    catalogue = fetch_archive(manifest["aozora-bunko-ruby"])
+    choosable = kanji_runs_with_several_readings(conn)
+    readings = collections.Counter()
+    gram_counts = {register: collections.Counter() for register in REGISTERS}
+
+    for (japanese,) in conn.execute('SELECT DISTINCT japanese FROM sentence_pairs WHERE ja_id % 2 = 0'):
+        gram_counts['everyday'].update(register_grams(japanese))
+
+    for morphemes in kwdlc_training_sentences(kwdlc):
+        gram_counts['web'].update(register_grams(''.join(surface for surface, _, _ in morphemes)))
+        for surface, reading, headword in morphemes:
+            if surface == headword:
+                run, run_reading = kanji_run_reading(surface, reading)
+                if run in choosable and run_reading:
+                    readings[('web', run, run_reading)] += 1
+
+    for text in aozora_counted_works(catalogue):
+        for plain, ruby in aozora_paragraphs(text):
+            gram_counts['literature'].update(register_grams(plain))
+            for base, reading in ruby:
+                reading = katakana_to_hiragana(reading)
+                if REGISTER_KANJI_RUN.fullmatch(base) and base in choosable and re.fullmatch(r'[ぁ-ゖー]+', reading):
+                    readings[('literature', base, reading)] += 1
+
+    conn.execute("""
+        CREATE TABLE reading_register_counts (
+            register TEXT NOT NULL, kanji TEXT NOT NULL, reading TEXT NOT NULL, count INTEGER NOT NULL,
+            PRIMARY KEY (register, kanji, reading)
+        )""")
+    conn.executemany("INSERT INTO reading_register_counts VALUES (?, ?, ?, ?)",
+                     [(r, k, reading, n) for (r, k, reading), n in sorted(readings.items())])
+    vocabulary = set().union(*gram_counts.values())
+    conn.execute("CREATE TABLE register_totals (register TEXT PRIMARY KEY, grams INTEGER NOT NULL, vocabulary INTEGER NOT NULL)")
+    conn.executemany("INSERT INTO register_totals VALUES (?, ?, ?)",
+                     [(r, sum(gram_counts[r].values()), len(vocabulary)) for r in REGISTERS])
+    conn.execute("""
+        CREATE TABLE register_grams (
+            gram TEXT PRIMARY KEY, everyday INTEGER NOT NULL, web INTEGER NOT NULL, literature INTEGER NOT NULL
+        ) WITHOUT ROWID""")
+    rows = [(g, *(gram_counts[r][g] for r in REGISTERS)) for g in sorted(vocabulary)]
+    kept = [row for row in rows if sum(row[1:]) >= REGISTER_MIN_GRAM_COUNT]
+    conn.executemany("INSERT INTO register_grams VALUES (?, ?, ?, ?)", kept)
+    by_register = collections.Counter()
+    for (register, _, _), n in readings.items():
+        by_register[register] += n
+    print(f"  Done: reading counts web {by_register['web']}, literature {by_register['literature']} "
+          f"({len(readings)} rows); register grams {len(kept)} of {len(vocabulary)} kept")
+
+
 def import_sentence_pairs(conn):
     # Populates sentence_pairs from Japanese-English pairs derived out of Tatoeba's exports
     # (derive_sentence_pairs_rows): ja_id, japanese, en_id, english.
@@ -1902,6 +2087,9 @@ def build_database():
 
     with phase("Materializing canonical entry id lookup table..."):
         materialize_canonical_entry_ids(conn)
+
+    with phase("Counting readings by register (web, literature) and the register classifier..."):
+        import_reading_registers(conn)
 
     with phase("Recording build provenance..."):
         record_build_provenance(conn)
