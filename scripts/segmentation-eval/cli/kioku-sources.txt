@@ -92,5 +92,6 @@ Dictionary/Segmenter/Segmenter+HonorificPrefix.swift
 UserDefaultsBool.swift
 Dictionary/Segmenter/Segmenter+ReadingGlosses.swift
 Dictionary/DictionaryStore+ReadingRegisters.swift
+Dictionary/DictionaryStore+UsageTables.swift
 Read/Furigana/RegisterClassifier.swift
 Read/Furigana/ReadingRegisters.swift

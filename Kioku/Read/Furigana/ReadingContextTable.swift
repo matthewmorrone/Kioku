@@ -7,8 +7,8 @@ import Foundation
 // with class names from TransitionClass, as the transition table uses them. A kanji the counts never
 // saw keeps the dictionary's frequency order.
 //
-// The numbers live in reading-contexts.tsv beside this file, built by
-// scripts/calibration/count_reading_contexts.py; never edit it by hand. Measured on its own with
+// The numbers live in the dictionary's reading_contexts table, recounted at every dictionary build
+// (Resources/generate_db.py, import_usage_tables). Measured on its own with
 // scripts/segmentation-eval/score_readings.py: held2k 91.09% → 94.50%, fresh5k 94.79% → 96.97%
 // (counts from the training half; the unused held-out sentences, added since, are worth +1 / +2 more).
 nonisolated final class ReadingContextTable: Sendable {
@@ -25,51 +25,48 @@ nonisolated final class ReadingContextTable: Sendable {
     // How many distinct classes the counts name: the smoothing's denominator.
     private let classCount: Int
 
-    // Parses the table: "kanji <tab> reading <tab> count <tab> classes before <tab> classes after".
-    init(contentsOf url: URL) throws {
-        let text = try String(contentsOf: url, encoding: .utf8)
+    // Builds the table from its rows, whose class lists read "name=count name=count".
+    init(rows: [ReadingContextRow]) {
         var countsByKanji: [String: [String: ReadingContextCounts]] = [:]
         var classes = Set<String>()
         // Reads a "name=count name=count" list.
-        func classCounts(_ field: Substring) -> [String: Int] {
+        func classCounts(_ field: String) -> [String: Int] {
             var counts: [String: Int] = [:]
             for pair in field.split(separator: " ") {
-                guard let equals = pair.lastIndex(of: "="), let n = Int(pair[pair.index(after: equals)...]) else { continue }
+                guard let equals = pair.lastIndex(of: "="), let n = Int(pair[pair.index(after: equals)...]) else {
+                    AppLog.error(.segmentation, "reading_contexts: skipping malformed class count \(pair)")
+                    continue
+                }
                 let name = String(pair[..<equals])
                 counts[name] = n
                 classes.insert(name)
             }
             return counts
         }
-        for row in text.split(separator: "\n") {
-            let fields = row.split(separator: "\t", omittingEmptySubsequences: false)
-            guard fields.count == 5, let total = Int(fields[2]) else {
-                AppLog.error(.segmentation, "reading-contexts.tsv: skipping malformed row \(row)")
-                continue
-            }
-            countsByKanji[String(fields[0]), default: [:]][String(fields[1])] = ReadingContextCounts(
-                total: total, previous: classCounts(fields[3]), next: classCounts(fields[4])
+        for row in rows {
+            countsByKanji[row.kanji, default: [:]][row.reading] = ReadingContextCounts(
+                total: row.count, previous: classCounts(row.previous), next: classCounts(row.next)
             )
         }
         self.countsByKanji = countsByKanji
         self.classCount = max(1, classes.count)
     }
 
-    // The table shipped with the app: from the bundle on device, or from the source tree when the
-    // code runs outside an app bundle (unit tests, the command-line eval harness).
-    static let bundled: ReadingContextTable? = {
-        let besideThisFile = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("reading-contexts.tsv")
-        let candidates = [Bundle.main.url(forResource: "reading-contexts", withExtension: "tsv"), besideThisFile]
-        for case let url? in candidates where FileManager.default.fileExists(atPath: url.path) {
-            do {
-                return try ReadingContextTable(contentsOf: url)
-            } catch {
-                AppLog.error(.segmentation, "reading-contexts.tsv at \(url.path) unreadable: \(error)")
+    // The dictionary's table; nil when the dictionary has none or it can't be read, and furigana
+    // then keeps the dictionary's frequency order.
+    static func load(from store: DictionaryStore) -> ReadingContextTable? {
+        do {
+            let rows = try store.fetchReadingContexts()
+            guard rows.isEmpty == false else {
+                AppLog.error(.segmentation, "Dictionary has no reading_contexts; furigana keeps the frequency order")
+                return nil
             }
+            return ReadingContextTable(rows: rows)
+        } catch {
+            AppLog.error(.segmentation, "reading_contexts failed to load: \(error)")
+            return nil
         }
-        AppLog.error(.segmentation, "reading-contexts.tsv not loaded; furigana keeps the frequency order")
-        return nil
-    }()
+    }
 
     // The likeliest of `candidates` (hiragana run readings, in the dictionary's frequency order) for
     // `kanji` between a word of class `previous` and one of class `next`; nil when no counts saw this

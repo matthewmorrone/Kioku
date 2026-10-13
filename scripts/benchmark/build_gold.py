@@ -9,7 +9,7 @@ offsets into the text — the format scripts/segmentation-eval reads.
       (｜漢字《かんじ》), one kanji run each. Ruby marks the words a reader might stumble on, so it's hard.
   kwdlc: the Kyoto University Web Document Leads Corpus (web pages); gold = every morpheme with its
       annotated reading and boundaries. Only the 700 documents of KWDLC's own test split (id/test.id):
-      Kioku's reading counts come from its training split (scripts/calibration/count_reading_contexts.py).
+      Kioku's reading counts come from its training split (the dictionary's reading_contexts table, scripts/calibration/usage_tables.py).
 
     build_gold.py WORK      (after fetch.sh has filled WORK/aozora and WORK/KWDLC)"""
 import glob, gzip, json, os, re, sys

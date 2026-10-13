@@ -1,7 +1,7 @@
 import Foundation
 // Harness over the repo's REAL transition code (TransitionClass, SegmenterTransitionTable).
 //   segcli count <lexical.txt> < gold.jsonl       → "start,end,className" per gold token
-//   segcli fit <pairs.tsv> <configs> <outdir> < sentences   configs: "WEIGHT CLAMP"; lattice once, DP per config
+//   segcli fit <configs> <outdir> < sentences   configs: "WEIGHT CLAMP"; the dictionary's transition rows, lattice once, DP per config
 //   segcli lemmas < surfaces                     → what each surface resolves to, with each lemma's score (the audit's input)
 //   segcli oracle < gold.jsonl                   → per cut-through: is the gold parse in the lattice, and by how much does it lose
 //   segcli features < gold.jsonl                → per sentence: characters, gold gap labels, shipped cuts, lattice gap features (boundary model input)
@@ -373,13 +373,13 @@ if mode == "run" {
     exit(0)
 }
 
-let pairsURL = URL(fileURLWithPath: CommandLine.arguments[2])
+let transitionRows = try store.fetchSegmenterTransitions()
 let configs: [[Double]] = try String(
-    contentsOfFile: CommandLine.arguments[3],
+    contentsOfFile: CommandLine.arguments[2],
     encoding: .utf8
 ).split(separator: "\n").map { $0.split(separator: " ").compactMap { Double($0) } }
-let tables: [SegmenterTransitionTable?] = try configs.map { $0[0] == 0 ? nil : try SegmenterTransitionTable(contentsOf: pairsURL, weight: $0[0], clampNats: $0[1]) }
-let outDir = CommandLine.arguments[4]
+let tables: [SegmenterTransitionTable?] = configs.map { $0[0] == 0 ? nil : SegmenterTransitionTable(rows: transitionRows, weight: $0[0], clampNats: $0[1]) }
+let outDir = CommandLine.arguments[3]
 var outputs = [String](repeating: "", count: configs.count)
 while let line = readLine() {
     let lattice = segmenter.buildLattice(for: line)

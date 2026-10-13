@@ -38,6 +38,7 @@ extension Segmenter {
         // segment without the boundary model.
         boundaryModel = other.boundaryModel
         readingRegisters = other.readingRegisters
+        readingContexts = other.readingContexts
         reconfigure(
             trie: other.trie,
             deinflector: other.deinflector,

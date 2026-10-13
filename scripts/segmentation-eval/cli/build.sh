@@ -5,8 +5,9 @@
 # If the compiler reports a missing type, add that file to cli/kioku-sources.txt.
 set -e
 HERE=${0:a:h}; ROOT=${HERE:h:h:h}; SRC=$ROOT/Kioku; WORK=${HERE:h}/work
-# segcli reads Resources/dictionary.sqlite; fetch the pinned release if it isn't there.
-bash $ROOT/scripts/ensure_dictionary.sh
+# segcli reads Resources/dictionary.sqlite; fetch the pinned release if it isn't there. With DB set
+# (generate_db.py counting the usage tables) segcli reads that database instead, so nothing is fetched.
+[ -n "$DB" ] || bash $ROOT/scripts/ensure_dictionary.sh
 mkdir -p $WORK/build
 sed -e 's/private func absorbingBoundCharacters/func absorbingBoundCharacters/' \
   $SRC/Dictionary/Segmenter/Segmenter.swift > $WORK/build/Segmenter.swift

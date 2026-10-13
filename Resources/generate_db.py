@@ -41,6 +41,10 @@ JMDICT_PATH = None
 DEINFLECTION_GRAMMAR_PATH = RESOURCES_DIR / "deinflection-grammar.json"
 DEINFLECTION_EXTRAS_PATH = RESOURCES_DIR / "deinflection-extras.json"
 DEINFLECTION_GENERATOR_PATH = PROJECT_ROOT / "scripts" / "deinflection" / "generate_rules.py"
+USAGE_TABLES_PATH = PROJECT_ROOT / "scripts" / "calibration" / "usage_tables.py"
+SEGCLI_BUILD_PATH = PROJECT_ROOT / "scripts" / "segmentation-eval" / "cli" / "build.sh"
+SEGCLI_PATH = PROJECT_ROOT / "scripts" / "segmentation-eval" / "work" / "segcli"
+EVAL_DATA_DIR = PROJECT_ROOT / "scripts" / "segmentation-eval" / "data"
 # Jiten's global frequency list (Yomitan term_meta_bank "freq" layout), read by import_frequency_ranks
 # and materialize_surface_frequency.
 FREQUENCY_PATH = None
@@ -221,8 +225,9 @@ def materialize_source(entry):
 
 
 # Fails fast, before any long phase, when the tools the build depends on are missing. wordfreq
-# feeds the frequency columns and the mecab CLI the headword decompositions; silently skipping
-# either ships a degraded dictionary (see import_wordfreq and import_entry_decomposition).
+# feeds the frequency columns, the mecab CLI the headword decompositions and swiftc the usage tables
+# (import_usage_tables); silently skipping any of them ships a degraded dictionary (see
+# import_wordfreq and import_entry_decomposition).
 def check_build_tools():
     problems = []
     try:
@@ -231,6 +236,8 @@ def check_build_tools():
         problems.append("wordfreq (pip install -r requirements.txt)")
     if shutil.which("mecab") is None:
         problems.append("the mecab CLI with mecab-ipadic (brew install mecab mecab-ipadic)")
+    if shutil.which("swiftc") is None:
+        problems.append("swiftc (Xcode), which compiles segcli to count the usage tables")
     if problems:
         raise RuntimeError("Missing build tools: " + "; ".join(problems))
 
@@ -1410,6 +1417,55 @@ def import_reading_registers(conn):
           f"register grams {len(kept)} of {len(vocabulary)} kept")
 
 
+# Writes the segmenter's transition costs and furigana's reading counts (segmenter_transitions,
+# reading_contexts), counted from Tatoeba's Japanese indices by scripts/calibration/usage_tables.py.
+# The word classes come from the app's own code run against this database: segcli is compiled from
+# the app's sources and classes every gold token, so the build commits what it has so far first.
+# Needs everything the segmenter loads (entries, ranks, deinflection rules, names) and sentence_pairs.
+def import_usage_tables(conn):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("usage_tables", USAGE_TABLES_PATH)
+    usage_tables = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(usage_tables)
+    entry = load_manifest()["tatoeba-jpn-indices"]
+    archive = fetch_archive(entry)
+    sentences = {str(ja_id): japanese for ja_id, japanese in conn.execute("SELECT DISTINCT ja_id, japanese FROM sentence_pairs")}
+    conn.commit()
+    env = dict(os.environ, DB=str(OUTPUT_DB), KIOKU_CHECKOUT=str(PROJECT_ROOT), SWIFT_DETERMINISTIC_HASHING="1")
+    build_log = WORK_DIR / "segcli-build.log"
+    with open(build_log, "w") as log:
+        if subprocess.run(["zsh", str(SEGCLI_BUILD_PATH)], env=env, stdout=log, stderr=subprocess.STDOUT).returncode != 0:
+            raise RuntimeError(f"segcli failed to build; see {build_log}")
+
+    # Classes every gold token through `segcli count`, one output line per record.
+    def classify(lexical, records):
+        lexical_path = WORK_DIR / "usage-lexical.txt"
+        lexical_path.write_text("\n".join(lexical) + "\n", encoding="utf-8")
+        gold = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records)
+        proc = subprocess.run([str(SEGCLI_PATH), "count", str(lexical_path)], input=gold, capture_output=True,
+                              text=True, env=env)
+        if proc.returncode != 0:
+            raise RuntimeError(f"segcli count failed: {proc.stderr[-2000:]}")
+        return proc.stdout.splitlines()
+
+    with open_source_member(entry["fetch"], archive) as raw:
+        tables = usage_tables.build(io.TextIOWrapper(raw, encoding="utf-8-sig"), sentences, EVAL_DATA_DIR, classify)
+    conn.execute("BEGIN")
+    conn.execute("""
+        CREATE TABLE segmenter_transitions (
+            previous TEXT NOT NULL, next TEXT NOT NULL, pmi REAL NOT NULL, PRIMARY KEY (previous, next)
+        ) WITHOUT ROWID""")
+    conn.executemany("INSERT INTO segmenter_transitions VALUES (?, ?, ?)", tables["transitions"])
+    conn.execute("""
+        CREATE TABLE reading_contexts (
+            kanji TEXT NOT NULL, reading TEXT NOT NULL, count INTEGER NOT NULL,
+            previous TEXT NOT NULL, next TEXT NOT NULL, PRIMARY KEY (kanji, reading)
+        ) WITHOUT ROWID""")
+    conn.executemany("INSERT INTO reading_contexts VALUES (?, ?, ?, ?, ?)", tables["readings"])
+    print(f"  Done: {len(tables['transitions'])} transition pairs from {tables['transition_sentences']} sentences; "
+          f"{len(tables['readings'])} reading rows from {tables['sentences']}")
+
+
 def import_sentence_pairs(conn):
     # Populates sentence_pairs from Japanese-English pairs derived out of Tatoeba's exports
     # (derive_sentence_pairs_rows): ja_id, japanese, en_id, english.
@@ -2023,6 +2079,9 @@ def build_database():
     with phase("Counting web readings and the register classifier..."):
         import_reading_registers(conn)
 
+    with phase("Counting transition costs and reading contexts (segcli)..."):
+        import_usage_tables(conn)
+
     with phase("Recording build provenance..."):
         record_build_provenance(conn)
 
@@ -2080,9 +2139,10 @@ def build_info():
         "python": platform.python_version(),
         "wordfreq": wordfreq_version,
         "mecab": run("mecab", "--version"),
+        "swiftc": (run("swiftc", "--version").splitlines() or ["unknown"])[0] if shutil.which("swiftc") else "not installed",
     }
     for local in (MANIFEST_PATH, SCRIPT_CLASSIFIER_SWIFT_PATH, DEINFLECTION_GRAMMAR_PATH,
-                  DEINFLECTION_EXTRAS_PATH, DEINFLECTION_GENERATOR_PATH, Path(__file__).resolve()):
+                  DEINFLECTION_EXTRAS_PATH, DEINFLECTION_GENERATOR_PATH, USAGE_TABLES_PATH, Path(__file__).resolve()):
         if local.exists():
             info[f"sha256 {local.relative_to(PROJECT_ROOT)}"] = sha256_of_file(local)
     return info

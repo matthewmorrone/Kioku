@@ -20,7 +20,7 @@ nonisolated extension FuriganaResolver {
         surfaceReadingData: SurfaceReadingDataMap
     ) {
         let nsText = sourceText as NSString
-        let table = ReadingContextTable.bundled
+        let table = (segmenter as? Segmenter)?.readingContexts
         let transitionTable = (segmenter as? Segmenter)?.transitionTable
         let appleReadings = AppleTokenReadings.runReadings(in: sourceText)
         // The note's register (everyday or web), told once for the whole text.

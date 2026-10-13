@@ -5,10 +5,10 @@ import Foundation
 // P(word) for each word alone; this adds what context says, which is what separates two parses that
 // are both made of plausible words (電|気をつけて vs 電気|を|つけて).
 //
-// The numbers live in segmenter-transitions.tsv beside this file: one "A <tab> B <tab> PMI" row per
-// class pair the training data has an opinion about, PMI = ln[ P(A,B) / (P(A)·P(B)) ] in nats,
-// counted from Tatoeba sentences tokenized at JMdict granularity and classed by TransitionClass.
-// Regenerate it with scripts/calibration/fit_transition_costs.py; never edit it by hand.
+// The numbers live in the dictionary's segmenter_transitions table: one row per class pair the
+// training data has an opinion about, PMI = ln[ P(A,B) / (P(A)·P(B)) ] in nats, counted from Tatoeba
+// sentences tokenized at JMdict granularity and classed by TransitionClass. Every dictionary build
+// recounts it (Resources/generate_db.py, import_usage_tables), so it matches the dictionary it ships in.
 //
 // This table replaced IPADic's connection matrix (commit 8555cb1), which is calibrated for IPADic's
 // lexicon and short-unit granularity, not JMdict's; the swap raised held-out exact match on all
@@ -29,20 +29,18 @@ nonisolated final class SegmenterTransitionTable: Sendable {
     private let costByPair: [UInt64: Int]
     private let boundaryIDs: ClassIDs
 
-    // Loads the pair file, scaling each PMI into a cost: −weight · clamp(PMI), in centi-nats.
+    // Builds the table from its rows, scaling each PMI into a cost: −weight · clamp(PMI), in centi-nats.
     init(
-        contentsOf url: URL,
+        rows: [SegmenterTransitionRow],
         weight: Double = SegmenterScoring.transitionWeight,
         clampNats: Double = SegmenterScoring.transitionClampNats
-    ) throws {
-        let text = try String(contentsOf: url, encoding: .utf8)
+    ) {
         var idByName: [String: Int32] = [:]
         var costByPair: [UInt64: Int] = [:]
         var lexical = Set<String>()
 
         // Interns a class name, recording the word behind a "w:" class.
-        func intern(_ name: Substring) -> Int32 {
-            let key = String(name)
+        func intern(_ key: String) -> Int32 {
             if let id = idByName[key] { return id }
             let id = Int32(idByName.count)
             idByName[key] = id
@@ -50,14 +48,9 @@ nonisolated final class SegmenterTransitionTable: Sendable {
             return id
         }
 
-        for row in text.split(separator: "\n") {
-            let fields = row.split(separator: "\t", omittingEmptySubsequences: false)
-            guard fields.count == 3, let pmi = Double(fields[2]) else {
-                AppLog.error(.segmentation, "segmenter-transitions.tsv: skipping malformed row \(row)")
-                continue
-            }
-            let clamped = max(-clampNats, min(clampNats, pmi))
-            costByPair[Self.key(intern(fields[0]), intern(fields[1]))] = Int((-weight * clamped * 100).rounded())
+        for row in rows {
+            let clamped = max(-clampNats, min(clampNats, row.pmi))
+            costByPair[Self.key(intern(row.previous), intern(row.next))] = Int((-weight * clamped * 100).rounded())
         }
 
         self.idByName = idByName
@@ -67,20 +60,20 @@ nonisolated final class SegmenterTransitionTable: Sendable {
         self.boundaryIDs = ClassIDs(fine: boundary, coarse: boundary)
     }
 
-    // The table shipped with the app: from the bundle on device, or from the source tree when the
-    // code runs outside an app bundle (unit tests, the command-line eval harness).
-    static func bundled() -> SegmenterTransitionTable? {
-        let besideThisFile = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("segmenter-transitions.tsv")
-        let candidates = [Bundle.main.url(forResource: "segmenter-transitions", withExtension: "tsv"), besideThisFile]
-        for case let url? in candidates where FileManager.default.fileExists(atPath: url.path) {
-            do {
-                return try SegmenterTransitionTable(contentsOf: url)
-            } catch {
-                AppLog.error(.segmentation, "segmenter-transitions.tsv at \(url.path) unreadable: \(error)")
+    // The dictionary's table; nil when the dictionary has none or it can't be read, and the
+    // segmenter then runs on word costs alone.
+    static func load(from store: DictionaryStore) -> SegmenterTransitionTable? {
+        do {
+            let rows = try store.fetchSegmenterTransitions()
+            guard rows.isEmpty == false else {
+                AppLog.error(.segmentation, "Dictionary has no segmenter_transitions; segmenting without transition costs")
+                return nil
             }
+            return SegmenterTransitionTable(rows: rows)
+        } catch {
+            AppLog.error(.segmentation, "segmenter_transitions failed to load: \(error)")
+            return nil
         }
-        AppLog.error(.segmentation, "segmenter-transitions.tsv not loaded; segmenting without transition costs")
-        return nil
     }
 
     // Packs an ordered class pair into one dictionary key.

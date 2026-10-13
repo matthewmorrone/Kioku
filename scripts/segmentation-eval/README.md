@@ -31,7 +31,7 @@ files the CLI compiles — add whatever the compiler reports missing.
 | mode | what it does |
 |---|---|
 | `run` | the shipped path: bundled transition table, shipped weights |
-| `fit <pairs.tsv> <configs> <outdir>` | lattice once per sentence, path search per `WEIGHT CLAMP` line — dozens of settings cost seconds |
+| `fit <configs> <outdir>` | the dictionary's transition rows; lattice once per sentence, path search per `WEIGHT CLAMP` line — dozens of settings cost seconds |
 | `count <lexical.txt>` | transition class of every gold token, from the app's own classifier (input to the table generator) |
 | `explain` | stdin `text<TAB>seg\|seg\|…` → node cost, score, steps, class and transition for the chosen path **and** the wanted one, or which wanted edge is missing from the lattice. Use this before theorising about any single failure. |
 | `lemmas` | what each surface resolves to, with scores (input to the deinflection audit) |
@@ -66,7 +66,7 @@ headwords by the JMdict maintainers. https://downloads.tatoeba.org/exports/jpn_i
 - The full training half (`train.jsonl`, 73k sentences, 22 MB) is not checked in and no copy is kept.
   Rebuild it with `prep.py <dir>` after downloading Tatoeba's current `jpn_indices.csv` into `<dir>`
   (https://downloads.tatoeba.org/exports/jpn_indices.tar.bz2; odd sentence ids → held-out, even →
-  train); the transition-table counts use it **minus its first 2,000 lines**.
+  train). The dictionary build counts the transition table from it **minus train2k** (see below).
 - `lyrics/gold-reviewed.json` — the 38 lyric lines (of 319, from the alignment-fixture songs) where a cut
   of ours fell inside a MeCab word; the user corrected 6. The segmenter was then fixed against these
   lines, so the score is a regression list, NOT a held-out measure; the other 281 lines are unscored.
@@ -105,8 +105,8 @@ comparing any shorter verb stretch broke お目にかかれて (かれる/かる
 
 Readings (`segcli furigana` + `score_readings.py`, 2026-10-10): held2k 95.19%, fresh5k 97.25%. Frequency
 order alone was 91.09% / 94.79%; the rest is the context pass (FuriganaResolver+ContextualReadings), one score
-over three sources: Tatoeba's reading counts (`scripts/calibration/count_reading_contexts.py` →
-`Kioku/Read/Furigana/reading-contexts.tsv`; 94.50% / 96.97% on their own), a 2.0 vote for Apple's tokenizer's
+over three sources: Tatoeba's reading counts (the dictionary's `reading_contexts` table, see "Regenerating the
+transition table"; 94.50% / 96.97% on their own), a 2.0 vote for Apple's tokenizer's
 reading (fitted on train2k: 0 → 94.17%, 2 → 94.57%; on its own Apple was 94.03% / 95.90%, and it reads 私 as
 わたくし every time, which the counts outvote), and dictionary frequency order to break ties. A kanji the counts never
 saw takes Apple's reading when the dictionary lists it. The after-の rule (JMdict の-expressions) was dropped as
@@ -187,15 +187,18 @@ lyric score. ラララ and に|ついてく, both listed here previously, are fi
 
 ## Regenerating the transition table
 
-Class names come from the app's own `TransitionClass`, so counting and running cannot diverge.
-Regenerate after any change to deinflection rules, POS bits or edge pricing.
+The transition table (`segmenter_transitions`) and furigana's reading counts (`reading_contexts`) are
+dictionary tables, recounted at every dictionary build: `import_usage_tables` in `Resources/generate_db.py`
+compiles segcli from the app's sources, classes every gold token of Tatoeba's indices against the database
+being built (`segcli count`), and turns the counts into rows (`scripts/calibration/usage_tables.py`).
+Class names come from the app's own `TransitionClass`, so counting and running cannot diverge, and a change
+to deinflection rules, POS bits or edge pricing takes effect in the tables at the next dictionary build.
+Transitions count the training half minus train2k; reading counts add the held-out sentences no eval set
+uses. To measure a code change against fresh tables, build a dictionary and point segcli at it:
 
 ```bash
-tail -n +2001 work/data/train.jsonl > work/train-fit.jsonl        # train2k stays out of the counts
-python3 ../calibration/fit_transition_costs.py lexical work/train-fit.jsonl > work/lexical.txt
-./work/segcli count work/lexical.txt < work/train-fit.jsonl > work/classes.txt
-python3 ../calibration/fit_transition_costs.py pairs work/classes.txt > ../../Kioku/Dictionary/Segmenter/segmenter-transitions.tsv
-./cli/build.sh && ./work/segcli run < work/data/held2k.txt > work/held2k.out      # re-measure
+~/Projects/Kioku/.venv/bin/python ../../Resources/generate_db.py --output /tmp/dict.sqlite
+./cli/build.sh && DB=/tmp/dict.sqlite ./work/segcli run < work/data/held2k.txt > work/held2k.out
 ```
 
 Before shipping any model change: the repo path (`run`) must reproduce the experiment's output
