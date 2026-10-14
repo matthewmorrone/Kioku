@@ -283,6 +283,8 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // Stops playback and resets position to the start.
     func stop() {
         player?.stop()
+        // AVAudioPlayer.stop() keeps its position; rewind so the next play() starts at the top.
+        player?.currentTime = 0
         isPlaying = false
         stopTimer()
         cancelStopWorkItem()
