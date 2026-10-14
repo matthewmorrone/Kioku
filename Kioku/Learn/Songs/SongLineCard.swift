@@ -399,7 +399,7 @@ struct SongLineCard: View {
     // True when expanding this card would reveal anything — words to drill into or a
     // pattern note. Lines with neither don't show the toggle at all.
     private var hasExpandableDetail: Bool {
-        words.isEmpty == false || (effectiveGrammarNote?.isEmpty == false)
+        words.isEmpty == false || (effectiveGrammarNote?.isEmpty == false) || line.segmentationNote != nil
     }
 
     // Single per-line toggle for the drill-down detail (vocabulary + pattern note).
@@ -429,6 +429,9 @@ struct SongLineCard: View {
         VStack(alignment: .leading, spacing: 14) {
             if words.isEmpty == false {
                 wordsList
+            }
+            if let note = line.segmentationNote {
+                segmentationNote(note)
             }
             if let grammar = effectiveGrammarNote, grammar.isEmpty == false {
                 patternNote(grammar)
@@ -516,6 +519,22 @@ struct SongLineCard: View {
     // the Breakdown view that scrolls to it.
     static func wordRowID(lineIndex: Int, surface: String) -> String {
         "word-\(lineIndex)-\(surface)"
+    }
+
+    // The model's note on where its word split or a reading differs from the app's (prompt
+    // rule 12), under the word list it qualifies, so the user can fix the page if it's right.
+    private func segmentationNote(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Segmentation")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(SongLineCard.stripInlineMarkdown(text))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 4)
     }
 
     // Pattern-to-bank note (the prompt's "optional grammar pattern worth memorizing").

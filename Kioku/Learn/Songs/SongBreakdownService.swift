@@ -25,8 +25,9 @@ final class SongBreakdownService {
         self.urlSession = urlSession ?? LLMStreamingClient.makeLongTimeoutSession()
     }
 
-    // `userNote` is the user's optional per-song guidance (see SongBreakdownUserNote); it is sent
-    // alongside the lyrics but never hashed, so editing it doesn't mark a breakdown stale.
+    // `userNote` is the user's optional per-song guidance (see SongBreakdownUserNote) and
+    // `segmentation` the app's word split of the lyrics (SongBreakdownSegmentation); both are
+    // sent alongside the lyrics but never hashed, so changing them doesn't mark a breakdown stale.
     // Returns a SongBreakdown for the given note text. Stub mode parses the in-app stub field;
     // real mode dispatches to the active provider and parses the response markdown. Throws
     // .noKeyConfigured when the user has not finished LLM setup.
@@ -38,6 +39,7 @@ final class SongBreakdownService {
         noteID: UUID,
         lyrics: String,
         userNote: String = "",
+        segmentation: String = "",
         onPartialLines: (@Sendable ([SongLine]) -> Void)? = nil
     ) async throws -> SongBreakdown {
         // Keep the (often multi-minute) song-breakdown LLM call alive across app backgrounding.
@@ -85,7 +87,7 @@ final class SongBreakdownService {
             }
             return try await generateViaAppleIntelligenceCloud(
                 noteID: noteID,
-                prompt: SongBreakdownPrompt.userTurn(lyrics: lyrics, userNote: userNote),
+                prompt: SongBreakdownPrompt.userTurn(lyrics: lyrics, userNote: userNote, segmentation: segmentation),
                 useDeepReasoning: provider == .appleIntelligenceCloudPro,
                 hash: hash,
                 startedAt: startedAt,
@@ -115,7 +117,7 @@ final class SongBreakdownService {
             raw = try await LLMStreamingClient.streamOpenAI(
                 apiKey: apiKey,
                 model: LLMSettings.openAIModel(),
-                messages: [["role": "user", "content": SongBreakdownPrompt.instantiated(withLyrics: lyrics, userNote: userNote)]],
+                messages: [["role": "user", "content": SongBreakdownPrompt.instantiated(withLyrics: lyrics, userNote: userNote, segmentation: segmentation)]],
                 maxTokens: 8192,
                 urlSession: urlSession,
                 onDelta: onDelta
@@ -134,7 +136,7 @@ final class SongBreakdownService {
                     "text": SongBreakdownPrompt.staticInstructions(),
                     "cache_control": ["type": "ephemeral"]
                 ]],
-                userContent: SongBreakdownPrompt.userTurn(lyrics: lyrics, userNote: userNote),
+                userContent: SongBreakdownPrompt.userTurn(lyrics: lyrics, userNote: userNote, segmentation: segmentation),
                 maxTokens: 8192,
                 urlSession: urlSession,
                 onDelta: onDelta

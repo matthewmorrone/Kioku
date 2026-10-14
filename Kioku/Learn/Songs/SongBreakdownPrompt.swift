@@ -22,6 +22,8 @@ enum SongBreakdownPrompt {
         - **[word in kanji/kana]** ([romaji]) — [plain dictionary gloss, no quotation marks; add one short note after it only when rule 5's (a)-(c) applies]
         - [repeat for every word/morpheme in the line, in order — particles included (を/が/に/は/も/の…, and compound or sentence-ending ones like よね/かな/のに/って), each tagged [particle] right after its romaji and glossed by its function in a few words, e.g. object marker, topic marker]
 
+        [Only when rule 12 applies and you would split this line differently: **Segmentation:** [what you'd split or join differently, or which reading is wrong, and why — one short sentence]]
+
         **Gist:** [for a vocalization line, start with [vocalization] — see rule 7] [natural English rendering of the whole line — interpreted IN CONTEXT of the entire song]
 
         [Optional: one short pattern-to-bank note if the line introduces a grammar pattern worth memorizing — literary negatives (〜ず), te-form chains, stem-form continuatives, mimetic + と, furigana mismatches, 〜ゆく vs 〜いく, classical attributive なる, etc. Skip if nothing new.]
@@ -62,6 +64,8 @@ enum SongBreakdownPrompt {
 
         11. **Instructions for this song**: when the request includes an "Instructions for this song" section, follow it over every rule above. If it says to ignore lines, words, or kinds of words, leave them out entirely: no entry for an ignored line, no bullet for an ignored word. Keep numbering lines by their position in the source, so an ignored line leaves a gap in the numbering rather than shifting the lines after it.
 
+        12. **Segmentation**: when the request includes a "Segmentation" section, it gives each line split into the app's words, separated by `|`, with each kanji run's reading in brackets right after it (見[み]た). Its line numbers are the ones to use. Give exactly one word bullet per listed word, in order, with the word's text minus the bracketed readings as the bold headword — do not join, split, add, or drop words, even where rule 7 would group them (a のように listed as の | ように gets two bullets). Base the romaji on the bracketed readings unless the singer sings it differently (rule 2). Where you would split or join words differently, or a bracketed reading is wrong, say so in one **Segmentation:** line after that line's bullets; otherwise leave the line out. Rule 11 still removes ignored lines and words.
+
         \(lyricsMarker)
 
         """
@@ -69,8 +73,8 @@ enum SongBreakdownPrompt {
     // Returns the prompt with the lyrics block substituted. Falls back to appending the lyrics
     // if the marker is missing (defensive — shouldn't happen with the literal above, but the
     // template lives in one place and prevents silently shipping a prompt without lyrics).
-    static func instantiated(withLyrics lyrics: String, userNote: String = "") -> String {
-        let body = userTurn(lyrics: lyrics, userNote: userNote)
+    static func instantiated(withLyrics lyrics: String, userNote: String = "", segmentation: String = "") -> String {
+        let body = userTurn(lyrics: lyrics, userNote: userNote, segmentation: segmentation)
         if template.contains(lyricsMarker) {
             return template.replacingOccurrences(of: lyricsMarker, with: body)
         }
@@ -78,20 +82,19 @@ enum SongBreakdownPrompt {
     }
 
     // The per-song part of the request: the user's optional note for this song (e.g. "ignore
-    // everything in parentheses"), then the lyrics. The note rides in the uncached user turn so
-    // the static system prompt stays byte-identical and cacheable. It comes before the lyrics so
-    // the model reads it before working through them, under the header rule 11 names.
-    static func userTurn(lyrics: String, userNote: String) -> String {
-        let lyricsSection = "## Lyrics\n\n" + lyrics
+    // everything in parentheses"), then the lyrics, then the app's segmentation of them
+    // (SongBreakdownSegmentation, rule 12) when there is one. All of it rides in the uncached
+    // user turn so the static system prompt stays byte-identical and cacheable. The note comes
+    // before the lyrics so the model reads it before working through them, under the header
+    // rule 11 names.
+    static func userTurn(lyrics: String, userNote: String, segmentation: String = "") -> String {
+        var sections: [String] = []
         let note = userNote.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard note.isEmpty == false else { return lyricsSection }
-        return """
-            ## Instructions for this song
-
-            \(note)
-
-            \(lyricsSection)
-            """
+        if note.isEmpty == false { sections.append("## Instructions for this song\n\n" + note) }
+        sections.append("## Lyrics\n\n" + lyrics)
+        let words = segmentation.trimmingCharacters(in: .whitespacesAndNewlines)
+        if words.isEmpty == false { sections.append("## Segmentation\n\n" + words) }
+        return sections.joined(separator: "\n\n")
     }
 
     // The static instruction portion of the template — everything before the per-song marker.

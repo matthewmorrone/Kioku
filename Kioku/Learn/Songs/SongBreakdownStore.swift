@@ -189,7 +189,7 @@ final class SongBreakdownStore: ObservableObject {
     // `providerLabel` is supplied by the caller so the loading view can show "via Claude"
     // / "via OpenAI" / "stub mode" using the same lookup it would have used inline. It is
     // a UI-only label and has no effect on dispatch.
-    func startGeneration(forNoteID id: UUID, lyrics: String, userNote: String = "", providerLabel: String) {
+    func startGeneration(forNoteID id: UUID, lyrics: String, userNote: String = "", segmentation: String = "", providerLabel: String) {
         if generationTasksByNoteID[id] != nil { return }
         generationStateByNoteID[id] = .running(startedAt: Date(), providerLabel: providerLabel, partialLines: [])
         let task = Task { @MainActor [weak self] in
@@ -199,6 +199,7 @@ final class SongBreakdownStore: ObservableObject {
                     noteID: id,
                     lyrics: lyrics,
                     userNote: userNote,
+                    segmentation: segmentation,
                     onPartialLines: self.makePartialLinesHandler(forNoteID: id)
                 )
                 try Task.checkCancellation()
@@ -216,13 +217,16 @@ final class SongBreakdownStore: ObservableObject {
         generationTasksByNoteID[id] = task
     }
 
-    // Generates a note's breakdown with the plain breakdown request. The user's saved per-song
-    // note (SongBreakdownUserNote) travels with the request.
-    func startBreakdown(forNote note: Note, providerLabel: String) {
+    // Generates a note's breakdown. The user's saved per-song note (SongBreakdownUserNote)
+    // travels with the request, and so does the Read tab's segmentation of the note when the
+    // caller has one, so the model's word list follows the page's words (prompt rule 12).
+    func startBreakdown(forNote note: Note, noteReadings: NoteReadingSnapshot? = nil, providerLabel: String) {
+        let segmentation = noteReadings.flatMap { $0.isUsable(for: note.content) ? SongBreakdownSegmentation.section(from: $0) : nil } ?? ""
         startGeneration(
             forNoteID: note.id,
             lyrics: note.content,
             userNote: SongBreakdownUserNote.note(forNoteID: note.id),
+            segmentation: segmentation,
             providerLabel: providerLabel
         )
     }
