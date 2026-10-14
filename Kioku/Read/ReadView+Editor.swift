@@ -148,6 +148,7 @@ extension ReadView {
         }
         // Readings pick the entry (displayedDictionaryEntry), so a furigana edit can recolor.
         hasher.combine(document.furiganaBySegmentLocation)
+        hasher.combine(document.chosenEntryIDBySegmentLocation)
         hasher.combine(isSavedHighlightShowingSaved)
         hasher.combine(isSavedHighlightShowingLearned)
         hasher.combine(isSavedHighlightShowingNotLearned)
@@ -187,7 +188,9 @@ extension ReadView {
 
             // Keyed by surface + displayed reading: the same surface can belong to different
             // words depending on its furigana (怒り おこり → 怒る, いかり → 怒り).
-            let cacheKey = surface + "\u{0}" + reconstructedReading(for: surface, at: nsRange.location)
+            // The user's candidate pick (chosenEntryIDBySegmentLocation) decides too.
+            let chosenID = document.chosenEntryIDBySegmentLocation[nsRange.location].map(String.init) ?? ""
+            let cacheKey = surface + "\u{0}" + reconstructedReading(for: surface, at: nsRange.location) + "\u{0}" + chosenID
             let saved: SavedWord? = {
                 if let cached = savedWordBySurface[cacheKey] { return cached }
                 let value = displayedDictionaryEntry(forSurface: surface, at: nsRange.location).flatMap { entry in

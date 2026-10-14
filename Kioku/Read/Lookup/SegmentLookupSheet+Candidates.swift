@@ -18,16 +18,12 @@ extension SegmentLookupSheet {
         currentSheetLookupCandidates = candidates
         currentSheetLookupBaseLemmaInfo = currentSheetLemmaInfo
         guard candidates.count > 1 else { return }
-        let displayedReading = activeReadingOverrideProvider?() ?? currentSheetUniqueReadings.first
-        let readingMatches = candidates.filter { candidate in
-            candidate.entry.kanaForms.contains { $0.text == displayedReading }
-        }
-        if let chosen = candidates.first(where: { $0.entry.entryId == result?.chosenEntryID }) {
-            applyLookupCandidate(chosen)
-        } else if readingMatches.count == 1, let match = readingMatches.first {
-            applyLookupCandidate(match)
-        } else if let preferred = Lexicon.preferredLookupCandidate(among: candidates) {
-            applyLookupCandidate(preferred)
+        if let shown = Lexicon.shownLookupCandidate(
+            among: candidates,
+            chosenEntryID: result?.chosenEntryID,
+            displayedReading: activeReadingOverrideProvider?() ?? currentSheetUniqueReadings.first
+        ) {
+            applyLookupCandidate(shown)
         } else {
             currentSheetDictionaryEntry = nil
             currentSheetLemmaInfo = nil

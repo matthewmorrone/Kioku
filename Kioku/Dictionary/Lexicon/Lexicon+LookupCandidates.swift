@@ -80,4 +80,23 @@ nonisolated extension Lexicon {
         let common = candidates.filter { $0.entry.hasPriorityForm }
         return common.count == 1 ? common[0] : nil
     }
+
+    // The candidate the lookup sheet shows for an ambiguous form: the user's saved pick if it is
+    // still one of them, else the only one read the displayed way, else the only common one, else
+    // nil (awaiting a pick). Shared by the sheet and the Read tab's saved-word coloring so a picked
+    // word colors the text the same way it fills the sheet's star.
+    static func shownLookupCandidate(
+        among candidates: [LookupCandidate],
+        chosenEntryID: Int64?,
+        displayedReading: String?
+    ) -> LookupCandidate? {
+        if let chosen = candidates.first(where: { $0.entry.entryId == chosenEntryID }) {
+            return chosen
+        }
+        let readingMatches = candidates.filter { candidate in
+            candidate.entry.kanaForms.contains { $0.text == displayedReading }
+        }
+        if readingMatches.count == 1 { return readingMatches[0] }
+        return preferredLookupCandidate(among: candidates)
+    }
 }
