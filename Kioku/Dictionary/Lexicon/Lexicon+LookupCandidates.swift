@@ -44,12 +44,20 @@ nonisolated extension Lexicon {
                     if lhsKana != rhsKana { return lhsKana }
                     return (lhs.frequencyRank ?? Int.max) < (rhs.frequencyRank ?? Int.max)
                 }
+            // The conjugation from this lemma to the surface, applied to each entry's own kana.
+            let transitions = lemma == surface ? nil : deinflector.bestTransitions(from: pathsByLemma, targetLemma: lemma)
             for (index, entry) in entries.enumerated() {
+                var readings: [String] = []
+                for kana in entry.kanaForms.map(\.text) {
+                    let projected = transitions.map { applySurfaceTransitions(to: kana, transitions: $0) } ?? kana
+                    if let projected, readings.contains(projected) == false { readings.append(projected) }
+                }
                 let candidate = LookupCandidate(
                     lemma: lemma,
                     headword: entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text ?? lemma,
                     reading: entry.kanaForms.first?.text ?? lemma,
-                    entry: entry
+                    entry: entry,
+                    surfaceReadings: readings
                 )
                 if index == 0 {
                     leaders.append(candidate)

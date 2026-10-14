@@ -37,6 +37,14 @@ extension SegmentLookupSheet {
         currentSheetLookupCandidates.count > 1 && currentSheetDictionaryEntry == nil
     }
 
+    // The readings the header arrows cycle: with several dictionary words, only the shown word's
+    // own readings (none while a pick is awaited); otherwise every reading of the surface.
+    var readingsForArrows: [String] {
+        guard currentSheetLookupCandidates.count > 1 else { return currentSheetUniqueReadings }
+        guard let shownID = currentSheetDictionaryEntry?.entryId else { return [] }
+        return currentSheetLookupCandidates.first { $0.entry.entryId == shownID }?.surfaceReadings ?? []
+    }
+
     // Makes `candidate` the word the sheet shows, naming it by its headword on the lemma line. Any
     // helper words the engine put on the line stay (… + いく keeps its + いく).
     func applyLookupCandidate(_ candidate: LookupCandidate) {
@@ -44,6 +52,12 @@ extension SegmentLookupSheet {
         var parts = currentSheetLookupBaseLemmaInfo?.lemma.components(separatedBy: " + ") ?? []
         if parts.isEmpty { parts = [candidate.headword] } else { parts[0] = candidate.headword }
         currentSheetLemmaInfo = (lemma: parts.joined(separator: " + "), chain: currentSheetLookupBaseLemmaInfo?.chain ?? [])
+        // The parts row under the meaning names the same word: its first part was the engine's
+        // guess (すむ as 済む "to finish" for 住む + いる).
+        if currentSheetCompoundComponents.count > 1 {
+            let gloss = candidate.entry.senses.first { $0.glosses.isEmpty == false }?.glosses.prefix(3).joined(separator: "; ")
+            currentSheetCompoundComponents[0] = (lemma: candidate.headword, gloss: gloss)
+        }
     }
 
     // Adds one tappable row per candidate to the top of the middle content, the shown one highlighted.
@@ -128,6 +142,7 @@ extension SegmentLookupSheet {
                 self.applyLookupCandidate(candidate)
                 self.onLookupCandidateChosen?(candidate.entry.entryId)
                 self.isLookupCandidateListExpanded = false
+                sheetVC?.adoptReadingsOfPickedCandidate()
                 refresh()
             })
             list.addArrangedSubview(row)

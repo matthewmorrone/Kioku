@@ -225,9 +225,11 @@ final class SurfaceSheetViewController: UIViewController {
 
     // Refreshes reading list, override state, and header display for the current segment.
     // Initializes the selected index from any persisted override so the UI reflects prior choices.
+    // When the form is several dictionary words, the list chooses the word and the arrows cycle only
+    // that word's readings (none until a word is shown).
     func updateReadingFurigana() {
         guard let sheet else { return }
-        currentReadings = sheet.currentSheetUniqueReadings
+        currentReadings = sheet.readingsForArrows
         allowsCustomReading = ScriptClassifier.containsKanji(currentSurface)
 
         let activeOverride = sheet.activeReadingOverrideProvider?()
@@ -247,6 +249,19 @@ final class SurfaceSheetViewController: UIViewController {
 
         syncFuriganaToCurrentIndex()
         updateReadingNavigationButtons()
+    }
+
+    // After a word is picked from the list: shows that word's readings on the arrows and, when the
+    // text's reading isn't one of them, puts the word's first reading on the text so the furigana
+    // names the picked word (怒る いかる on 怒り → いかり). Kana-only text has no furigana to change.
+    func adoptReadingsOfPickedCandidate() {
+        updateReadingFurigana()
+        guard ScriptClassifier.containsKanji(currentSurface), customReading != nil,
+              currentReadings.isEmpty == false else { return }
+        customReading = nil
+        currentReadingIndex = 0
+        syncFuriganaToCurrentIndex()
+        applyCurrentReadingSelection()
     }
 
     // Applies the visible reading choice to the lookup sheet, favoring a custom override when present.
@@ -279,6 +294,8 @@ final class SurfaceSheetViewController: UIViewController {
     // map is empty (single-reading surface) or doesn't contain an entry for the current reading.
     func syncLemmaAndEntryToCurrentReading() {
         guard let sheet else { return }
+        // With the word list up, the list owns the word; the arrows only change its reading.
+        guard sheet.currentSheetLookupCandidates.count <= 1 else { return }
         guard currentReadings.indices.contains(currentReadingIndex) else { return }
         let reading = currentReadings[currentReadingIndex]
         guard let info = sheet.currentSheetLemmaInfoByReading[reading] else { return }
