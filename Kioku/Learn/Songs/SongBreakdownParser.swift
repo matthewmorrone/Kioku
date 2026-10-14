@@ -102,6 +102,7 @@ nonisolated final class SongBreakdownParser: Sendable {
         var gist: String? = nil
         var grammarParts: [String] = []
         var reference: LineReference? = nil
+        var segmentationNote: String? = nil
 
         for i in cursor..<rawLines.count {
             let raw = rawLines[i]
@@ -122,6 +123,10 @@ nonisolated final class SongBreakdownParser: Sendable {
             }
             if let extracted = parseGist(trimmed) {
                 gist = extracted
+                continue
+            }
+            if let extracted = parseSegmentationNote(trimmed) {
+                segmentationNote = extracted.isEmpty ? nil : extracted
                 continue
             }
             grammarParts.append(trimmed)
@@ -147,7 +152,8 @@ nonisolated final class SongBreakdownParser: Sendable {
             gist: gist,
             grammarNote: grammarNote,
             reference: reference,
-            isVocalization: isVocalization ? true : nil
+            isVocalization: isVocalization ? true : nil,
+            segmentationNote: segmentationNote
         )
     }
 
@@ -289,6 +295,15 @@ nonisolated final class SongBreakdownParser: Sendable {
                 return String(raw.dropFirst(marker.count))
                     .trimmingCharacters(in: .whitespaces)
             }
+        }
+        return nil
+    }
+
+    // Recognizes `**Segmentation:** text` (or `**Segmentation**:` / plain `Segmentation:`) —
+    // the model's disagreement with the app's word split (SongBreakdownPrompt rule 12).
+    private func parseSegmentationNote(_ raw: String) -> String? {
+        for marker in ["**Segmentation:**", "**Segmentation**:", "Segmentation:"] where raw.hasPrefix(marker) {
+            return String(raw.dropFirst(marker.count)).trimmingCharacters(in: .whitespaces)
         }
         return nil
     }

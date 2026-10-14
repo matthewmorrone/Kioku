@@ -385,4 +385,24 @@ final class SongBreakdownParserTests: XCTestCase {
         XCTAssertEqual(line.gist, "Wordless refrain.")
         XCTAssertEqual(line.words.first?.grammarTag, "vocalization")
     }
+
+    // A **Segmentation:** line becomes the line's segmentation note, not part of the pattern note.
+    func testSegmentationLineIsLiftedOutOfThePatternNote() throws {
+        let markdown = """
+        **Line 1: 夢のように**
+        *yume no you ni*
+
+        - **夢** (yume) — dream
+        - **の** (no) [particle] — attributive
+        - **ように** (you ni) — like
+
+        **Segmentation:** の and ように read as one set phrase, のように (like, as if).
+
+        **Gist:** Like a dream.
+        """
+        let line = try XCTUnwrap(parser().parse(markdown: markdown).first)
+        XCTAssertEqual(line.segmentationNote, "の and ように read as one set phrase, のように (like, as if).")
+        XCTAssertNil(line.grammarNote)
+        XCTAssertEqual(line.words.count, 3)
+    }
 }

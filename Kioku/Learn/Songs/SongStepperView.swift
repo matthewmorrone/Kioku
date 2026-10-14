@@ -717,7 +717,7 @@ struct SongStepperView: View {
     private func startGeneration() {
         SongBreakdownUserNote.setNote(userNoteDraft, forNoteID: note.id)
         songBreakdownStore.clearGenerationError(forNoteID: note.id)
-        songBreakdownStore.startBreakdown(forNote: note, providerLabel: SongBreakdownStore.loadingProviderLabel())
+        songBreakdownStore.startBreakdown(forNote: note, noteReadings: noteReadings, providerLabel: SongBreakdownStore.loadingProviderLabel())
     }
 
     // Compares the cached breakdown's hash against the current note text hash.

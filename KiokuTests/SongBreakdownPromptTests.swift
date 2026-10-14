@@ -22,4 +22,11 @@ final class SongBreakdownPromptTests: XCTestCase {
         XCTAssertFalse(prompt.contains(SongBreakdownPrompt.lyricsMarker))
         XCTAssertTrue(prompt.contains("ignore parentheses"))
     }
+
+    // The app's segmentation follows the lyrics under the header rule 12 names.
+    func testSegmentationFollowsLyrics() {
+        let turn = SongBreakdownPrompt.userTurn(lyrics: "夢を見た", userNote: "", segmentation: "Line 1: 夢[ゆめ] | を | 見[み]た")
+        XCTAssertEqual(turn, "## Lyrics\n\n夢を見た\n\n## Segmentation\n\nLine 1: 夢[ゆめ] | を | 見[み]た")
+        XCTAssertTrue(SongBreakdownPrompt.staticInstructions().contains("\"Segmentation\" section"))
+    }
 }

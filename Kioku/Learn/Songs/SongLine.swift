@@ -23,6 +23,10 @@ nonisolated struct SongLine: Codable, Equatable, Identifiable, Sendable {
     // `[vocalization]`, see SongBreakdownParser) — "la la la", "ah", humming. Optional so
     // breakdowns cached before the marker existed decode as unmarked.
     var isVocalization: Bool? = nil
+    // The model's note on where it would split or join this line's words differently from the
+    // app's segmentation, or which reading it thinks is wrong (SongBreakdownPrompt rule 12's
+    // **Segmentation:** line). Nil when it agreed, or for breakdowns generated without one.
+    var segmentationNote: String? = nil
 
     var id: Int { index }
 
