@@ -101,14 +101,15 @@ subtitle carries the three terms people search for that the name doesn't.
 > Play a Japanese song or reading and follow along word by word. Kioku times the
 > text to the audio on your phone, with furigana and tap-to-look-up on every line.
 
-### What's New in This Version (1.1)
+### What's New in This Version (1.3)
 
-> • Lyrics view starts aligning by itself: open it on a note with audio and the
->   timing is worked out on your phone while you read along
-> • Two sample notes to try right away: a short story read aloud and さくら さくら
-> • Every kanji now gets furigana
-> • Smarter word splitting and readings, including old spellings and katakana names
-> • Tapping a word with no dictionary entry opens the full lookup sheet
+> • Shuffle: play a random song from the Read tab, and jump between a lyric line,
+>   its breakdown and word details
+> • Song breakdowns now list every word with its meaning, with options to show or
+>   hide particles, katakana words and repeats
+> • More accurate furigana: readings are picked from how a word is actually used in context
+> • Better word splitting, including classical verb endings
+> • Faster startup and a smoother Read tab
 
 ### Description
 
