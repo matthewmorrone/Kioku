@@ -52,6 +52,10 @@ nonisolated extension Lexicon {
                     let projected = transitions.map { applySurfaceTransitions(to: kana, transitions: $0) } ?? kana
                     if let projected, readings.contains(projected) == false { readings.append(projected) }
                 }
+                // Kana text is its own reading: いった can't be read ゆった (言う's ゆう form).
+                if ScriptClassifier.containsKanji(surface) == false {
+                    readings = readings.filter { $0 == surface }
+                }
                 let candidate = LookupCandidate(
                     lemma: lemma,
                     headword: entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text ?? lemma,
