@@ -5,13 +5,29 @@ import SwiftUI
 // word's own readings, so the other words live here, and each opens its own detail page rather than
 // re-pointing this card.
 extension WordDetailView {
-    // Entries sharing this word's everyday kanji spelling, other than the one this card is for, in
-    // the order the reading gathering found them (see loadDisplayData's heteronyms).
+    // Entries written with this word's kanji spelling as an everyday form, other than the one this
+    // card is for, most frequent first. Drawn from both the surface lookup (allDisplayData) and the
+    // reading gathering (readingVariants), since each finds siblings the other can miss. The
+    // spelling is the saved surface when the entry writes it that way, else the entry's everyday
+    // kanji (an inflected surface like 抱かれ → 抱く). Kana-only words have no shared spelling here.
     var sameSpellingEntries: [DictionaryEntry] {
+        guard let active = allDisplayData.first(where: { $0.entry.entryId == activeEntryID })?.entry else { return [] }
+        let spelling = active.kanjiForms.contains { $0.text == word.surface }
+            ? word.surface
+            : active.firstEverydayKanji?.text
+        guard let spelling, ScriptClassifier.containsKanji(spelling) else { return [] }
         var seen: Set<Int64> = [activeEntryID]
-        return readingVariants.compactMap { variant in
-            guard let entry = variant.entry, seen.insert(entry.entryId).inserted else { return nil }
-            return entry
+        let pool = allDisplayData.map(\.entry) + readingVariants.compactMap(\.entry)
+        let siblings = pool.filter { entry in
+            guard seen.insert(entry.entryId).inserted else { return false }
+            return entry.kanjiForms.contains {
+                $0.text == spelling && DictionaryEntry.kanjiFormIsNonEveryday(info: $0.info) == false
+            }
+        }
+        return siblings.sorted {
+            let a = FrequencyData(frequencyRank: $0.frequencyRank, wordfreqZipf: $0.wordfreqZipf).normalizedScore ?? -1
+            let b = FrequencyData(frequencyRank: $1.frequencyRank, wordfreqZipf: $1.wordfreqZipf).normalizedScore ?? -1
+            return a > b
         }
     }
 
