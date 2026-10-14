@@ -17,6 +17,8 @@ struct ReadNoteTarget: Equatable {
     var surface: String
     var noteLocation: Int? = nil
     var destination: ReadNoteDestination = .text
+    // Starts the breakdown playing from the top once it opens (a random breakdown).
+    var autoplay: Bool = false
 }
 
 // Which of a note's views a ReadNoteTarget opens. Pure data.

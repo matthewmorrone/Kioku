@@ -51,6 +51,8 @@ struct SongStepperView: View {
     // Note-text location whose line the view scrolls to and parks the mini player on when it
     // opens (see SongStepperView+Navigation); nil keeps the saved position.
     let focusNoteLocation: Int?
+    // Starts playing from the top once the note's cues have loaded (a random breakdown).
+    let autoplay: Bool
     // The toolbar's shuffle button: moves on to a random song's breakdown. Nil hides the button.
     let onShuffle: (() -> Void)?
     // Line index the scroll should bring to center; set once by the focus above.
@@ -129,6 +131,7 @@ struct SongStepperView: View {
          onFinishedPlaying: ((Note) -> Void)? = nil,
          segmenterRevision: Int = 0,
          focusNoteLocation: Int? = nil,
+         autoplay: Bool = false,
          onShuffle: (() -> Void)? = nil) {
         self.note = note
         self.segmenter = segmenter
@@ -139,6 +142,7 @@ struct SongStepperView: View {
         self.onFinishedPlaying = onFinishedPlaying
         self.segmenterRevision = segmenterRevision
         self.focusNoteLocation = focusNoteLocation
+        self.autoplay = autoplay
         self.onShuffle = onShuffle
     }
 
@@ -374,12 +378,16 @@ struct SongStepperView: View {
         // normal "narration only" case, not errors.
         .task {
             guard let attachmentID = note.audioAttachmentID,
-                  NotesAudioStore.shared.audioURL(for: attachmentID) != nil else { return }
+                  NotesAudioStore.shared.audioURL(for: attachmentID) != nil else {
+                if autoplay { startAutoplay() }
+                return
+            }
             noteCues = NotesAudioStore.shared.loadCues(for: attachmentID)
             // The clip ranges above depend on noteCues, which just changed — reconfigure so
             // the audio-file preload (see configureLiveListen) starts as soon as it can,
             // rather than waiting for the first play tap.
             configureLiveListen()
+            if autoplay { startAutoplay() }
         }
         .onDisappear {
             // Stop speech/clip playback and deactivate the audio session when the sheet/screen

@@ -399,6 +399,7 @@ extension ReadView {
                         dictionaryStore: dictionaryStore,
                         segmenterRevision: segmenterRevision,
                         focusNoteLocation: readSheets.breakdownFocusLocation,
+                        autoplay: readSheets.breakdownAutoplay,
                         onShuffle: { ReadNoteNavigation.shared.isRandomBreakdownRequested = true }
                     )
                         // A shuffle swaps the note under the open sheet; rebuild so no line state
@@ -441,7 +442,7 @@ extension ReadView {
         pendingScrollTarget = nil
         // A lyrics/breakdown target opens that view on the spot instead of highlighting the page.
         if target.destination != .text {
-            openNoteDestination(target.destination, atNoteLocation: noteLocation(for: target))
+            openNoteDestination(target.destination, atNoteLocation: noteLocation(for: target), autoplay: target.autoplay)
             return
         }
         guard let range = document.text.range(of: target.surface) else { return }

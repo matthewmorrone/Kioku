@@ -21,7 +21,8 @@ extension ReadView {
 
     // Opens the lyrics view seeked to the cue holding `location`, or the breakdown sheet scrolled
     // to the line holding it. Each closes the other, so the user lands on exactly one of them.
-    func openNoteDestination(_ destination: ReadNoteDestination, atNoteLocation location: Int?) {
+    // `autoplay` starts the breakdown playing from the top once it's up.
+    func openNoteDestination(_ destination: ReadNoteDestination, atNoteLocation location: Int?, autoplay: Bool = false) {
         SegmentLookupSheet.shared.dismissPopover()
         switch destination {
         case .text:
@@ -38,6 +39,7 @@ extension ReadView {
             audioPlayback.isShowingLyricsView = true
         case .breakdown:
             readSheets.breakdownFocusLocation = location
+            readSheets.breakdownAutoplay = autoplay
             readSheets.isShowingBreakdownSheet = true
         }
     }

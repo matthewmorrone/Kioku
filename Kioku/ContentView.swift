@@ -427,8 +427,8 @@ struct ContentView: View {
         pendingReadAutoplayNoteID = note.id
     }
 
-    // Serves the breakdown's shuffle button: opens a random note that has a breakdown in Read with
-    // its breakdown sheet up. Prefers a note other than the one already open, like
+    // Serves the breakdown's shuffle button and the Read tab's Random Breakdown: opens a random note
+    // that has a breakdown in Read with its breakdown sheet up, playing from the top. Prefers a note other than the one already open, like
     // playRandomAudioNoteIfRequested, so tapping again moves on to a different song.
     private func openRandomBreakdownIfRequested() {
         guard readNoteNavigation.isRandomBreakdownRequested else { return }
@@ -444,7 +444,7 @@ struct ContentView: View {
         selectedReadNote = note
         lastActiveNoteID = note.id.uuidString
         selectedTab = .read
-        pendingReadScrollTarget = ReadNoteTarget(noteID: note.id, surface: "", destination: .breakdown)
+        pendingReadScrollTarget = ReadNoteTarget(noteID: note.id, surface: "", destination: .breakdown, autoplay: true)
     }
 
     // Serves the Read tab's shuffle button: opens a random note in Read, preferring one other than

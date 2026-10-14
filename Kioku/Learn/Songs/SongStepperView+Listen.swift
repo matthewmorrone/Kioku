@@ -52,6 +52,14 @@ extension SongStepperView {
         liveListen.play()
     }
 
+    // A random breakdown opens playing: the whole song from the top, as the toolbar's play-all
+    // would from a fresh start. Nothing to play before the breakdown exists.
+    func startAutoplay() {
+        guard displayItems.isEmpty == false else { return }
+        currentPlaybackStep = .intro
+        playAllListen()
+    }
+
     // A card's play button: play just this line's clip + narration.
     func playListen(line: SongLine) {
         isListening = true

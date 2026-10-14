@@ -198,6 +198,7 @@ extension ReadView {
             // Opened from here, the breakdown keeps its own saved position, not a line some
             // earlier lyric/word jump focused.
             readSheets.breakdownFocusLocation = nil
+            readSheets.breakdownAutoplay = false
             readSheets.isShowingBreakdownSheet = true
         } label: {
             if isBreakdownGeneratingForActiveNote {
@@ -219,20 +220,20 @@ extension ReadView {
         .accessibilityHint(isBreakdownConfigured ? "" : "Set up an AI provider in Settings to use this")
     }
 
-    // Tap opens a random other note; press and hold offers playing a random song in the lyrics
-    // view or opening a random breakdown. ContentView picks the note for all three, as for the
+    // Tap opens a random other note; press and hold offers Random Karaoke (a random song playing in
+    // the lyrics view) or Random Breakdown (a random breakdown playing from the top). ContentView picks the note for all three, as for the
     // lyrics view's shuffle and the Play Random Song shortcut.
     var titleShuffleButton: some View {
         Menu {
             Button {
                 ReadNoteNavigation.shared.isRandomPlaybackRequested = true
             } label: {
-                Label("Play a Random Song", systemImage: "music.note")
+                Label("Random Karaoke", systemImage: "music.note")
             }
             Button {
                 ReadNoteNavigation.shared.isRandomBreakdownRequested = true
             } label: {
-                Label("Open a Random Breakdown", systemImage: "sparkles.rectangle.stack")
+                Label("Random Breakdown", systemImage: "sparkles.rectangle.stack")
             }
         } label: {
             titleActionLabel(systemImage: "shuffle", foreground: .accentColor)
@@ -241,7 +242,7 @@ extension ReadView {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Open a Random Note")
-        .accessibilityHint("Press and hold for a random song or breakdown")
+        .accessibilityHint("Press and hold for random karaoke or a random breakdown")
     }
 
     // Shared visual treatment for the three title-row action buttons. Sized to match the bottom

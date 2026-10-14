@@ -15,6 +15,8 @@ final class ReadSheetsUIState {
     // Note-text UTF-16 location the breakdown sheet scrolls to on open (the line holding it), set
     // when it's opened from a lyric cue or a word's source note; nil opens it where it was.
     var breakdownFocusLocation: Int?
+    // Whether the breakdown sheet starts playing from the top as it opens (a random breakdown).
+    var breakdownAutoplay = false
     // Long-press on the segment-list button: the note's changes from default segmentation and
     // readings (SegmentationChangeList), shown in an alert.
     var isShowingChangesFromDefault = false
