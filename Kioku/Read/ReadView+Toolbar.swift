@@ -219,6 +219,18 @@ extension ReadView {
         .accessibilityHint(isBreakdownConfigured ? "" : "Set up an AI provider in Settings to use this")
     }
 
+    // Moves on to a random other song with audio and starts it playing (ContentView picks the note,
+    // as for the lyrics view's shuffle and the Play Random Song shortcut).
+    var titleShuffleButton: some View {
+        Button {
+            ReadNoteNavigation.shared.isRandomPlaybackRequested = true
+        } label: {
+            titleActionLabel(systemImage: "shuffle", foreground: .accentColor)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Play a Random Song")
+    }
+
     // Shared visual treatment for the three title-row action buttons. Sized to match the bottom
     // toolbar's furigana / reset / edit buttons (36×36 with a 16pt icon) so the two rows read as
     // visual peers — same hit area, same inter-button gap when each row is laid out with default
