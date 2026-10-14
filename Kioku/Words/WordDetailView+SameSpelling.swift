@@ -42,13 +42,13 @@ extension WordDetailView {
                 let b = FrequencyData(frequencyRank: $1.frequencyRank, wordfreqZipf: $1.wordfreqZipf).normalizedScore ?? -1
                 return a != b ? a > b : $0.entryId < $1.entryId
             }
-            let shown = isSameSpellingExpanded ? all : [active]
+            let shown = sameSpellingExpanded.wrappedValue ? all : [active]
             Section {
                 ForEach(shown, id: \.entryId) { entry in
                     let isActive = entry.entryId == active.entryId
                     Button {
                         if isActive {
-                            withAnimation { isSameSpellingExpanded.toggle() }
+                            withAnimation { sameSpellingExpanded.wrappedValue.toggle() }
                         } else {
                             historyStore.record(canonicalEntryID: entry.entryId, surface: entry.primarySearchSurface)
                             openSameSpellingWord(entry)
@@ -57,7 +57,7 @@ extension WordDetailView {
                         HStack {
                             relatedWordRow(entry)
                             if isActive {
-                                Text(isSameSpellingExpanded ? "⌃" : "+\(siblings.count) ⌄")
+                                Text(sameSpellingExpanded.wrappedValue ? "⌃" : "+\(siblings.count) ⌄")
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.secondary)
                             }
@@ -66,26 +66,46 @@ extension WordDetailView {
                     .buttonStyle(.plain)
                     .listRowBackground(isActive ? Color(.tertiarySystemFill) : nil)
                     .accessibilityLabel(isActive
-                        ? (isSameSpellingExpanded ? "Hide words with the same spelling" : "Show \(siblings.count) words with the same spelling")
+                        ? (sameSpellingExpanded.wrappedValue ? "Hide words with the same spelling" : "Show \(siblings.count) words with the same spelling")
                         : entry.primarySearchSurface)
                 }
             }
         }
     }
 
+    // The fold state this page's list uses: its owner's on a stand-in page, else its own.
+    var sameSpellingExpanded: Binding<Bool> {
+        sameSpellingExpandedBinding ?? $isSameSpellingExpanded
+    }
+
     // Switches the page to a same-spelling word in place. A stand-in page hands the pick to the
-    // page that owns it, so switching never nests; picking that page's own word switches back.
-    // A word the user has saved opens as its saved card, anything else as an unsaved one.
+    // page that owns it, so switching never nests; picking that page's own word switches back at
+    // once (it never left). Any other word is mounted hidden and shown when it reports ready
+    // (showSameSpellingPage). A word the user has saved opens as its saved card, anything else as
+    // an unsaved one.
     func openSameSpellingWord(_ entry: DictionaryEntry) {
         if let onOpenSameSpelling {
             onOpenSameSpelling(entry)
             return
         }
         guard entry.entryId != activeEntryID else {
-            sameSpellingWord = nil
+            visibleSameSpellingID = nil
+            sameSpellingPages = []
             return
         }
-        sameSpellingWord = wordsStore.words.first { $0.canonicalEntryID == entry.entryId }
-            ?? ephemeralSavedWord(for: entry)
+        if sameSpellingPages.contains(where: { $0.canonicalEntryID == entry.entryId }) {
+            showSameSpellingPage(entry.entryId)
+            return
+        }
+        sameSpellingPages.append(
+            wordsStore.words.first { $0.canonicalEntryID == entry.entryId } ?? ephemeralSavedWord(for: entry)
+        )
+    }
+
+    // Brings a loaded same-spelling page to the front and unmounts the others it replaced.
+    func showSameSpellingPage(_ entryID: Int64) {
+        guard sameSpellingPages.contains(where: { $0.canonicalEntryID == entryID }) else { return }
+        visibleSameSpellingID = entryID
+        sameSpellingPages.removeAll { $0.canonicalEntryID != entryID }
     }
 }

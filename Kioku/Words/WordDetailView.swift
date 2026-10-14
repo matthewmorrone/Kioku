@@ -28,6 +28,10 @@ struct WordDetailView: View {
     // Set when this page is standing in for a same-spelling word picked on another page: picks made
     // here go back to that page, which swaps what it shows (see openSameSpellingWord).
     var onOpenSameSpelling: ((DictionaryEntry) -> Void)? = nil
+    // A stand-in page shares its owner's fold state, so the list stays open across switches.
+    var sameSpellingExpandedBinding: Binding<Bool>? = nil
+    // Tells the owner a stand-in page has loaded, so it can be shown without a blank frame.
+    var onSameSpellingReady: (() -> Void)? = nil
 
     // Provides per-word review statistics keyed by canonicalEntryID.
     // Non-private (like wordsStore) so the WordDetailView+Helpers extension can read it.
@@ -138,10 +142,14 @@ struct WordDetailView: View {
     // the scroll fires. See the .onChange(of: allDisplayData.first…) below.
     @State var scrollTargetEntryID: Int64? = nil
     // Whether the Same Spelling list shows every word, or folds to this word's own row (the
-    // default, like the lookup sheet's word list). See WordDetailView+SameSpelling.
+    // default, like the lookup sheet's word list). Stand-in pages use their owner's (see
+    // sameSpellingExpandedBinding). See WordDetailView+SameSpelling.
     @State var isSameSpellingExpanded = false
-    // The same-spelling word this page currently shows in its place, nil for its own word.
-    @State var sameSpellingWord: SavedWord? = nil
+    // Same-spelling pages kept alive in place of this word's: the one showing plus any still
+    // loading, hidden until ready so switching never flashes an empty page.
+    @State var sameSpellingPages: [SavedWord] = []
+    // Which of sameSpellingPages is showing; nil shows this page's own word.
+    @State var visibleSameSpellingID: Int64? = nil
 
     // The saved entry is used for header, examples, alternates, and components.
     // Not private: read by wordDetailDefinitionSections / wordDetailMetadataSections
@@ -277,28 +285,35 @@ struct WordDetailView: View {
         DerivationAnalyzer.auxiliaryVerbs.contains(surface)
     }
 
-    // Shows this page's own word, or in its place the same-spelling word picked from the list at
-    // the top — swapped in place rather than stacked as another sheet. AnyView because the page
-    // contains itself.
-    @ViewBuilder
+    // Shows this page's own word, or in its place a same-spelling word picked from the list at the
+    // top — swapped in place rather than stacked as another sheet. Every page stays mounted (the
+    // hidden ones invisible and untouchable) so a newly picked one loads behind the current one and
+    // only appears once ready. AnyView because the page contains itself.
     var body: some View {
-        if let sameSpellingWord {
-            AnyView(
-                WordDetailView(
-                    word: sameSpellingWord,
-                    reading: nil,
-                    dictionaryStore: dictionaryStore,
-                    segmenter: segmenter,
-                    lexicon: lexicon,
-                    surfaceReadingData: surfaceReadingData,
-                    kanjiReadingFallback: kanjiReadingFallback,
-                    noteID: noteID,
-                    onOpenSameSpelling: { openSameSpellingWord($0) }
-                )
-                .id(sameSpellingWord.canonicalEntryID)
-            )
-        } else {
+        ZStack {
             ownWordBody
+                .opacity(visibleSameSpellingID == nil ? 1 : 0)
+                .allowsHitTesting(visibleSameSpellingID == nil)
+            ForEach(sameSpellingPages, id: \.canonicalEntryID) { page in
+                let isVisible = page.canonicalEntryID == visibleSameSpellingID
+                AnyView(
+                    WordDetailView(
+                        word: page,
+                        reading: nil,
+                        dictionaryStore: dictionaryStore,
+                        segmenter: segmenter,
+                        lexicon: lexicon,
+                        surfaceReadingData: surfaceReadingData,
+                        kanjiReadingFallback: kanjiReadingFallback,
+                        noteID: noteID,
+                        onOpenSameSpelling: { openSameSpellingWord($0) },
+                        sameSpellingExpandedBinding: $isSameSpellingExpanded,
+                        onSameSpellingReady: { showSameSpellingPage(page.canonicalEntryID) }
+                    )
+                )
+                .opacity(isVisible ? 1 : 0)
+                .allowsHitTesting(isVisible)
+            }
         }
     }
 
@@ -614,6 +629,7 @@ struct WordDetailView: View {
         // hadn't changed.
         .task(id: "\(dictionaryStore != nil)|\(activeEntryID)|\(word.surface)") {
             await loadDisplayData()
+            onSameSpellingReady?()
         }
     }
 }
