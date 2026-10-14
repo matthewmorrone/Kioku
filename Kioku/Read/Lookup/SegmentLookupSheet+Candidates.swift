@@ -45,18 +45,24 @@ extension SegmentLookupSheet {
         return currentSheetLookupCandidates.first { $0.entry.entryId == shownID }?.surfaceReadings ?? []
     }
 
-    // Makes `candidate` the word the sheet shows, naming it by its headword on the lemma line. Any
-    // helper words the engine put on the line stay (… + いく keeps its + いく).
+    // Makes `candidate` the word the sheet shows, naming it on the lemma line by its headword, or by
+    // its kana when the text wrote the word in kana. Any helper words the engine put on the line
+    // stay (… + いく keeps its + いく).
     func applyLookupCandidate(_ candidate: LookupCandidate) {
         currentSheetDictionaryEntry = candidate.entry
         var parts = currentSheetLookupBaseLemmaInfo?.lemma.components(separatedBy: " + ") ?? []
-        if parts.isEmpty { parts = [candidate.headword] } else { parts[0] = candidate.headword }
+        // Kana text keeps a kana lemma line (すんでいる → すむ + いる, not 住む + いる); the list row
+        // already says which すむ it is.
+        let name = parts.first.map { ScriptClassifier.containsKanji($0) == false } == true
+            ? candidate.reading
+            : candidate.headword
+        if parts.isEmpty { parts = [name] } else { parts[0] = name }
         currentSheetLemmaInfo = (lemma: parts.joined(separator: " + "), chain: currentSheetLookupBaseLemmaInfo?.chain ?? [])
         // The parts row under the meaning names the same word: its first part was the engine's
         // guess (すむ as 済む "to finish" for 住む + いる).
         if currentSheetCompoundComponents.count > 1 {
             let gloss = candidate.entry.senses.first { $0.glosses.isEmpty == false }?.glosses.prefix(3).joined(separator: "; ")
-            currentSheetCompoundComponents[0] = (lemma: candidate.headword, gloss: gloss)
+            currentSheetCompoundComponents[0] = (lemma: name, gloss: gloss)
         }
     }
 
