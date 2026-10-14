@@ -1,7 +1,7 @@
 import SwiftUI
 
-// The "Same Spelling" section: other dictionary words written the same way as this one (抱く read
-// いだく vs だく), mirroring the Read-tab lookup sheet's word list. The header arrows only cycle this
+// The Same Spelling list at the top of the page: other dictionary words written the same way as
+// this one (抱く read いだく vs だく), mirroring the Read-tab lookup sheet's word list. The header arrows only cycle this
 // word's own readings, so the other words live here, and each opens its own detail page rather than
 // re-pointing this card.
 extension WordDetailView {
@@ -31,26 +31,42 @@ extension WordDetailView {
         }
     }
 
-    // One row per same-spelling word; tapping opens that word's detail page on top of this one,
-    // recorded as a lookup like the Related Words rows.
+    // The words written this way, at the top of the page and folded like the lookup sheet's list:
+    // this word's own row (highlighted) with "+N ⌄" to unfold the rest; tapping it again folds
+    // them away. Tapping another word opens its detail page on top of this one, recorded as a
+    // lookup like the Related Words rows.
     @ViewBuilder
     var sameSpellingSection: some View {
-        let entries = sameSpellingEntries
-        if entries.isEmpty == false {
+        let siblings = sameSpellingEntries
+        if siblings.isEmpty == false,
+           let active = allDisplayData.first(where: { $0.entry.entryId == activeEntryID })?.entry {
             Section {
-                ForEach(entries, id: \.entryId) { entry in
-                    Button {
-                        historyStore.record(canonicalEntryID: entry.entryId, surface: entry.primarySearchSurface)
-                        presentedRelatedSavedWord = ephemeralSavedWord(for: entry)
-                    } label: {
-                        relatedWordRow(entry)
+                Button {
+                    withAnimation { isSameSpellingExpanded.toggle() }
+                } label: {
+                    HStack {
+                        relatedWordRow(active)
+                        Text(isSameSpellingExpanded ? "⌃" : "+\(siblings.count) ⌄")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
                 }
-            } header: {
-                Text("Same Spelling")
+                .buttonStyle(.plain)
+                .listRowBackground(Color(.tertiarySystemFill))
+                .accessibilityLabel(isSameSpellingExpanded ? "Hide words with the same spelling" : "Show \(siblings.count) words with the same spelling")
+                if isSameSpellingExpanded {
+                    ForEach(siblings, id: \.entryId) { entry in
+                        Button {
+                            historyStore.record(canonicalEntryID: entry.entryId, surface: entry.primarySearchSurface)
+                            presentedRelatedSavedWord = ephemeralSavedWord(for: entry)
+                        } label: {
+                            relatedWordRow(entry)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             } footer: {
-                Text("Other words written the same way. The arrows switch this word's own readings.")
+                Text("Words written the same way. Tap one to open it; the arrows switch this word's own readings.")
             }
         }
     }

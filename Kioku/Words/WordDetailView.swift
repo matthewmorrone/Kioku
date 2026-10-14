@@ -134,6 +134,9 @@ struct WordDetailView: View {
     // async reload settles (the card the user tapped may sit far down the list). Cleared after
     // the scroll fires. See the .onChange(of: allDisplayData.first…) below.
     @State var scrollTargetEntryID: Int64? = nil
+    // Whether the Same Spelling list shows every word, or folds to this word's own row (the
+    // default, like the lookup sheet's word list). See WordDetailView+SameSpelling.
+    @State var isSameSpellingExpanded = false
 
     // The saved entry is used for header, examples, alternates, and components.
     // Not private: read by wordDetailDefinitionSections / wordDetailMetadataSections
@@ -506,8 +509,8 @@ struct WordDetailView: View {
             List {
                 // Section content lives in WordDetailView+Sections.swift (definition/paths/forms,
                 // then everything else) to keep this file under the line-count guardrail.
-                wordDetailDefinitionSections
                 sameSpellingSection
+                wordDetailDefinitionSections
                 wordDetailMetadataSections
             }
             .listStyle(.insetGrouped)
