@@ -52,6 +52,12 @@ nonisolated extension Lexicon {
                     let projected = transitions.map { applySurfaceTransitions(to: kana, transitions: $0) } ?? kana
                     if let projected, readings.contains(projected) == false { readings.append(projected) }
                 }
+                // A katakana spelling of a hiragana reading (人 ひと / ヒト) is the same reading, not
+                // another arrow stop.
+                readings = readings.filter { reading in
+                    let hiragana = KanaNormalizer.katakanaToHiragana(reading)
+                    return hiragana == reading || readings.contains(hiragana) == false
+                }
                 // Kana text is its own reading: いった can't be read ゆった (言う's ゆう form).
                 if ScriptClassifier.containsKanji(surface) == false {
                     readings = readings.filter { $0 == surface }
