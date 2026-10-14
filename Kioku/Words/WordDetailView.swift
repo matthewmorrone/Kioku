@@ -25,6 +25,9 @@ struct WordDetailView: View {
     // note context (Words tab, Kanji detail, Flashcards). When set, a save from the header star
     // attributes the new card to this note (for the Words tab's note filter).
     var noteID: UUID? = nil
+    // Set when this page is standing in for a same-spelling word picked on another page: picks made
+    // here go back to that page, which swaps what it shows (see openSameSpellingWord).
+    var onOpenSameSpelling: ((DictionaryEntry) -> Void)? = nil
 
     // Provides per-word review statistics keyed by canonicalEntryID.
     // Non-private (like wordsStore) so the WordDetailView+Helpers extension can read it.
@@ -137,6 +140,8 @@ struct WordDetailView: View {
     // Whether the Same Spelling list shows every word, or folds to this word's own row (the
     // default, like the lookup sheet's word list). See WordDetailView+SameSpelling.
     @State var isSameSpellingExpanded = false
+    // The same-spelling word this page currently shows in its place, nil for its own word.
+    @State var sameSpellingWord: SavedWord? = nil
 
     // The saved entry is used for header, examples, alternates, and components.
     // Not private: read by wordDetailDefinitionSections / wordDetailMetadataSections
@@ -272,7 +277,33 @@ struct WordDetailView: View {
         DerivationAnalyzer.auxiliaryVerbs.contains(surface)
     }
 
+    // Shows this page's own word, or in its place the same-spelling word picked from the list at
+    // the top — swapped in place rather than stacked as another sheet. AnyView because the page
+    // contains itself.
+    @ViewBuilder
     var body: some View {
+        if let sameSpellingWord {
+            AnyView(
+                WordDetailView(
+                    word: sameSpellingWord,
+                    reading: nil,
+                    dictionaryStore: dictionaryStore,
+                    segmenter: segmenter,
+                    lexicon: lexicon,
+                    surfaceReadingData: surfaceReadingData,
+                    kanjiReadingFallback: kanjiReadingFallback,
+                    noteID: noteID,
+                    onOpenSameSpelling: { openSameSpellingWord($0) }
+                )
+                .id(sameSpellingWord.canonicalEntryID)
+            )
+        } else {
+            ownWordBody
+        }
+    }
+
+    // The page for this view's own word.
+    var ownWordBody: some View {
         VStack(spacing: 0) {
             let entry = savedDisplayData?.entry
             // Reading shown above the headword. Prefers the lookup-sheet reading on first open,

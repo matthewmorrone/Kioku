@@ -33,8 +33,8 @@ extension WordDetailView {
 
     // The words written this way, at the top of the page and folded like the lookup sheet's list:
     // this word's own row (highlighted) with "+N ⌄" to unfold the rest; tapping it again folds
-    // them away. Tapping another word opens its detail page on top of this one, recorded as a
-    // lookup like the Related Words rows.
+    // them away. Tapping another word switches this page to it (openSameSpellingWord), recorded as
+    // a lookup like the Related Words rows.
     @ViewBuilder
     var sameSpellingSection: some View {
         let siblings = sameSpellingEntries
@@ -58,16 +58,30 @@ extension WordDetailView {
                     ForEach(siblings, id: \.entryId) { entry in
                         Button {
                             historyStore.record(canonicalEntryID: entry.entryId, surface: entry.primarySearchSurface)
-                            presentedRelatedSavedWord = ephemeralSavedWord(for: entry)
+                            openSameSpellingWord(entry)
                         } label: {
                             relatedWordRow(entry)
                         }
                         .buttonStyle(.plain)
                     }
                 }
-            } footer: {
-                Text("Words written the same way. Tap one to open it; the arrows switch this word's own readings.")
             }
         }
+    }
+
+    // Switches the page to a same-spelling word in place. A stand-in page hands the pick to the
+    // page that owns it, so switching never nests; picking that page's own word switches back.
+    // A word the user has saved opens as its saved card, anything else as an unsaved one.
+    func openSameSpellingWord(_ entry: DictionaryEntry) {
+        if let onOpenSameSpelling {
+            onOpenSameSpelling(entry)
+            return
+        }
+        guard entry.entryId != activeEntryID else {
+            sameSpellingWord = nil
+            return
+        }
+        sameSpellingWord = wordsStore.words.first { $0.canonicalEntryID == entry.entryId }
+            ?? ephemeralSavedWord(for: entry)
     }
 }
