@@ -17,6 +17,7 @@ extension SegmentLookupSheet {
         let candidates = result?.candidates ?? []
         currentSheetLookupCandidates = candidates
         currentSheetLookupBaseLemmaInfo = currentSheetLemmaInfo
+        isLookupCandidateListExpanded = false
         guard candidates.count > 1 else { return }
         if let shown = Lexicon.shownLookupCandidate(
             among: candidates,
@@ -46,11 +47,27 @@ extension SegmentLookupSheet {
     }
 
     // Adds one tappable row per candidate to the top of the middle content, the shown one highlighted.
-    // Nothing is added when the form is only one word.
+    // Nothing is added when the form is only one word. With a word shown and the list collapsed,
+    // only that word's row appears, its chevron reopening the rest; tapping any row of the open
+    // list picks it and collapses the list again.
     func addLookupCandidateRows(to stack: UIStackView, parent: UIViewController?) {
-        let candidates = currentSheetLookupCandidates
-        guard candidates.count > 1 else { return }
+        let allCandidates = currentSheetLookupCandidates
+        guard allCandidates.count > 1 else { return }
         let shownID = currentSheetDictionaryEntry?.entryId
+        let isCollapsed = shownID != nil && isLookupCandidateListExpanded == false
+        let candidates = isCollapsed ? allCandidates.filter { $0.entry.entryId == shownID } : allCandidates
+
+        // Weak: the rows' tap closures capture refresh(), and the sheet owns the rows.
+        weak let sheetVC = parent as? SurfaceSheetViewController
+        // Rebuilds the sheet's rows after the list opens, closes or changes pick.
+        func refresh() {
+            if let sheetVC {
+                sheetVC.updateLemmaChain()
+                sheetVC.updateMiddleContent()
+                sheetVC.updateSaveButtonAppearance()
+                sheetVC.updateOpenDetailButtonAppearance()
+            }
+        }
 
         let list = UIStackView()
         list.axis = .vertical
@@ -78,7 +95,19 @@ extension SegmentLookupSheet {
             glossLabel.numberOfLines = 1
             glossLabel.lineBreakMode = .byTruncatingTail
 
-            let row = UIStackView(arrangedSubviews: [headwordLabel, readingLabel, glossLabel])
+            var rowViews: [UIView] = [headwordLabel, readingLabel, glossLabel]
+            // The shown word's row carries the open/close control: down when the others are
+            // hidden (with how many), up when the full list is open.
+            if shownID != nil, candidate.entry.entryId == shownID {
+                let toggle = UILabel()
+                toggle.font = .systemFont(ofSize: 12, weight: .semibold)
+                toggle.textColor = .secondaryLabel
+                toggle.text = isCollapsed ? "+\(allCandidates.count - 1) ⌄" : "⌃"
+                toggle.setContentHuggingPriority(.required, for: .horizontal)
+                toggle.setContentCompressionResistancePriority(.required, for: .horizontal)
+                rowViews.append(toggle)
+            }
+            let row = UIStackView(arrangedSubviews: rowViews)
             row.axis = .horizontal
             row.spacing = 8
             row.alignment = .firstBaseline
@@ -88,16 +117,18 @@ extension SegmentLookupSheet {
             row.backgroundColor = candidate.entry.entryId == shownID ? .tertiarySystemFill : .clear
             row.isUserInteractionEnabled = true
             row.accessibilityTraits = candidate.entry.entryId == shownID ? [.button, .selected] : .button
-            row.addGestureRecognizer(ClosureTapGesture { [weak self, weak parent] in
+            row.addGestureRecognizer(ClosureTapGesture { [weak self] in
                 guard let self else { return }
+                // The shown word's own row just opens or closes the list.
+                if candidate.entry.entryId == shownID {
+                    self.isLookupCandidateListExpanded.toggle()
+                    refresh()
+                    return
+                }
                 self.applyLookupCandidate(candidate)
                 self.onLookupCandidateChosen?(candidate.entry.entryId)
-                if let sheetVC = parent as? SurfaceSheetViewController {
-                    sheetVC.updateLemmaChain()
-                    sheetVC.updateMiddleContent()
-                    sheetVC.updateSaveButtonAppearance()
-                    sheetVC.updateOpenDetailButtonAppearance()
-                }
+                self.isLookupCandidateListExpanded = false
+                refresh()
             })
             list.addArrangedSubview(row)
         }

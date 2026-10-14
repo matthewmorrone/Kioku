@@ -131,6 +131,9 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     // The lemma line as the engine built it, kept while an ambiguous form has no pick yet so a pick
     // can put its headword in place of the first part and keep any helper words after it.
     var currentSheetLookupBaseLemmaInfo: (lemma: String, chain: [String])? = nil
+    // Whether the candidate list shows every row. Once a word is shown, the list collapses to that
+    // word's row plus a chevron to reopen the rest; a new segment starts collapsed.
+    var isLookupCandidateListExpanded = false
     // Records the user's pick for the current segment. Installed once by ReadView, like
     // onCompoundComponentTapped, so it is never reset between segments.
     var onLookupCandidateChosen: ((Int64) -> Void)?

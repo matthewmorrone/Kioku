@@ -378,10 +378,7 @@ struct SongStepperView: View {
         // normal "narration only" case, not errors.
         .task {
             guard let attachmentID = note.audioAttachmentID,
-                  NotesAudioStore.shared.audioURL(for: attachmentID) != nil else {
-                if autoplay { startAutoplay() }
-                return
-            }
+                  NotesAudioStore.shared.audioURL(for: attachmentID) != nil else { return autoplay ? startAutoplay() : () }
             noteCues = NotesAudioStore.shared.loadCues(for: attachmentID)
             // The clip ranges above depend on noteCues, which just changed — reconfigure so
             // the audio-file preload (see configureLiveListen) starts as soon as it can,
