@@ -111,8 +111,11 @@ nonisolated extension Lexicon {
         if let chosen = candidates.first(where: { $0.entry.entryId == chosenEntryID }) {
             return chosen
         }
+        // Compared with each word's readings as conjugated like the text (怒る いかる → いかり on
+        // 怒り), since the displayed reading is the text's; the dictionary kana alone only ever
+        // matched uninflected forms.
         let readingMatches = candidates.filter { candidate in
-            candidate.entry.kanaForms.contains { $0.text == displayedReading }
+            displayedReading.map { candidate.surfaceReadings.contains($0) } ?? false
         }
         if readingMatches.count == 1 { return readingMatches[0] }
         return preferredLookupCandidate(among: candidates)
