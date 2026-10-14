@@ -6,7 +6,7 @@ import SwiftUI
 // re-pointing this card.
 extension WordDetailView {
     // Entries written with this word's kanji spelling as an everyday form, other than the one this
-    // card is for, most frequent first. Drawn from both the surface lookup (allDisplayData) and the
+    // card is for (sameSpellingSection orders them). Drawn from both the surface lookup (allDisplayData) and the
     // reading gathering (readingVariants), since each finds siblings the other can miss. The
     // spelling is the saved surface when the entry writes it that way, else the entry's everyday
     // kanji (an inflected surface like 抱かれ → 抱く). Kana-only words have no shared spelling here.
@@ -24,46 +24,50 @@ extension WordDetailView {
                 $0.text == spelling && DictionaryEntry.kanjiFormIsNonEveryday(info: $0.info) == false
             }
         }
-        return siblings.sorted {
-            let a = FrequencyData(frequencyRank: $0.frequencyRank, wordfreqZipf: $0.wordfreqZipf).normalizedScore ?? -1
-            let b = FrequencyData(frequencyRank: $1.frequencyRank, wordfreqZipf: $1.wordfreqZipf).normalizedScore ?? -1
-            return a > b
-        }
+        return siblings
     }
 
     // The words written this way, at the top of the page and folded like the lookup sheet's list:
-    // this word's own row (highlighted) with "+N ⌄" to unfold the rest; tapping it again folds
-    // them away. Tapping another word switches this page to it (openSameSpellingWord), recorded as
-    // a lookup like the Related Words rows.
+    // folded, only this word's row (highlighted, "+N ⌄"); unfolded, every word in one fixed order —
+    // most frequent first, ties by entry id — so the list reads the same from every word's page and
+    // switching never reshuffles it. Tapping this word's row folds or unfolds; tapping another
+    // switches the page to it (openSameSpellingWord), recorded as a lookup like Related Words.
     @ViewBuilder
     var sameSpellingSection: some View {
         let siblings = sameSpellingEntries
         if siblings.isEmpty == false,
            let active = allDisplayData.first(where: { $0.entry.entryId == activeEntryID })?.entry {
+            let all = (siblings + [active]).sorted {
+                let a = FrequencyData(frequencyRank: $0.frequencyRank, wordfreqZipf: $0.wordfreqZipf).normalizedScore ?? -1
+                let b = FrequencyData(frequencyRank: $1.frequencyRank, wordfreqZipf: $1.wordfreqZipf).normalizedScore ?? -1
+                return a != b ? a > b : $0.entryId < $1.entryId
+            }
+            let shown = isSameSpellingExpanded ? all : [active]
             Section {
-                Button {
-                    withAnimation { isSameSpellingExpanded.toggle() }
-                } label: {
-                    HStack {
-                        relatedWordRow(active)
-                        Text(isSameSpellingExpanded ? "⌃" : "+\(siblings.count) ⌄")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-                .listRowBackground(Color(.tertiarySystemFill))
-                .accessibilityLabel(isSameSpellingExpanded ? "Hide words with the same spelling" : "Show \(siblings.count) words with the same spelling")
-                if isSameSpellingExpanded {
-                    ForEach(siblings, id: \.entryId) { entry in
-                        Button {
+                ForEach(shown, id: \.entryId) { entry in
+                    let isActive = entry.entryId == active.entryId
+                    Button {
+                        if isActive {
+                            withAnimation { isSameSpellingExpanded.toggle() }
+                        } else {
                             historyStore.record(canonicalEntryID: entry.entryId, surface: entry.primarySearchSurface)
                             openSameSpellingWord(entry)
-                        } label: {
-                            relatedWordRow(entry)
                         }
-                        .buttonStyle(.plain)
+                    } label: {
+                        HStack {
+                            relatedWordRow(entry)
+                            if isActive {
+                                Text(isSameSpellingExpanded ? "⌃" : "+\(siblings.count) ⌄")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
+                    .buttonStyle(.plain)
+                    .listRowBackground(isActive ? Color(.tertiarySystemFill) : nil)
+                    .accessibilityLabel(isActive
+                        ? (isSameSpellingExpanded ? "Hide words with the same spelling" : "Show \(siblings.count) words with the same spelling")
+                        : entry.primarySearchSurface)
                 }
             }
         }
