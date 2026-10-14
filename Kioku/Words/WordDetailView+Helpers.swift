@@ -633,6 +633,26 @@ extension WordDetailView {
         }
     }
 
+    // Opens a source note on this word — the Read text, the lyrics view or the breakdown — and
+    // closes the detail. Pins the earliest spot any of the word's surfaces occurs (the same ones
+    // originLines highlights), since the saved form may be a lemma the lyrics never spell out.
+    func openSourceNote(_ note: Note, in destination: ReadNoteDestination) {
+        let content = note.content as NSString
+        let surfaces = ([word.surface, currentSavedWord.surface] + currentSavedWord.encounteredSurfaces)
+            .filter { $0.isEmpty == false }
+        let location = surfaces
+            .map { content.range(of: $0).location }
+            .filter { $0 != NSNotFound }
+            .min()
+        ReadNoteNavigation.shared.pendingTarget = ReadNoteTarget(
+            noteID: note.id,
+            surface: currentSavedWord.surface,
+            noteLocation: location,
+            destination: destination
+        )
+        dismiss()
+    }
+
     // Adds the word to a list, or takes it out if it's already there. Membership only exists on
     // saved words, so an unsaved word is saved first, the same way the star saves it.
     func toggleListMembership(listID: UUID) {

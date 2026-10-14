@@ -195,6 +195,9 @@ extension ReadView {
 
     var titleBreakdownButton: some View {
         Button {
+            // Opened from here, the breakdown keeps its own saved position, not a line some
+            // earlier lyric/word jump focused.
+            readSheets.breakdownFocusLocation = nil
             readSheets.isShowingBreakdownSheet = true
         } label: {
             if isBreakdownGeneratingForActiveNote {

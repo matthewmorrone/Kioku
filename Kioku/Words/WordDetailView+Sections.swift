@@ -471,8 +471,7 @@ extension WordDetailView {
             Section("Saved") {
                 ForEach(sourceNotes, id: \.id) { note in
                     Button {
-                        ReadNoteNavigation.shared.pendingTarget = ReadNoteTarget(noteID: note.id, surface: currentSavedWord.surface)
-                        dismiss()
+                        openSourceNote(note, in: .text)
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
                             Label(note.title, systemImage: "doc.text")
@@ -484,6 +483,21 @@ extension WordDetailView {
                                     .foregroundStyle(.primary)
                                     .padding(.leading, 28)
                             }
+                        }
+                    }
+                    // Same spot, other views of it: the lyrics view seeked to the word's line, or the
+                    // breakdown scrolled to it.
+                    .contextMenu {
+                        Button("Open in Read", systemImage: "doc.text") {
+                            openSourceNote(note, in: .text)
+                        }
+                        if note.audioAttachmentID != nil {
+                            Button("Open Line in Lyrics", systemImage: "music.mic") {
+                                openSourceNote(note, in: .lyrics)
+                            }
+                        }
+                        Button("Open Line in Breakdown", systemImage: "list.bullet.rectangle") {
+                            openSourceNote(note, in: .breakdown)
                         }
                     }
                 }

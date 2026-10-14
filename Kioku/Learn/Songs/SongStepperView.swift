@@ -48,6 +48,14 @@ struct SongStepperView: View {
     // Nil for callers with no "next note" concept (e.g. ReadView's Breakdown sheet, which shows
     // exactly the currently open note, not a list to advance through).
     let onFinishedPlaying: ((Note) -> Void)?
+    // Note-text location whose line the view scrolls to and parks the mini player on when it
+    // opens (see SongStepperView+Navigation); nil keeps the saved position.
+    let focusNoteLocation: Int?
+    // The toolbar's shuffle button: moves on to a random song's breakdown. Nil hides the button.
+    let onShuffle: (() -> Void)?
+    // Line index the scroll should bring to center; set once by the focus above.
+    @State var focusScrollLineIndex: Int? = nil
+    @State var hasAppliedFocus = false
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
     // Drives the lookup sheet's save star for tapped words (globally injected at the app root).
     @EnvironmentObject private var wordsStore: WordsStore
@@ -119,7 +127,9 @@ struct SongStepperView: View {
          noteReadings: NoteReadingSnapshot? = nil,
          dictionaryStore: DictionaryStore? = nil,
          onFinishedPlaying: ((Note) -> Void)? = nil,
-         segmenterRevision: Int = 0) {
+         segmenterRevision: Int = 0,
+         focusNoteLocation: Int? = nil,
+         onShuffle: (() -> Void)? = nil) {
         self.note = note
         self.segmenter = segmenter
         self.surfaceReadingData = surfaceReadingData
@@ -128,6 +138,8 @@ struct SongStepperView: View {
         self.dictionaryStore = dictionaryStore
         self.onFinishedPlaying = onFinishedPlaying
         self.segmenterRevision = segmenterRevision
+        self.focusNoteLocation = focusNoteLocation
+        self.onShuffle = onShuffle
     }
 
     // MARK: - Derived state
@@ -214,6 +226,14 @@ struct SongStepperView: View {
                 Text("Breakdown")
                     .font(.headline)
                     .accessibilityLabel("Breakdown")
+            }
+            if let onShuffle {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: onShuffle) {
+                        Image(systemName: "shuffle")
+                    }
+                    .accessibilityLabel("Random Song")
+                }
             }
             if isRunning {
                 // The regenerate icon's slot becomes a spinner while a call runs; its only
@@ -333,6 +353,8 @@ struct SongStepperView: View {
         // on a *transition*, not on the initial value.
         .onAppear {
             userNoteDraft = SongBreakdownUserNote.note(forNoteID: note.id)
+            // Restored before the rows are derived, so a focus line (applied there) wins over it.
+            currentPlaybackStep = SongPlaybackProgress.lastStep(forNoteID: note.id) ?? .intro
             refreshLineDerivedState(for: displayItems)
             // Reassigned on every appearance (harmless — same closure, same `liveListen`
             // instance for this view's lifetime) so "continue to the next note" fires only
@@ -340,7 +362,6 @@ struct SongStepperView: View {
             liveListen.onDidFinishPlayingNaturally = { finishLinesPlayback() }
             introOutroPlayback.onDidFinishRange = { finishIntroOutroPlayback() }
             introOutroPlayback.onDidFinishPlayingNaturally = { finishIntroOutroPlayback() }
-            currentPlaybackStep = SongPlaybackProgress.lastStep(forNoteID: note.id) ?? .intro
             // Speculative: hands the controller its script now, before any tap, so its
             // one-time setup (opening the note's audio file, resolving voices) finishes in the
             // background well ahead of the user actually pressing play. No-ops here if there's
@@ -594,6 +615,7 @@ struct SongStepperView: View {
                             showsPatternNote: showPatterns
                         )
                         .id(item.id)
+                        .contextMenu { lineContextMenu(for: item.line) }
                     }
                 }
                 .padding(.horizontal, 18)
@@ -604,6 +626,10 @@ struct SongStepperView: View {
                 withAnimation(.easeInOut(duration: 0.3)) {
                     proxy.scrollTo(newID, anchor: .center)
                 }
+            }
+            // Runs on appear too, so a focus set while the sheet opens still scrolls.
+            .task(id: focusScrollLineIndex) {
+                await scrollToFocusedLine(proxy: proxy, items: items)
             }
             .onChange(of: listenScrollRequest) { _, _ in
                 scrollBackToListenPosition(proxy: proxy, items: items)
@@ -629,6 +655,7 @@ struct SongStepperView: View {
         let lines = items.map(\.line)
         lineNoteRangesByIndex = SongBreakdownLineLocator.noteRanges(for: lines, in: note.content)
         ensureFuriganaCaches(for: lines)
+        applyFocusIfNeeded()
         if let streaming = items.first(where: { $0.phase == .streaming }) {
             expandedByLineIndex.insert(streaming.line.index)
         }
@@ -763,16 +790,4 @@ struct SongStepperView: View {
             defaultSenseIDs: senseIDs
         )
     }
-}
-
-// Pre-resolved per-line furigana payload. The three renderer fields together are exactly
-// the data shape `KiokuCoreTextRendererView` consumes, so the card hands them straight
-// through with no further conversion. `sourceText` records which line text the cache was
-// built from: rows are keyed by line index, and a bare note line's index can later be taken
-// by a streamed line with different text, so the cache must be re-validated, not trusted.
-struct LineFuriganaCache: Equatable {
-    let sourceText: String
-    let segmentationRanges: [Range<String.Index>]
-    let furiganaBySegmentLocation: [Int: String]
-    let furiganaLengthBySegmentLocation: [Int: Int]
 }
