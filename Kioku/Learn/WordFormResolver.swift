@@ -80,6 +80,9 @@ struct ResolvedWordFields: Sendable {
     // Every gloss of the word's selected senses, `english` first. The accepted-answer set when a
     // typed answer is English, where "to eat" / "eat" are the same answer.
     let glosses: [String]
+    // Every gloss of every sense of the entry, selected or not — any of them is a true meaning of
+    // the word, so none may be offered as a wrong answer.
+    let entryGlosses: [String]
     // Raw JMdict pos codes across the word's selected senses (e.g. "v1", "vt", "n"). Collapsed to
     // a `WordClass` once it reaches a StudyItem; kept raw here so this stays a plain data carrier.
     let posTags: [String]

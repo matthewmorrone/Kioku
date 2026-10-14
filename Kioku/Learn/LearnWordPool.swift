@@ -21,6 +21,10 @@ struct StudyItem: Identifiable {
     // What kind of word this is, so Multiple Choice can offer distractors of the same kind rather
     // than making the answer the only verb among nouns.
     let wordClass: WordClass
+    // Every gloss of every sense of the entry (ただ: ordinary, usual, free of charge, only, …), so
+    // Multiple Choice never offers one of the word's own meanings as a wrong answer — "usual"
+    // against the answer "ordinary" is a second right answer.
+    var entryGlosses: [String] = []
 
     var id: Int64 { word.canonicalEntryID }
 
@@ -140,7 +144,8 @@ enum LearnWordPool {
                 english: gloss,
                 glosses: fields.glosses.isEmpty ? [gloss] : fields.glosses,
                 hasKanjiForm: surfaceHasKanji,
-                wordClass: WordClass.from(posTags: fields.posTags)
+                wordClass: WordClass.from(posTags: fields.posTags),
+                entryGlosses: fields.entryGlosses
             ))
         }
         return items
@@ -231,7 +236,7 @@ enum LearnWordPool {
         )
         return ResolvedWordFields(
             entryID: entryID, english: primary, kanji: forms.kanji, kana: forms.kana,
-            glosses: glosses, posTags: posTags
+            glosses: glosses, entryGlosses: data.entry.senses.flatMap(\.glosses), posTags: posTags
         )
     }
 }

@@ -543,8 +543,14 @@ struct MultipleChoiceView: View {
             let collidingAnswers = Set(
                 items.filter { $0.value(for: fields.prompt) == prompt }.map { $0.value(for: fields.answer) }
             )
+            // An English answer also rules out every other meaning of the same word: ただ asked as
+            // "ordinary" can't offer "usual", which is the same sense's next gloss.
+            let ownMeanings = fields.answer == .meaning ? item.glosses + item.entryGlosses : []
             var distractorPool = (fieldPools[fields.answer] ?? [])
                 .filter { collidingAnswers.contains($0.text) == false && $0.text != correct }
+                .filter { candidate in
+                    ownMeanings.contains { DistractorRefinementPolicy.matchesLoosely($0, candidate.text) } == false
+                }
             guard distractorPool.isEmpty == false else { continue }
 
             // Shuffled first so the selector's ties break randomly; it then reorders by how well
@@ -572,7 +578,7 @@ struct MultipleChoiceView: View {
                 direction: direction,
                 hasKanjiForm: item.hasKanjiForm,
                 answerField: fields.answer,
-                acceptedAnswers: fields.answer == .meaning ? item.glosses : [correct],
+                acceptedAnswers: fields.answer == .meaning ? item.glosses + item.entryGlosses : [correct],
                 candidatePool: ranked
             ))
         }
