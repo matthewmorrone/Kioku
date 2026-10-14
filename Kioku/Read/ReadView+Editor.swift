@@ -18,7 +18,7 @@ final class KnownWordFuriganaMemo {
 
 // Reference-type cache for the saved-highlight computation. Same @State-held-class rationale
 // as KnownWordFuriganaMemo above. No per-segment lemma cache here — the computation resolves
-// through resolvedDictionaryEntry(forSurface:) (ReadView+Segmentation), which is a straight
+// through displayedDictionaryEntry(forSurface:at:) (ReadView+Segmentation), which is a straight
 // dictionary/Lexicon lookup, not a segmenter-lemma sweep.
 final class SavedHighlightMemo {
     var signature: Int?
@@ -74,7 +74,7 @@ extension ReadView {
 
     // UTF-16 locations of segments the extract-words list shows a FILLED star for — saved for
     // the active note, or saved with no note attribution at all. Resolved through the exact same
-    // dictionary-entry lookup (resolvedDictionaryEntry(forSurface:), ReadView+Segmentation) that
+    // reading-aware entry lookup (displayedDictionaryEntry(forSurface:at:), ReadView+Segmentation) that
     // the lookup sheet's star/learned-state button uses (isSegmentSaved, currentSegmentLearnedState),
     // so the in-text color and the button can never disagree about which saved word a piece of
     // text refers to.
@@ -146,6 +146,8 @@ extension ReadView {
             hasher.combine(word.canonicalEntryID)
             hasher.combine(word.learnedMark)
         }
+        // Readings pick the entry (displayedDictionaryEntry), so a furigana edit can recolor.
+        hasher.combine(document.furiganaBySegmentLocation)
         hasher.combine(isSavedHighlightShowingSaved)
         hasher.combine(isSavedHighlightShowingLearned)
         hasher.combine(isSavedHighlightShowingNotLearned)
@@ -163,7 +165,7 @@ extension ReadView {
 
     // The heavy computation behind the saved-location properties, run only on a memo miss.
     // For every distinct segment surface, resolves the ONE dictionary entry backing it (the same
-    // resolvedDictionaryEntry(forSurface:) the lookup sheet's button uses) and looks up whether
+    // entry the lookup sheet's button shows, via displayedDictionaryEntry) and looks up whether
     // any SavedWord's canonicalEntryID matches — no surface/lemma string-matching against
     // wordsStore's own encountered-surfaces at all, so this can't land on a different word than
     // the button did for the identical on-screen text. A word's status is global — the same
@@ -183,12 +185,15 @@ extension ReadView {
             let surface = ns.substring(with: nsRange).trimmingCharacters(in: .whitespacesAndNewlines)
             guard surface.isEmpty == false else { continue }
 
+            // Keyed by surface + displayed reading: the same surface can belong to different
+            // words depending on its furigana (怒り おこり → 怒る, いかり → 怒り).
+            let cacheKey = surface + "\u{0}" + reconstructedReading(for: surface, at: nsRange.location)
             let saved: SavedWord? = {
-                if let cached = savedWordBySurface[surface] { return cached }
-                let value = resolvedDictionaryEntry(forSurface: surface).flatMap { entry in
+                if let cached = savedWordBySurface[cacheKey] { return cached }
+                let value = displayedDictionaryEntry(forSurface: surface, at: nsRange.location).flatMap { entry in
                     wordsStore.words.first { $0.canonicalEntryID == entry.entryId }
                 }
-                savedWordBySurface[surface] = value
+                savedWordBySurface[cacheKey] = value
                 return value
             }()
             guard let saved else { continue }

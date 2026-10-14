@@ -569,9 +569,9 @@ extension ReadView {
     // The ONE dictionary-entry resolution for an arbitrary surface, shared by every caller that
     // needs to answer "which saved word (if any) does this piece of text refer to" — the lookup
     // sheet's star/learned-state button (via currentSegmentDictionaryEntry, isSegmentSaved
-    // below) and the Read-tab/LyricsView in-text coloring
-    // (ReadView+Editor.computeSavedSegmentLocations) all resolve through this single function, so they can
-    // never disagree about which entry a given piece of text belongs to.
+    // below) and the Read-tab/LyricsView in-text coloring (via displayedDictionaryEntry, which
+    // refines it by the displayed reading exactly as the sheet does) all resolve through this
+    // single function, so they can never disagree about which entry a given piece of text belongs to.
     func resolvedDictionaryEntry(forSurface surface: String) -> DictionaryEntry? {
         guard let store = dictionaryStore else { return nil }
         let lookupMode: LookupMode = ScriptClassifier.containsKanji(surface) ? .kanjiAndKana : .kanaOnly
@@ -590,6 +590,34 @@ extension ReadView {
         }
         let lemmaMode: LookupMode = ScriptClassifier.containsKanji(lemma) ? .kanjiAndKana : .kanaOnly
         return (try? store.lookup(surface: lemma, mode: lemmaMode))?.first
+    }
+
+    // The entry the lookup sheet would show for the segment at `location`, resolved through the
+    // reading displayed there — the in-text saved-word coloring uses this so it lands on the same
+    // word as the sheet's learned-state button. resolvedDictionaryEntry(forSurface:) alone picks
+    // the surface's first entry, which for 怒り (read おこり) is the noun いかり, not 怒る.
+    func displayedDictionaryEntry(forSurface surface: String, at location: Int) -> DictionaryEntry? {
+        let fallback = resolvedDictionaryEntry(forSurface: surface)
+        guard let lexicon, let store = dictionaryStore else { return fallback }
+        let readings = ReadingVariants.orderedReadings(
+            surface: surface,
+            lexicon: lexicon,
+            segmenter: segmenter,
+            surfaceReadingData: surfaceReadingData
+        )
+        guard readings.isEmpty == false else { return fallback }
+        let override = reconstructedReading(for: surface, at: location)
+        return ReadingVariants.entryForDisplayedReading(
+            readings: readings,
+            override: override.isEmpty ? nil : override,
+            readingMap: ReadingVariants.lemmaInfoByReading(
+                surface: surface,
+                lexicon: lexicon,
+                store: store,
+                surfaceReadingData: surfaceReadingData
+            ),
+            fallback: fallback
+        )
     }
 
     // Whether the current segment is saved — resolved by the SAME dictionary entry

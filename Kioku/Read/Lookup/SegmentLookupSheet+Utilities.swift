@@ -43,17 +43,12 @@ extension SegmentLookupSheet {
         readingMap: [String: (lemma: String, chain: [String], entry: DictionaryEntry?)],
         fallback: DictionaryEntry?
     ) -> DictionaryEntry? {
-        let override = activeReadingOverrideProvider?()
-        let displayedReading: String?
-        if let override, readings.contains(override) {
-            displayedReading = override
-        } else {
-            displayedReading = readings.first
-        }
-        if let displayedReading, let mapped = readingMap[displayedReading]?.entry {
-            return mapped
-        }
-        return fallback
+        ReadingVariants.entryForDisplayedReading(
+            readings: readings,
+            override: activeReadingOverrideProvider?(),
+            readingMap: readingMap,
+            fallback: fallback
+        )
     }
 
     // Runs every supplemental provider, then calls `completion`. Deferred by one main-actor hop

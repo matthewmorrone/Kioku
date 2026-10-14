@@ -120,6 +120,29 @@ nonisolated enum ReadingVariants {
         return byReading
     }
 
+    // The entry behind the reading a segment actually displays: the active override when it is
+    // one of the surface's readings, else the first reading, mapped through lemmaInfoByReading;
+    // `fallback` when that reading has no entry. Shared by the lookup sheet (first-paint entry)
+    // and the Read tab's saved-word coloring so a word's color always matches the sheet's
+    // learned-state button (怒り read おこり is 怒る, not the noun いかり).
+    static func entryForDisplayedReading(
+        readings: [String],
+        override: String?,
+        readingMap: [String: (lemma: String, chain: [String], entry: DictionaryEntry?)],
+        fallback: DictionaryEntry?
+    ) -> DictionaryEntry? {
+        let displayedReading: String?
+        if let override, readings.contains(override) {
+            displayedReading = override
+        } else {
+            displayedReading = readings.first
+        }
+        if let displayedReading, let mapped = readingMap[displayedReading]?.entry {
+            return mapped
+        }
+        return fallback
+    }
+
     // Store-only entry resolution: the entry under `lemma` whose kana form equals `reading`. Used as
     // the no-Lexicon fallback so homographs still split correctly off the bundled dictionary alone.
     private static func entryMatchingReading(_ lemma: String, _ reading: String, store: DictionaryStore?) -> DictionaryEntry? {
