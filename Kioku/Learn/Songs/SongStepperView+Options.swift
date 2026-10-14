@@ -5,8 +5,9 @@ import SwiftUI
 extension SongStepperView {
     // The toolbar's options menu: listen-along behaviour (pause at line ends, how many times each
     // word is heard before its definition), which kinds of word and line are shown (see
-    // SongWordVisibility), plus Regenerate. Changing the repeat count or what's shown rebuilds
-    // the script, since it changes which steps exist.
+    // SongWordVisibility), plus Open Line in Lyrics (the mini player's line) and Regenerate.
+    // Changing the repeat count or what's shown rebuilds the script, since it changes which steps
+    // exist.
     var optionsMenu: some View {
         Menu {
             Toggle(isOn: $pauseAfterEachLine) {
@@ -38,6 +39,13 @@ extension SongStepperView {
                 }
             }
             Divider()
+            if note.audioAttachmentID != nil, let line = currentStepLine {
+                Button {
+                    openLineInLyrics(line)
+                } label: {
+                    Label("Open Line in Lyrics", systemImage: "music.mic")
+                }
+            }
             Button {
                 isRegenerateConfirmationPresented = true
             } label: {

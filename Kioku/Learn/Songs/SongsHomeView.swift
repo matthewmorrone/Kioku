@@ -5,7 +5,7 @@ import SwiftUI
 // pushes the per-note stepper on selection. Generation happens inside SongStepperView so
 // the home stays a pure list.
 //
-// Major sections: principal toolbar branding, notes list grouped by status, empty state.
+// Major sections: principal toolbar branding, shuffle button, notes list grouped by status, empty state.
 struct SongsHomeView: View {
     @EnvironmentObject private var notesStore: NotesStore
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
@@ -26,9 +26,18 @@ struct SongsHomeView: View {
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel("Breakdowns")
                     }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(action: openRandomBreakdown) {
+                            Image(systemName: "shuffle")
+                        }
+                        .disabled(breakdownNotes.isEmpty)
+                        .accessibilityLabel("Random Song")
+                    }
                 }
                 .navigationDestination(item: $selectedNote) { note in
-                    SongStepperView(note: note, onFinishedPlaying: advanceToNextNoteIfEnabled)
+                    SongStepperView(note: note, onFinishedPlaying: advanceToNextNoteIfEnabled, onShuffle: openRandomBreakdown)
+                        // A shuffle swaps the note in place; rebuild so no line state carries over.
+                        .id(note.id)
                 }
         }
     }
@@ -39,6 +48,20 @@ struct SongsHomeView: View {
     // can never disagree.
     private var candidateNotes: [Note] {
         notesStore.notes.filter { hasStudiableContent($0) }
+    }
+
+    // Notes with a generated breakdown, the pool the shuffle buttons draw from.
+    private var breakdownNotes: [Note] {
+        candidateNotes.filter { songBreakdownStore.breakdown(forNoteID: $0.id)?.lines.isEmpty == false }
+    }
+
+    // Shuffle (here and in the open breakdown's toolbar): opens a random song's breakdown,
+    // preferring one other than the breakdown already open so tapping again moves on.
+    private func openRandomBreakdown() {
+        let pool = breakdownNotes
+        let others = pool.filter { $0.id != selectedNote?.id }
+        guard let note = (others.isEmpty ? pool : others).randomElement() else { return }
+        selectedNote = note
     }
 
     @ViewBuilder

@@ -3,7 +3,7 @@ import LyricAlignment
 
 // Top action bar for the karaoke view: Re-align (one forced-alignment pass over the whole song;
 // press and hold for Re-align from Scratch, which isolates the vocals again first), the
-// Mix / Vocals / Instrumental source toggle, the audio menu (Replace / Remove), and the settings-popup gear (LyricsView+SettingsPopup.swift). Not private: called from panel(geo:) in
+// Mix / Vocals / Instrumental source toggle, the audio menu (Replace / Remove), the open-in-breakdown button, and the settings-popup gear (LyricsView+SettingsPopup.swift). Not private: called from panel(geo:) in
 // LyricsView.swift.
 extension LyricsView {
     // The attached song's audio file, which keys its cached vocal stem.
@@ -125,6 +125,22 @@ extension LyricsView {
                     Button("Remove Audio", role: .destructive) { onRemoveAudio() }
                 }
             }
+
+            // Opens the breakdown on the line playing now. The sheet rises over this view, so
+            // closing it comes back here.
+            Button {
+                onOpenBreakdown()
+            } label: {
+                Image(systemName: "list.bullet.rectangle")
+                    .scaledFont(size: 12, weight: .semibold)
+                    .foregroundStyle(Color.secondary)
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
+                    .background(Color.secondary.opacity(0.16))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open This Line in Breakdown")
 
             Button {
                 isShowingSettingsPopup = true

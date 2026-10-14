@@ -213,6 +213,10 @@ struct ContentView: View {
         .onChange(of: readNoteNavigation.isRandomPlaybackRequested) { _, _ in
             playRandomAudioNoteIfRequested()
         }
+        // The breakdown sheet's shuffle button, over the Read tab.
+        .onChange(of: readNoteNavigation.isRandomBreakdownRequested) { _, _ in
+            openRandomBreakdownIfRequested()
+        }
         // Bump the segmenter revision so ReadView re-segments existing text with the new strategy.
         .onChange(of: segmentationStrategySetting) { _, _ in
             rebuildReadResources()
@@ -417,6 +421,26 @@ struct ContentView: View {
         lastActiveNoteID = note.id.uuidString
         selectedTab = .read
         pendingReadAutoplayNoteID = note.id
+    }
+
+    // Serves the breakdown's shuffle button: opens a random note that has a breakdown in Read with
+    // its breakdown sheet up. Prefers a note other than the one already open, like
+    // playRandomAudioNoteIfRequested, so tapping again moves on to a different song.
+    private func openRandomBreakdownIfRequested() {
+        guard readNoteNavigation.isRandomBreakdownRequested else { return }
+        readNoteNavigation.isRandomBreakdownRequested = false
+        let candidates = notesStore.notes.filter { note in
+            songBreakdownStore.breakdown(forNoteID: note.id)?.lines.isEmpty == false
+        }
+        let others = candidates.filter { $0.id.uuidString != lastActiveNoteID }
+        guard let note = (others.isEmpty ? candidates : others).randomElement() else {
+            AppLog.info(.audioPlayback, "[ContentView] random breakdown requested but no note has a breakdown")
+            return
+        }
+        selectedReadNote = note
+        lastActiveNoteID = note.id.uuidString
+        selectedTab = .read
+        pendingReadScrollTarget = ReadNoteTarget(noteID: note.id, surface: "", destination: .breakdown)
     }
 
     // Restores the previously active note so users return to their last reading context.

@@ -12,6 +12,9 @@ final class ReadSheetsUIState {
     // flipping more than one category per visit. A popover of real Toggle rows doesn't.
     var isShowingSavedHighlightCategories = false
     var isShowingBreakdownSheet = false
+    // Note-text UTF-16 location the breakdown sheet scrolls to on open (the line holding it), set
+    // when it's opened from a lyric cue or a word's source note; nil opens it where it was.
+    var breakdownFocusLocation: Int?
     // Long-press on the segment-list button: the note's changes from default segmentation and
     // readings (SegmentationChangeList), shown in an alert.
     var isShowingChangesFromDefault = false

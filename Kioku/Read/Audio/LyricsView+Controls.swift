@@ -1,6 +1,6 @@
 import SwiftUI
 
-// The persistent bottom transport bar: play/pause, scrubber, and "return to start of line". The
+// The persistent bottom transport bar: play/pause, scrubber, shuffle, and "return to start of line". The
 // settings gear lives in the top bar instead (LyricsView+ReAlignBar.swift) — see
 // LyricsView+SettingsPopup.swift for its popup. Split out of LyricsView.swift to keep the main
 // file under the repo's line-count cap — this bar and LyricsScrubber below are self-contained UI
@@ -34,6 +34,22 @@ extension LyricsView {
                     controller: controller,
                     isScrubbing: $isScrubbing
                 )
+
+                // Shuffle: moves on to a random other song, lyrics view open and playing.
+                Button {
+                    onPlayRandom()
+                } label: {
+                    Circle()
+                        .fill(Color(.systemFill))
+                        .frame(width: 36, height: 36)
+                        .overlay(
+                            Image(systemName: "shuffle")
+                                .scaledFont(size: 14, weight: .semibold)
+                                .foregroundStyle(Color.secondary)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Play a Random Song")
 
                 Circle()
                     .fill(Color(.systemFill))

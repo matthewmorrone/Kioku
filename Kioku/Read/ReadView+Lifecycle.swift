@@ -309,6 +309,8 @@ extension ReadView {
                     isSwitchingAudioSource: audioPlayback.isSwitchingAudioSource,
                     onCycleAudioSource: { cycleLyricAudioSource() },
                     onSetAudioSource: { setLyricAudioSource($0) },
+                    onOpenBreakdown: { openNoteDestination(.breakdown, atNoteLocation: activeLyricNoteLocation()) },
+                    onPlayRandom: { ReadNoteNavigation.shared.isRandomPlaybackRequested = true },
                     singRomanize: lyricRomanizer.spans(for:),
                     singSession: singSession
                 )
@@ -395,8 +397,13 @@ extension ReadView {
                             furiganaLengthBySegmentLocation: document.furiganaLengthBySegmentLocation
                         ),
                         dictionaryStore: dictionaryStore,
-                        segmenterRevision: segmenterRevision
+                        segmenterRevision: segmenterRevision,
+                        focusNoteLocation: readSheets.breakdownFocusLocation,
+                        onShuffle: { ReadNoteNavigation.shared.isRandomBreakdownRequested = true }
                     )
+                        // A shuffle swaps the note under the open sheet; rebuild so no line state
+                        // (expansion, playback step, cues) carries over from the previous song.
+                        .id(note.id)
                         .toolbar {
                             ToolbarItem(placement: .topBarLeading) {
                                 Button("Done") { readSheets.isShowingBreakdownSheet = false }
@@ -427,22 +434,22 @@ extension ReadView {
     // scroll-to-range mechanism in this renderer, normally driven by audio cue playback (see
     // KiokuCoreTextRendererView's scrollRangeIntoView call). Safe to reuse outside playback: the
     // "unplayed" dimming it also drives requires real cue data (cueHasReliableDimCoverage), which
-    // isn't present here, so only the scroll + a plain highlight tint apply.
+    // isn't present here, so only the scroll + a plain highlight tint apply. A lyrics or breakdown
+    // target skips all that and opens that view on the line instead (ReadView+NoteDestinations).
     func jumpToPendingScrollSurfaceIfReady() {
         guard let target = pendingScrollTarget, document.activeNoteID == target.noteID else { return }
-        guard let range = document.text.range(of: target.surface) else {
-            pendingScrollTarget = nil
+        pendingScrollTarget = nil
+        // A lyrics/breakdown target opens that view on the spot instead of highlighting the page.
+        if target.destination != .text {
+            openNoteDestination(target.destination, atNoteLocation: noteLocation(for: target))
             return
         }
+        guard let range = document.text.range(of: target.surface) else { return }
         let nsRange = NSRange(range, in: document.text)
-        guard nsRange.length > 0 else {
-            pendingScrollTarget = nil
-            return
-        }
+        guard nsRange.length > 0 else { return }
         segmentSelection.selectedSegmentLocation = nsRange.location
         segmentSelection.selectedHighlightRangeOverride = nsRange
         audioPlayback.playbackHighlightRangeOverride = nsRange
-        pendingScrollTarget = nil
 
         audioPlayback.pendingScrollHighlightClearTask?.cancel()
         audioPlayback.pendingScrollHighlightClearTask = Task { @MainActor in

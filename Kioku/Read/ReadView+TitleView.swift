@@ -1,7 +1,7 @@
 import SwiftUI
 
 // Title header for ReadView: shows the resolved note title and hosts the per-note
-// title-row quick actions (breakdown, lyrics). The title is tappable
+// title-row quick actions (shuffle, breakdown, lyrics). The title is tappable
 // to surface an edit alert backed by titleEdit.titleDraft.
 extension ReadView {
     // Displays the editable note title at the top of the reading screen.
@@ -17,7 +17,7 @@ extension ReadView {
                     titleEdit.isShowingTitleAlert = true
                 }
 
-            // Title-row quick actions for the currently-open note, in order: open the
+            // Title-row quick actions, in order: play a random song, open the
             // breakdown sheet and open the lyrics view.
             // That last slot morphs into the minimized "now playing" control (ReadView+
             // MiniPlayer.swift) once playback has started and the full lyrics view is
@@ -37,6 +37,7 @@ extension ReadView {
                         .accessibilityLabel("Loading dictionary")
                 }
                 Spacer(minLength: 0)
+                titleShuffleButton
                 titleBreakdownButton
                     .tourTarget(.readBreakdown)
                 if isShowingLyricsMiniPlayer {
