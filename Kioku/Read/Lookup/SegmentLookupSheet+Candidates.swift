@@ -26,9 +26,16 @@ extension SegmentLookupSheet {
         ) {
             applyLookupCandidate(shown)
         } else {
-            currentSheetDictionaryEntry = nil
-            currentSheetLemmaInfo = nil
+            showNoLookupCandidate()
         }
+    }
+
+    // The unpicked state: no word, no lemma line, and no parts row (its parts were the engine's
+    // guess, e.g. すむ as 済む).
+    func showNoLookupCandidate() {
+        currentSheetDictionaryEntry = nil
+        currentSheetLemmaInfo = nil
+        currentSheetCompoundComponents = []
     }
 
     // True when the form is several words and none has been picked — the sheet then has no word to
@@ -68,8 +75,8 @@ extension SegmentLookupSheet {
 
     // Adds one tappable row per candidate to the top of the middle content, the shown one highlighted.
     // Nothing is added when the form is only one word. With a word shown and the list collapsed,
-    // only that word's row appears, its chevron reopening the rest; tapping any row of the open
-    // list picks it and collapses the list again.
+    // only that word's row appears, tapping it reopening the rest; on the open list, tapping
+    // another row picks it and collapses the list, tapping the shown one clears the pick.
     func addLookupCandidateRows(to stack: UIStackView, parent: UIViewController?) {
         let allCandidates = currentSheetLookupCandidates
         guard allCandidates.count > 1 else { return }
@@ -116,13 +123,13 @@ extension SegmentLookupSheet {
             glossLabel.lineBreakMode = .byTruncatingTail
 
             var rowViews: [UIView] = [headwordLabel, readingLabel, glossLabel]
-            // The shown word's row carries the open/close control: down when the others are
-            // hidden (with how many), up when the full list is open.
+            // The shown word's row carries its control: open (with how many others) when the list
+            // is closed, clear when it's open.
             if shownID != nil, candidate.entry.entryId == shownID {
                 let toggle = UILabel()
                 toggle.font = .systemFont(ofSize: 12, weight: .semibold)
                 toggle.textColor = .secondaryLabel
-                toggle.text = isCollapsed ? "+\(allCandidates.count - 1) ⌄" : "⌃"
+                toggle.text = isCollapsed ? "+\(allCandidates.count - 1) ⌄" : "✕"
                 toggle.setContentHuggingPriority(.required, for: .horizontal)
                 toggle.setContentCompressionResistancePriority(.required, for: .horizontal)
                 rowViews.append(toggle)
@@ -139,9 +146,15 @@ extension SegmentLookupSheet {
             row.accessibilityTraits = candidate.entry.entryId == shownID ? [.button, .selected] : .button
             row.addGestureRecognizer(ClosureTapGesture { [weak self] in
                 guard let self else { return }
-                // The shown word's own row just opens or closes the list.
+                // The shown word's row opens the closed list; on the open list it clears the pick,
+                // back to no word chosen. Not saved: the next lookup chooses as usual.
                 if candidate.entry.entryId == shownID {
-                    self.isLookupCandidateListExpanded.toggle()
+                    if self.isLookupCandidateListExpanded {
+                        self.showNoLookupCandidate()
+                        sheetVC?.updateReadingFurigana()
+                    } else {
+                        self.isLookupCandidateListExpanded = true
+                    }
                     refresh()
                     return
                 }
