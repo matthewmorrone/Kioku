@@ -217,6 +217,10 @@ struct ContentView: View {
         .onChange(of: readNoteNavigation.isRandomBreakdownRequested) { _, _ in
             openRandomBreakdownIfRequested()
         }
+        // The Read tab's shuffle button.
+        .onChange(of: readNoteNavigation.isRandomNoteRequested) { _, _ in
+            openRandomNoteIfRequested()
+        }
         // Bump the segmenter revision so ReadView re-segments existing text with the new strategy.
         .onChange(of: segmentationStrategySetting) { _, _ in
             rebuildReadResources()
@@ -441,6 +445,22 @@ struct ContentView: View {
         lastActiveNoteID = note.id.uuidString
         selectedTab = .read
         pendingReadScrollTarget = ReadNoteTarget(noteID: note.id, surface: "", destination: .breakdown)
+    }
+
+    // Serves the Read tab's shuffle button: opens a random note in Read, preferring one other than
+    // the note already open so tapping again always moves on.
+    private func openRandomNoteIfRequested() {
+        guard readNoteNavigation.isRandomNoteRequested else { return }
+        readNoteNavigation.isRandomNoteRequested = false
+        let candidates = notesStore.notes
+        let others = candidates.filter { $0.id.uuidString != lastActiveNoteID }
+        guard let note = (others.isEmpty ? candidates : others).randomElement() else {
+            AppLog.info(.audioPlayback, "[ContentView] random note requested but there are no notes")
+            return
+        }
+        selectedReadNote = note
+        lastActiveNoteID = note.id.uuidString
+        selectedTab = .read
     }
 
     // Restores the previously active note so users return to their last reading context.

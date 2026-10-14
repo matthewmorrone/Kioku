@@ -37,4 +37,7 @@ final class ReadNoteNavigation: ObservableObject {
     // Raised by the breakdown's shuffle button when it's shown over the Read tab; ContentView picks
     // a note that has a breakdown, opens it in Read with its breakdown sheet up, and lowers the flag.
     @Published var isRandomBreakdownRequested = false
+    // Raised by the Read tab's shuffle button; ContentView opens a random other note in Read and
+    // lowers the flag.
+    @Published var isRandomNoteRequested = false
 }

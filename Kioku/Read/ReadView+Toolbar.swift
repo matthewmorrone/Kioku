@@ -219,16 +219,29 @@ extension ReadView {
         .accessibilityHint(isBreakdownConfigured ? "" : "Set up an AI provider in Settings to use this")
     }
 
-    // Moves on to a random other song with audio and starts it playing (ContentView picks the note,
-    // as for the lyrics view's shuffle and the Play Random Song shortcut).
+    // Tap opens a random other note; press and hold offers playing a random song in the lyrics
+    // view or opening a random breakdown. ContentView picks the note for all three, as for the
+    // lyrics view's shuffle and the Play Random Song shortcut.
     var titleShuffleButton: some View {
-        Button {
-            ReadNoteNavigation.shared.isRandomPlaybackRequested = true
+        Menu {
+            Button {
+                ReadNoteNavigation.shared.isRandomPlaybackRequested = true
+            } label: {
+                Label("Play a Random Song", systemImage: "music.note")
+            }
+            Button {
+                ReadNoteNavigation.shared.isRandomBreakdownRequested = true
+            } label: {
+                Label("Open a Random Breakdown", systemImage: "sparkles.rectangle.stack")
+            }
         } label: {
             titleActionLabel(systemImage: "shuffle", foreground: .accentColor)
+        } primaryAction: {
+            ReadNoteNavigation.shared.isRandomNoteRequested = true
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Play a Random Song")
+        .accessibilityLabel("Open a Random Note")
+        .accessibilityHint("Press and hold for a random song or breakdown")
     }
 
     // Shared visual treatment for the three title-row action buttons. Sized to match the bottom

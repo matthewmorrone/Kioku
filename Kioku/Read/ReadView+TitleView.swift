@@ -17,7 +17,7 @@ extension ReadView {
                     titleEdit.isShowingTitleAlert = true
                 }
 
-            // Title-row quick actions, in order: play a random song, open the
+            // Title-row quick actions, in order: open a random note, open the
             // breakdown sheet and open the lyrics view.
             // That last slot morphs into the minimized "now playing" control (ReadView+
             // MiniPlayer.swift) once playback has started and the full lyrics view is
