@@ -380,15 +380,20 @@ extension ReadView {
         .sheet(isPresented: $readSheets.isShowingBreakdownSheet) {
             if let note = currentDisplayedNote {
                 NavigationStack {
-                    // Threading the segmenter + surfaceReadingData lets the breakdown's
-                    // per-line tap-to-toggle furigana reuse the same FuriganaResolver as
-                    // ReadView itself, so the readings shown in the sheet match exactly
-                    // what the user sees on the underlying page.
+                    // noteReadings hands the breakdown this page's own segments and readings,
+                    // so each line shows exactly what the user sees here; the segmenter and
+                    // reading data cover lines it can't place in the note.
                     SongStepperView(
                         note: note,
                         segmenter: segmenter,
                         surfaceReadingData: surfaceReadingData,
                         kanjiReadingFallback: kanjiReadingFallback,
+                        noteReadings: NoteReadingSnapshot(
+                            text: document.text,
+                            segmentRanges: document.segmentRanges,
+                            furiganaBySegmentLocation: document.furiganaBySegmentLocation,
+                            furiganaLengthBySegmentLocation: document.furiganaLengthBySegmentLocation
+                        ),
                         dictionaryStore: dictionaryStore,
                         segmenterRevision: segmenterRevision
                     )

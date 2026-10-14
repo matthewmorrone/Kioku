@@ -2,8 +2,8 @@ import Foundation
 import SwiftUI
 
 // Furigana resolution for SongStepperView's cards: per-line reading caches for the big
-// Japanese row, per-headword run readings for the word list, and the overlay of readings the
-// user pinned on the Read tab. Split out of SongStepperView so the view file stays focused on
+// Japanese row (cut from the Read tab's analysis of the note) and per-headword run readings
+// for the word list. Split out of SongStepperView so the view file stays focused on
 // state and layout; everything here is called from the view's row-refresh path.
 extension SongStepperView {
 
@@ -147,15 +147,19 @@ extension SongStepperView {
         return segments
     }
 
-    // Reuses the Read tab's resolver so the breakdown gets the exact same reading
-    // selection (okurigana cropping, lemma fallback, projection) as ReadView. When the
-    // segmenter is unavailable the cache resolves to "no readings" and furigana becomes
-    // a visual no-op — which matches the "degrade gracefully on pure-kana lines" criterion.
-    //
-    // The resolver's output is a fresh recompute — it doesn't know about readings the user
-    // pinned or corrected on the Read tab (Note.segments). applyNoteFuriganaOverrides overlays
-    // those on top so the breakdown always shows the same reading as the underlying page.
+    // A line's segments and readings, taken from the Read tab's own analysis of the note
+    // (noteReadings) — the page's segmentation including the user's splits and merges, and its
+    // readings including pinned corrections — so a line shows exactly what the page shows.
+    // Only a line whose text sits verbatim in the note (see SongBreakdownLineLocator) can be cut
+    // out that way; any other line, or a sheet opened before the Read tab finished analysing the
+    // note, gets a fresh resolve of the line on its own with the Read tab's resolver.
     func buildFuriganaCache(for line: SongLine) -> LineFuriganaCache {
+        if let noteReadings, noteReadings.isUsable(for: note.content),
+           let range = lineNoteRangesByIndex[line.index],
+           let sliced = noteReadings.slice(range),
+           sliced.sourceText == line.original {
+            return sliced
+        }
         let text = line.original
         guard let segmenter, text.isEmpty == false else {
             return LineFuriganaCache(
@@ -166,7 +170,6 @@ extension SongStepperView {
             )
         }
         let edges = segmenter.longestMatchEdges(for: text)
-        let segmentationRanges = edges.map { $0.start..<$0.end }
         let resolved = FuriganaResolver(
             segmenter: segmenter,
             kanjiReadingFallback: kanjiReadingFallback
@@ -175,62 +178,11 @@ extension SongStepperView {
             edges: edges,
             surfaceReadingData: surfaceReadingData
         )
-        var byLocation = resolved.byLocation
-        var lengthByLocation = resolved.lengthByLocation
-        applyNoteFuriganaOverrides(to: &byLocation, lengthByLocation: &lengthByLocation, forLineIndex: line.index)
         return LineFuriganaCache(
             sourceText: text,
-            segmentationRanges: segmentationRanges,
-            furiganaBySegmentLocation: byLocation,
-            furiganaLengthBySegmentLocation: lengthByLocation
+            segmentationRanges: edges.map { $0.start..<$0.end },
+            furiganaBySegmentLocation: resolved.byLocation,
+            furiganaLengthBySegmentLocation: resolved.lengthByLocation
         )
-    }
-
-    // Overlays any reading the user pinned or corrected on the Read tab (persisted in
-    // `note.segments`, restored into `noteFuriganaRestoration`) onto this line's freshly
-    // resolved furigana. Only swaps the reading text at a location the fresh segmentation
-    // already produced a same-length entry for — a location/length mismatch (e.g. the user
-    // manually merged or split segments on the Read tab, shifting boundaries) just falls back
-    // to the freshly-resolved default rather than trying to reconcile differing boundaries.
-    // Regenerating the breakdown always picks up the correct reading regardless.
-    private func applyNoteFuriganaOverrides(
-        to byLocation: inout [Int: String],
-        lengthByLocation: inout [Int: Int],
-        forLineIndex lineIndex: Int
-    ) {
-        guard let restoration = noteFuriganaRestoration,
-              let lineStart = lineStartOffsetsByIndex[lineIndex] else { return }
-        for (location, length) in lengthByLocation {
-            let globalLocation = lineStart + location
-            guard restoration.lengthByLocation[globalLocation] == length,
-                  let reading = restoration.byLocation[globalLocation] else { continue }
-            byLocation[location] = reading
-        }
-    }
-
-    // Restores the note's persisted per-note reading overrides (Note.segments), keyed by
-    // UTF-16 offset within note.content. Nil when the note has no persisted segments or they
-    // no longer validate against its current content (e.g. edited outside the segment-aware
-    // editor) — callers degrade to the freshly-resolved default in that case.
-    static func restoreNoteFurigana(from note: Note) -> (byLocation: [Int: String], lengthByLocation: [Int: Int])? {
-        guard let normalized = SegmentRangeRestoration.normalizedSegmentRanges(note.segments, for: note.content) else { return nil }
-        return SegmentRangeRestoration.furiganaFromSegmentRanges(normalized)
-    }
-
-    // Finds each displayed line's starting UTF-16 offset within note.content, so a note-level
-    // reading override can be rebased into that line's local coordinates. Searches in line
-    // order, advancing the cursor past each match, so a repeated chorus line resolves to its
-    // own occurrence rather than always the first. A line whose text isn't found verbatim
-    // (e.g. the LLM normalized it slightly) is simply omitted — its furigana falls back to the
-    // freshly-resolved default.
-    static func lineStartOffsets(for lines: [SongLine], in noteContent: String) -> [Int: Int] {
-        var offsets: [Int: Int] = [:]
-        var searchStart = noteContent.startIndex
-        for line in lines where line.original.isEmpty == false {
-            guard let range = noteContent.range(of: line.original, range: searchStart..<noteContent.endIndex) else { continue }
-            offsets[line.index] = NSRange(range, in: noteContent).location
-            searchStart = range.upperBound
-        }
-        return offsets
     }
 }

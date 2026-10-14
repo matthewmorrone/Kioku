@@ -27,6 +27,9 @@ struct SongStepperView: View {
     let segmenter: (any TextSegmenting)?
     let surfaceReadingData: SurfaceReadingDataMap
     let kanjiReadingFallback: KanjiReadingFallbackMap
+    // The Read tab's segments and readings for this note, which each line's furigana is cut
+    // from (see buildFuriganaCache). Nil for callers without a Read tab behind them.
+    let noteReadings: NoteReadingSnapshot?
     // Bumped by ContentView whenever the shared segmenter is reconfigured with newly-loaded
     // dictionary data (see ContentView.rebuildReadResources). The segmenter is mutated in
     // place, not replaced, so a furigana cache built against it while data was still loading
@@ -97,14 +100,9 @@ struct SongStepperView: View {
     @State var noteCues: [SubtitleCue] = []
     // Furigana state shared with SongStepperView+Furigana (internal, not private, for that reason).
     @State var furiganaCacheByLineIndex: [Int: LineFuriganaCache] = [:]
-    // The note's persisted per-note reading overrides (Note.segments), restored once on appear
-    // — see buildFuriganaCache / applyNoteFuriganaOverrides. Nil when the note has no persisted
-    // segments or they no longer validate against its current content.
-    @State var noteFuriganaRestoration: (byLocation: [Int: String], lengthByLocation: [Int: Int])?
-    // Each displayed line's starting UTF-16 offset within note.content, so a note-level reading
-    // override (keyed by note.content coordinates) can be rebased into a line's local
-    // coordinates. See lineStartOffsets.
-    @State var lineStartOffsetsByIndex: [Int: Int] = [:]
+    // Each displayed line's UTF-16 range within note.content, for cutting the line's readings
+    // out of noteReadings. See SongBreakdownLineLocator.
+    @State var lineNoteRangesByIndex: [Int: NSRange] = [:]
     // Furigana cache for word-list headwords, keyed by (line, surface) — not surface alone,
     // since the same word can appear on multiple lines with a different resolved reading.
     // Same shape as furiganaCacheByLineIndex's per-line entries (see LineFuriganaCache) so a
@@ -118,6 +116,7 @@ struct SongStepperView: View {
          segmenter: (any TextSegmenting)? = nil,
          surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap(),
          kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap(),
+         noteReadings: NoteReadingSnapshot? = nil,
          dictionaryStore: DictionaryStore? = nil,
          onFinishedPlaying: ((Note) -> Void)? = nil,
          segmenterRevision: Int = 0) {
@@ -125,6 +124,7 @@ struct SongStepperView: View {
         self.segmenter = segmenter
         self.surfaceReadingData = surfaceReadingData
         self.kanjiReadingFallback = kanjiReadingFallback
+        self.noteReadings = noteReadings
         self.dictionaryStore = dictionaryStore
         self.onFinishedPlaying = onFinishedPlaying
         self.segmenterRevision = segmenterRevision
@@ -322,11 +322,17 @@ struct SongStepperView: View {
             wordFuriganaCacheByKey = [:]
             refreshLineDerivedState(for: displayItems)
         }
+        // The Read tab finished (or redid) its analysis of the note — e.g. the sheet opened
+        // before segmentation landed — so every line re-cuts its readings from the new one.
+        .onChange(of: noteReadings) { _, _ in
+            furiganaCacheByLineIndex = [:]
+            wordFuriganaCacheByKey = [:]
+            refreshLineDerivedState(for: displayItems)
+        }
         // Covers first appearance with an already-cached breakdown — onChange above only fires
         // on a *transition*, not on the initial value.
         .onAppear {
             userNoteDraft = SongBreakdownUserNote.note(forNoteID: note.id)
-            noteFuriganaRestoration = Self.restoreNoteFurigana(from: note)
             refreshLineDerivedState(for: displayItems)
             // Reassigned on every appearance (harmless — same closure, same `liveListen`
             // instance for this view's lifetime) so "continue to the next note" fires only
@@ -616,12 +622,12 @@ struct SongStepperView: View {
 
     // MARK: - Row-derived state
 
-    // Rebuilds everything keyed off the current rows: line offsets for note-level reading
-    // overrides, furigana caches for lines and headwords, and — while streaming — expansion
+    // Rebuilds everything keyed off the current rows: each line's place in the note (for cutting
+    // its readings from the Read tab's analysis), furigana caches for lines and headwords, and — while streaming — expansion
     // of the line being written so its words appear as they arrive.
     private func refreshLineDerivedState(for items: [SongLineDisplayItem]) {
         let lines = items.map(\.line)
-        lineStartOffsetsByIndex = Self.lineStartOffsets(for: lines, in: note.content)
+        lineNoteRangesByIndex = SongBreakdownLineLocator.noteRanges(for: lines, in: note.content)
         ensureFuriganaCaches(for: lines)
         if let streaming = items.first(where: { $0.phase == .streaming }) {
             expandedByLineIndex.insert(streaming.line.index)
