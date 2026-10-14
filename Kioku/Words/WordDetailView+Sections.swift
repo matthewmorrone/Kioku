@@ -18,13 +18,11 @@ extension WordDetailView {
         // without helping the learner. The user's saved entry is always kept so they
         // can manage selection on it.
         let savedEntryID = activeEntryID
-        // When the reading switcher is active (a heteronym like 抱く / 様), the arrows own
-        // navigation between readings, so the Definition shows only the active reading's
-        // entry — otherwise every reading's senses stack and switching merely scrolls
-        // between them instead of swapping the meaning in place.
-        let readingSwitcherActive = switchableReadings.count > 1
+        // Words sharing this spelling (抱く いだく / だく) are listed in the Same Spelling
+        // section instead, each opening its own page, so they're left out here.
+        let sameSpellingIDs = Set(sameSpellingEntries.map(\.entryId))
         let filteredData = allDisplayData.filter { data in
-            if readingSwitcherActive { return data.entry.entryId == savedEntryID }
+            if sameSpellingIDs.contains(data.entry.entryId) { return false }
             if data.entry.entryId == savedEntryID { return true }
             let kanjiHopeless = data.entry.hasNoEverydayKanji
             let allUK = data.entry.allSensesUsuallyKana

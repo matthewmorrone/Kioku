@@ -54,8 +54,8 @@ struct WordDetailView: View {
     @State var hasAttemptedLoad = false
     // Readings sharing this word's kanji spelling — both cross-entry heteronyms (抱く → いだく/だく/
     // うだく, distinct entries) and within-entry kana variants (涙 → なみだ/なだ, one entry), each tied
-    // to its entry. Populated by loadDisplayData; drives the header reading switcher, which dedupes by
-    // reading STRING (like the Read-tab lookup sheet). See WordDetailView+ReadingSwitcher.
+    // to its entry. Populated by loadDisplayData; its other entries make up the Same Spelling
+    // section (WordDetailView+SameSpelling). The header arrows read the active entry's own forms.
     @State var readingVariants: [ReadingVariants.Variant] = []
     // Not private: read/written by wordDetailMetadataSections's Note section.
     @State var personalNoteText: String = ""
@@ -507,6 +507,7 @@ struct WordDetailView: View {
                 // Section content lives in WordDetailView+Sections.swift (definition/paths/forms,
                 // then everything else) to keep this file under the line-count guardrail.
                 wordDetailDefinitionSections
+                sameSpellingSection
                 wordDetailMetadataSections
             }
             .listStyle(.insetGrouped)
