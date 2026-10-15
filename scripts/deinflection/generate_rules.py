@@ -55,9 +55,12 @@ VOWEL_ROWS = {
 VOWEL_OF = {kana: vowel for vowel, row in VOWEL_ROWS.items() for kana in row}
 
 
-def grammar_for(ctype):
-    """The grammar a word of a UniDic conjugation type ends on, named as deinflection.json names it."""
+def grammar_for(ctype, classical_types=None):
+    """The grammar a word of a UniDic conjugation type ends on, named as deinflection.json names it.
+    A classical type has one only when the grammar table's classicalVerbs names its family."""
     family = ctype.split('-')[0]
+    if ctype.startswith('文語'):
+        return (classical_types or {}).get(family)
     if family == '五段':
         return 'v5'
     if family in ('上一段', '下一段'):
@@ -97,10 +100,12 @@ def common_prefix(a, b):
     return n
 
 
-def read_unidic(lex_lines, aux_words):
+def read_unidic(lex_lines, aux_words, classical_types=None):
     """Endings per (cType, cForm), the last stem kana of empty-ending forms, auxiliaries' forms, and
     every auxiliary UniDic lists (classical ones included, for the coverage check), from UniDic
-    lex.csv's lines (an open file or any iterable of text lines)."""
+    lex.csv's lines (an open file or any iterable of text lines). Classical verbs are read only for
+    the families classical_types names (the grammar table's classicalVerbs)."""
+    classical_types = classical_types or {}
     endings = collections.defaultdict(collections.Counter)
     stem_last_kana = collections.defaultdict(collections.Counter)
     aux_forms = collections.defaultdict(set)
@@ -121,9 +126,9 @@ def read_unidic(lex_lines, aux_words):
             if wanted and KANA.match(surface) and not STYLISED.search(surface) and not is_drawn_out(surface):
                 aux_forms[lemma].add((surface, cform, classical))
             continue
-        if ctype == '*' or classical:
+        if ctype == '*' or (classical and ctype.split('-')[0] not in classical_types):
             continue
-        if pos1 not in ('動詞', '形容詞'):
+        if pos1 not in ('動詞', '形容詞') or (classical and pos1 != '動詞'):
             continue
         # Readings, not spellings: a row written 分る under the base 分かる would otherwise yield a
         # nonsense ending. Rules match kana, so kana endings are what they need.
@@ -137,6 +142,10 @@ def read_unidic(lex_lines, aux_words):
             continue
         p = common_prefix(surface, base)
         ending, base_ending = surface[p:], base[p:]
+        # A nidan form adds to the whole dictionary form (出づ → 出づる, 出づれ), leaving no base ending
+        # to rewrite: the rule takes the stem's last kana along (づる → づ), as rules match endings.
+        if classical and ending and not base_ending and p:
+            ending, base_ending = surface[p - 1:], base[p - 1:]
         if not base_ending or not KANA.match(base_ending) or (ending and not KANA.match(ending)):
             continue
         if STYLISED.search(ending) or is_drawn_out(ending):
@@ -243,13 +252,19 @@ def build_rules(lex_lines, grammar_path, extras_path, unidic_sha):
     standalone_group = grammar['standaloneForms']['forms']
     standalone = set(standalone_group)
 
-    endings, stem_last_kana, aux_forms, all_aux = read_unidic(lex_lines, aux_words)
+    classical_verbs = grammar['classicalVerbs']
+    classical_types = classical_verbs['types']
+    endings, stem_last_kana, aux_forms, all_aux = read_unidic(lex_lines, aux_words, classical_types)
     check_auxiliary_coverage(grammar, all_aux)
 
     forms = collections.defaultdict(list)  # cType → [(cForm, ending, base ending)]
     for (ctype, cform), counter in endings.items():
         for (ending, base_ending), count in counter.items():
-            if count >= MIN_WORDS or ctype.startswith(('サ行変格', 'カ行変格')):
+            # A classical nidan form keeps its dictionary form whole (過ぐ → 過ぐる): that shape is the
+            # conjugation itself, attested however few words of the row UniDic lists (老ゆる, 過ぐる).
+            # Off-shape rows (くる → る) are spelling mismatches between a form and its base.
+            regular_classical = ctype.startswith('文語') and ending.startswith(base_ending)
+            if count >= MIN_WORDS or regular_classical or ctype.startswith(('サ行変格', 'カ行変格')):
                 forms[ctype].append((cform, ending, base_ending))
     # ます takes further auxiliaries the way a verb does (まし + た, ませ + ぬ): its forms join the
     # conjugating words, written out whole since ます is a word of its own.
@@ -262,8 +277,21 @@ def build_rules(lex_lines, grammar_path, extras_path, unidic_sha):
         rules.setdefault(key, (helper, source))
 
     for ctype, ctype_forms in sorted(forms.items()):
-        word_grammar = grammar_for(ctype)
+        word_grammar = grammar_for(ctype, classical_types)
         if word_grammar is None:
+            continue
+        if ctype.startswith('文語'):
+            # A classical verb's rules: its standalone forms and the attachment rows naming its grammar,
+            # all in the classical group.
+            for cform, ending, base_ending in ctype_forms:
+                unidic = f'UniDic {ctype} {cform}'
+                if cform in classical_verbs['standalone']:
+                    add(grammar['classicalGroup'], ending, base_ending, [word_grammar], [word_grammar], unidic)
+                for row in grammar['attachments']:
+                    if word_grammar in row['after'] and cform == row['form']:
+                        rules_in = [row['gives']] if row['gives'] else [word_grammar]
+                        add(grammar['classicalGroup'], ending + row['attach'], base_ending, rules_in, [word_grammar],
+                            f"{unidic} + {row['attach']} (attachments)", row.get('helper'))
             continue
         cforms = {cf for cf, _, _ in ctype_forms}
         # The 連用形 that takes た/て: the 音便 form when the type has one, else 連用形-一般. A godan

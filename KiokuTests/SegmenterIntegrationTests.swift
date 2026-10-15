@@ -722,6 +722,24 @@ final class SegmenterIntegrationTests: XCTestCase {
         XCTAssertNil(Lexicon.preferredLookupCandidate(among: lexicon.lookupCandidates(surface: "きた")))
     }
 
+    // 出ずる is the 連体形 of the classical shimo-nidan 出ず (JMdict v2d-s): the generated nidan rule
+    // ずる → ず reaches it, the lookup sheet lists it, and the segmenter keeps it one word. The same
+    // rules (くる → く, する → す) must not land on words JMdict doesn't tag nidan, like 来 or 酢.
+    func testShimoNidanAttributiveResolvesToClassicalEntry() throws {
+        let resources = try sharedResources()
+        let lexicon = Lexicon(
+            dictionaryStore: resources.dictionaryStore,
+            segmenter: resources.segmenter,
+            deinflector: resources.deinflector,
+            surfaceReadingData: [:]
+        )
+        let candidates = lexicon.lookupCandidates(surface: "出ずる")
+        XCTAssertTrue(candidates.contains { $0.headword == "出ず" }, "出ずる lists 出ず: \(candidates.map(\.headword))")
+        XCTAssertEqual(resources.segmenter.longestMatchEdges(for: "出ずる").map(\.surface), ["出ずる"])
+        XCTAssertFalse(resources.segmenter.lemmaCandidates(for: "くれば").contains("く"))
+        XCTAssertFalse(resources.segmenter.lemmaCandidates(for: "すれば").contains("す"))
+    }
+
     // キス is tagged "n,vs" in JMdict — a suru-noun with no written "キスする" headword (the vs tag
     // alone is meant to signal "attach する"). Regression for the buildLattice exception that
     // admits katakana-noun+conjugated-する spans across the hiragana/katakana boundary, and for

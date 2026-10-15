@@ -50,7 +50,10 @@
     {"attach": "り", "gives": "ri", "after": ["v5"], "form": "仮定形-一般", "group": "classicalForms", "note": "perfective/continuous り after a godan え-form (咲ける, 書けり)"},
     {"attach": "り", "gives": "ri", "after": ["vs"], "form": "未然形-セ", "group": "classicalForms"},
     {"attach": "らむ", "gives": "ramu", "after": ["v5", "v1", "vk", "vs"], "form": "終止形-一般", "group": "classicalForms", "note": "present conjecture"},
-    {"attach": "らし", "gives": "rashi", "after": ["v5", "v1", "vk", "vs"], "form": "終止形-一般", "group": "classicalForms", "note": "inference"}
+    {"attach": "らし", "gives": "rashi", "after": ["v5", "v1", "vk", "vs"], "form": "終止形-一般", "group": "classicalForms", "note": "inference"},
+    {"attach": "ば", "gives": null, "after": ["v2s", "v2k"], "form": "已然形-一般", "group": "classicalForms", "note": "classical 已然形 + ば (出づれば)"},
+    {"attach": "ど", "gives": null, "after": ["v2s", "v2k"], "form": "已然形-一般", "group": "classicalForms", "note": "concessive ど (出づれど)"},
+    {"attach": "ども", "gives": null, "after": ["v2s", "v2k"], "form": "已然形-一般", "group": "classicalForms", "note": "concessive ども (出づれども)"}
   ],
   "voicing": {
     "about": "た/て/たり after ん, and after a ガ行 イ音便 (泳いだ), are voiced.",
@@ -133,6 +136,11 @@
     }
   },
   "classicalGroup": "classicalForms",
+  "classicalVerbs": {
+    "about": "Classical verb conjugations whose forms get rules, by UniDic conjugation family, with the grammar their rules end on. The grammar names JMdict's tags (v2*-s shimo-nidan, v2*-k kami-nidan; ConjugationClass maps them), so a chain only reaches an entry JMdict tags that way: 出ずる → 出ず (v2d-s). Only the forms no modern verb shares: the 連体形 (出づる, 過ぐる) on its own, and the 已然形 with ば/ど/ども (出づれば). The 未然形 and 連用形 (出で, 消え) are modern ichidan stems too, and a rule for them would list the archaic verb beside every modern form. All rules go in classicalGroup, so the segmenter prices them as classical steps.",
+    "types": {"文語下二段": "v2s", "文語上二段": "v2k"},
+    "standalone": ["連体形-一般"]
+  },
   "auxiliaryCoverage": {
     "about": "Every auxiliary (助動詞) UniDic lists must be covered by a row above or named here with the reason it gets no rules; the generator fails the build otherwise (check_auxiliary_coverage).",
     "leftOut": {

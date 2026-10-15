@@ -306,7 +306,7 @@ extension Segmenter {
                     }) {
                         lemmas = lemmas.filter { PartOfSpeech.isExpression(trie.partOfSpeech(for: $0)) == false }
                     }
-                    deinflected.formUnion(lemmas)
+                    deinflected.formUnion(lemmas.filter { carriesChainGrammar($0, paths: paths) })
                 }
             }
 
@@ -328,6 +328,19 @@ extension Segmenter {
         }
 
         return (trusted, deinflected)
+    }
+
+    // False when every chain to `lemma` ends on a grammar whose POS bit the word lacks
+    // (ConjugationClass.requiredDetailBit): くる read through a nidan rule lands on く, which is no
+    // nidan verb. A chain ending on a modern grammar is left to the coarse verb gate in lemmaCandidates.
+    private func carriesChainGrammar(_ lemma: String, paths: DeinflectionPathMap) -> Bool {
+        guard let deinflector else { return true }
+        let grammars = deinflector.endingGrammars(from: paths, targetLemma: lemma)
+        guard grammars.isEmpty == false else { return true }
+        let bits = trie.partOfSpeech(for: lemma)
+        return grammars.contains { grammar in
+            ConjugationClass.requiredDetailBit(forGrammar: grammar).map { bits & $0 != 0 } ?? true
+        }
     }
 
     // Builds a debug summary showing how the current resolver pipeline admits one emitted lemma for a surface.
