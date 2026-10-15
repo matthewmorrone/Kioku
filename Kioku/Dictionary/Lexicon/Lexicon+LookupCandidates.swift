@@ -71,13 +71,23 @@ nonisolated extension Lexicon {
                 )
                 if index == 0 {
                     leaders.append(candidate)
-                } else if entry.frequencyRank != nil || isWrittenInKana(entry, surface: lemma) {
+                } else if entry.frequencyRank != nil || isWrittenInKana(entry, surface: lemma)
+                            || isHomograph(entry, of: lemma) {
                     others.append(candidate)
                 }
             }
         }
         others.sort { ($0.entry.frequencyRank ?? Int.max) < ($1.entry.frequencyRank ?? Int.max) }
         return Array((leaders + others).prefix(Self.maxLookupCandidates))
+    }
+
+    // True when the entry writes the kanji `lemma` as an everyday spelling: a homograph (抱く read
+    // いだく, だく or うだく), listed however rare, since the reading arrows only cycle one entry's
+    // own readings and the list is the only way to reach the others.
+    func isHomograph(_ entry: DictionaryEntry, of lemma: String) -> Bool {
+        ScriptClassifier.containsKanji(lemma) && entry.kanjiForms.contains {
+            $0.text == lemma && DictionaryEntry.kanjiFormIsNonEveryday(info: $0.info) == false
+        }
     }
 
     // True when `surface` is kana and the entry is a word normally written that way: no kanji form,

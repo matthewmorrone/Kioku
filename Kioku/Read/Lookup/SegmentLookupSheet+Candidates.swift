@@ -44,12 +44,15 @@ extension SegmentLookupSheet {
         currentSheetLookupCandidates.count > 1 && currentSheetDictionaryEntry == nil
     }
 
-    // The readings the header arrows cycle: with several dictionary words, only the shown word's
-    // own readings (none while a pick is awaited); otherwise every reading of the surface.
+    // The readings the header arrows cycle: only the shown dictionary word's own readings (涙 なみだ
+    // / なだ) — other words, homographs included (抱く いだく / だく), are the list's job. None while
+    // a pick is awaited. Every reading of the surface only when no candidates resolved at all.
     var readingsForArrows: [String] {
-        guard currentSheetLookupCandidates.count > 1 else { return currentSheetUniqueReadings }
-        guard let shownID = currentSheetDictionaryEntry?.entryId else { return [] }
-        return currentSheetLookupCandidates.first { $0.entry.entryId == shownID }?.surfaceReadings ?? []
+        let candidates = currentSheetLookupCandidates
+        guard candidates.isEmpty == false else { return currentSheetUniqueReadings }
+        let shown = currentSheetDictionaryEntry.flatMap { entry in candidates.first { $0.entry.entryId == entry.entryId } }
+            ?? (candidates.count == 1 ? candidates[0] : nil)
+        return shown?.surfaceReadings ?? []
     }
 
     // Makes `candidate` the word the sheet shows, naming it on the lemma line by its headword, or by
