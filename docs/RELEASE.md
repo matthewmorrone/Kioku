@@ -103,12 +103,16 @@ subtitle carries the three terms people search for that the name doesn't.
 
 ### What's New in This Version (1.3)
 
-> • Shuffle: play a random song from the Read tab, and jump between a lyric line,
->   its breakdown and word details
-> • Song breakdowns now list every word with its meaning, with options to show or
->   hide particles, katakana words and repeats
-> • More accurate furigana: readings are picked from how a word is actually used in context
-> • Better word splitting, including classical verb endings
+> • Lyrics show word bubbles: the meaning of each word floats beside the line as it
+>   plays
+> • Shuffle: Random Karaoke or Random Breakdown starts a random song from the Read tab
+> • Jump between a lyric line, its breakdown and word details; press and hold the
+>   lyrics button to start playing
+> • Lookup sheet: pick the word from the list, cycle its readings with the arrows;
+>   words sharing a spelling are listed together
+> • Song breakdowns list every word with its meaning, with options to show or hide
+>   particles, katakana words and repeats
+> • More accurate furigana and word splitting, including classical verb endings
 > • Faster startup and a smoother Read tab
 
 ### Description
