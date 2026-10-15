@@ -3,12 +3,12 @@ import UIKit
 
 // Renders the lyrics card's word bubbles: comic-style white speech bubbles, one per word holding
 // its meaning, plus one holding the breakdown's grammar note for the line on its last word. Each
-// bubble's tail runs all the way to its word. They go in the empty space beside the line — each
-// side taking half the words, one level with the line and the rest split above and below it so
-// tails never cross the text (sideLayout), free to run past the card's top and bottom since the
+// bubble's tail runs all the way to its word. The meanings go in the empty space beside the line —
+// each side taking half the words, one level with the line and the rest split above and below it so
+// tails never cross the text — and the note goes below the line (sideLayout), free to run past the card's top and bottom since the
 // neighbouring lines are centred too. When the line is too wide to leave room beside it, they go
 // in rows above (meanings) and below (notes) it instead, over the neighbouring lines; the card
-// never grows for them. Everything springs into place as words are added. Sits over the renderer in its coordinates (rects from
+// never grows for them. Places are planned for the whole line, so each bubble pops in where it stays. Sits over the renderer in its coordinates (rects from
 // KiokuScrollingTextView.reportRangeRects). Ignores touches.
 struct LyricWordBubbleOverlay: View {
     let bubbles: [PlacedLyricWordBubble]
@@ -46,8 +46,12 @@ struct LyricWordBubbleOverlay: View {
 
     var body: some View {
         GeometryReader { proxy in
+            // Laid out for every word of the line, drawn only for those shown, so a bubble's place
+            // is fixed before it appears.
             let side = Self.sideLayout(bubbles, lineRect: lineRect, size: proxy.size)
-            let slots = side ?? Self.stackedLayout(bubbles, width: proxy.size.width)
+            let shownIDs = Set(bubbles.filter(\.isShown).map(\.id))
+            let slots = (side ?? Self.stackedLayout(bubbles, width: proxy.size.width))
+                .filter { shownIDs.contains($0.id / 2) }
             ZStack(alignment: .topLeading) {
                 ForEach(slots, id: \.id) { slot in
                     bubble(slot, in: proxy.size)
@@ -66,7 +70,7 @@ struct LyricWordBubbleOverlay: View {
                 .fill(Color.white)
                 .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
                 .frame(width: size.width, height: size.height)
-            Text(slot.text)
+            Text(Self.displayText(slot.text))
                 .font(Font(slot.isNote ? Self.commentFont : Self.glossFont))
                 .foregroundStyle(slot.isNote ? Color(white: 0.35) : Color.black)
                 .multilineTextAlignment(.center)
@@ -78,9 +82,17 @@ struct LyricWordBubbleOverlay: View {
         .transition(.scale(scale: 0.4, anchor: .center).combined(with: .opacity))
     }
 
+    // A bubble's text with its inline markdown applied (a breakdown note's *emphasis*), so the
+    // asterisks aren't drawn; the plain text when it doesn't parse.
+    static func displayText(_ text: String) -> AttributedString {
+        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(text)
+    }
+
     // A bubble body's size for its text: padded and capped at `maxWidth`, wrapping between words onto
     // as many lines as it takes, and never narrower than its longest word so no word is broken.
-    private static func size(_ text: String, note: Bool, maxWidth: CGFloat) -> CGSize {
+    private static func size(_ markdown: String, note: Bool, maxWidth: CGFloat) -> CGSize {
+        let text = String(displayText(markdown).characters)
         let font = note ? commentFont : glossFont
         let attributes: [NSAttributedString.Key: Any] = [.font: font]
         let textWidth = ceil((text as NSString).size(withAttributes: attributes).width)
@@ -105,7 +117,9 @@ struct LyricWordBubbleOverlay: View {
     // from that bubble and one falling from it (earlier words up, later down), each bubble kept
     // clear of the line so its tail drops onto the word's top or bottom through empty space, never
     // across the text. Within a stack the bubble nearest the line points at the word nearest the
-    // edge, so tails nest instead of crossing. A note follows its word's meaning.
+    // edge, so tails nest instead of crossing. Notes are too long for a side column (they'd wrap
+    // into a tower running off the card), so they go below the line instead, as wide as
+    // maxCommentWidth allows, under whatever the columns put there.
     static func sideLayout(_ bubbles: [PlacedLyricWordBubble], lineRect: CGRect?, size cardSize: CGSize) -> [Slot]? {
         let width = cardSize.width
         guard let line = lineRect, width > 0 else { return nil }
@@ -126,17 +140,10 @@ struct LyricWordBubbleOverlay: View {
             let columnWidth = isLeft ? leftWidth : rightWidth
             // A bubble's x: hugging the line's edge on this side.
             func x(for size: CGSize) -> CGFloat { isLeft ? line.minX - margin - size.width : line.maxX + margin }
-            // The bubbles of `words` in order, each word's meaning then its note.
+            // The meanings of `words` in order.
             func entries(_ words: [PlacedLyricWordBubble]) -> [(bubble: PlacedLyricWordBubble, text: String, note: Bool, size: CGSize)] {
-                words.flatMap { bubble -> [(bubble: PlacedLyricWordBubble, text: String, note: Bool, size: CGSize)] in
-                    var pair: [(bubble: PlacedLyricWordBubble, text: String, note: Bool, size: CGSize)] = []
-                    if let gloss = bubble.gloss {
-                        pair.append((bubble, gloss, false, size(gloss, note: false, maxWidth: min(columnWidth, maxGlossWidth))))
-                    }
-                    if let comment = bubble.comment {
-                        pair.append((bubble, comment, true, size(comment, note: true, maxWidth: min(columnWidth, maxCommentWidth))))
-                    }
-                    return pair
+                words.compactMap { bubble in
+                    bubble.gloss.map { (bubble, $0, false, size($0, note: false, maxWidth: min(columnWidth, maxGlossWidth))) }
                 }
             }
 
@@ -157,8 +164,6 @@ struct LyricWordBubbleOverlay: View {
                 top = min(frame.minY, line.minY)
                 bottom = max(frame.maxY, line.maxY)
                 rest = Array(fromEdge.dropFirst())
-                // Its note, if any, joins the stacks like the other words'.
-                rest.insert(PlacedLyricWordBubble(id: edgeWord.id, anchor: edgeWord.anchor, gloss: nil, comment: edgeWord.comment), at: 0)
             }
 
             // Earlier words (in sung order) up, later ones down, half each; an odd one out goes
@@ -182,6 +187,26 @@ struct LyricWordBubbleOverlay: View {
                     edge = isAbove ? y - stackGap : y + entry.size.height + stackGap
                 }
             }
+        }
+
+        // The notes, below the line: centred on their word where the card allows, each under the
+        // lowest bubble already placed across its span so nothing overlaps.
+        for word in sorted {
+            guard let comment = word.comment else { continue }
+            let size = size(comment, note: true, maxWidth: min(width - 2 * margin, maxCommentWidth))
+            let x = min(max(margin, word.anchor.midX - size.width / 2), max(margin, width - margin - size.width))
+            let y = slots
+                .filter { $0.frame.maxY > line.maxY && $0.frame.maxX + gap > x && $0.frame.minX - gap < x + size.width }
+                .map { $0.frame.maxY + stackGap }
+                .reduce(line.maxY + 10, max)
+            guard y + size.height <= cardSize.height + sideOverflow else { return nil }
+            slots.append(Slot(
+                id: word.id * 2 + 1,
+                text: comment,
+                isNote: true,
+                frame: CGRect(x: x, y: y, width: size.width, height: size.height),
+                tip: CGPoint(x: word.anchor.midX, y: line.maxY + 1)
+            ))
         }
         return slots
     }
