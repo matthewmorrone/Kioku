@@ -636,8 +636,10 @@ extension ReadView {
     // lookup sheet would show for it there (displayedDictionaryEntry), so the bubble and the sheet
     // agree. Where the sheet leaves the word unpicked (kana なりたい: 成る, 鳴る… all read なる), the
     // two likeliest words' meanings side by side, "to become / to ring". Nil for particles — their
-    // dictionary glosses describe grammar, not meaning — and for words with no entry.
+    // glosses describe grammar — counting, as the segmenter does (TransitionClass), any spelling
+    // that can be one (は, not 歯 "tooth"); and nil for words with no entry.
     func lyricWordGloss(at location: Int, surface: String) -> String? {
+        guard PartOfSpeech.isParticle(dictionaryStore?.posBits(forSurface: surface) ?? 0) == false else { return nil }
         let entries: [DictionaryEntry]
         if let entry = displayedDictionaryEntry(forSurface: surface, at: location) {
             entries = [entry]
@@ -646,9 +648,7 @@ extension ReadView {
         }
         var glosses: [String] = []
         for entry in entries {
-            let isParticle = entry.senses.first?.pos?.components(separatedBy: ",").contains("prt") == true
-            guard isParticle == false,
-                  let gloss = entry.senses.first(where: { $0.glosses.isEmpty == false })?.glosses.first,
+            guard let gloss = entry.senses.first(where: { $0.glosses.isEmpty == false })?.glosses.first,
                   glosses.contains(gloss) == false else { continue }
             glosses.append(gloss)
         }
