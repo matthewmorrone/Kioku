@@ -42,7 +42,7 @@ nonisolated extension Lexicon {
                     // form, and no frequency rank) before 打 and 駄, which are only read だ.
                     let lhsKana = isWrittenInKana(lhs, surface: lemma), rhsKana = isWrittenInKana(rhs, surface: lemma)
                     if lhsKana != rhsKana { return lhsKana }
-                    return (lhs.frequencyRank ?? Int.max) < (rhs.frequencyRank ?? Int.max)
+                    return usageRank(lhs, surface: lemma) < usageRank(rhs, surface: lemma)
                 }
             // The conjugation from this lemma to the surface, applied to each entry's own kana.
             let transitions = lemma == surface ? nil : deinflector.bestTransitions(from: pathsByLemma, targetLemma: lemma)
@@ -77,14 +77,7 @@ nonisolated extension Lexicon {
                 }
             }
         }
-        // A kana-only function word (the particle や) has no frequency rank, so ranking alone sinks it
-        // below every kanji homophone and the row cap drops it; it is too likely a reading to lose.
-        others.sort { lhs, rhs in
-            let lhsFunction = isKanaFunctionWord(lhs.entry, surface: surface)
-            let rhsFunction = isKanaFunctionWord(rhs.entry, surface: surface)
-            if lhsFunction != rhsFunction { return lhsFunction }
-            return (lhs.entry.frequencyRank ?? Int.max) < (rhs.entry.frequencyRank ?? Int.max)
-        }
+        others.sort { usageRank($0.entry, surface: $0.lemma) < usageRank($1.entry, surface: $1.lemma) }
         return Array((leaders + others).prefix(Self.maxLookupCandidates))
     }
 
@@ -95,6 +88,26 @@ nonisolated extension Lexicon {
             $0.text == lemma && DictionaryEntry.kanjiFormIsNonEveryday(info: $0.info) == false
         }
     }
+
+    // How common `entry` is as `surface`, lower first. The frequency rank, with two corrections for
+    // a kana surface, where JMdict's rank is the entry's and not the reading's: a secondary reading
+    // nobody tags common borrows nothing (嫌 is rank 402 as いや, not as や), and a function word
+    // whose kana JMdict tags common, which wordfreq never ranks, counts as an everyday word (the
+    // particle や ahead of 屋; 物 at 584 still ahead of もの's particle sense).
+    private func usageRank(_ entry: DictionaryEntry, surface: String) -> Int {
+        let rank = entry.frequencyRank ?? Int.max
+        guard ScriptClassifier.containsKanji(surface) == false else { return rank }
+        let readingIsCommon = entry.kanaForms.contains { $0.text == surface && $0.priority != nil }
+        if readingIsCommon == false, entry.kanaForms.first?.text != surface { return Int.max }
+        if readingIsCommon, isKanaFunctionWord(entry, surface: surface) {
+            return min(rank, Self.commonFunctionWordRank)
+        }
+        return rank
+    }
+
+    // The stand-in rank for a common kana function word: inside the top thousand words, so only the
+    // most frequent homophones (物, 事) still outrank it.
+    static let commonFunctionWordRank = 1000
 
     // True when `surface` is kana and the entry is a kana-only particle, copula or auxiliary — the
     // same functional parts of speech the dictionary store ranks first for a kana lookup.

@@ -724,9 +724,9 @@ final class SegmenterIntegrationTests: XCTestCase {
         XCTAssertEqual(Lexicon.preferredLookupCandidate(among: kita)?.entry.entryId, kita.first?.entry.entryId)
     }
 
-    // や lists the particle: 嫌 also reads や and leads (uk, ranked), and the unranked particle used
-    // to sort below every ranked homophone and fall past the sheet's row cap.
-    func testKanaOnlyParticleLeadsLookupCandidates() throws {
+    // A kana surface opens on its most common use: the particle や, whose kana JMdict tags common,
+    // ahead of 嫌 (ranked as いや, not や); but こと and もの on 事 and 物, ahead of their particle senses.
+    func testKanaSurfaceLeadsWithItsMostCommonUse() throws {
         let resources = try sharedResources()
         let lexicon = Lexicon(
             dictionaryStore: resources.dictionaryStore,
@@ -734,11 +734,13 @@ final class SegmenterIntegrationTests: XCTestCase {
             deinflector: resources.deinflector,
             surfaceReadingData: [:]
         )
-        let candidates = lexicon.lookupCandidates(surface: "や")
+        let ya = lexicon.lookupCandidates(surface: "や").first
         XCTAssertTrue(
-            candidates.contains { $0.entry.kanjiForms.isEmpty && $0.entry.senses.contains { $0.pos == "prt" } },
-            "や lists the particle, got \(candidates.map(\.headword))"
+            ya?.entry.kanjiForms.isEmpty == true && ya?.entry.senses.contains { $0.pos == "prt" } == true,
+            "や leads with the particle, got \(String(describing: ya?.headword))"
         )
+        XCTAssertEqual(lexicon.lookupCandidates(surface: "こと").first?.headword, "事")
+        XCTAssertEqual(lexicon.lookupCandidates(surface: "もの").first?.headword, "物")
     }
 
     // キス is tagged "n,vs" in JMdict — a suru-noun with no written "キスする" headword (the vs tag
