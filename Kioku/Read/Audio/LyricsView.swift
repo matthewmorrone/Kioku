@@ -80,6 +80,9 @@ struct LyricsView: View {
     // The results sheet shown when the singer taps Stop (LyricsView+Sing.swift).
     @State var isShowingSingSummary = false
     @State var isShowingSingOptions = false
+    // Sing started while the instrumental was still being switched in: playback starts once the
+    // switch lands, so the first seconds aren't the vocal mix.
+    @State var isSingPlaybackPending = false
     // Sing options, kept across sessions (LyricsView+Sing.swift).
     @AppStorage(SingReveal.storageKey) var singRevealRaw = SingReveal.show.rawValue
     @AppStorage(SingStrictness.storageKey) var singStrictnessRaw = SingStrictness.normal.rawValue

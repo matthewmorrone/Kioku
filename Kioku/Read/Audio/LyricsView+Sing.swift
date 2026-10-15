@@ -39,6 +39,17 @@ extension LyricsView {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(singSession.isActive ? "Stop singing" : "Sing along")
+        // The instrumental Sing asked for has finished switching in (or the switch ended without
+        // it, e.g. no instrumental could be built): start the song. Watching the source too covers
+        // a switch quick enough that the in-progress flag never reaches this view.
+        .onChange(of: isSwitchingAudioSource) { wasSwitching, isSwitching in
+            guard wasSwitching, isSwitching == false else { return }
+            startPendingSingPlayback()
+        }
+        .onChange(of: audioSource) { _, source in
+            guard source == .instrumental else { return }
+            startPendingSingPlayback()
+        }
 
         Button {
             isShowingSingOptions = true
@@ -123,10 +134,12 @@ extension LyricsView {
         }
     }
 
-    // Starts or stops listening. Starting switches playback to the instrumental and stopping puts
-    // back whatever was playing before.
+    // Starts or stops listening. Starting switches playback to the instrumental and plays the song
+    // (once the instrumental is in, when it has to be switched to); stopping pauses and puts back
+    // whatever was playing before.
     private func toggleSing() {
         if singSession.isActive {
+            isSingPlaybackPending = false
             if let previous = singSession.restoreAudioSource { onSetAudioSource(previous) }
             singSession.stop()
             controller.pause()
@@ -151,8 +164,20 @@ extension LyricsView {
             )
             guard singSession.isActive else { return }
             singSession.restoreAudioSource = previous
-            onSetAudioSource(.instrumental)
+            if previous == .instrumental {
+                if controller.isPlaying == false { controller.play() }
+            } else {
+                isSingPlaybackPending = true
+                onSetAudioSource(.instrumental)
+            }
         }
+    }
+
+    // Plays the song for a Sing start that was waiting on the instrumental, once.
+    private func startPendingSingPlayback() {
+        guard isSingPlaybackPending else { return }
+        isSingPlaybackPending = false
+        if singSession.isActive, controller.isPlaying == false { controller.play() }
     }
 
     // The Stop summary: heard / graded counts and each missed word once, in song order.
