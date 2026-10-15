@@ -634,13 +634,40 @@ extension ReadView {
 
     // A lyric word's meaning for the lyrics card's word bubbles: the first gloss of the entry the
     // lookup sheet would show for it there (displayedDictionaryEntry), so the bubble and the sheet
-    // agree. Nil for particles — their dictionary glosses describe grammar, not meaning — and for
-    // words with no entry.
+    // agree. Where the sheet leaves the word unpicked (kana なりたい: 成る, 鳴る… all read なる), the
+    // two likeliest words' meanings side by side, "to become / to ring". Nil for particles — their
+    // dictionary glosses describe grammar, not meaning — and for words with no entry.
     func lyricWordGloss(at location: Int, surface: String) -> String? {
-        guard let entry = displayedDictionaryEntry(forSurface: surface, at: location) else { return nil }
-        let isParticle = entry.senses.first?.pos?.components(separatedBy: ",").contains("prt") == true
-        guard isParticle == false else { return nil }
-        return entry.senses.first { $0.glosses.isEmpty == false }?.glosses.first
+        let entries: [DictionaryEntry]
+        if let entry = displayedDictionaryEntry(forSurface: surface, at: location) {
+            entries = [entry]
+        } else {
+            entries = Array(unpickedLyricCandidates(forSurface: surface, at: location).prefix(2))
+        }
+        var glosses: [String] = []
+        for entry in entries {
+            let isParticle = entry.senses.first?.pos?.components(separatedBy: ",").contains("prt") == true
+            guard isParticle == false,
+                  let gloss = entry.senses.first(where: { $0.glosses.isEmpty == false })?.glosses.first,
+                  glosses.contains(gloss) == false else { continue }
+            glosses.append(gloss)
+        }
+        return glosses.isEmpty ? nil : glosses.joined(separator: " / ")
+    }
+
+    // The words sharing a lyric word's shown reading, in order: the sheet's list when it's unpicked.
+    private func unpickedLyricCandidates(forSurface surface: String, at location: Int) -> [DictionaryEntry] {
+        guard let lexicon else { return [] }
+        let reconstructed = reconstructedReading(for: surface, at: location)
+        let displayed = reconstructed.isEmpty
+            ? ReadingVariants.orderedReadings(
+                surface: surface,
+                lexicon: lexicon,
+                segmenter: segmenter,
+                surfaceReadingData: surfaceReadingData
+            ).first
+            : reconstructed
+        return Lexicon.lookupCandidates(lexicon.lookupCandidates(surface: surface), sharingReading: displayed).map(\.entry)
     }
 
     // Whether the current segment is saved — resolved by the SAME dictionary entry
