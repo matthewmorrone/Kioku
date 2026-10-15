@@ -69,6 +69,9 @@ final class KiokuScrollingTextView: UIScrollView, UIScrollViewDelegate {
     var onPinchChanged: ((CGFloat) -> Void)?
     var onPinchEnded: (() -> Void)?
     private var pinchRecognizer: UIPinchGestureRecognizer?
+    // Taps in the scroll view below or beside the content view (a note shorter than the screen)
+    // count as taps on empty space, so they dismiss the lookup sheet like a tap between lines.
+    private let outsideContentTapFilter = OutsideContentTapFilter()
 
     // Hosts the CoreText content view and a sibling debug overlay at the same coordinate
     // origin so all rect math uses one space.
@@ -92,6 +95,16 @@ final class KiokuScrollingTextView: UIScrollView, UIScrollViewDelegate {
         pinch.cancelsTouchesInView = false
         addGestureRecognizer(pinch)
         pinchRecognizer = pinch
+        outsideContentTapFilter.contentView = contentView
+        let outsideTap = UITapGestureRecognizer(target: self, action: #selector(handleOutsideContentTap))
+        outsideTap.cancelsTouchesInView = false
+        outsideTap.delegate = outsideContentTapFilter
+        addGestureRecognizer(outsideTap)
+    }
+
+    // A tap outside the content view: reported as a tap on no character, like one between lines.
+    @objc private func handleOutsideContentTap() {
+        onCharacterTapped?(nil)
     }
 
     // Dispatches the pinch state to the matching callback. `.changed` passes the
