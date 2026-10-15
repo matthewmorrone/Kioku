@@ -135,4 +135,14 @@ extension LyricsView {
             return PlacedLyricWordBubble(id: bubble.noteRange.location, anchor: rect, gloss: bubble.gloss, comment: bubble.comment)
         }
     }
+
+    // Shows the bubbles on `line` once the card has stayed there a moment, and hides them while the
+    // lines are being dragged or scrubbed through; a cancelled wait (the line moved on) shows nothing.
+    func settleWordBubbles(on line: Int, isMoving: Bool) async {
+        settledBubbleLine = nil
+        guard isMoving == false else { return }
+        try? await Task.sleep(for: .milliseconds(350))
+        guard Task.isCancelled == false else { return }
+        settledBubbleLine = line
+    }
 }

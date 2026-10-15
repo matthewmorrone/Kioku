@@ -83,6 +83,9 @@ struct LyricsView: View {
     // card (cue-local ranges → renderer coordinates, from KiokuScrollingTextView.reportRangeRects).
     @State var wordBubbleCache = LyricWordBubbleCache()
     @State var wordBubbleRects: [NSRange: CGRect] = [:]
+    // The line the bubbles show on: set once the card has stayed on a line a moment, so dragging or
+    // scrubbing through lines doesn't flash and spring bubbles on each one passed.
+    @State var settledBubbleLine: Int?
     // The results sheet shown when the singer taps Stop (LyricsView+Sing.swift).
     @State var isShowingSingSummary = false
     @State var isShowingSingOptions = false
@@ -445,7 +448,7 @@ struct LyricsView: View {
                         // Word meanings over the line as it's sung, beside it or in rows above and
                         // below it (LyricsView+WordBubbles).
                         .overlay {
-                            if isTranslationVisible {
+                            if isTranslationVisible, settledBubbleLine == displayIndex {
                                 LyricWordBubbleOverlay(
                                     bubbles: placedWordBubbles(
                                         forCueAt: displayIndex,
@@ -454,7 +457,11 @@ struct LyricsView: View {
                                     ),
                                     lineRect: wordBubbleLineRect(cueLength: cueInput.text.utf16.count)
                                 )
+                                .id(displayIndex)
                             }
+                        }
+                        .task(id: BubbleSettleKey(line: displayIndex, isMoving: isDragging || isScrubbing)) {
+                            await settleWordBubbles(on: displayIndex, isMoving: isDragging || isScrubbing)
                         }
                     }
                     if displayIndex < cues.count && hasMismatch(at: displayIndex) {
