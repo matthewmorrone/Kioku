@@ -41,7 +41,8 @@ final class CoreLoopUITests: KiokuUITestCase {
         let start = app.buttons["Start Flashcards"].firstMatch
         XCTAssertTrue(start.waitForExistence(timeout: 30), "Flashcards start screen missing")
         record(app, "flashcards home")
-        XCTAssertTrue(wait(for: start, toMatch: "isEnabled == true", timeout: 15), "Start Flashcards stays disabled with a saved word")
+        // 30 s like the waits around it: on a slow runner one accessibility query can take ~15 s.
+        XCTAssertTrue(wait(for: start, toMatch: "isEnabled == true", timeout: 30), "Start Flashcards stays disabled with a saved word")
         start.tap()
 
         let know = app.buttons["Know"].firstMatch
