@@ -18,6 +18,13 @@ final class KiokuScrollingTextView: UIScrollView, UIScrollViewDelegate {
     // out (lyrics/song cards).
     var onScrollOffsetYChanged: ((CGFloat) -> Void)?
 
+    // Ranges the host wants measured after each layout, and where to send their rects (this
+    // view's coordinates). See reportRangeRects.
+    var reportedRanges: [NSRange] = []
+    var onRangeRects: (([NSRange: CGRect]) -> Void)?
+    // The last rects sent, so an unchanged layout doesn't re-send and re-render the host.
+    private var lastReportedRangeRects: [NSRange: CGRect] = [:]
+
     // Reentrancy guard so an externally-applied offset doesn't echo back out through
     // `onScrollOffsetYChanged` — same pattern as RichTextEditorCoordinator.
     private var isApplyingExternalScrollOffset = false
@@ -213,11 +220,34 @@ final class KiokuScrollingTextView: UIScrollView, UIScrollViewDelegate {
         // `setLineOriginShifts` is a no-op when the dict is unchanged, so when bounds
         // were already correct in updateUIView this costs nothing.
         applyCenteringShiftsIfNeeded()
+        reportRangeRects()
         // Recompute debug geometry from the engine's now-current layout state. Without
         // this, a view whose first `updateUIView` ran with width=0 (e.g. a representable
         // inside a Form Section) would keep an empty `segmentGeometry` even after layout
         // populated valid placements.
         recomputeDebugGeometry()
+    }
+
+    // Measures each requested range against the layout just made (after centering shifts, so the
+    // rects match what's drawn) and sends them to the host when they changed. A range is measured
+    // character by character and unioned, since a packed-layout query covers only the segment its
+    // first character is in. Sent on the next main-queue turn: the host stores them in SwiftUI
+    // state, which can't change inside the layout pass that SwiftUI's own update triggered.
+    func reportRangeRects() {
+        guard let onRangeRects else { return }
+        let length = (contentView.layoutEngine.attributedString.string as NSString).length
+        var rects: [NSRange: CGRect] = [:]
+        for range in reportedRanges where range.location >= 0 && NSMaxRange(range) <= length {
+            var union: CGRect?
+            for offset in range.location..<NSMaxRange(range) {
+                guard let rect = contentView.layoutEngine.firstRect(forCharacterRange: NSRange(location: offset, length: 1)) else { continue }
+                union = union.map { $0.union(rect) } ?? rect
+            }
+            if let union { rects[range] = convert(union, from: contentView) }
+        }
+        guard rects != lastReportedRangeRects else { return }
+        lastReportedRangeRects = rects
+        DispatchQueue.main.async { onRangeRects(rects) }
     }
 
     // Computes per-line X shifts that center each line within the available width

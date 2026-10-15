@@ -632,6 +632,17 @@ extension ReadView {
         )
     }
 
+    // A lyric word's meaning for the lyrics card's word bubbles: the first gloss of the entry the
+    // lookup sheet would show for it there (displayedDictionaryEntry), so the bubble and the sheet
+    // agree. Nil for particles — their dictionary glosses describe grammar, not meaning — and for
+    // words with no entry.
+    func lyricWordGloss(at location: Int, surface: String) -> String? {
+        guard let entry = displayedDictionaryEntry(forSurface: surface, at: location) else { return nil }
+        let isParticle = entry.senses.first?.pos?.components(separatedBy: ",").contains("prt") == true
+        guard isParticle == false else { return nil }
+        return entry.senses.first { $0.glosses.isEmpty == false }?.glosses.first
+    }
+
     // Whether the current segment is saved — resolved by the SAME dictionary entry
     // (currentSegmentDictionaryEntry) the learned-state button reads, so the star's fill state and
     // the Learned/Not-Learned marker can never disagree about which word they're each describing.

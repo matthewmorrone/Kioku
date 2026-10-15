@@ -155,6 +155,12 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     // line peeks below the active one.
     var scrollAnchorFraction: CGFloat = 0.32
 
+    // Character ranges whose on-screen rects the host wants after each layout (the lyrics card's
+    // word bubbles point at them), reported through onRangeRects in this view's own coordinates.
+    // Empty asks for none.
+    var reportedRanges: [NSRange] = []
+    var onRangeRects: (([NSRange: CGRect]) -> Void)? = nil
+
     // Coordinator holds the textSize captured at the start of a pinch so each .changed
     // delta computes against the original, not the live (already-mutated) value. Also
     // forwards SwiftUI bindings to the UIView's closures.
@@ -211,6 +217,12 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
 
         // Re-wire per body re-evaluation (same staleness rationale as the tap callback below).
         uiView.onScrollOffsetYChanged = onScrollOffsetYChanged
+        // A new set of ranges needs a layout pass to measure (KiokuScrollingTextView.reportRangeRects).
+        uiView.onRangeRects = onRangeRects
+        if uiView.reportedRanges != reportedRanges {
+            uiView.reportedRanges = reportedRanges
+            uiView.setNeedsLayout()
+        }
 
         // Re-apply scroll enablement on every update so the LyricsView toggle is honored
         // when the host re-evaluates with a different value (e.g. dismiss vs. active).

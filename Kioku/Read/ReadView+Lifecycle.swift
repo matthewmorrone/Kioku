@@ -312,7 +312,8 @@ extension ReadView {
                     onOpenBreakdown: { openNoteDestination(.breakdown, atNoteLocation: activeLyricNoteLocation()) },
                     onPlayRandom: { ReadNoteNavigation.shared.isRandomPlaybackRequested = true },
                     singRomanize: lyricRomanizer.spans(for:),
-                    singSession: singSession
+                    singSession: singSession,
+                    dictionaryGloss: { location, surface in lyricWordGloss(at: location, surface: surface) }
                 )
                 .opacity(audioPlayback.isShowingLyricsView ? 1 : 0)
                 .allowsHitTesting(audioPlayback.isShowingLyricsView)

@@ -1,6 +1,5 @@
 import SwiftUI
 import LyricAlignment
-import Translation
 import UIKit
 
 // Floating karaoke-style lyrics popup rendered as an overlay on ReadView.
@@ -16,9 +15,8 @@ struct LyricsView: View {
     let segmentationRanges: [Range<String.Index>]
     let noteText: String
     let attachmentID: UUID?
-    // The note's own id — used to look up a matching SongBreakdown (LyricsView+BreakdownGist)
-    // so its per-line gist can be preferred over Apple's on-device translation. Nil-safe: no
-    // breakdown lookup happens without it, falling back to translationCache as before.
+    // The note's own id — used to look up its SongBreakdown for the word bubbles
+    // (LyricsView+WordBubbles). Nil-safe: without it the bubbles use the dictionary.
     let noteID: UUID?
     // Narrowed playback highlight in noteText UTF-16 coords, computed upstream from the granularity
     // setting + cue timings. nil means no sub-cue highlight (Sentence behavior).
@@ -77,6 +75,14 @@ struct LyricsView: View {
     // Sing mode's live listening loop and its per-word verdicts (LyricsView+Sing.swift). Owned by
     // ReadView, so the Read tab can show the same results.
     @ObservedObject var singSession: SingSession
+    // A word's dictionary meaning for its word bubble (LyricsView+WordBubbles), given its note
+    // location and surface; nil for particles and unknown words. Supplied by the Read view, which
+    // owns the dictionary; nil (previews) leaves lines without a breakdown bubble-free.
+    var dictionaryGloss: ((Int, String) -> String?)? = nil
+    // The word bubbles of the line last built, and the measured rects of its words in the active
+    // card (cue-local ranges → renderer coordinates, from KiokuScrollingTextView.reportRangeRects).
+    @State var wordBubbleCache = LyricWordBubbleCache()
+    @State var wordBubbleRects: [NSRange: CGRect] = [:]
     // The results sheet shown when the singer taps Stop (LyricsView+Sing.swift).
     @State var isShowingSingSummary = false
     @State var isShowingSingOptions = false
@@ -209,10 +215,9 @@ struct LyricsView: View {
     // the cumulative translation onto an absolute time rather than integrating per-frame.
     @State private var fineScrubBaseMs: Int? = nil
 
-    @State private var translationTrigger: TranslationSession.Configuration? = nil
-    // Supplies the note's SongBreakdown (if any) for LyricsView+BreakdownGist's gist lookup.
+    // Supplies the note's SongBreakdown (if any) for the word bubbles' meanings and notes.
     // Auto-injected from the ancestor tree (ContentView) — no manual threading needed. Not
-    // `private`: accessed from the LyricsView+BreakdownGist extension in a separate file.
+    // `private`: accessed from the LyricsView+WordBubbles extension in a separate file.
     @EnvironmentObject var songBreakdownStore: SongBreakdownStore
     // Reads the same Read-view setting so toggling ruby spacing in Read also affects the
     // karaoke popup. AppStorage subscribes to the persisted key directly — no observation
@@ -231,7 +236,6 @@ struct LyricsView: View {
     @AppStorage(TokenColorSettings.savedLearnedColorKey) private var savedLearnedHex: String = TokenColorSettings.defaultSavedLearnedHex
     @AppStorage(TokenColorSettings.savedNotLearnedColorKey)
     private var savedNotLearnedHex: String = TokenColorSettings.defaultSavedNotLearnedHex
-    @StateObject var translationCache = LyricsTranslationCache()
 
     // Backing storage for the in-place settings popup (LyricsView+SettingsPopup.swift). All four
     // display toggles are popup-scoped (LyricsPopupSettings) — NOT shared with ReadView's own
@@ -429,19 +433,28 @@ struct LyricsView: View {
                                 onSegmentTapped(globalLocation, rect, nil)
                             },
                             isScrollEnabled: false,
-                            textAlignment: .center
+                            textAlignment: .center,
+                            reportedRanges: isTranslationVisible
+                                ? wordBubbleRanges(forCueAt: displayIndex, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count)
+                                : [],
+                            onRangeRects: { wordBubbleRects = $0 }
                         )
                         .frame(maxWidth: .infinity)
                         .frame(height: rendererHeight)
                         .clipped()
-                    }
-                    if isTranslationVisible, let translation = displayedTranslation(for: displayIndex) {
-                        Text(translation)
-                            .scaledFont(size: 12)
-                            .foregroundStyle(.secondary)
-                            .italic()
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
+                        // Word meanings and notes over the line as it's sung, in the bands
+                        // reserved above and below it (LyricsView+WordBubbles).
+                        .overlay {
+                            if isTranslationVisible {
+                                LyricWordBubbleOverlay(bubbles: placedWordBubbles(
+                                    forCueAt: displayIndex,
+                                    cueOriginInNote: cueOriginInNote,
+                                    cueLength: cueInput.text.utf16.count
+                                ))
+                            }
+                        }
+                        .padding(.top, isTranslationVisible ? LyricWordBubbleOverlay.topBand : 0)
+                        .padding(.bottom, isTranslationVisible ? LyricWordBubbleOverlay.bottomBand : 0)
                     }
                     if displayIndex < cues.count && hasMismatch(at: displayIndex) {
                         HStack(spacing: 4) {
@@ -456,13 +469,6 @@ struct LyricsView: View {
                     }
                 }
                 .padding(.vertical, 8)
-                .translationTask(translationTrigger) { session in
-                    // Batch-translate all untranslated cues up front so translations are ready during playback.
-                    await translateAllCues(session: session)
-                }
-                .onAppear {
-                    translationTrigger = translationConfig
-                }
 
                 ScrollView {
                     VStack(alignment: .center, spacing: 0) {
@@ -549,9 +555,6 @@ struct LyricsView: View {
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(color: .black.opacity(0.4), radius: 24, x: 0, y: 8)
-        .onAppear {
-            if let attachmentID { translationCache.load(for: attachmentID) }
-        }
         .onDisappear {
             if singSession.isActive, let previous = singSession.restoreAudioSource { onSetAudioSource(previous) }
             singSession.stop()
