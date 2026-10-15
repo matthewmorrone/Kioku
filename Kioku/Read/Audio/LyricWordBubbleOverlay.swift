@@ -22,7 +22,7 @@ struct LyricWordBubbleOverlay: View {
     static let cornerRadius: CGFloat = 14
     static let gap: CGFloat = 8
     static let margin: CGFloat = 8
-    // Narrowest side room the side layout uses; bubbles there wrap to two lines.
+    // Narrowest side room the side layout uses; bubbles there wrap between words.
     static let minColumnWidth: CGFloat = 52
     static let maxGlossWidth: CGFloat = 150
     static let maxCommentWidth: CGFloat = 220
@@ -32,7 +32,7 @@ struct LyricWordBubbleOverlay: View {
     static let lineClearance: CGFloat = 4
     static let stackGap: CGFloat = 10
     static let stackedRows = 2
-    // Height of one bubble row in the above/below layout, which leaves room for the tail.
+    // Height of a one-line bubble row in the above/below layout, which leaves room for the tail.
     static var rowHeight: CGFloat { ceil(glossFont.lineHeight) + 2 * verticalPadding + 12 }
 
     // One bubble's place: its body and the point on its word its tail reaches.
@@ -69,9 +69,8 @@ struct LyricWordBubbleOverlay: View {
             Text(slot.text)
                 .font(Font(slot.isNote ? Self.commentFont : Self.glossFont))
                 .foregroundStyle(slot.isNote ? Color(white: 0.35) : Color.black)
-                .lineLimit(2)
                 .multilineTextAlignment(.center)
-                .truncationMode(.tail)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, Self.horizontalPadding)
                 .frame(width: slot.frame.width, height: slot.frame.height)
                 .position(x: slot.frame.midX, y: slot.frame.midY)
@@ -79,14 +78,24 @@ struct LyricWordBubbleOverlay: View {
         .transition(.scale(scale: 0.4, anchor: .center).combined(with: .opacity))
     }
 
-    // A bubble body's size for its text: padded and capped at `maxWidth`, wrapping to two lines when
-    // the text is wider than that.
+    // A bubble body's size for its text: padded and capped at `maxWidth`, wrapping between words onto
+    // as many lines as it takes, and never narrower than its longest word so no word is broken.
     private static func size(_ text: String, note: Bool, maxWidth: CGFloat) -> CGSize {
         let font = note ? commentFont : glossFont
-        let textWidth = ceil((text as NSString).size(withAttributes: [.font: font]).width)
-        let lines: CGFloat = textWidth + 2 * horizontalPadding > maxWidth ? 2 : 1
-        return CGSize(width: min(textWidth + 2 * horizontalPadding, maxWidth),
-                      height: ceil(font.lineHeight) * lines + 2 * verticalPadding)
+        let attributes: [NSAttributedString.Key: Any] = [.font: font]
+        let textWidth = ceil((text as NSString).size(withAttributes: attributes).width)
+        let longestWord = text.split(separator: " ")
+            .map { ceil((String($0) as NSString).size(withAttributes: attributes).width) }
+            .max() ?? 0
+        // +1 so rounding in Text's own layout never breaks the longest word.
+        let inner = min(textWidth, max(maxWidth - 2 * horizontalPadding, longestWord)) + 1
+        let height = ceil((text as NSString).boundingRect(
+            with: CGSize(width: inner, height: .greatestFiniteMagnitude),
+            options: .usesLineFragmentOrigin,
+            attributes: attributes,
+            context: nil
+        ).height)
+        return CGSize(width: inner + 2 * horizontalPadding, height: height + 2 * verticalPadding)
     }
 
     // The beside-the-line layout, or nil when neither side has room or a stack would run further
@@ -188,6 +197,10 @@ struct LyricWordBubbleOverlay: View {
         var slots: [Slot] = []
         for note in [false, true] {
             var rowEnds: [CGFloat] = []
+            // Rows sit one tallest bubble (plus tail room) apart, since long ones wrap.
+            let rowStep = bubbles.compactMap { note ? $0.comment : $0.gloss }
+                .map { size($0, note: note, maxWidth: min(width, note ? maxCommentWidth : maxGlossWidth)).height + 12 }
+                .max() ?? rowHeight
             for bubble in bubbles.sorted(by: { $0.anchor.midX < $1.anchor.midX }) {
                 guard let text = note ? bubble.comment : bubble.gloss else { continue }
                 let size = size(text, note: note, maxWidth: min(width, note ? maxCommentWidth : maxGlossWidth))
@@ -204,7 +217,7 @@ struct LyricWordBubbleOverlay: View {
                 }
                 guard let row else { continue }
                 rowEnds[row] = x + size.width
-                let offset = 10 + CGFloat(row) * rowHeight
+                let offset = 10 + CGFloat(row) * rowStep
                 let y = note ? lineBottom + offset : lineTop - offset - size.height
                 slots.append(Slot(
                     id: bubble.id * 2 + (note ? 1 : 0),
