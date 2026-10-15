@@ -83,6 +83,8 @@ struct LyricsView: View {
     // card (cue-local ranges → renderer coordinates, from KiokuScrollingTextView.reportRangeRects).
     @State var wordBubbleCache = LyricWordBubbleCache()
     @State var wordBubbleRects: [NSRange: CGRect] = [:]
+    // Whether the current line's bubbles use the rows above and below it (too wide for the sides).
+    @State var wordBubblesNeedBands = false
     // The results sheet shown when the singer taps Stop (LyricsView+Sing.swift).
     @State var isShowingSingSummary = false
     @State var isShowingSingOptions = false
@@ -442,8 +444,8 @@ struct LyricsView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: rendererHeight)
                         .clipped()
-                        // Word meanings and notes over the line as it's sung, in the bands
-                        // reserved above and below it (LyricsView+WordBubbles).
+                        // Word meanings over the line as it's sung, beside it or in rows above and
+                        // below it (LyricsView+WordBubbles).
                         .overlay {
                             if isTranslationVisible {
                                 LyricWordBubbleOverlay(
@@ -452,12 +454,16 @@ struct LyricsView: View {
                                         cueOriginInNote: cueOriginInNote,
                                         cueLength: cueInput.text.utf16.count
                                     ),
-                                    lineRect: wordBubbleLineRect(cueLength: cueInput.text.utf16.count)
+                                    lineRect: wordBubbleLineRect(cueLength: cueInput.text.utf16.count),
+                                    onNeedsBandsChange: { needs in
+                                        guard needs != wordBubblesNeedBands else { return }
+                                        withAnimation(.easeInOut(duration: 0.25)) { wordBubblesNeedBands = needs }
+                                    }
                                 )
                             }
                         }
-                        .padding(.top, isTranslationVisible ? LyricWordBubbleOverlay.topBand : 0)
-                        .padding(.bottom, isTranslationVisible ? LyricWordBubbleOverlay.bottomBand : 0)
+                        // Room above and below only while the bubbles use the rows there.
+                        .padding(.vertical, isTranslationVisible && wordBubblesNeedBands ? LyricWordBubbleOverlay.band : 0)
                     }
                     if displayIndex < cues.count && hasMismatch(at: displayIndex) {
                         HStack(spacing: 4) {
@@ -472,6 +478,8 @@ struct LyricsView: View {
                     }
                 }
                 .padding(.vertical, 8)
+                // Above the lyric rows below, which word bubbles running past the card overlap.
+                .zIndex(1)
 
                 ScrollView {
                     VStack(alignment: .center, spacing: 0) {
