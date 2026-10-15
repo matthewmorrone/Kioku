@@ -120,6 +120,10 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     // and entry the sheet is showing when the button is tapped, so the detail opens on the same
     // pair (the reading arrows can re-point the entry, e.g. さわる ↔ ふれる).
     var sheetOpenWordDetail: ((String?, DictionaryEntry?) -> Void)?
+    // The word-detail button's long-press shortcuts: which other views of the segment's line the
+    // note has (its lyrics view when it has audio, its breakdown when one exists), and opening one.
+    var sheetLineDestinationsProvider: (() -> [ReadNoteDestination])?
+    var sheetOpenLineIn: ((ReadNoteDestination) -> Void)?
     // Provides tappable word components: (surface, first gloss) pairs.
     var sheetWordComponentsProvider: (() -> [(surface: String, gloss: String?)]?)?
     var currentSheetWordComponents: [(surface: String, gloss: String?)] = []
@@ -566,6 +570,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetLearnedStateProvider: (() -> LearnedState)? = nil,
         sheetSetLearnedState: ((LearnedState) -> Void)? = nil,
         sheetOpenWordDetail: ((String?, DictionaryEntry?) -> Void)? = nil,
+        sheetLineDestinationsProvider: (() -> [ReadNoteDestination])? = nil,
+        sheetOpenLineIn: ((ReadNoteDestination) -> Void)? = nil,
         sheetWordComponentsProvider: (() -> [(surface: String, gloss: String?)]?)? = nil,
         sheetCompoundComponentsProvider: (() -> [(lemma: String, gloss: String?)]?)? = nil,
         sheetLookupCandidatesProvider: (() -> (candidates: [LookupCandidate], chosenEntryID: Int64?))? = nil,
@@ -593,6 +599,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         self.sheetLearnedStateProvider = sheetLearnedStateProvider
         self.sheetSetLearnedState = sheetSetLearnedState
         self.sheetOpenWordDetail = sheetOpenWordDetail
+        self.sheetLineDestinationsProvider = sheetLineDestinationsProvider
+        self.sheetOpenLineIn = sheetOpenLineIn
         self.sheetWordComponentsProvider = sheetWordComponentsProvider
         self.sheetCompoundComponentsProvider = sheetCompoundComponentsProvider
         self.sheetLookupCandidatesProvider = sheetLookupCandidatesProvider

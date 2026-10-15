@@ -40,6 +40,8 @@ extension SegmentLookupSheet {
         let capturedSheetLearnedStateProvider = self.sheetLearnedStateProvider
         let capturedSheetSetLearnedState = self.sheetSetLearnedState
         let capturedSheetOpenWordDetail = self.sheetOpenWordDetail
+        let capturedSheetLineDestinationsProvider = self.sheetLineDestinationsProvider
+        let capturedSheetOpenLineIn = self.sheetOpenLineIn
         let capturedSheetWordComponentsProvider = self.sheetWordComponentsProvider
         let capturedSheetCompoundComponentsProvider = self.sheetCompoundComponentsProvider
         let capturedSheetLookupCandidatesProvider = self.sheetLookupCandidatesProvider
@@ -68,6 +70,8 @@ extension SegmentLookupSheet {
             self.sheetLearnedStateProvider = capturedSheetLearnedStateProvider
             self.sheetSetLearnedState = capturedSheetSetLearnedState
             self.sheetOpenWordDetail = capturedSheetOpenWordDetail
+            self.sheetLineDestinationsProvider = capturedSheetLineDestinationsProvider
+            self.sheetOpenLineIn = capturedSheetOpenLineIn
             self.sheetWordComponentsProvider = capturedSheetWordComponentsProvider
             self.sheetCompoundComponentsProvider = capturedSheetCompoundComponentsProvider
             self.sheetLookupCandidatesProvider = capturedSheetLookupCandidatesProvider
@@ -236,6 +240,8 @@ extension SegmentLookupSheet {
         sheetLearnedStateProvider = nil
         sheetSetLearnedState = nil
         sheetOpenWordDetail = nil
+        sheetLineDestinationsProvider = nil
+        sheetOpenLineIn = nil
         sheetWordComponentsProvider = nil
         sheetCompoundComponentsProvider = nil
         currentSheetCompoundComponents = []

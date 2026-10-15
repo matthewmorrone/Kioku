@@ -255,6 +255,19 @@ extension ReadView {
                     let paths = LatticeEdge.validPaths(from: SegmentLookupSheet.shared.currentSheetSublatticeEdges)
                     onOpenWordDetail?(entry.entryId, surface, reading, paths)
                 },
+                // The word-detail button's long-press: this line in the lyrics view (when the note
+                // has audio) or the breakdown (when it has one).
+                sheetLineDestinationsProvider: {
+                    var destinations: [ReadNoteDestination] = []
+                    if audioPlayback.activeAudioAttachmentID != nil { destinations.append(.lyrics) }
+                    if let noteID = document.activeNoteID, songBreakdownStore.hasBreakdown(forNoteID: noteID) {
+                        destinations.append(.breakdown)
+                    }
+                    return destinations
+                },
+                sheetOpenLineIn: { destination in
+                    openNoteDestination(destination, atNoteLocation: segmentSelection.selectedSegmentLocation)
+                },
                 // Deferred to Breakdown expansion (see sheetReadingsProvider comment).
                 sheetWordComponentsProvider: { nil },
                 // One row per word the lemma line names (起こる + そう), each with its meaning.

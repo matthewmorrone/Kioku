@@ -638,11 +638,34 @@ final class SurfaceSheetViewController: UIViewController {
         }
     }
 
-    // Reflects whether the current surface resolved to a dictionary entry that can be opened.
+    // Reflects whether the current surface resolved to a dictionary entry that can be opened, and
+    // gives the button its long-press menu: jump to this line in the note's lyrics view or
+    // breakdown, whichever the note has. Rebuilt on every refresh so the actions target the
+    // segment shown now.
     func updateOpenDetailButtonAppearance() {
         let hasDictionaryEntry = sheet?.currentSheetDictionaryEntry != nil
         openDetailButton.isEnabled = hasDictionaryEntry
         openDetailButton.alpha = hasDictionaryEntry ? 1 : 0.45
+        let destinations = sheet?.sheetLineDestinationsProvider?() ?? []
+        guard destinations.isEmpty == false, let openLineIn = sheet?.sheetOpenLineIn else {
+            openDetailButton.menu = nil
+            return
+        }
+        openDetailButton.menu = UIMenu(children: destinations.compactMap { destination in
+            switch destination {
+            case .lyrics:
+                return UIAction(title: "Open Line in Lyrics", image: UIImage(systemName: "music.mic")) { _ in
+                    DispatchQueue.main.async { openLineIn(.lyrics) }
+                }
+            case .breakdown:
+                return UIAction(title: "Open Line in Breakdown", image: UIImage(systemName: "sparkles.rectangle.stack")) { _ in
+                    DispatchQueue.main.async { openLineIn(.breakdown) }
+                }
+            case .text:
+                return nil
+            }
+        })
+        openDetailButton.showsMenuAsPrimaryAction = false
     }
 
 }
