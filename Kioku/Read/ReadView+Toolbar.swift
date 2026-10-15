@@ -107,7 +107,19 @@ extension ReadView {
                     DispatchQueue.main.async { StartupTimer.mark("lyrics toggle: main thread free") }
                 }
             }
+            .onLongPressGesture(minimumDuration: 0.35) {
+                // Press and hold: open the lyrics and start the song. With no audio yet there's
+                // nothing to play, so it offers the media picker as a tap does.
+                guard lyricAlignment.isAligning == false || audioPlayback.activeAudioAttachmentID != nil else { return }
+                guard audioPlayback.activeAudioAttachmentID != nil else {
+                    subtitleImport.isShowingLyricMediaPicker = true
+                    return
+                }
+                audioPlayback.isShowingLyricsView = true
+                audioPlayback.audioController.play()
+            }
             .accessibilityLabel(lyricAlignment.isAligning ? "Aligning Lyrics" : (audioPlayback.isShowingLyricsView ? "Hide Lyrics" : "Show Lyrics"))
+            .accessibilityHint("Press and hold to open and play")
             .accessibilityAddTraits(.isButton)
     }
 
@@ -193,14 +205,9 @@ extension ReadView {
         return songBreakdownStore.isGenerating(forNoteID: activeNoteID)
     }
 
+    // Tap opens the breakdown at its saved position; press and hold opens it and starts playing.
     var titleBreakdownButton: some View {
-        Button {
-            // Opened from here, the breakdown keeps its own saved position, not a line some
-            // earlier lyric/word jump focused.
-            readSheets.breakdownFocusLocation = nil
-            readSheets.breakdownAutoplay = false
-            readSheets.isShowingBreakdownSheet = true
-        } label: {
+        Group {
             if isBreakdownGeneratingForActiveNote {
                 titleActionLabel {
                     ProgressView()
@@ -213,11 +220,27 @@ extension ReadView {
                 titleActionLabel(systemImage: "sparkles.rectangle.stack", foreground: ReadToggleAppearance.foreground(isOn: hasBreakdown))
             }
         }
-        .buttonStyle(.plain)
-        .disabled(isBreakdownConfigured == false)
+        .contentShape(Capsule())
+        .onTapGesture {
+            openBreakdownFromTitle(autoplay: false)
+        }
+        .onLongPressGesture(minimumDuration: 0.35) {
+            openBreakdownFromTitle(autoplay: true)
+        }
+        .allowsHitTesting(isBreakdownConfigured)
         .opacity(isBreakdownConfigured ? 1.0 : 0.5)
         .accessibilityLabel(isBreakdownGeneratingForActiveNote ? "Breakdown generating" : "Open Breakdown")
-        .accessibilityHint(isBreakdownConfigured ? "" : "Set up an AI provider in Settings to use this")
+        .accessibilityHint(isBreakdownConfigured ? "Press and hold to open and play" : "Set up an AI provider in Settings to use this")
+        .accessibilityAddTraits(.isButton)
+    }
+
+    // Opens the breakdown sheet from the title row, playing from the start when `autoplay`.
+    // Opened from here, the breakdown keeps its own saved position, not a line some earlier
+    // lyric/word jump focused.
+    private func openBreakdownFromTitle(autoplay: Bool) {
+        readSheets.breakdownFocusLocation = nil
+        readSheets.breakdownAutoplay = autoplay
+        readSheets.isShowingBreakdownSheet = true
     }
 
     // Tap opens a random other note; press and hold offers Random Karaoke (a random song playing in
