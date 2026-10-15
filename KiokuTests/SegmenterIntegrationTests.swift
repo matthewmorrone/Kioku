@@ -722,6 +722,23 @@ final class SegmenterIntegrationTests: XCTestCase {
         XCTAssertNil(Lexicon.preferredLookupCandidate(among: lexicon.lookupCandidates(surface: "きた")))
     }
 
+    // や lists the particle: 嫌 also reads や and leads (uk, ranked), and the unranked particle used
+    // to sort below every ranked homophone and fall past the sheet's row cap.
+    func testKanaOnlyParticleLeadsLookupCandidates() throws {
+        let resources = try sharedResources()
+        let lexicon = Lexicon(
+            dictionaryStore: resources.dictionaryStore,
+            segmenter: resources.segmenter,
+            deinflector: resources.deinflector,
+            surfaceReadingData: [:]
+        )
+        let candidates = lexicon.lookupCandidates(surface: "や")
+        XCTAssertTrue(
+            candidates.contains { $0.entry.kanjiForms.isEmpty && $0.entry.senses.contains { $0.pos == "prt" } },
+            "や lists the particle, got \(candidates.map(\.headword))"
+        )
+    }
+
     // キス is tagged "n,vs" in JMdict — a suru-noun with no written "キスする" headword (the vs tag
     // alone is meant to signal "attach する"). Regression for the buildLattice exception that
     // admits katakana-noun+conjugated-する spans across the hiragana/katakana boundary, and for

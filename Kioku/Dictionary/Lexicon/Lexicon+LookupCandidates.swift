@@ -77,7 +77,14 @@ nonisolated extension Lexicon {
                 }
             }
         }
-        others.sort { ($0.entry.frequencyRank ?? Int.max) < ($1.entry.frequencyRank ?? Int.max) }
+        // A kana-only function word (the particle や) has no frequency rank, so ranking alone sinks it
+        // below every kanji homophone and the row cap drops it; it is too likely a reading to lose.
+        others.sort { lhs, rhs in
+            let lhsFunction = isKanaFunctionWord(lhs.entry, surface: surface)
+            let rhsFunction = isKanaFunctionWord(rhs.entry, surface: surface)
+            if lhsFunction != rhsFunction { return lhsFunction }
+            return (lhs.entry.frequencyRank ?? Int.max) < (rhs.entry.frequencyRank ?? Int.max)
+        }
         return Array((leaders + others).prefix(Self.maxLookupCandidates))
     }
 
@@ -86,6 +93,17 @@ nonisolated extension Lexicon {
     func isHomograph(_ entry: DictionaryEntry, of lemma: String) -> Bool {
         ScriptClassifier.containsKanji(lemma) && entry.kanjiForms.contains {
             $0.text == lemma && DictionaryEntry.kanjiFormIsNonEveryday(info: $0.info) == false
+        }
+    }
+
+    // True when `surface` is kana and the entry is a kana-only particle, copula or auxiliary — the
+    // same functional parts of speech the dictionary store ranks first for a kana lookup.
+    private func isKanaFunctionWord(_ entry: DictionaryEntry, surface: String) -> Bool {
+        guard ScriptClassifier.containsKanji(surface) == false, entry.kanjiForms.isEmpty else { return false }
+        return entry.senses.contains { sense in
+            (sense.pos ?? "").split(separator: ",").contains { tag in
+                tag == "prt" || tag == "cop" || tag == "aux" || tag.hasPrefix("aux-")
+            }
         }
     }
 
