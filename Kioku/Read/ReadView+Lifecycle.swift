@@ -370,6 +370,7 @@ extension ReadView {
                 existing: nil,
                 spelling: readSheets.learnSpellingSurface,
                 dictionaryStore: dictionaryStore,
+                lexicon: lexicon,
                 onFinish: { readSheets.isShowingLearnSpelling = false }
             )
         }

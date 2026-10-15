@@ -740,6 +740,25 @@ final class SegmenterIntegrationTests: XCTestCase {
         XCTAssertFalse(resources.segmenter.lemmaCandidates(for: "すれば").contains("す"))
     }
 
+    // A kana surface opens on its most common use: the particle や, whose kana JMdict tags common,
+    // ahead of 嫌 (ranked as いや, not や); but こと and もの on 事 and 物, ahead of their particle senses.
+    func testKanaSurfaceLeadsWithItsMostCommonUse() throws {
+        let resources = try sharedResources()
+        let lexicon = Lexicon(
+            dictionaryStore: resources.dictionaryStore,
+            segmenter: resources.segmenter,
+            deinflector: resources.deinflector,
+            surfaceReadingData: [:]
+        )
+        let ya = lexicon.lookupCandidates(surface: "や").first
+        XCTAssertTrue(
+            ya?.entry.kanjiForms.isEmpty == true && ya?.entry.senses.contains { $0.pos == "prt" } == true,
+            "や leads with the particle, got \(String(describing: ya?.headword))"
+        )
+        XCTAssertEqual(lexicon.lookupCandidates(surface: "こと").first?.headword, "事")
+        XCTAssertEqual(lexicon.lookupCandidates(surface: "もの").first?.headword, "物")
+    }
+
     // キス is tagged "n,vs" in JMdict — a suru-noun with no written "キスする" headword (the vs tag
     // alone is meant to signal "attach する"). Regression for the buildLattice exception that
     // admits katakana-noun+conjugated-する spans across the hiragana/katakana boundary, and for

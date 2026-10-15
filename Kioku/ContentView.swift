@@ -139,7 +139,7 @@ struct ContentView: View {
             }
 
             // Renders the Settings tab entry point.
-            SettingsView(dictionaryStore: readResources.dictionaryStore)
+            SettingsView(dictionaryStore: readResources.dictionaryStore, lexicon: readResources.lexicon)
             .tag(ContentTab.settings)
             .tabItem {
                 Label("Settings", systemImage: "gear")

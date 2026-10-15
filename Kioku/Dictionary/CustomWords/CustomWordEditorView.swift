@@ -8,6 +8,8 @@ import SwiftUI
 // Cancel and Save in the toolbar.
 struct CustomWordEditorView: View {
     let dictionaryStore: DictionaryStore?
+    // Its deinflector decides whether a typed spelling is a conjugation of the picked word.
+    let lexicon: Lexicon?
     let existing: CustomWord?
     let onFinish: () -> Void
 
@@ -22,8 +24,9 @@ struct CustomWordEditorView: View {
     @State private var senses: [CustomWordSenseDraft]
 
     // Prefills from the word being edited, or from a tapped spelling (into Kanji or Kana by script).
-    init(existing: CustomWord?, spelling: String = "", dictionaryStore: DictionaryStore?, onFinish: @escaping () -> Void) {
+    init(existing: CustomWord?, spelling: String = "", dictionaryStore: DictionaryStore?, lexicon: Lexicon?, onFinish: @escaping () -> Void) {
         self.dictionaryStore = dictionaryStore
+        self.lexicon = lexicon
         self.existing = existing
         self.onFinish = onFinish
         let spellingHasKanji = ScriptClassifier.containsKanji(spelling)
@@ -166,7 +169,9 @@ struct CustomWordEditorView: View {
     // Picking an entry turns an inflected kanji spelling into its dictionary form with the user's
     // kanji kept (馳け寄って + 駆け寄る → 馳け寄る), so the learned spelling's inflections segment too,
     // and drops a kana reading typed for the inflected form. Only when the spelling up to its last
-    // kanji lines up with the entry's form: same length, same kana, kanji swapped.
+    // kanji lines up with the entry's form: same length, same kana, kanji swapped, and only when the
+    // spelling really conjugates from that form. 出ずる picked as 出ず is the classical attributive,
+    // which no rule reaches, so 出ず would never match the text: the spelling and its kana stay.
     private func adoptDictionaryForm(of entry: DictionaryEntry) {
         guard let spelling = Self.items(kanjiText).first, ScriptClassifier.containsKanji(spelling),
               let form = entry.kanjiForms.first?.text else { return }
@@ -179,7 +184,8 @@ struct CustomWordEditorView: View {
             guard formCharacters[index] == stem[index] else { return }
         }
         let dictionaryForm = String(stem) + String(formCharacters[stem.count...])
-        guard dictionaryForm != spelling else { return }
+        guard dictionaryForm != spelling,
+              lexicon?.deinflector.deinflect(spelling).contains(dictionaryForm) == true else { return }
         kanjiText = dictionaryForm
         kanaText = ""
     }
