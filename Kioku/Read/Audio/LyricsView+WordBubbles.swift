@@ -46,11 +46,11 @@ extension LyricsView {
             guard found.location != NSNotFound else { continue }
             cursor = NSMaxRange(found)
             guard NSIntersectionRange(found, cueRange).length > 0 else { continue }
-            // Particles, vocalizations and katakana words (loanwords the reader can sound out) get no
+            // Particles, vocalizations and katakana loanwords (which the reader can sound out) get no
             // meaning; grammar tags (past, particle…) aren't shown.
             let tag = Self.nonEmpty(word.grammarTag)
             let isFunctionWord = tag == "particle" || tag == "vocalization"
-            let needsNoMeaning = isFunctionWord || ScriptClassifier.isKatakanaWord(surface)
+            let needsNoMeaning = isFunctionWord || isLoanword?(surface) == true
             bubbles.append(LyricWordBubble(
                 noteRange: found,
                 gloss: needsNoMeaning ? nil : Self.shortGloss(word.definition),

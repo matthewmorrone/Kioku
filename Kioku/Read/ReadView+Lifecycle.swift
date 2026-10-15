@@ -313,7 +313,8 @@ extension ReadView {
                     onPlayRandom: { ReadNoteNavigation.shared.isRandomPlaybackRequested = true },
                     singRomanize: lyricRomanizer.spans(for:),
                     singSession: singSession,
-                    dictionaryGloss: { location, surface in lyricWordGloss(at: location, surface: surface) }
+                    dictionaryGloss: { location, surface in lyricWordGloss(at: location, surface: surface) },
+                    isLoanword: { isLyricLoanword($0) }
                 )
                 .opacity(audioPlayback.isShowingLyricsView ? 1 : 0)
                 .allowsHitTesting(audioPlayback.isShowingLyricsView)

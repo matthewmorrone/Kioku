@@ -8,10 +8,10 @@ extension ReadView {
     // agree. Where the sheet leaves the word unpicked (kana あなた: 貴方, 彼方 both read あなた), the
     // likeliest word's meaning alone — "you / beyond" is more than a bubble should say. Nil for particles — their
     // glosses describe grammar — counting, as the segmenter does (TransitionClass), any spelling
-    // that can be one (は, not 歯 "tooth"); nil for katakana words, whose loanword meaning the
-    // reader can sound out; and nil for words with no entry. A negative form's meaning is negated.
+    // that can be one (は, not 歯 "tooth"); nil for loanwords (isLyricLoanword), whose meaning
+    // the reader can sound out; and nil for words with no entry. A negative form's meaning is negated.
     func lyricWordGloss(at location: Int, surface: String) -> String? {
-        guard ScriptClassifier.isKatakanaWord(surface) == false,
+        guard isLyricLoanword(surface) == false,
               PartOfSpeech.isParticle(dictionaryStore?.posBits(forSurface: surface) ?? 0) == false else { return nil }
         guard let entry = displayedDictionaryEntry(forSurface: surface, at: location)
                 ?? unpickedLyricCandidates(forSurface: surface, at: location).first,
@@ -52,5 +52,16 @@ extension ReadView {
             ).first
             : reconstructed
         return Lexicon.lookupCandidates(lexicon.lookupCandidates(surface: surface), sharingReading: displayed).map(\.entry)
+    }
+
+    // Whether a lyric word is a loanword in katakana (ベイビー, ドア, キスした), which needs no bubble:
+    // its katakana stem's entry is spelled only in katakana. A Japanese word written in katakana
+    // (キラキラ, ダメ, ウソ) has a hiragana or kanji spelling too and keeps its bubble. A katakana stem
+    // the dictionary doesn't know is taken for a loanword.
+    func isLyricLoanword(_ surface: String) -> Bool {
+        guard ScriptClassifier.isKatakanaWord(surface),
+              let stem = ScriptClassifier.leadingKatakanaPrefix(of: surface) else { return false }
+        guard let entry = resolvedDictionaryEntry(forSurface: stem) else { return true }
+        return entry.kanjiForms.isEmpty && entry.kanaForms.allSatisfy { ScriptClassifier.isPureKatakana($0.text) }
     }
 }
