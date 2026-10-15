@@ -45,4 +45,11 @@ nonisolated enum InflectionFormNames {
     static func describe(_ chain: [String]) -> String {
         chain.compactMap { displayNames[$0] }.joined(separator: " · ")
     }
+
+    // Whether the chain leaves the word negated: an odd number of negating forms (なければ under a
+    // further ない cancels out). Read off the user-facing names so internal recovery steps such as
+    // "desire negative recovery" never count.
+    static func isNegative(_ chain: [String]) -> Bool {
+        chain.filter { displayNames[$0]?.contains("negative") == true }.count % 2 == 1
+    }
 }

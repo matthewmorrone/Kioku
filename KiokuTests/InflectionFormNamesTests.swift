@@ -37,4 +37,14 @@ final class InflectionFormNamesTests: XCTestCase {
         XCTAssertEqual(InflectionFormNames.describe(["stem recovery"]), "")
         XCTAssertEqual(InflectionFormNames.describe([]), "")
     }
+
+    // A negating chain is told apart from an affirmative one (足りない under 足りる), a double
+    // negative cancels out, and internal recovery labels never count as negating.
+    func testIsNegative() {
+        XCTAssertTrue(InflectionFormNames.isNegative(["negative"]))
+        XCTAssertTrue(InflectionFormNames.isNegative(["desire", "negative past"]))
+        XCTAssertFalse(InflectionFormNames.isNegative(["past"]))
+        XCTAssertFalse(InflectionFormNames.isNegative(["negative", "negative"]))
+        XCTAssertFalse(InflectionFormNames.isNegative(["desire negative recovery"]))
+    }
 }
