@@ -11,10 +11,13 @@ calls build() near the end of a dictionary build and writes the result into the 
       from the training half (even sentence ids) minus train2k, which is kept for fitting.
   reading_contexts (kanji, reading, count, previous, next)
       Which reading a kanji run takes next to which classes: one row per run and reading, with
-      "class=count" lists for the gold token before and after it. Only tokens written as their
-      headword count (a conjugated token carries its dictionary form's reading: 来て is marked
-      来る(くる), which would count 来 → く). Counted from every sentence no eval set uses.
-      ReadingContextTable reads it.
+      "class=count" lists for the gold token before and after it. A conjugated token carries its
+      dictionary form's reading (瞬いていた is marked 瞬く(またたく)), so its kanji run is read by
+      cropping that reading to the stem, as the app's FuriganaResolver.inflectedStemReading does:
+      瞬いていた counts 瞬 → またた. Words whose stem itself changes when they inflect (JMdict vk
+      and adj-ix: 来て is き, not 来る's く; 良かった is よ, not いい's い) are left out, as is any
+      token whose kanji or leading kana don't match its headword's. Counted from every sentence no
+      eval set uses. ReadingContextTable reads it.
 
 Tatoeba's index tokenizes each sentence into JMdict headwords and marks a reading where a headword
 has several (方(かた)), so it gives both word boundaries and readings. Word classes are named by the
@@ -177,8 +180,29 @@ def run_reading(word, reading):
     return reading[len(before):len(reading) - len(after)] or None
 
 
-def reading_rows(records, class_lines):
-    """(kanji, reading, count, previous classes, next classes) rows, one per kanji run and reading."""
+def surface_run(surface, headword, irregular):
+    """The kanji run of a gold token written other than as its headword, when the headword's reading
+    crops cleanly onto it: one run, the same kanji and the same leading kana in both, and kana after
+    it in both (瞬く → 瞬いていた). The kanji's reading is then the headword's own stem, except in
+    the `irregular` headwords, whose stem changes when they inflect. None for anything else: a
+    different spelling (開ける → 明けて), a particle glued into the token (私 → 私の, where the
+    neighbour classes would be a word off), a kana-only surface."""
+    if headword in irregular or surface.startswith(headword):
+        return None
+    head_runs, surface_runs = list(KANJI.finditer(headword)), list(KANJI.finditer(surface))
+    if len(head_runs) != 1 or len(surface_runs) != 1 or head_runs[0].group() != surface_runs[0].group():
+        return None
+    head, run = head_runs[0], surface_runs[0]
+    if to_hiragana(headword[:head.start()]) != to_hiragana(surface[:run.start()]):
+        return None
+    if head.end() == len(headword) or run.end() == len(surface):
+        return None
+    return run.group()
+
+
+def reading_rows(records, class_lines, irregular):
+    """(kanji, reading, count, previous classes, next classes) rows, one per kanji run and reading.
+    `irregular` holds the headwords whose stem changes when they inflect (see surface_run)."""
     occurrences = collections.Counter()
     previous = collections.defaultdict(collections.Counter)
     following = collections.defaultdict(collections.Counter)
@@ -187,15 +211,20 @@ def reading_rows(records, class_lines):
         spans = [(a, b) for a, b, *_ in record['g']]
         for i, (a, b, headword, reading, *_) in enumerate(record['g']):
             # Empty, or an entry-number pointer (#1392580) rather than a reading.
-            if not reading or reading.startswith('#') or record['s'][a:b] != headword:
+            if not reading or reading.startswith('#'):
                 continue
-            runs = list(KANJI.finditer(headword))
-            if len(runs) != 1:
+            surface = record['s'][a:b]
+            if surface == headword:
+                runs = list(KANJI.finditer(headword))
+                kanji = runs[0].group() if len(runs) == 1 else None
+            else:
+                kanji = surface_run(surface, headword, irregular)
+            if kanji is None:
                 continue
             run = run_reading(headword, reading)
             if run is None:
                 continue
-            key = (runs[0].group(), run)
+            key = (kanji, run)
             before = class_by_span.get(spans[i - 1], BOUNDARY) if i > 0 and spans[i - 1][1] == a else BOUNDARY
             after = class_by_span.get(spans[i + 1], BOUNDARY) if i + 1 < len(spans) and spans[i + 1][0] == b else BOUNDARY
             occurrences[key] += 1
@@ -208,8 +237,9 @@ def reading_rows(records, class_lines):
             for kanji, reading in sorted(occurrences)]
 
 
-def build(index_lines, sentences, data_dir, classify):
-    """Both tables' rows. `classify(lexical words, records)` returns one `segcli count` line per record."""
+def build(index_lines, sentences, data_dir, classify, irregular):
+    """Both tables' rows. `classify(lexical words, records)` returns one `segcli count` line per record;
+    `irregular` is the headwords whose stem changes when they inflect (JMdict vk and adj-ix)."""
     gold = list(gold_sentences(index_lines, sentences))
     counted, for_transitions = corpora(gold, data_dir)
     lexical = lexical_words([r for r, t in zip(counted, for_transitions) if t])
@@ -217,6 +247,6 @@ def build(index_lines, sentences, data_dir, classify):
     if len(class_lines) != len(counted):
         raise RuntimeError(f'segcli count returned {len(class_lines)} lines for {len(counted)} sentences')
     transitions = transition_rows([line for line, t in zip(class_lines, for_transitions) if t])
-    readings = reading_rows(counted, class_lines)
+    readings = reading_rows(counted, class_lines, irregular)
     return {'sentences': len(counted), 'transition_sentences': sum(for_transitions),
             'transitions': transitions, 'readings': readings}

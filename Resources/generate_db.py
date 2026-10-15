@@ -1448,8 +1448,14 @@ def import_usage_tables(conn):
             raise RuntimeError(f"segcli count failed: {proc.stderr[-2000:]}")
         return proc.stdout.splitlines()
 
+    # Kanji spellings whose stem reading changes when they inflect (来る → 来て き, いい → 良かった よ):
+    # their conjugated tokens can't be read by cropping the headword's reading.
+    irregular = {text for (text,) in conn.execute(
+        "SELECT DISTINCT k.text FROM kanji k JOIN senses s ON s.entry_id = k.entry_id "
+        "WHERE ',' || s.pos || ',' LIKE '%,vk,%' OR ',' || s.pos || ',' LIKE '%,adj-ix,%'")}
     with open_source_member(entry["fetch"], archive) as raw:
-        tables = usage_tables.build(io.TextIOWrapper(raw, encoding="utf-8-sig"), sentences, EVAL_DATA_DIR, classify)
+        tables = usage_tables.build(io.TextIOWrapper(raw, encoding="utf-8-sig"), sentences, EVAL_DATA_DIR, classify,
+                                    irregular)
     conn.execute("BEGIN")
     conn.execute("""
         CREATE TABLE segmenter_transitions (

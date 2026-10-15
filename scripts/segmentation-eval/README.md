@@ -103,7 +103,7 @@ kana2k +1 / 215→216 (てきとい deinflects to てきとう 適当 and underc
 potential). Refusing every expression reached through a potential broke 元に戻せなかった (戻せる is no word), and
 comparing any shorter verb stretch broke お目にかかれて (かれる/かる match by chance inside かかれる).
 
-Readings (`segcli furigana` + `score_readings.py`, 2026-10-10): held2k 95.19%, fresh5k 97.25%. Frequency
+Readings (`segcli furigana` + `score_readings.py`, 2026-10-15): held2k 95.03%, fresh5k 97.30%. Frequency
 order alone was 91.09% / 94.79%; the rest is the context pass (FuriganaResolver+ContextualReadings), one score
 over three sources: Tatoeba's reading counts (the dictionary's `reading_contexts` table, see "Regenerating the
 transition table"; 94.50% / 96.97% on their own), a 2.0 vote for Apple's tokenizer's
@@ -115,7 +115,9 @@ each reading's JMdict tags (no setting beat 91.09%: the table never saw a kanji'
 writing sentences in kana (3 fixed, 10 broken), strict "counts, else Apple" ordering (held2k −6, fresh5k +8: Apple
 lost its say on close calls), and blending neighbour classes with their broader class (−82 / ±2). Candidates come from
 every lemma a surface can be (甘く as 甘い, 入り as 入る). The counts take every indexed sentence no eval set uses
-(137,836: train minus train2k, plus the held-out half minus held2k, fresh and kana2k).
+(137,836: train minus train2k, plus the held-out half minus held2k, fresh and kana2k). Conjugated tokens count
+under their stem (瞬いていた → 瞬 またた; JMdict vk and adj-ix left out, their stem changes): +5% counts, held2k
+1224 vs 1223 correct, fresh5k and train2k unchanged, so classSmoothing and appleVote were not refitted.
 
 Registers (2026-10-13, ReadingRegisters): Tatoeba is everyday text, so web and business writing (方 かた, その後 ご,
 等 とう) was read in its register. The dictionary now carries reading counts from KWDLC's training documents and a
