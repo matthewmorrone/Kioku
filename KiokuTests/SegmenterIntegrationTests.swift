@@ -722,8 +722,8 @@ final class SegmenterIntegrationTests: XCTestCase {
         XCTAssertNil(Lexicon.preferredLookupCandidate(among: lexicon.lookupCandidates(surface: "きた")))
     }
 
-    // や lists the particle: 嫌 also reads や and leads (uk, ranked), and the unranked particle used
-    // to sort below every ranked homophone and fall past the sheet's row cap.
+    // や leads with the particle: 嫌 also reads や and is uk (as いや) and ranked, which used to make
+    // it the leader and sink the unranked particle past the sheet's row cap.
     func testKanaOnlyParticleLeadsLookupCandidates() throws {
         let resources = try sharedResources()
         let lexicon = Lexicon(
@@ -732,10 +732,10 @@ final class SegmenterIntegrationTests: XCTestCase {
             deinflector: resources.deinflector,
             surfaceReadingData: [:]
         )
-        let candidates = lexicon.lookupCandidates(surface: "や")
+        let first = lexicon.lookupCandidates(surface: "や").first
         XCTAssertTrue(
-            candidates.contains { $0.entry.kanjiForms.isEmpty && $0.entry.senses.contains { $0.pos == "prt" } },
-            "や lists the particle, got \(candidates.map(\.headword))"
+            first?.entry.kanjiForms.isEmpty == true && first?.entry.senses.contains { $0.pos == "prt" } == true,
+            "や leads with the particle, got \(String(describing: first?.headword))"
         )
     }
 

@@ -40,6 +40,11 @@ nonisolated extension Lexicon {
                 .sorted { lhs, rhs in
                     // A kana surface is first the words written in kana: the copula だ (no kanji
                     // form, and no frequency rank) before 打 and 駄, which are only read だ.
+                    // A kana function word first of all: や is the particle before 嫌 (uk only as
+                    // いや), agreeing with the store's canonical pick for the surface.
+                    let lhsFunction = isKanaFunctionWord(lhs, surface: lemma)
+                    let rhsFunction = isKanaFunctionWord(rhs, surface: lemma)
+                    if lhsFunction != rhsFunction { return lhsFunction }
                     let lhsKana = isWrittenInKana(lhs, surface: lemma), rhsKana = isWrittenInKana(rhs, surface: lemma)
                     if lhsKana != rhsKana { return lhsKana }
                     return (lhs.frequencyRank ?? Int.max) < (rhs.frequencyRank ?? Int.max)
