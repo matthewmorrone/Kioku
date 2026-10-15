@@ -23,7 +23,10 @@ extension ReadView {
         for entry in entries {
             guard let lemmaGloss = entry.senses.first(where: { $0.glosses.isEmpty == false })?.glosses.first else { continue }
             let gloss = inflectedLyricGloss(lemmaGloss, surface: surface, entry: entry)
-            guard glosses.contains(gloss) == false else { continue }
+            // A parenthesized gloss is qualifying itself — too much for a bubble and usually the
+            // wrong sense; LyricsView.shortGloss drops it, so leave it out here and keep the rest.
+            guard gloss.contains(where: { "()（）".contains($0) }) == false,
+                  glosses.contains(gloss) == false else { continue }
             glosses.append(gloss)
         }
         return glosses.isEmpty ? nil : glosses.joined(separator: " / ")
