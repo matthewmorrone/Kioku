@@ -236,6 +236,12 @@ final class KiokuScrollingTextView: UIScrollView, UIScrollViewDelegate {
     func reportRangeRects() {
         guard let onRangeRects else { return }
         let length = (contentView.layoutEngine.attributedString.string as NSString).length
+        // The furigana band above each line, so the rects (and the bubbles kept off them) take in
+        // the ruby; none while furigana is hidden (gap 0).
+        let rubyFontSize = contentView.furiganaFontSizeOverride ?? contentView.baseTextSize * 0.5
+        let rubyBand = contentView.furiganaGap > 0
+            ? ceil(UIFont.systemFont(ofSize: max(1, rubyFontSize)).lineHeight + contentView.furiganaGap)
+            : 0
         var rects: [NSRange: CGRect] = [:]
         for range in reportedRanges where range.location >= 0 && NSMaxRange(range) <= length {
             var union: CGRect?
@@ -243,7 +249,11 @@ final class KiokuScrollingTextView: UIScrollView, UIScrollViewDelegate {
                 guard let rect = contentView.layoutEngine.firstRect(forCharacterRange: NSRange(location: offset, length: 1)) else { continue }
                 union = union.map { $0.union(rect) } ?? rect
             }
-            if let union { rects[range] = convert(union, from: contentView) }
+            if var union {
+                union.origin.y -= rubyBand
+                union.size.height += rubyBand
+                rects[range] = convert(union, from: contentView)
+            }
         }
         guard rects != lastReportedRangeRects else { return }
         lastReportedRangeRects = rects
