@@ -23,8 +23,9 @@ struct LyricWordBubbleOverlay: View {
     static let verticalPadding: CGFloat = 7
     static let cornerRadius: CGFloat = 14
     static let gap: CGFloat = 8
-    static let margin: CGFloat = 12
-    static let minColumnWidth: CGFloat = 70
+    static let margin: CGFloat = 8
+    // Narrowest side room the side layout uses; bubbles there wrap to two lines.
+    static let minColumnWidth: CGFloat = 52
     static let maxGlossWidth: CGFloat = 150
     static let maxCommentWidth: CGFloat = 220
     // How far a side stack may run past the card's top or bottom.
@@ -74,7 +75,8 @@ struct LyricWordBubbleOverlay: View {
             Text(slot.text)
                 .font(Font(slot.isNote ? Self.commentFont : Self.glossFont))
                 .foregroundStyle(slot.isNote ? Color(white: 0.35) : Color.black)
-                .lineLimit(1)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
                 .truncationMode(.tail)
                 .padding(.horizontal, Self.horizontalPadding)
                 .frame(width: slot.frame.width, height: slot.frame.height)
@@ -83,16 +85,19 @@ struct LyricWordBubbleOverlay: View {
         .transition(.scale(scale: 0.4, anchor: .center).combined(with: .opacity))
     }
 
-    // A bubble body's size for its text: padded and capped at `maxWidth`.
+    // A bubble body's size for its text: padded and capped at `maxWidth`, wrapping to two lines when
+    // the text is wider than that.
     private static func size(_ text: String, note: Bool, maxWidth: CGFloat) -> CGSize {
         let font = note ? commentFont : glossFont
         let textWidth = ceil((text as NSString).size(withAttributes: [.font: font]).width)
-        return CGSize(width: min(textWidth + 2 * horizontalPadding, maxWidth), height: ceil(font.lineHeight) + 2 * verticalPadding)
+        let lines: CGFloat = textWidth + 2 * horizontalPadding > maxWidth ? 2 : 1
+        return CGSize(width: min(textWidth + 2 * horizontalPadding, maxWidth),
+                      height: ceil(font.lineHeight) * lines + 2 * verticalPadding)
     }
 
-    // The beside-the-line layout, or nil when either side is too narrow or a stack would run
-    // further past the card than sideOverflow. Each word's bubbles go on its side of the line's
-    // middle. There, the word nearest the edge gets its meaning level with the line, the tail
+    // The beside-the-line layout, or nil when neither side has room or a stack would run further
+    // past the card than sideOverflow. Each word's bubbles go on its side of the line's middle (all
+    // on one side when only that side has room). There, the word nearest the edge gets its meaning level with the line, the tail
     // pointing straight into the word's side; the side's other words split between a stack rising
     // from that bubble and one falling from it (earlier words up, later down), each bubble kept
     // clear of the line so its tail drops onto the word's top or bottom through empty space, never
@@ -101,14 +106,21 @@ struct LyricWordBubbleOverlay: View {
     static func sideLayout(_ bubbles: [PlacedLyricWordBubble], lineRect: CGRect?, size cardSize: CGSize) -> [Slot]? {
         let width = cardSize.width
         guard let line = lineRect, width > 0 else { return nil }
-        let leftWidth = line.minX - 2 * margin
-        let rightWidth = width - line.maxX - 2 * margin
-        guard min(leftWidth, rightWidth) >= minColumnWidth else { return nil }
+        let leftWidth = min(line.minX - 2 * margin, maxGlossWidth)
+        let rightWidth = min(width - line.maxX - 2 * margin, maxGlossWidth)
+        let leftFits = leftWidth >= minColumnWidth
+        let rightFits = rightWidth >= minColumnWidth
+        guard leftFits || rightFits else { return nil }
         let sorted = bubbles.sorted { $0.anchor.midX < $1.anchor.midX }
+        // A word's side: the half of the line it's in, or the other side when that one has no room.
+        func goesLeft(_ bubble: PlacedLyricWordBubble) -> Bool {
+            let nearLeft = bubble.anchor.midX < line.midX
+            return nearLeft ? leftFits : rightFits == false
+        }
         var slots: [Slot] = []
         for isLeft in [true, false] {
             // The side's words, nearest the edge first.
-            let side = sorted.filter { ($0.anchor.midX < line.midX) == isLeft }
+            let side = sorted.filter { goesLeft($0) == isLeft }
             let fromEdge = isLeft ? side : side.reversed()
             let columnWidth = isLeft ? leftWidth : rightWidth
             // A bubble's x: hugging the line's edge on this side.

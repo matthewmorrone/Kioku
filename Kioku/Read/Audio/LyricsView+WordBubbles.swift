@@ -7,20 +7,22 @@ import SwiftUI
 // from the dictionary through dictionaryGloss, which the Read view supplies so no lexical lookup
 // happens here. Drawn by LyricWordBubbleOverlay; shown while the Translation setting is on.
 extension LyricsView {
-    // The cue's words with their bubble text, built once per line (wordBubbleCache).
-    func wordBubbles(forCueAt index: Int) -> [LyricWordBubble] {
-        guard index < highlightRanges.count, let cueRange = highlightRanges[index], cueRange.length > 0 else { return [] }
+    // The words of the text the card shows for a cue (`cueSpan`, in note coordinates — the same
+    // span the renderer draws, so no word at its edges is lost to a slightly different cue range)
+    // with their bubble text, built once per line (wordBubbleCache).
+    func wordBubbles(in cueSpan: NSRange) -> [LyricWordBubble] {
+        guard cueSpan.length > 0, NSMaxRange(cueSpan) <= (noteText as NSString).length else { return [] }
         let breakdown = noteID.flatMap { songBreakdownStore.breakdown(forNoteID: $0) }
         var hasher = Hasher()
-        hasher.combine(cueRange.location)
-        hasher.combine(cueRange.length)
+        hasher.combine(cueSpan.location)
+        hasher.combine(cueSpan.length)
         hasher.combine(breakdown?.generatedAt)
         hasher.combine(noteText.utf16.count)
         hasher.combine(segmentationRanges.count)
         let signature = hasher.finalize()
         if wordBubbleCache.signature == signature { return wordBubbleCache.bubbles }
-        let bubbles = breakdown.flatMap { breakdownWordBubbles($0.lines, in: cueRange) }
-            ?? dictionaryWordBubbles(in: cueRange)
+        let bubbles = breakdown.flatMap { breakdownWordBubbles($0.lines, in: cueSpan) }
+            ?? dictionaryWordBubbles(in: cueSpan)
         wordBubbleCache.signature = signature
         wordBubbleCache.bubbles = bubbles
         return bubbles
@@ -67,7 +69,7 @@ extension LyricsView {
         guard let dictionaryGloss else { return [] }
         return segmentationRanges.compactMap { range in
             let nsRange = NSRange(range, in: noteText)
-            guard nsRange.length > 0, NSIntersectionRange(nsRange, cueRange).length == nsRange.length else { return nil }
+            guard nsRange.length > 0, NSIntersectionRange(nsRange, cueRange).length > 0 else { return nil }
             let surface = String(noteText[range])
             guard surface.contains(where: \.isLetter), let gloss = dictionaryGloss(nsRange.location, surface) else { return nil }
             return LyricWordBubble(noteRange: nsRange, gloss: Self.shortGloss(gloss), comment: nil)
@@ -87,26 +89,32 @@ extension LyricsView {
 
     // When a word is sung: the first karaoke checkpoint reaching its first character, else its
     // share of the cue's span when the cue has no checkpoints.
-    private func wordStartMs(_ bubble: LyricWordBubble, cueAt index: Int) -> Int {
-        guard index < cues.count, index < highlightRanges.count, let cueRange = highlightRanges[index] else { return 0 }
+    private func wordStartMs(_ bubble: LyricWordBubble, cueAt index: Int, cueSpan: NSRange) -> Int {
+        guard index < cues.count else { return 0 }
         let cue = cues[index]
-        let local = bubble.noteRange.location - cueRange.location
+        let local = bubble.noteRange.location - cueSpan.location
         let checkpoints = cue.checkpoints.sorted { $0.charOffsetInCue < $1.charOffsetInCue }
         if let hit = checkpoints.first(where: { $0.charOffsetInCue + max($0.charLength, 1) > local }) {
             return hit.timeMs
         }
         if let last = checkpoints.last { return last.timeMs }
-        return cue.startMs + (cue.endMs - cue.startMs) * max(0, local) / max(1, cueRange.length)
+        return cue.startMs + (cue.endMs - cue.startMs) * max(0, local) / max(1, cueSpan.length)
+    }
+
+    // A word's range in the card's text, clipped to it (a word straddling the cue's edge keeps its
+    // visible part).
+    private func cueLocalRange(_ bubble: LyricWordBubble, cueSpan: NSRange) -> NSRange? {
+        let clipped = NSIntersectionRange(bubble.noteRange, cueSpan)
+        guard clipped.length > 0 else { return nil }
+        return NSRange(location: clipped.location - cueSpan.location, length: clipped.length)
     }
 
     // The cue-local ranges of the cue's words, plus the whole line (for the room beside it), for
     // the renderer to measure.
     func wordBubbleRanges(forCueAt index: Int, cueOriginInNote: Int, cueLength: Int) -> [NSRange] {
-        let words = wordBubbles(forCueAt: index).compactMap { bubble -> NSRange? in
-            let local = NSRange(location: bubble.noteRange.location - cueOriginInNote, length: bubble.noteRange.length)
-            return local.location >= 0 && NSMaxRange(local) <= cueLength ? local : nil
-        }
-        guard words.isEmpty == false, cueLength > 0 else { return [] }
+        let cueSpan = NSRange(location: cueOriginInNote, length: cueLength)
+        let words = wordBubbles(in: cueSpan).compactMap { cueLocalRange($0, cueSpan: cueSpan) }
+        guard words.isEmpty == false else { return [] }
         return words + [NSRange(location: 0, length: cueLength)]
     }
 
@@ -118,12 +126,12 @@ extension LyricsView {
     // The bubbles to draw now: on the line being played, the words sung so far; on a line the user
     // has dragged into view, all of them. Each placed at its word's measured rect.
     func placedWordBubbles(forCueAt index: Int, cueOriginInNote: Int, cueLength: Int) -> [PlacedLyricWordBubble] {
+        let cueSpan = NSRange(location: cueOriginInNote, length: cueLength)
         let isLive = index == activeIndex
         let now = controller.currentTimeMs
-        return wordBubbles(forCueAt: index).compactMap { bubble in
-            if isLive, wordStartMs(bubble, cueAt: index) > now { return nil }
-            let local = NSRange(location: bubble.noteRange.location - cueOriginInNote, length: bubble.noteRange.length)
-            guard let rect = wordBubbleRects[local] else { return nil }
+        return wordBubbles(in: cueSpan).compactMap { bubble in
+            if isLive, wordStartMs(bubble, cueAt: index, cueSpan: cueSpan) > now { return nil }
+            guard let local = cueLocalRange(bubble, cueSpan: cueSpan), let rect = wordBubbleRects[local] else { return nil }
             return PlacedLyricWordBubble(id: bubble.noteRange.location, anchor: rect, gloss: bubble.gloss, comment: bubble.comment)
         }
     }
