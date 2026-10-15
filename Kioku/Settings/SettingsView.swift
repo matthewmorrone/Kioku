@@ -7,6 +7,8 @@ import UserNotifications
 // day, data transfer, dictionary, developer tools and storage. Footer prose is intentionally omitted — rows stand alone.
 struct SettingsView: View {
     let dictionaryStore: DictionaryStore?
+    // For the custom-word editor, which checks a spelling conjugates from the word it is linked to.
+    let lexicon: Lexicon?
 
     // Not private: SettingsView+BackupSection.swift's export/import functions read these directly.
     @EnvironmentObject var notesStore: NotesStore
@@ -173,7 +175,7 @@ struct SettingsView: View {
                             .infoButton("When you come back to Kioku with Japanese text copied, offer to look it up.")
                     }
                     NavigationLink {
-                        CustomWordsView(dictionaryStore: dictionaryStore)
+                        CustomWordsView(dictionaryStore: dictionaryStore, lexicon: lexicon)
                     } label: {
                         Text("Custom Words")
                             .infoButton("Words you add to the dictionary yourself: other spellings of known words, or words it doesn't have.")

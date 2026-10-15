@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 // opens as a sheet; import asks before replacing the list.
 struct CustomWordsView: View {
     let dictionaryStore: DictionaryStore?
+    let lexicon: Lexicon?
 
     @EnvironmentObject private var customWordStore: CustomWordStore
     @State private var editingWord: CustomWord?
@@ -57,10 +58,10 @@ struct CustomWordsView: View {
             }
         }
         .sheet(item: $editingWord) { word in
-            CustomWordEditorView(existing: word, dictionaryStore: dictionaryStore) { editingWord = nil }
+            CustomWordEditorView(existing: word, dictionaryStore: dictionaryStore, lexicon: lexicon) { editingWord = nil }
         }
         .sheet(isPresented: $isAddingWord) {
-            CustomWordEditorView(existing: nil, dictionaryStore: dictionaryStore) { isAddingWord = false }
+            CustomWordEditorView(existing: nil, dictionaryStore: dictionaryStore, lexicon: lexicon) { isAddingWord = false }
         }
         .fileExporter(
             isPresented: $isExporting,
