@@ -5,31 +5,21 @@ import Foundation
 extension ReadView {
     // A lyric word's meaning for the lyrics card's word bubbles: the first gloss of the entry the
     // lookup sheet would show for it there (displayedDictionaryEntry), so the bubble and the sheet
-    // agree. Where the sheet leaves the word unpicked (kana なりたい: 成る, 鳴る… all read なる), the
-    // two likeliest words' meanings side by side, "to become / to ring". Nil for particles — their
+    // agree. Where the sheet leaves the word unpicked (kana あなた: 貴方, 彼方 both read あなた), the
+    // likeliest word's meaning alone — "you / beyond" is more than a bubble should say. Nil for particles — their
     // glosses describe grammar — counting, as the segmenter does (TransitionClass), any spelling
     // that can be one (は, not 歯 "tooth"); nil for katakana words, whose loanword meaning the
     // reader can sound out; and nil for words with no entry. A negative form's meaning is negated.
     func lyricWordGloss(at location: Int, surface: String) -> String? {
-        guard ScriptClassifier.isPureKatakana(surface) == false,
+        guard ScriptClassifier.isKatakanaWord(surface) == false,
               PartOfSpeech.isParticle(dictionaryStore?.posBits(forSurface: surface) ?? 0) == false else { return nil }
-        let entries: [DictionaryEntry]
-        if let entry = displayedDictionaryEntry(forSurface: surface, at: location) {
-            entries = [entry]
-        } else {
-            entries = Array(unpickedLyricCandidates(forSurface: surface, at: location).prefix(2))
-        }
-        var glosses: [String] = []
-        for entry in entries {
-            guard let lemmaGloss = entry.senses.first(where: { $0.glosses.isEmpty == false })?.glosses.first else { continue }
-            let gloss = inflectedLyricGloss(lemmaGloss, surface: surface, entry: entry)
-            // A parenthesized gloss is qualifying itself — too much for a bubble and usually the
-            // wrong sense; LyricsView.shortGloss drops it, so leave it out here and keep the rest.
-            guard gloss.contains(where: { "()（）".contains($0) }) == false,
-                  glosses.contains(gloss) == false else { continue }
-            glosses.append(gloss)
-        }
-        return glosses.isEmpty ? nil : glosses.joined(separator: " / ")
+        guard let entry = displayedDictionaryEntry(forSurface: surface, at: location)
+                ?? unpickedLyricCandidates(forSurface: surface, at: location).first,
+              let lemmaGloss = entry.senses.first(where: { $0.glosses.isEmpty == false })?.glosses.first else { return nil }
+        let gloss = inflectedLyricGloss(lemmaGloss, surface: surface, entry: entry)
+        // A parenthesized gloss is qualifying itself — too much for a bubble and usually the wrong
+        // sense (LyricsView.shortGloss drops it too).
+        return gloss.contains(where: { "()（）".contains($0) }) ? nil : gloss
     }
 
     // The lemma's meaning turned into the sung form's where the form flips it: 足りない under 足りる

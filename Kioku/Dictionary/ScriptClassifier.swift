@@ -71,6 +71,14 @@ nonisolated enum ScriptClassifier {
         return prefix.isEmpty ? nil : prefix
     }
 
+    // True for a katakana word, alone or carrying hiragana after it (キラキラ, キラキラと, キスした): its
+    // meaning is the katakana part's, which a reader can sound out. Not for kanji mixes (歯ブラシ).
+    static func isKatakanaWord(_ text: String) -> Bool {
+        guard let prefix = leadingKatakanaPrefix(of: text) else { return false }
+        let rest = String(text.dropFirst(prefix.count))
+        return rest.isEmpty || isPureHiragana(rest)
+    }
+
     // True when `text` contains BOTH a hiragana and a katakana scalar. A single Japanese morpheme
     // essentially never spans this boundary: loanword compounds like 歯ブラシ ("toothbrush") mix
     // *kanji* with katakana, not hiragana with katakana. The segmenter uses this as a hard rejection

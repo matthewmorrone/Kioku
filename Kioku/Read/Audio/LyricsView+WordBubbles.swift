@@ -50,7 +50,7 @@ extension LyricsView {
             // meaning; grammar tags (past, particle…) aren't shown.
             let tag = Self.nonEmpty(word.grammarTag)
             let isFunctionWord = tag == "particle" || tag == "vocalization"
-            let needsNoMeaning = isFunctionWord || ScriptClassifier.isPureKatakana(surface)
+            let needsNoMeaning = isFunctionWord || ScriptClassifier.isKatakanaWord(surface)
             bubbles.append(LyricWordBubble(
                 noteRange: found,
                 gloss: needsNoMeaning ? nil : Self.shortGloss(word.definition),
