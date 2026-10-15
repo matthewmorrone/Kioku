@@ -156,6 +156,8 @@ enum KiokuCoreTextAttributedStringBuilder {
             }
         }
 
+        lightenRepeatedSegmentColors(in: result, segmentationRanges: inputs.segmentationRanges, text: inputs.text)
+
         // Accent range. Applied after every other foreground-color pass so a caller's
         // explicit emphasis always wins, even over Saved Highlight.
         if let accentTextRange = inputs.accentTextRange,
@@ -309,5 +311,43 @@ enum KiokuCoreTextAttributedStringBuilder {
         }
 
         return Output(attributedString: result, rubyEntries: rubyEntries)
+    }
+
+    // How far toward white the second of two same-colored neighbours is drawn (purple → lavender).
+    static let repeatedSegmentLightening: CGFloat = 0.4
+
+    // Two neighbouring segments drawn in the same color (two saved words in a row, both purple)
+    // read as one word, so within such a run every other segment takes a lighter shade of the
+    // color: purple, lavender, purple. Segments left in the base text color are not highlighted and
+    // are skipped; punctuation and spaces don't break a run, a line break does.
+    private static func lightenRepeatedSegmentColors(
+        in result: NSMutableAttributedString,
+        segmentationRanges: [Range<String.Index>],
+        text: String
+    ) {
+        let nsText = result.string as NSString
+        var previousColor: UIColor?
+        var previousWasLightened = false
+        for segmentRange in segmentationRanges {
+            let nsRange = NSRange(segmentRange, in: text)
+            guard nsRange.location != NSNotFound, nsRange.length > 0, nsRange.upperBound <= result.length else { continue }
+            let segmentText = nsText.substring(with: nsRange)
+            if SegmentClassifier.isNonLexical(segmentText) {
+                if segmentText.contains(where: \.isNewline) { previousColor = nil }
+                continue
+            }
+            guard let color = result.attribute(.foregroundColor, at: nsRange.location, effectiveRange: nil) as? UIColor,
+                  color != UIColor.label else {
+                previousColor = nil
+                continue
+            }
+            let repeatsPrevious = previousColor == color
+            let lightens = repeatsPrevious && previousWasLightened == false
+            if lightens {
+                result.addAttribute(.foregroundColor, value: color.lightened(by: repeatedSegmentLightening), range: nsRange)
+            }
+            previousColor = color
+            previousWasLightened = lightens
+        }
     }
 }
