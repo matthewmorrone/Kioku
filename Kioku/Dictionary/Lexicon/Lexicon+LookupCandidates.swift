@@ -121,14 +121,12 @@ nonisolated extension Lexicon {
         return entry.senses.contains { ($0.misc ?? "").split(separator: ",").contains("uk") }
     }
 
-    // The candidate to show before the user picks, or nil when the form is genuinely ambiguous.
-    // Only a word the dictionary marks as in common use can be preselected, and only when it is the
-    // only such one: 消して → 消す over the literary 消する, while いった (言う, 行く, 要る) and きた
-    // (来る, 着る, 北) stay unpicked. Frequency ratios don't decide it — 着た is an ordinary reading of
-    // きた even though 来る ranks far higher.
+    // The candidate to show before the user picks: the only word the dictionary marks as in common
+    // use when there is one (消して → 消す over the literary 消する), else the first, which the list
+    // already orders as the likeliest — the particle や, 言う for いった. The others stay a tap away.
     static func preferredLookupCandidate(among candidates: [LookupCandidate]) -> LookupCandidate? {
         let common = candidates.filter { $0.entry.hasPriorityForm }
-        return common.count == 1 ? common[0] : nil
+        return common.count == 1 ? common[0] : candidates.first
     }
 
     // The words a reading leaves undecided: the candidates read that way (怒り read いかり → the noun
@@ -142,8 +140,8 @@ nonisolated extension Lexicon {
     }
 
     // The word shown for a form read `displayedReading`: among the words sharing that reading, the
-    // user's saved pick if it is one of them, else the only one, else the only common one, else nil
-    // (awaiting a pick, or no word read that way — see lookupCandidates(_:sharingReading:)). Shared
+    // user's saved pick if it is one of them, else the only one, else the only common one, else the
+    // likeliest; nil only when no word is read that way (see lookupCandidates(_:sharingReading:)). Shared
     // by the lookup sheet and the Read tab's saved-word coloring so a word colors the text the same
     // way it fills the sheet's star.
     static func shownLookupCandidate(
