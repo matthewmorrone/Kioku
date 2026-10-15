@@ -92,7 +92,9 @@ nonisolated final class ReadingContextTable: Sendable {
             for (observed, name) in [(counts?.previous, previous), (counts?.next, next)] {
                 score += log((Double(observed?[name] ?? 0) + Self.classSmoothing) / (n + Self.classSmoothing * Double(classCount)))
             }
-            if reading == appleReading { score += Self.appleVote }
+            // Apple's vote only backs a reading the counts have seen: where they saw this kanji and
+            // never in Apple's reading (瞬 only as またた), Apple's word is a different one (瞬き まばたき).
+            if reading == appleReading, counts != nil || seen.isEmpty { score += Self.appleVote }
             if let current = best, current.score >= score { continue }
             best = (reading, score)
         }
