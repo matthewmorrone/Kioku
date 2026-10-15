@@ -1,10 +1,11 @@
 import SwiftUI
 
-// Header reading switcher: when a kanji word's own dictionary entry has several readings (涙 →
-// なみだ / なだ, 下手 したて → したて / したで), left/right chevrons flank the headword and cycle
-// them, mirroring the Read-tab lookup sheet's arrows. The arrows never change which word this
-// card is for: other words with the same spelling (抱く いだく vs だく) are listed in the Same
-// Spelling section (WordDetailView+SameSpelling), each opening its own page.
+// Header reading switcher: left/right chevrons flank the headword and cycle every reading of the
+// word's spelling, mirroring the Read-tab lookup sheet's arrows — the entry's own readings (涙 →
+// なみだ / なだ) and those of other entries written the same way (抱く → だく / いだく / うだく,
+// three JMdict entries). A reading of another entry switches the page to that word in place
+// (openSameSpellingWord); this card is never re-pointed. Words sharing one reading are told apart
+// by the Same Spelling list (WordDetailView+SameSpelling).
 extension WordDetailView {
     // Which direction an arrow advances the active reading.
     enum ReadingSwitchDirection {
@@ -12,15 +13,27 @@ extension WordDetailView {
         case next
     }
 
-    // The readings the switcher offers: the active entry's own kana forms that apply to its kanji,
-    // minus search-only forms, katakana copies of a hiragana reading, and (unless
-    // DictionarySettings.includeArchaicReadings) obsolete or irregular ones — the active reading
-    // is always kept so a word saved on one still shows it. Empty or single → the switcher stays
-    // hidden. Kana-written words have no switcher: the kana is the reading.
+    // Every reading of the spelling, entry by entry in the Same Spelling order (so the stops read
+    // the same from every word's page), each tied to its entry; a reading two entries share is one
+    // stop, on the first. Empty or single → the switcher stays hidden. Kana-written words have no
+    // switcher: the kana is the reading.
     var switchableReadings: [ReadingVariants.Variant] {
-        guard ScriptClassifier.containsKanji(word.surface),
-              let entry = allDisplayData.first(where: { $0.entry.entryId == activeEntryID })?.entry
-        else { return [] }
+        guard ScriptClassifier.containsKanji(word.surface) else { return [] }
+        var seen = Set<String>()
+        return sameSpellingAllEntries.flatMap { entry in
+            offeredReadings(of: entry).compactMap { reading in
+                seen.insert(reading).inserted
+                    ? ReadingVariants.Variant(reading: reading, lemma: word.surface, chain: [], entry: entry)
+                    : nil
+            }
+        }
+    }
+
+    // One entry's kana forms that apply to its kanji, minus search-only forms, katakana copies of a
+    // hiragana reading, and (unless DictionarySettings.includeArchaicReadings) obsolete or
+    // irregular ones — the active entry's current reading is always kept so a word saved on one
+    // still shows it.
+    func offeredReadings(of entry: DictionaryEntry) -> [String] {
         let includeArchaic = DictionarySettings.includeArchaicReadings
         let forms = entry.kanaForms.filter { $0.nokanji == false }
         let texts = Set(forms.map(\.text))
@@ -31,11 +44,21 @@ extension WordDetailView {
             let hiragana = KanaNormalizer.katakanaToHiragana(form.text)
             if hiragana != form.text, texts.contains(hiragana) { continue }
             let isObscure = tags.contains("ok") || tags.contains("ik")
-            let isActive = form.text == activeReading || form.text == savedChosenReading
-            if isObscure, includeArchaic == false, isActive == false { continue }
+            let isCurrent = entry.entryId == activeEntryID
+                && (form.text == activeReading || form.text == savedChosenReading)
+            if isObscure, includeArchaic == false, isCurrent == false { continue }
             if readings.contains(form.text) == false { readings.append(form.text) }
         }
-        return readings.map { ReadingVariants.Variant(reading: $0, lemma: word.surface, chain: [], entry: entry) }
+        return readings
+    }
+
+    // Where the switcher stands: this entry's stop for the reading shown (or saved), else this
+    // entry's first stop. Nil when this entry offers none.
+    var currentSwitchIndex: Int? {
+        let readings = switchableReadings
+        return readings.firstIndex {
+            $0.entry?.entryId == activeEntryID && ($0.reading == activeReading || $0.reading == savedChosenReading)
+        } ?? readings.firstIndex { $0.entry?.entryId == activeEntryID }
     }
 
     // The reading the user picked with the switcher on some earlier visit, read off the live saved
@@ -109,27 +132,34 @@ extension WordDetailView {
         }
     }
 
-    // Advances to the previous/next reading with wrap-around (matching the lookup sheet). Sets
-    // displayedReading so the header furigana flips (projected onto an inflected surface), and
-    // persists the pick onto the saved card (see persistChosenReading) so it also shows in the Words
-    // list, on reopen, and on study cards. The entry never changes: every reading here is its own.
+    // Advances to the previous/next reading with wrap-around (matching the lookup sheet). A reading
+    // of this entry flips the header furigana (projected onto an inflected surface) and persists
+    // the pick onto the saved card (see persistChosenReading) so it also shows in the Words list,
+    // on reopen, and on study cards. A reading of another entry switches the page to that word,
+    // opened on that reading.
     func switchReading(_ direction: ReadingSwitchDirection, among readings: [ReadingVariants.Variant]) {
         guard readings.count > 1 else { return }
         let total = readings.count
-        // The active item by its plain reading; the header may show a projection (いだかれ), so the
-        // saved pick is tried too before starting from the first.
-        let currentIndex = readings.firstIndex { $0.reading == activeReading }
-            ?? readings.firstIndex { $0.reading == savedChosenReading }
-            ?? 0
+        let currentIndex = currentSwitchIndex ?? 0
         let nextIndex = direction == .next
             ? (currentIndex + 1) % total
             : (currentIndex - 1 + total) % total
         let target = readings[nextIndex]
-        displayedReading = target.entry.map {
-            projectedReading(surface: word.surface, baseReading: target.reading,
-                             kanjiForms: $0.kanjiForms, kanaForms: $0.kanaForms) ?? target.reading
-        } ?? target.reading
-        persistChosenReading(target.reading)
+        guard let entry = target.entry, entry.entryId != activeEntryID else {
+            showOwnReading(target.reading)
+            return
+        }
+        openSameSpellingWord(entry, reading: target.reading)
+    }
+
+    // Shows one of this entry's readings in the header and saves it as the card's pick.
+    func showOwnReading(_ reading: String) {
+        let entry = allDisplayData.first { $0.entry.entryId == activeEntryID }?.entry
+        displayedReading = entry.map {
+            projectedReading(surface: word.surface, baseReading: reading,
+                             kanjiForms: $0.kanjiForms, kanaForms: $0.kanaForms) ?? reading
+        } ?? reading
+        persistChosenReading(reading)
     }
 
     // Writes the switcher's pick onto the saved card and the word's History row. Stores the target's PLAIN dictionary reading,

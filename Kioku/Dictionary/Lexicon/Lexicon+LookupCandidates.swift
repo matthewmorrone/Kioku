@@ -82,8 +82,7 @@ nonisolated extension Lexicon {
     }
 
     // True when the entry writes the kanji `lemma` as an everyday spelling: a homograph (抱く read
-    // いだく, だく or うだく), listed however rare, since the reading arrows only cycle one entry's
-    // own readings and the list is the only way to reach the others.
+    // いだく, だく or うだく), kept however rare so its reading is one of the sheet's arrow stops.
     func isHomograph(_ entry: DictionaryEntry, of lemma: String) -> Bool {
         ScriptClassifier.containsKanji(lemma) && entry.kanjiForms.contains {
             $0.text == lemma && DictionaryEntry.kanjiFormIsNonEveryday(info: $0.info) == false
@@ -109,25 +108,31 @@ nonisolated extension Lexicon {
         return common.count == 1 ? common[0] : nil
     }
 
-    // The candidate the lookup sheet shows for an ambiguous form: the user's saved pick if it is
-    // still one of them, else the only one read the displayed way, else the only common one, else
-    // nil (awaiting a pick). Shared by the sheet and the Read tab's saved-word coloring so a picked
-    // word colors the text the same way it fills the sheet's star.
+    // The words a reading leaves undecided: the candidates read that way (怒り read いかり → the noun
+    // 怒り and 怒る いかる; read おこり → only 怒る). Readings pick between words; this is what is left
+    // for the lookup sheet's list to disambiguate. Empty when no candidate is read that way (a custom
+    // reading, or one only the surface's reading data knows): callers then follow the reading's own
+    // dictionary entry instead. Every candidate when there is no reading at all.
+    static func lookupCandidates(_ candidates: [LookupCandidate], sharingReading reading: String?) -> [LookupCandidate] {
+        guard let reading else { return candidates }
+        return candidates.filter { $0.surfaceReadings.contains(reading) }
+    }
+
+    // The word shown for a form read `displayedReading`: among the words sharing that reading, the
+    // user's saved pick if it is one of them, else the only one, else the only common one, else nil
+    // (awaiting a pick, or no word read that way — see lookupCandidates(_:sharingReading:)). Shared
+    // by the lookup sheet and the Read tab's saved-word coloring so a word colors the text the same
+    // way it fills the sheet's star.
     static func shownLookupCandidate(
         among candidates: [LookupCandidate],
         chosenEntryID: Int64?,
         displayedReading: String?
     ) -> LookupCandidate? {
-        if let chosen = candidates.first(where: { $0.entry.entryId == chosenEntryID }) {
+        let sharing = lookupCandidates(candidates, sharingReading: displayedReading)
+        if let chosen = sharing.first(where: { $0.entry.entryId == chosenEntryID }) {
             return chosen
         }
-        // Compared with each word's readings as conjugated like the text (怒る いかる → いかり on
-        // 怒り), since the displayed reading is the text's; the dictionary kana alone only ever
-        // matched uninflected forms.
-        let readingMatches = candidates.filter { candidate in
-            displayedReading.map { candidate.surfaceReadings.contains($0) } ?? false
-        }
-        if readingMatches.count == 1 { return readingMatches[0] }
-        return preferredLookupCandidate(among: candidates)
+        if sharing.count == 1 { return sharing[0] }
+        return preferredLookupCandidate(among: sharing)
     }
 }

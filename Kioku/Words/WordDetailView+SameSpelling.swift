@@ -1,12 +1,12 @@
 import SwiftUI
 
-// The Same Spelling list at the top of the page: other dictionary words written the same way as
-// this one (抱く read いだく vs だく), mirroring the Read-tab lookup sheet's word list. The header arrows only cycle this
-// word's own readings, so the other words live here, and each opens its own detail page rather than
-// re-pointing this card.
+// The Same Spelling list at the top of the page, mirroring the Read-tab lookup sheet's word list:
+// the header arrows step through every reading of the spelling, and this list tells apart the words
+// that share the reading shown, when there are several. Picking one switches the page to it in
+// place rather than re-pointing this card.
 extension WordDetailView {
     // Entries written with this word's kanji spelling as an everyday form, other than the one this
-    // card is for (sameSpellingSection orders them). Drawn from both the surface lookup (allDisplayData) and the
+    // card is for (sameSpellingAllEntries orders them). Drawn from both the surface lookup (allDisplayData) and the
     // reading gathering (readingVariants), since each finds siblings the other can miss. The
     // spelling is the saved surface when the entry writes it that way, else the entry's everyday
     // kanji (an inflected surface like 抱かれ → 抱く). Kana-only words have no shared spelling here.
@@ -27,22 +27,33 @@ extension WordDetailView {
         return siblings
     }
 
-    // The words written this way, at the top of the page and folded like the lookup sheet's list:
-    // folded, only this word's row (highlighted, "+N ⌄"); unfolded, every word in one fixed order —
-    // most frequent first, ties by entry id — so the list reads the same from every word's page and
-    // switching never reshuffles it. Tapping this word's row folds or unfolds; tapping another
-    // switches the page to it (openSameSpellingWord), recorded as a lookup like Related Words.
+    // This word and every other written the same way, in one fixed order — most frequent first,
+    // ties by entry id — so the arrows and the list read the same from every word's page. Just this
+    // word when it shares its spelling with none.
+    var sameSpellingAllEntries: [DictionaryEntry] {
+        guard let active = allDisplayData.first(where: { $0.entry.entryId == activeEntryID })?.entry else { return [] }
+        return (sameSpellingEntries + [active]).sorted {
+            let a = FrequencyData(frequencyRank: $0.frequencyRank, wordfreqZipf: $0.wordfreqZipf).normalizedScore ?? -1
+            let b = FrequencyData(frequencyRank: $1.frequencyRank, wordfreqZipf: $1.wordfreqZipf).normalizedScore ?? -1
+            return a != b ? a > b : $0.entryId < $1.entryId
+        }
+    }
+
+    // The words sharing the reading the switcher stands on, folded like the lookup sheet's list:
+    // folded, only this word's row (highlighted, "+N ⌄"); unfolded, all of them. Shown only when
+    // the reading is several words. Tapping this word's row folds or unfolds; tapping another
+    // switches the page to it on the same reading, recorded as a lookup like Related Words.
     @ViewBuilder
     var sameSpellingSection: some View {
-        let siblings = sameSpellingEntries
-        if siblings.isEmpty == false,
-           let active = allDisplayData.first(where: { $0.entry.entryId == activeEntryID })?.entry {
-            let all = (siblings + [active]).sorted {
-                let a = FrequencyData(frequencyRank: $0.frequencyRank, wordfreqZipf: $0.wordfreqZipf).normalizedScore ?? -1
-                let b = FrequencyData(frequencyRank: $1.frequencyRank, wordfreqZipf: $1.wordfreqZipf).normalizedScore ?? -1
-                return a != b ? a > b : $0.entryId < $1.entryId
-            }
-            let shown = sameSpellingExpanded.wrappedValue ? all : [active]
+        let readings = switchableReadings
+        let currentReading = currentSwitchIndex.map { readings[$0].reading }
+        let sharing = currentReading.map { reading in
+            sameSpellingAllEntries.filter { offeredReadings(of: $0).contains(reading) }
+        } ?? []
+        if sharing.count > 1,
+           let active = sharing.first(where: { $0.entryId == activeEntryID }) {
+            let others = sharing.count - 1
+            let shown = sameSpellingExpanded.wrappedValue ? sharing : [active]
             Section {
                 ForEach(shown, id: \.entryId) { entry in
                     let isActive = entry.entryId == active.entryId
@@ -51,13 +62,13 @@ extension WordDetailView {
                             withAnimation { sameSpellingExpanded.wrappedValue.toggle() }
                         } else {
                             historyStore.record(canonicalEntryID: entry.entryId, surface: entry.primarySearchSurface)
-                            openSameSpellingWord(entry)
+                            openSameSpellingWord(entry, reading: currentReading)
                         }
                     } label: {
                         HStack {
                             relatedWordRow(entry)
                             if isActive {
-                                Text(sameSpellingExpanded.wrappedValue ? "⌃" : "+\(siblings.count) ⌄")
+                                Text(sameSpellingExpanded.wrappedValue ? "⌃" : "+\(others) ⌄")
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.secondary)
                             }
@@ -66,7 +77,7 @@ extension WordDetailView {
                     .buttonStyle(.plain)
                     .listRowBackground(isActive ? Color(.tertiarySystemFill) : nil)
                     .accessibilityLabel(isActive
-                        ? (sameSpellingExpanded.wrappedValue ? "Hide words with the same spelling" : "Show \(siblings.count) words with the same spelling")
+                        ? (sameSpellingExpanded.wrappedValue ? "Hide words with this reading" : "Show \(others) more words with this reading")
                         : entry.primarySearchSurface)
                 }
             }
@@ -78,21 +89,23 @@ extension WordDetailView {
         sameSpellingExpandedBinding ?? $isSameSpellingExpanded
     }
 
-    // Switches the page to a same-spelling word in place. A stand-in page hands the pick to the
-    // page that owns it, so switching never nests; picking that page's own word switches back at
-    // once (it never left). Any other word is mounted hidden and shown when it reports ready
-    // (showSameSpellingPage). A word the user has saved opens as its saved card, anything else as
-    // an unsaved one.
-    func openSameSpellingWord(_ entry: DictionaryEntry) {
+    // Switches the page to a same-spelling word in place, opened on `reading`. A stand-in page hands
+    // the pick to the page that owns it, so switching never nests; picking that page's own word
+    // switches back at once (it never left) and shows the reading. Any other word is mounted hidden
+    // and shown when it reports ready (showSameSpellingPage). A word the user has saved opens as its
+    // saved card, anything else as an unsaved one.
+    func openSameSpellingWord(_ entry: DictionaryEntry, reading: String?) {
         if let onOpenSameSpelling {
-            onOpenSameSpelling(entry)
+            onOpenSameSpelling(entry, reading)
             return
         }
         guard entry.entryId != activeEntryID else {
             visibleSameSpellingID = nil
             sameSpellingPages = []
+            if let reading { showOwnReading(reading) }
             return
         }
+        if let reading { sameSpellingPageReadings[entry.entryId] = reading }
         if sameSpellingPages.contains(where: { $0.canonicalEntryID == entry.entryId }) {
             showSameSpellingPage(entry.entryId)
             return

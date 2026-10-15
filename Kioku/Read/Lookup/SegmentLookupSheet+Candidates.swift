@@ -1,33 +1,62 @@
 import UIKit
 
-// The list of possible words at the top of the lookup sheet: a form like いった is 言う, 行く or 要る
-// with the same kana, so the reading arrows can't reach the others. Each row shows the word's
-// headword, reading and first meaning. When exactly one of them is read the way the sheet shows the
-// segment (its furigana: 様 after の is よう, so 様 よう "appearing"), or only one is a word in common
-// use (Lexicon.preferredLookupCandidate: 消して → 消す, not the literary 消する), it is shown straight
-// away; otherwise nothing is picked for the user — with no context to decide, the sheet shows the
-// possibilities alone (no meaning, blank lemma line, no star or word detail) until one is tapped.
-// A tapped pick is then the word the sheet shows and is saved with the segment.
-// The list and its order come from Lexicon.lookupCandidates.
+// The list of possible words at the top of the lookup sheet. The header arrows step through every
+// reading of the form, and a reading usually names the word (抱く だく / いだく / うだく; 怒り おこり →
+// 怒る); the list is for what a reading leaves undecided — words that share it (いった → 言う, 行く
+// or 要る; 怒り いかり → the noun 怒り or 怒る いかる). Each row shows the word's headword, reading and
+// first meaning. The word shown is the user's pick when it shares the reading, else the only word
+// that does, else the only common one (Lexicon.preferredLookupCandidate: 消して → 消す, not the
+// literary 消する); otherwise nothing is picked for the user — the sheet shows the possibilities
+// alone (no meaning, blank lemma line, no star or word detail) until one is tapped. A tapped pick is
+// then the word the sheet shows and is saved with the segment. The candidates come from
+// Lexicon.lookupCandidates.
 extension SegmentLookupSheet {
-    // Stores the candidates for the current segment. When the form is several words, the shown word
-    // is the user's saved pick if it is still one of them, else the only one with the displayed
-    // reading, else the only common one, else nothing.
+    // Stores the candidates for the current segment and shows the word its displayed reading names
+    // (see the file comment), or nothing when that reading leaves it undecided.
     func adoptLookupCandidates(_ result: (candidates: [LookupCandidate], chosenEntryID: Int64?)?) {
         let candidates = result?.candidates ?? []
         currentSheetLookupCandidates = candidates
         currentSheetLookupBaseLemmaInfo = currentSheetLemmaInfo
+        currentSheetChosenEntryID = result?.chosenEntryID
+        currentSheetDisplayedReading = activeReadingOverrideProvider?() ?? currentSheetUniqueReadings.first
         isLookupCandidateListExpanded = false
-        guard candidates.count > 1 else { return }
+        guard candidates.count > 1,
+              Lexicon.lookupCandidates(candidates, sharingReading: currentSheetDisplayedReading).isEmpty == false
+        else { return }
+        showLookupCandidate(forReading: currentSheetDisplayedReading)
+    }
+
+    // An arrow moved the header to `reading`: shows the word that reading names, or the list of
+    // words sharing it. False when the form is only one word or no listed word is read that way,
+    // leaving the caller's reading→entry map to follow the reading.
+    func followDisplayedReading(_ reading: String) -> Bool {
+        currentSheetDisplayedReading = reading
+        guard currentSheetLookupCandidates.count > 1,
+              Lexicon.lookupCandidates(currentSheetLookupCandidates, sharingReading: reading).isEmpty == false
+        else { return false }
+        isLookupCandidateListExpanded = false
+        showLookupCandidate(forReading: reading)
+        return true
+    }
+
+    // Shows the word Lexicon.shownLookupCandidate picks for `reading`, or the unpicked state.
+    private func showLookupCandidate(forReading reading: String?) {
         if let shown = Lexicon.shownLookupCandidate(
-            among: candidates,
-            chosenEntryID: result?.chosenEntryID,
-            displayedReading: activeReadingOverrideProvider?() ?? currentSheetUniqueReadings.first
+            among: currentSheetLookupCandidates,
+            chosenEntryID: currentSheetChosenEntryID,
+            displayedReading: reading
         ) {
             applyLookupCandidate(shown)
         } else {
             showNoLookupCandidate()
         }
+    }
+
+    // The words the list offers: those sharing the displayed reading, when there are several.
+    var visibleLookupCandidates: [LookupCandidate] {
+        guard currentSheetLookupCandidates.count > 1 else { return [] }
+        let sharing = Lexicon.lookupCandidates(currentSheetLookupCandidates, sharingReading: currentSheetDisplayedReading)
+        return sharing.count > 1 ? sharing : []
     }
 
     // The unpicked state: no word, no lemma line, and no parts row (its parts were the engine's
@@ -38,21 +67,21 @@ extension SegmentLookupSheet {
         currentSheetCompoundComponents = []
     }
 
-    // True when the form is several words and none has been picked — the sheet then has no word to
-    // save or open, and must not fall back to a guess.
+    // True when the displayed reading leaves several words and none has been picked — the sheet then
+    // has no word to save or open, and must not fall back to a guess.
     var isAwaitingLookupCandidatePick: Bool {
-        currentSheetLookupCandidates.count > 1 && currentSheetDictionaryEntry == nil
+        visibleLookupCandidates.count > 1 && currentSheetDictionaryEntry == nil
     }
 
-    // The readings the header arrows cycle: only the shown dictionary word's own readings (涙 なみだ
-    // / なだ) — other words, homographs included (抱く いだく / だく), are the list's job. None while
-    // a pick is awaited. Every reading of the surface only when no candidates resolved at all.
+    // The readings the header arrows cycle: every reading of the surface plus every word's own
+    // (抱く だく / いだく / うだく), in that order without repeats.
     var readingsForArrows: [String] {
-        let candidates = currentSheetLookupCandidates
-        guard candidates.isEmpty == false else { return currentSheetUniqueReadings }
-        let shown = currentSheetDictionaryEntry.flatMap { entry in candidates.first { $0.entry.entryId == entry.entryId } }
-            ?? (candidates.count == 1 ? candidates[0] : nil)
-        return shown?.surfaceReadings ?? []
+        var readings: [String] = []
+        for reading in currentSheetUniqueReadings + currentSheetLookupCandidates.flatMap(\.surfaceReadings)
+        where readings.contains(reading) == false {
+            readings.append(reading)
+        }
+        return readings
     }
 
     // Makes `candidate` the word the sheet shows, naming it on the lemma line by its headword, or by
@@ -76,12 +105,12 @@ extension SegmentLookupSheet {
         }
     }
 
-    // Adds one tappable row per candidate to the top of the middle content, the shown one highlighted.
-    // Nothing is added when the form is only one word. With a word shown and the list collapsed,
+    // Adds one tappable row per word sharing the displayed reading to the top of the middle content,
+    // the shown one highlighted. Nothing is added when the reading names a single word. With a word shown and the list collapsed,
     // only that word's row appears, tapping it reopening the rest; on the open list, tapping
     // another row picks it and collapses the list, tapping the shown one clears the pick.
     func addLookupCandidateRows(to stack: UIStackView, parent: UIViewController?) {
-        let allCandidates = currentSheetLookupCandidates
+        let allCandidates = visibleLookupCandidates
         guard allCandidates.count > 1 else { return }
         let shownID = currentSheetDictionaryEntry?.entryId
         let isCollapsed = shownID != nil && isLookupCandidateListExpanded == false
@@ -162,9 +191,9 @@ extension SegmentLookupSheet {
                     return
                 }
                 self.applyLookupCandidate(candidate)
+                self.currentSheetChosenEntryID = candidate.entry.entryId
                 self.onLookupCandidateChosen?(candidate.entry.entryId)
                 self.isLookupCandidateListExpanded = false
-                sheetVC?.adoptReadingsOfPickedCandidate()
                 refresh()
             })
             list.addArrangedSubview(row)

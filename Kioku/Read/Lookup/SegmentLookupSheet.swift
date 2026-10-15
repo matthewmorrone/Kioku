@@ -134,6 +134,12 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     // Whether the candidate list shows every row. Once a word is shown, the list collapses to that
     // word's row plus a chevron to reopen the rest; a new segment starts collapsed.
     var isLookupCandidateListExpanded = false
+    // The segment's saved pick (from the provider, or a row tapped this visit), kept so an arrow
+    // press can bring it back when the reading returns to one it shares.
+    var currentSheetChosenEntryID: Int64? = nil
+    // The reading the sheet's header shows, which decides the words the list offers
+    // (Lexicon.lookupCandidates(_:sharingReading:)). Set by the sheet controller as it changes.
+    var currentSheetDisplayedReading: String? = nil
     // Records the user's pick for the current segment. Installed once by ReadView, like
     // onCompoundComponentTapped, so it is never reset between segments.
     var onLookupCandidateChosen: ((Int64) -> Void)?

@@ -27,7 +27,7 @@ struct WordDetailView: View {
     var noteID: UUID? = nil
     // Set when this page is standing in for a same-spelling word picked on another page: picks made
     // here go back to that page, which swaps what it shows (see openSameSpellingWord).
-    var onOpenSameSpelling: ((DictionaryEntry) -> Void)? = nil
+    var onOpenSameSpelling: ((DictionaryEntry, String?) -> Void)? = nil
     // A stand-in page shares its owner's fold state, so the list stays open across switches.
     var sameSpellingExpandedBinding: Binding<Bool>? = nil
     // Tells the owner a stand-in page has loaded, so it can be shown without a blank frame.
@@ -148,6 +148,8 @@ struct WordDetailView: View {
     // Same-spelling pages kept alive in place of this word's: the one showing plus any still
     // loading, hidden until ready so switching never flashes an empty page.
     @State var sameSpellingPages: [SavedWord] = []
+    // The reading each same-spelling page opens on (the arrow stop that led to it), by entry id.
+    @State var sameSpellingPageReadings: [Int64: String] = [:]
     // Which of sameSpellingPages is showing; nil shows this page's own word.
     @State var visibleSameSpellingID: Int64? = nil
 
@@ -299,14 +301,14 @@ struct WordDetailView: View {
                 AnyView(
                     WordDetailView(
                         word: page,
-                        reading: nil,
+                        reading: sameSpellingPageReadings[page.canonicalEntryID],
                         dictionaryStore: dictionaryStore,
                         segmenter: segmenter,
                         lexicon: lexicon,
                         surfaceReadingData: surfaceReadingData,
                         kanjiReadingFallback: kanjiReadingFallback,
                         noteID: noteID,
-                        onOpenSameSpelling: { openSameSpellingWord($0) },
+                        onOpenSameSpelling: { openSameSpellingWord($0, reading: $1) },
                         sameSpellingExpandedBinding: $isSameSpellingExpanded,
                         onSameSpellingReady: { showSameSpellingPage(page.canonicalEntryID) }
                     )

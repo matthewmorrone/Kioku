@@ -240,7 +240,7 @@ extension SegmentLookupSheet {
         }
 
         // An ambiguous form nobody has picked a word for yet: the possibilities alone, no meaning.
-        if currentSheetLookupCandidates.count > 1, currentSheetDictionaryEntry == nil {
+        if isAwaitingLookupCandidatePick {
             addLookupCandidateRows(to: middleContentStack, parent: parent)
             middleContentStack.superview?.isHidden = false
             return

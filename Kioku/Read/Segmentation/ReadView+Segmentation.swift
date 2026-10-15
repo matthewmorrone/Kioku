@@ -596,8 +596,8 @@ extension ReadView {
     // reading displayed there — the in-text saved-word coloring uses this so it lands on the same
     // word as the sheet's learned-state button. resolvedDictionaryEntry(forSurface:) alone picks
     // the surface's first entry, which for 怒り (read おこり) is the noun いかり, not 怒る. When the
-    // form is several words, the sheet's shown candidate (the user's pick) decides, and an
-    // unpicked ambiguous form is no word at all, exactly as in the sheet.
+    // form is several words and some are read the displayed way, the sheet's shown word decides
+    // (Lexicon.shownLookupCandidate), and an undecided one is no word at all, exactly as in the sheet.
     func displayedDictionaryEntry(forSurface surface: String, at location: Int) -> DictionaryEntry? {
         let fallback = resolvedDictionaryEntry(forSurface: surface)
         guard let lexicon, let store = dictionaryStore else { return fallback }
@@ -610,11 +610,12 @@ extension ReadView {
         let reconstructed = reconstructedReading(for: surface, at: location)
         let override = reconstructed.isEmpty ? nil : reconstructed
         let candidates = lexicon.lookupCandidates(surface: surface)
-        if candidates.count > 1 {
+        let displayed = override ?? readings.first
+        if candidates.count > 1, Lexicon.lookupCandidates(candidates, sharingReading: displayed).isEmpty == false {
             return Lexicon.shownLookupCandidate(
                 among: candidates,
                 chosenEntryID: document.chosenEntryIDBySegmentLocation[location],
-                displayedReading: override ?? readings.first
+                displayedReading: displayed
             )?.entry
         }
         guard readings.isEmpty == false else { return fallback }

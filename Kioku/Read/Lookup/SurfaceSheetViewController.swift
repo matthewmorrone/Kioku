@@ -208,8 +208,10 @@ final class SurfaceSheetViewController: UIViewController {
         return currentReadings[currentReadingIndex]
     }
 
-    // Rebuilds the furigana header to show the reading at the current index.
+    // Rebuilds the furigana header to show the reading at the current index, and tells the sheet
+    // which reading that is (it decides the words the list offers).
     func syncFuriganaToCurrentIndex() {
+        sheet?.currentSheetDisplayedReading = displayedReading()
         rebuildHeaderRow(reading: displayedReading())
     }
 
@@ -225,8 +227,7 @@ final class SurfaceSheetViewController: UIViewController {
 
     // Refreshes reading list, override state, and header display for the current segment.
     // Initializes the selected index from any persisted override so the UI reflects prior choices.
-    // When the form is several dictionary words, the list chooses the word and the arrows cycle only
-    // that word's readings (none until a word is shown).
+    // The arrows cycle every reading, including each dictionary word's own (readingsForArrows).
     func updateReadingFurigana() {
         guard let sheet else { return }
         currentReadings = sheet.readingsForArrows
@@ -249,19 +250,6 @@ final class SurfaceSheetViewController: UIViewController {
 
         syncFuriganaToCurrentIndex()
         updateReadingNavigationButtons()
-    }
-
-    // After a word is picked from the list: shows that word's readings on the arrows and, when the
-    // text's reading isn't one of them, puts the word's first reading on the text so the furigana
-    // names the picked word (怒る いかる on 怒り → いかり). Kana-only text has no furigana to change.
-    func adoptReadingsOfPickedCandidate() {
-        updateReadingFurigana()
-        guard ScriptClassifier.containsKanji(currentSurface), customReading != nil,
-              currentReadings.isEmpty == false else { return }
-        customReading = nil
-        currentReadingIndex = 0
-        syncFuriganaToCurrentIndex()
-        applyCurrentReadingSelection()
     }
 
     // Applies the visible reading choice to the lookup sheet, favoring a custom override when present.
@@ -294,10 +282,11 @@ final class SurfaceSheetViewController: UIViewController {
     // map is empty (single-reading surface) or doesn't contain an entry for the current reading.
     func syncLemmaAndEntryToCurrentReading() {
         guard let sheet else { return }
-        // With the word list up, the list owns the word; the arrows only change its reading.
-        guard sheet.currentSheetLookupCandidates.count <= 1 else { return }
         guard currentReadings.indices.contains(currentReadingIndex) else { return }
         let reading = currentReadings[currentReadingIndex]
+        // A form that is several words: the reading names the word, or narrows the list to those
+        // sharing it (SegmentLookupSheet.followDisplayedReading).
+        if sheet.followDisplayedReading(reading) { return }
         guard let info = sheet.currentSheetLemmaInfoByReading[reading] else { return }
         sheet.currentSheetLemmaInfo = (lemma: info.lemma, chain: info.chain)
         if let entry = info.entry {
