@@ -4,7 +4,7 @@ import UIKit
 // Renders the lyrics card's word bubbles: comic-style white speech bubbles, one per word holding
 // its meaning, plus one holding the breakdown's grammar note for the line on its last word. Each
 // bubble's tail runs all the way to its word. They go in the empty space beside the line — each
-// word's bubbles on its side, stacked upward from above the line and downward from below it so
+// word's bubbles on its side, one level with the line and the rest stacked above and below it so
 // tails never cross the text (sideLayout), free to run past the card's top and bottom since the
 // neighbouring lines are centred too. When the line is too wide to leave room beside it, they go in rows above (meanings) and
 // below (notes) it instead, and the card makes room for those rows (onNeedsBandsChange). Everything
@@ -29,9 +29,9 @@ struct LyricWordBubbleOverlay: View {
     static let maxCommentWidth: CGFloat = 220
     // How far a side stack may run past the card's top or bottom.
     static let sideOverflow: CGFloat = 220
-    // Space between the line and the nearest bubble of a side stack, and between stacked bubbles.
-    static let lineClearance: CGFloat = 12
-    static let stackGap: CGFloat = 12
+    // Least space between the line and a stacked side bubble, and between stacked bubbles.
+    static let lineClearance: CGFloat = 4
+    static let stackGap: CGFloat = 10
     static let stackedRows = 2
     // Height of one bubble row in the above/below layout, which leaves room for the tail.
     static var rowHeight: CGFloat { ceil(glossFont.lineHeight) + 2 * verticalPadding + 12 }
@@ -92,11 +92,12 @@ struct LyricWordBubbleOverlay: View {
 
     // The beside-the-line layout, or nil when either side is too narrow or a stack would run
     // further past the card than sideOverflow. Each word's bubbles go on its side of the line's
-    // middle; there, the first half of the side's words (in sung order) stack upward from just
-    // above the line and the rest downward from just below it, every bubble clear of the line, so
-    // a tail runs through empty space and meets the text only at its own word (its top from above,
-    // its bottom from below). Within a stack the bubble nearest the line points at the word
-    // nearest that side, so tails nest instead of crossing. A note follows its word's meaning.
+    // middle. There, the word nearest the edge gets its meaning level with the line, the tail
+    // pointing straight into the word's side; the side's other words split between a stack rising
+    // from that bubble and one falling from it (earlier words up, later down), each bubble kept
+    // clear of the line so its tail drops onto the word's top or bottom through empty space, never
+    // across the text. Within a stack the bubble nearest the line points at the word nearest the
+    // edge, so tails nest instead of crossing. A note follows its word's meaning.
     static func sideLayout(_ bubbles: [PlacedLyricWordBubble], lineRect: CGRect?, size cardSize: CGSize) -> [Slot]? {
         let width = cardSize.width
         guard let line = lineRect, width > 0 else { return nil }
@@ -106,35 +107,62 @@ struct LyricWordBubbleOverlay: View {
         let sorted = bubbles.sorted { $0.anchor.midX < $1.anchor.midX }
         var slots: [Slot] = []
         for isLeft in [true, false] {
+            // The side's words, nearest the edge first.
             let side = sorted.filter { ($0.anchor.midX < line.midX) == isLeft }
+            let fromEdge = isLeft ? side : side.reversed()
             let columnWidth = isLeft ? leftWidth : rightWidth
-            let splitAt = (side.count + 1) / 2
-            for isAbove in [true, false] {
-                let words = Array(isAbove ? side.prefix(splitAt) : side.dropFirst(splitAt))
-                // Nearest the side's edge first: that word's bubbles sit next to the line.
-                let ordered = isLeft ? words : words.reversed()
-                var entries: [(bubble: PlacedLyricWordBubble, text: String, note: Bool, size: CGSize)] = []
-                for bubble in ordered {
-                    var pair: [(PlacedLyricWordBubble, String, Bool, CGSize)] = []
+            // A bubble's x: hugging the line's edge on this side.
+            func x(for size: CGSize) -> CGFloat { isLeft ? line.minX - margin - size.width : line.maxX + margin }
+            // The bubbles of `words` in order, each word's meaning then its note.
+            func entries(_ words: [PlacedLyricWordBubble]) -> [(bubble: PlacedLyricWordBubble, text: String, note: Bool, size: CGSize)] {
+                words.flatMap { bubble -> [(bubble: PlacedLyricWordBubble, text: String, note: Bool, size: CGSize)] in
+                    var pair: [(bubble: PlacedLyricWordBubble, text: String, note: Bool, size: CGSize)] = []
                     if let gloss = bubble.gloss {
                         pair.append((bubble, gloss, false, size(gloss, note: false, maxWidth: min(columnWidth, maxGlossWidth))))
                     }
                     if let comment = bubble.comment {
                         pair.append((bubble, comment, true, size(comment, note: true, maxWidth: min(columnWidth, maxCommentWidth))))
                     }
-                    // Stacking away from the line, the meaning stays nearest it and its note beyond.
-                    entries += pair.map { (bubble: $0.0, text: $0.1, note: $0.2, size: $0.3) }
+                    return pair
                 }
-                var edge = isAbove ? line.minY - lineClearance : line.maxY + lineClearance
-                for entry in entries {
+            }
+
+            // The level bubble: the edge word's meaning, centred on the line.
+            var top = line.minY
+            var bottom = line.maxY
+            var rest = fromEdge
+            if let edgeWord = fromEdge.first, let gloss = edgeWord.gloss {
+                let size = size(gloss, note: false, maxWidth: min(columnWidth, maxGlossWidth))
+                let frame = CGRect(x: x(for: size), y: line.midY - size.height / 2, width: size.width, height: size.height)
+                slots.append(Slot(
+                    id: edgeWord.id * 2,
+                    text: gloss,
+                    isNote: false,
+                    frame: frame,
+                    tip: CGPoint(x: isLeft ? edgeWord.anchor.minX - 1 : edgeWord.anchor.maxX + 1, y: line.midY)
+                ))
+                top = min(frame.minY, line.minY)
+                bottom = max(frame.maxY, line.maxY)
+                rest = Array(fromEdge.dropFirst())
+                // Its note, if any, joins the stacks like the other words'.
+                rest.insert(PlacedLyricWordBubble(id: edgeWord.id, anchor: edgeWord.anchor, gloss: nil, comment: edgeWord.comment), at: 0)
+            }
+
+            // Earlier words (in sung order) up, later ones down.
+            let sung = rest.sorted { $0.anchor.midX < $1.anchor.midX }
+            let splitAt = sung.count / 2
+            let upWords = Set(sung.prefix(splitAt).map(\.id))
+            for isAbove in [true, false] {
+                let words = rest.filter { upWords.contains($0.id) == isAbove }
+                var edge = isAbove ? min(top - stackGap, line.minY - lineClearance) : max(bottom + stackGap, line.maxY + lineClearance)
+                for entry in entries(words) {
                     let y = isAbove ? edge - entry.size.height : edge
                     guard y >= -sideOverflow, y + entry.size.height <= cardSize.height + sideOverflow else { return nil }
-                    let x = isLeft ? line.minX - margin - entry.size.width : line.maxX + margin
                     slots.append(Slot(
                         id: entry.bubble.id * 2 + (entry.note ? 1 : 0),
                         text: entry.text,
                         isNote: entry.note,
-                        frame: CGRect(x: x, y: y, width: entry.size.width, height: entry.size.height),
+                        frame: CGRect(x: x(for: entry.size), y: y, width: entry.size.width, height: entry.size.height),
                         tip: CGPoint(x: entry.bubble.anchor.midX, y: isAbove ? line.minY - 1 : line.maxY + 1)
                     ))
                     edge = isAbove ? y - stackGap : y + entry.size.height + stackGap
