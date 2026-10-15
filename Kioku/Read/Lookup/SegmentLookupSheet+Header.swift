@@ -2,9 +2,12 @@ import UIKit
 
 extension SegmentLookupSheet {
     // Builds a header row for the lookup sheet with per-kanji-run furigana centered above each headword.
+    // `isCustomReading` marks a reading the user typed in (not one of the dictionary's) with a pencil
+    // on the furigana line after the word.
     func buildSheetHeaderSubviews(
         surface: String,
         reading: String?,
+        isCustomReading: Bool = false,
         headwordFont: UIFont = UIFont.systemFont(ofSize: 34, weight: .bold),
         rubyFont: UIFont = UIFont.systemFont(ofSize: 17)
     ) -> [UIView] {
@@ -38,7 +41,9 @@ extension SegmentLookupSheet {
         // A long segment (なって憤り出しました) is wider than the header at full size, and the row
         // would otherwise truncate its last column to "…". Shrink both fonts by the same factor
         // until every column — the wider of its glyphs and its ruby — fits.
-        let neededWidth = segments.reduce(CGFloat(0)) { total, segment in
+        let showsCustomMark = isCustomReading && reading != nil && runs.isEmpty == false
+        let customMarkWidth: CGFloat = showsCustomMark ? ceil(rubyFont.pointSize) + 4 : 0
+        let neededWidth = segments.reduce(customMarkWidth) { total, segment in
             let glyphWidth = (segment.text as NSString).size(withAttributes: [.font: headwordFont]).width
             let rubyWidth = (segment.ruby as NSString?)?.size(withAttributes: [.font: rubyFont]).width ?? 0
             return total + ceil(max(glyphWidth, rubyWidth))
@@ -59,7 +64,7 @@ extension SegmentLookupSheet {
             return [label]
         }
 
-        return segments.map { segment in
+        let columns: [UIView] = segments.map { segment in
             let headwordLabel = UILabel()
             headwordLabel.font = headwordFont
             headwordLabel.text = segment.text
@@ -84,6 +89,26 @@ extension SegmentLookupSheet {
             column.spacing = 2
             return column
         }
+        guard showsCustomMark else { return columns }
+
+        // The custom-reading pencil: on the furigana line, over an empty slot as tall as the headword.
+        let pencil = UIImageView(image: UIImage(
+            systemName: "pencil",
+            withConfiguration: UIImage.SymbolConfiguration(font: rubyFont.withSize(rubyFont.pointSize * 0.8))
+        ))
+        pencil.tintColor = .secondaryLabel
+        pencil.contentMode = .center
+        pencil.heightAnchor.constraint(equalToConstant: ceil(rubyFont.lineHeight)).isActive = true
+        pencil.isAccessibilityElement = true
+        pencil.accessibilityLabel = "Custom reading"
+        let slot = UIView()
+        slot.heightAnchor.constraint(equalToConstant: ceil(headwordFont.lineHeight)).isActive = true
+        let markColumn = UIStackView(arrangedSubviews: [pencil, slot])
+        markColumn.axis = .vertical
+        markColumn.alignment = .center
+        markColumn.spacing = 2
+        markColumn.widthAnchor.constraint(equalToConstant: customMarkWidth).isActive = true
+        return columns + [markColumn]
     }
 
     // Width the header row gets inside the sheet: the screen less the header container's 16 pt
@@ -117,12 +142,12 @@ extension SegmentLookupSheet {
     }
 
     // Rebuilds the header row when the selected surface or reading changes.
-    func rebuildSheetHeaderRow(_ headerRow: UIStackView, surface: String, reading: String?) {
+    func rebuildSheetHeaderRow(_ headerRow: UIStackView, surface: String, reading: String?, isCustomReading: Bool = false) {
         headerRow.arrangedSubviews.forEach { subview in
             headerRow.removeArrangedSubview(subview)
             subview.removeFromSuperview()
         }
-        for view in buildSheetHeaderSubviews(surface: surface, reading: reading) {
+        for view in buildSheetHeaderSubviews(surface: surface, reading: reading, isCustomReading: isCustomReading) {
             headerRow.addArrangedSubview(view)
         }
     }

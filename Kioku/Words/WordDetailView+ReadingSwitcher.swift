@@ -64,10 +64,42 @@ extension WordDetailView {
     // The reading the user picked with the switcher on some earlier visit, read off the live saved
     // card for whichever entry is active now (so a re-point this session can't surface the previous
     // entry's reading). An unsaved word falls back to the reading on its History row. Nil when
-    // neither has one.
+    // neither has one, or when it isn't a dictionary reading (a custom one recorded before custom
+    // readings stayed in the Read view).
     var savedChosenReading: String? {
-        wordsStore.words.first { $0.canonicalEntryID == activeEntryID }?.selectedReading
+        let saved = wordsStore.words.first { $0.canonicalEntryID == activeEntryID }?.selectedReading
             ?? historyStore.reading(for: activeEntryID)
+        return saved.flatMap { isDictionaryReading($0) ? $0 : nil }
+    }
+
+    // Whether `reading` is one of the word's dictionary readings: a kana form of an entry spelled
+    // like it, as written or projected onto the surface (抱かれ read だかれ is だく's). A custom
+    // reading pinned in the Read view isn't — it belongs to that place in the text (地球 sung ほし),
+    // so this page never shows it as the word's reading. False until the entries load.
+    func isDictionaryReading(_ reading: String) -> Bool {
+        sameSpellingAllEntries.contains { entry in
+            entry.kanaForms.contains { form in
+                form.text == reading
+                    || projectedReading(surface: word.surface, baseReading: form.text,
+                                        kanjiForms: entry.kanjiForms, kanaForms: entry.kanaForms) == reading
+            }
+        }
+    }
+
+    // The reading this view was opened with, when it's a dictionary reading.
+    var openedDictionaryReading: String? {
+        reading.flatMap { isDictionaryReading($0) ? $0 : nil }
+    }
+
+    // The custom reading of the occurrence this view was opened from (the lookup sheet's), shown
+    // as a note under the header — "read ほし here" — so the header's dictionary reading doesn't
+    // look like the custom one was lost. Nil once the switcher flips or the entry is re-pointed,
+    // and while the entries load (when no reading can be told custom yet).
+    var customOccurrenceReading: String? {
+        guard displayedReading == nil, activeEntryID == word.canonicalEntryID,
+              sameSpellingAllEntries.isEmpty == false,
+              let reading, isDictionaryReading(reading) == false else { return nil }
+        return reading
     }
 
     // The reading of the text occurrence this view was opened from (the lookup sheet's header), when
@@ -77,7 +109,7 @@ extension WordDetailView {
     // switcher flips or the entry is re-pointed.
     var occurrenceReading: String? {
         guard displayedReading == nil, activeEntryID == word.canonicalEntryID,
-              let reading, reading != savedChosenReading else { return nil }
+              let reading = openedDictionaryReading, reading != savedChosenReading else { return nil }
         return reading
     }
 
@@ -99,6 +131,7 @@ extension WordDetailView {
                 kanaForms: forms.kanaForms
             ) ?? chosen
         }
+        let reading = openedDictionaryReading
         if activeEntryID == word.canonicalEntryID, let reading { return reading }
         if let active = switchableReadings.first(where: { $0.entry?.entryId == activeEntryID }),
            let activeEntry = active.entry {

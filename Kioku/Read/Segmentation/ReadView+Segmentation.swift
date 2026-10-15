@@ -59,9 +59,12 @@ extension ReadView {
         document.hasManualSegmentationEdits = true
         // Rebuild segments with updated furigana then persist.
         rebuildAndPersistSegments()
-        // Carry the pinned reading into the word's History row so the Words list shows it too.
+        // Carry a dictionary reading picked with the sheet's arrows into the word's History row so
+        // the Words list shows it too. A custom reading isn't carried: it belongs to this place in
+        // the text (地球 sung ほし), not to the word, so only the Read view shows it.
         if let selectedSurface {
-            recordLookupHistory(surface: selectedSurface, reading: reading)
+            let isDictionaryReading = SegmentLookupSheet.shared.readingsForArrows.contains(reading)
+            recordLookupHistory(surface: selectedSurface, reading: isDictionaryReading ? reading : nil)
         }
     }
 

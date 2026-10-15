@@ -222,7 +222,12 @@ final class SurfaceSheetViewController: UIViewController {
     // than force-unwrap a nil outlet into a crash for what's just a stale, ignorable completion.
     func rebuildHeaderRow(reading: String?) {
         guard let headerRow else { return }
-        sheet?.rebuildSheetHeaderRow(headerRow, surface: currentSurface, reading: reading)
+        sheet?.rebuildSheetHeaderRow(
+            headerRow,
+            surface: currentSurface,
+            reading: reading,
+            isCustomReading: reading != nil && reading == customReading
+        )
     }
 
     // Refreshes reading list, override state, and header display for the current segment.

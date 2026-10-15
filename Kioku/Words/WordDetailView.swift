@@ -136,7 +136,7 @@ struct WordDetailView: View {
     // reopening the view resumes cycling from where the user left off rather than from the entry's
     // default), else the opened reading. Deliberately does NOT consult switchableReadings (which
     // reads this) so there is no recursion.
-    var activeReading: String? { displayedReading ?? occurrenceReading ?? savedChosenReading ?? reading }
+    var activeReading: String? { displayedReading ?? occurrenceReading ?? savedChosenReading ?? openedDictionaryReading }
     // Set by a homonym re-point tap so the List scrolls the now-saved card into view once the
     // async reload settles (the card the user tapped may sit far down the list). Cleared after
     // the scroll fires. See the .onChange(of: allDisplayData.first…) below.
@@ -442,6 +442,14 @@ struct WordDetailView: View {
                 // star overlays), shown only for words with more than one reading sharing the spelling.
                 .overlay(alignment: .leading) { readingSwitcherChevron(.previous) }
                 .overlay(alignment: .trailing) { readingSwitcherChevron(.next) }
+
+                // The custom reading the text gave this word where it was looked up — kept off the
+                // header, which shows the word's dictionary reading. Same pencil as the lookup sheet's.
+                if let customOccurrenceReading {
+                    Label("read \(customOccurrenceReading) here", systemImage: "pencil")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
 
                 // The whole form's meaning (言いたくない → to not want to say), with an ⓘ that
                 // explains it's an AI guess, like the lookup sheet's.
