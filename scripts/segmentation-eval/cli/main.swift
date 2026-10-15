@@ -1,5 +1,6 @@
 import Foundation
 // Harness over the repo's REAL transition code (TransitionClass, SegmenterTransitionTable).
+//   segcli lexicon < surfaces                    → "surface<TAB>lemma=…<TAB>candidates=…": the lookup sheet's lemma line and possibilities (Lexicon)
 //   segcli count <lexical.txt> < gold.jsonl       → "start,end,className" per gold token
 //   segcli fit <configs> <outdir> < sentences   configs: "WEIGHT CLAMP"; the dictionary's transition rows, lattice once, DP per config
 //   segcli lemmas < surfaces                     → what each surface resolves to, with each lemma's score (the audit's input)
@@ -83,6 +84,21 @@ if mode == "lemmas" {
             "own=\(freq[line] ?? 0)",
             r.lemmas.sorted().map { "\($0)=\(freq[$0] ?? 0)" }.joined(separator: " ")
         )
+    }
+    exit(0)
+}
+
+if mode == "lexicon" {
+    let lexicon = Lexicon(
+        dictionaryStore: store,
+        segmenter: segmenter,
+        deinflector: deinflector,
+        surfaceReadingData: try store.fetchSurfaceReadingData()
+    )
+    while let line = readLine() {
+        let info = lexicon.inflectionInfo(surface: line).map { "\($0.lemma) [\($0.chain.joined(separator: ","))]" } ?? "-"
+        let candidates = lexicon.lookupCandidates(surface: line).map { "\($0.lemma):\($0.headword)/\($0.reading)" }
+        print("\(line)\tlemma=\(info)\tcandidates=\(candidates.joined(separator: " "))")
     }
     exit(0)
 }

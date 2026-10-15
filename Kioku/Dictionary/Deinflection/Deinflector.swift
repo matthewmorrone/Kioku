@@ -145,11 +145,15 @@ nonisolated final class Deinflector {
         ]
         // Rules match hiragana endings, so a verb written in katakana for effect (ナカナイ) is also
         // traversed in its hiragana form (なかない → なく). A katakana surface the dictionary already
-        // knows as a word (ゼッタイ), or whose hiragana form is a word (スマイ → すまい, not すまう),
-        // is not re-read as an inflection.
+        // knows as a word is not re-read as an inflection. A hiragana form that is a word is that
+        // word with no steps (ゼッタイ → ぜったい, スマイ → すまい), never traversed further (not すまう).
         if trie.contains(surface) == false {
-            for normalized in normalizedKanaCandidates(for: surface).sorted() where trie.contains(normalized) == false {
-                queue.append((surface: normalized, grammar: nil, chain: [], transitions: []))
+            for normalized in normalizedKanaCandidates(for: surface).sorted() {
+                if trie.contains(normalized) {
+                    pathsBySurface[normalized] = [(chain: [], transitions: [])]
+                } else {
+                    queue.append((surface: normalized, grammar: nil, chain: [], transitions: []))
+                }
             }
         }
 

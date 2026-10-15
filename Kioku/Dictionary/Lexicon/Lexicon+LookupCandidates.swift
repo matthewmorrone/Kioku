@@ -13,8 +13,10 @@ nonisolated extension Lexicon {
     // kana come first and are listed even without a rank (isWrittenInKana). An entry only counts when it conjugates the way the
     // chain reaching it claims: いった reaches いる by a godan rule, so 要る is listed and 居る is not.
     // The surface's own headwords are always possibilities too, even when the engine reads the form
-    // as a conjugation: きた is 来る's past and also 北.
-    func lookupCandidates(surface: String) -> [LookupCandidate] {
+    // as a conjugation: きた is 来る's past and also 北. A particle written in katakana is only the
+    // particle (TextSegmenting.functionWord).
+    func lookupCandidates(surface writtenSurface: String) -> [LookupCandidate] {
+        let surface = segmenter.functionWord(spelledInKatakana: writtenSurface) ?? writtenSurface
         var (lemmas, pathsByLemma) = admittedLemmasAndPaths(for: surface)
         if lemmas.contains(where: { $0.lemma == surface }) == false {
             lemmas.append((lemma: surface, depth: 0))

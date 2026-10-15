@@ -428,8 +428,10 @@ nonisolated public final class Lexicon {
     // Computes deinflection paths once and returns admitted, sorted lemma entries alongside the paths.
     // Depth is chain.count — a natural product of the BFS, not a separate computation.
     // Callers that need chain or transition data extract it from the returned paths without re-traversal.
+    // A particle written in katakana (ヨ) resolves as the particle (TextSegmenting.functionWord).
     func admittedLemmasAndPaths(for surface: String) -> (lemmas: [(lemma: String, depth: Int)], paths: DeinflectionPathMap) {
-        let trimmedSurface = surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        let written = surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedSurface = segmenter.functionWord(spelledInKatakana: written) ?? written
         guard trimmedSurface.isEmpty == false else {
             return ([], [:])
         }

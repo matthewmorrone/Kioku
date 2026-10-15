@@ -95,3 +95,12 @@ Dictionary/DictionaryStore+ReadingRegisters.swift
 Dictionary/DictionaryStore+UsageTables.swift
 Read/Furigana/RegisterClassifier.swift
 Read/Furigana/ReadingRegisters.swift
+Dictionary/Lexicon/Lexicon+CompoundVerb.swift
+Dictionary/Lexicon/Lexicon+LemmaLineComponents.swift
+Dictionary/Lexicon/Lexicon+LexemeAccessors.swift
+Dictionary/Lexicon/Lexicon+LookupCandidates.swift
+Dictionary/Lexicon/Lexicon+Reinflection.swift
+Dictionary/Lexicon/Lexicon.swift
+Dictionary/Lexicon/LookupCandidate.swift
+Words/DictionaryEntry+SearchMetadata.swift
+Dictionary/JMdictTagExpander.swift
