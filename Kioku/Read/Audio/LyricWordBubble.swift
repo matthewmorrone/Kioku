@@ -11,10 +11,13 @@ struct LyricWordBubble: Equatable {
 }
 
 // One bubble placed for drawing: its word's rect on the card and the bubble's text, keyed by the
-// word's note location.
+// word's note location. Every word of the line is placed, so the layout is planned for the whole
+// line up front and a bubble never moves as later words are sung; `isShown` says whether it's
+// drawn yet.
 struct PlacedLyricWordBubble: Equatable {
     let id: Int
     let anchor: CGRect
     let gloss: String?
     let comment: String?
+    let isShown: Bool
 }

@@ -129,16 +129,23 @@ extension LyricsView {
         wordBubbleRects[NSRange(location: 0, length: cueLength)]
     }
 
-    // The bubbles to draw now: on the line being played, the words sung so far; on a line the user
-    // has dragged into view, all of them. Each placed at its word's measured rect.
+    // All the line's bubbles, each placed at its word's measured rect, so the overlay lays out the
+    // whole line at once and none moves as more appear. Shown: on the line being played, the words
+    // sung so far; on a line the user has dragged into view, all of them.
     func placedWordBubbles(forCueAt index: Int, cueOriginInNote: Int, cueLength: Int) -> [PlacedLyricWordBubble] {
         let cueSpan = NSRange(location: cueOriginInNote, length: cueLength)
         let isLive = index == activeIndex
         let now = controller.currentTimeMs
         return wordBubbles(in: cueSpan).compactMap { bubble in
-            if isLive, wordStartMs(bubble, cueAt: index, cueSpan: cueSpan) > now { return nil }
             guard let local = cueLocalRange(bubble, cueSpan: cueSpan), let rect = wordBubbleRects[local] else { return nil }
-            return PlacedLyricWordBubble(id: bubble.noteRange.location, anchor: rect, gloss: bubble.gloss, comment: bubble.comment)
+            let isSung = isLive == false || wordStartMs(bubble, cueAt: index, cueSpan: cueSpan) <= now
+            return PlacedLyricWordBubble(
+                id: bubble.noteRange.location,
+                anchor: rect,
+                gloss: bubble.gloss,
+                comment: bubble.comment,
+                isShown: isSung
+            )
         }
     }
 

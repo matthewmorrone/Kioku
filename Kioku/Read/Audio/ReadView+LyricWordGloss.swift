@@ -14,7 +14,8 @@ extension ReadView {
         guard isLyricLoanword(surface) == false,
               PartOfSpeech.isParticle(dictionaryStore?.posBits(forSurface: surface) ?? 0) == false else { return nil }
         guard let entry = displayedDictionaryEntry(forSurface: surface, at: location)
-                ?? unpickedLyricCandidates(forSurface: surface, at: location).first,
+                ?? unpickedLyricCandidates(forSurface: surface, at: location).first
+                ?? hiraganaSpelledEntry(forKatakana: surface),
               let lemmaGloss = entry.senses.first(where: { $0.glosses.isEmpty == false })?.glosses.first else { return nil }
         let gloss = inflectedLyricGloss(lemmaGloss, surface: surface, entry: entry)
         // A parenthesized gloss is qualifying itself — too much for a bubble and usually the wrong
@@ -57,11 +58,24 @@ extension ReadView {
     // Whether a lyric word is a loanword in katakana (ベイビー, ドア, キスした), which needs no bubble:
     // its katakana stem's entry is spelled only in katakana. A Japanese word written in katakana
     // (キラキラ, ダメ, ウソ) has a hiragana or kanji spelling too and keeps its bubble. A katakana stem
-    // the dictionary doesn't know is taken for a loanword.
+    // the dictionary doesn't know in katakana or in hiragana is taken for a loanword — lyrics write
+    // Japanese words in katakana for emphasis (ゼッタイ for 絶対) that the dictionary only spells
+    // ぜったい.
     func isLyricLoanword(_ surface: String) -> Bool {
         guard ScriptClassifier.isKatakanaWord(surface),
               let stem = ScriptClassifier.leadingKatakanaPrefix(of: surface) else { return false }
-        guard let entry = resolvedDictionaryEntry(forSurface: stem) else { return true }
+        guard let entry = resolvedDictionaryEntry(forSurface: stem) else {
+            return hiraganaSpelledEntry(forKatakana: surface) == nil
+        }
         return entry.kanjiForms.isEmpty && entry.kanaForms.allSatisfy { ScriptClassifier.isPureKatakana($0.text) }
+    }
+
+    // A katakana lyric word's entry under its hiragana spelling (ゼッタイ → ぜったい, 絶対), for words
+    // the dictionary doesn't list in katakana. Nil for anything not in katakana.
+    private func hiraganaSpelledEntry(forKatakana surface: String) -> DictionaryEntry? {
+        guard ScriptClassifier.isKatakanaWord(surface) else { return nil }
+        let hiragana = KanaNormalizer.katakanaToHiragana(surface)
+        guard hiragana != surface else { return nil }
+        return resolvedDictionaryEntry(forSurface: hiragana)
     }
 }
