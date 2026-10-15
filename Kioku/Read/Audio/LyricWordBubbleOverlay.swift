@@ -3,10 +3,10 @@ import UIKit
 
 // Renders the lyrics card's word bubbles: comic-style white speech bubbles, one per word holding
 // its meaning, plus one holding the breakdown's grammar note for the line on its last word. Each
-// bubble's tail runs all the way to just above its word. They go in the empty space beside the
-// line — each word's bubbles in the column on its side, stacked in sung order around the line's
-// middle, free to run past the card's top and bottom since the neighbouring lines are centred
-// too. When the line is too wide to leave room beside it, they go in rows above (meanings) and
+// bubble's tail runs all the way to its word. They go in the empty space beside the line — each
+// word's bubbles on its side, stacked upward from above the line and downward from below it so
+// tails never cross the text (sideLayout), free to run past the card's top and bottom since the
+// neighbouring lines are centred too. When the line is too wide to leave room beside it, they go in rows above (meanings) and
 // below (notes) it instead, and the card makes room for those rows (onNeedsBandsChange). Everything
 // springs into place as words are added. Sits over the renderer in its coordinates (rects from
 // KiokuScrollingTextView.reportRangeRects). Ignores touches.
@@ -27,8 +27,11 @@ struct LyricWordBubbleOverlay: View {
     static let minColumnWidth: CGFloat = 70
     static let maxGlossWidth: CGFloat = 150
     static let maxCommentWidth: CGFloat = 220
-    // How far a side column may run past the card's top or bottom.
-    static let sideOverflow: CGFloat = 140
+    // How far a side stack may run past the card's top or bottom.
+    static let sideOverflow: CGFloat = 220
+    // Space between the line and the nearest bubble of a side stack, and between stacked bubbles.
+    static let lineClearance: CGFloat = 12
+    static let stackGap: CGFloat = 12
     static let stackedRows = 2
     // Height of one bubble row in the above/below layout, which leaves room for the tail.
     static var rowHeight: CGFloat { ceil(glossFont.lineHeight) + 2 * verticalPadding + 12 }
@@ -87,10 +90,13 @@ struct LyricWordBubbleOverlay: View {
         return CGSize(width: min(textWidth + 2 * horizontalPadding, maxWidth), height: ceil(font.lineHeight) + 2 * verticalPadding)
     }
 
-    // The beside-the-line layout, or nil when either side is too narrow or a column would run
-    // further past the card than sideOverflow. Each word's meaning, then its note, goes in the
-    // column on its side of the line's middle; a column is stacked in sung order and centred on
-    // the line, hugging the line's edge. Every tail reaches just above its word.
+    // The beside-the-line layout, or nil when either side is too narrow or a stack would run
+    // further past the card than sideOverflow. Each word's bubbles go on its side of the line's
+    // middle; there, the first half of the side's words (in sung order) stack upward from just
+    // above the line and the rest downward from just below it, every bubble clear of the line, so
+    // a tail runs through empty space and meets the text only at its own word (its top from above,
+    // its bottom from below). Within a stack the bubble nearest the line points at the word
+    // nearest that side, so tails nest instead of crossing. A note follows its word's meaning.
     static func sideLayout(_ bubbles: [PlacedLyricWordBubble], lineRect: CGRect?, size cardSize: CGSize) -> [Slot]? {
         let width = cardSize.width
         guard let line = lineRect, width > 0 else { return nil }
@@ -100,31 +106,39 @@ struct LyricWordBubbleOverlay: View {
         let sorted = bubbles.sorted { $0.anchor.midX < $1.anchor.midX }
         var slots: [Slot] = []
         for isLeft in [true, false] {
-            let column = sorted.filter { ($0.anchor.midX < line.midX) == isLeft }
+            let side = sorted.filter { ($0.anchor.midX < line.midX) == isLeft }
             let columnWidth = isLeft ? leftWidth : rightWidth
-            var entries: [(bubble: PlacedLyricWordBubble, text: String, note: Bool, size: CGSize)] = []
-            for bubble in column {
-                if let gloss = bubble.gloss {
-                    entries.append((bubble, gloss, false, size(gloss, note: false, maxWidth: min(columnWidth, maxGlossWidth))))
+            let splitAt = (side.count + 1) / 2
+            for isAbove in [true, false] {
+                let words = Array(isAbove ? side.prefix(splitAt) : side.dropFirst(splitAt))
+                // Nearest the side's edge first: that word's bubbles sit next to the line.
+                let ordered = isLeft ? words : words.reversed()
+                var entries: [(bubble: PlacedLyricWordBubble, text: String, note: Bool, size: CGSize)] = []
+                for bubble in ordered {
+                    var pair: [(PlacedLyricWordBubble, String, Bool, CGSize)] = []
+                    if let gloss = bubble.gloss {
+                        pair.append((bubble, gloss, false, size(gloss, note: false, maxWidth: min(columnWidth, maxGlossWidth))))
+                    }
+                    if let comment = bubble.comment {
+                        pair.append((bubble, comment, true, size(comment, note: true, maxWidth: min(columnWidth, maxCommentWidth))))
+                    }
+                    // Stacking away from the line, the meaning stays nearest it and its note beyond.
+                    entries += pair.map { (bubble: $0.0, text: $0.1, note: $0.2, size: $0.3) }
                 }
-                if let comment = bubble.comment {
-                    entries.append((bubble, comment, true, size(comment, note: true, maxWidth: min(columnWidth, maxCommentWidth))))
+                var edge = isAbove ? line.minY - lineClearance : line.maxY + lineClearance
+                for entry in entries {
+                    let y = isAbove ? edge - entry.size.height : edge
+                    guard y >= -sideOverflow, y + entry.size.height <= cardSize.height + sideOverflow else { return nil }
+                    let x = isLeft ? line.minX - margin - entry.size.width : line.maxX + margin
+                    slots.append(Slot(
+                        id: entry.bubble.id * 2 + (entry.note ? 1 : 0),
+                        text: entry.text,
+                        isNote: entry.note,
+                        frame: CGRect(x: x, y: y, width: entry.size.width, height: entry.size.height),
+                        tip: CGPoint(x: entry.bubble.anchor.midX, y: isAbove ? line.minY - 1 : line.maxY + 1)
+                    ))
+                    edge = isAbove ? y - stackGap : y + entry.size.height + stackGap
                 }
-            }
-            guard entries.isEmpty == false else { continue }
-            let total = entries.reduce(0) { $0 + $1.size.height } + gap * CGFloat(entries.count - 1)
-            guard total <= cardSize.height + 2 * sideOverflow else { return nil }
-            var y = min(max(line.midY - total / 2, -sideOverflow), cardSize.height + sideOverflow - total)
-            for entry in entries {
-                let x = isLeft ? line.minX - margin - entry.size.width : line.maxX + margin
-                slots.append(Slot(
-                    id: entry.bubble.id * 2 + (entry.note ? 1 : 0),
-                    text: entry.text,
-                    isNote: entry.note,
-                    frame: CGRect(x: x, y: y, width: entry.size.width, height: entry.size.height),
-                    tip: CGPoint(x: entry.bubble.anchor.midX, y: line.minY - 1)
-                ))
-                y += entry.size.height + gap
             }
         }
         return slots
