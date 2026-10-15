@@ -17,7 +17,11 @@ extension Segmenter {
         guard unaided.isEmpty == false else { return nil }
         let path = absorbingBoundCharacters(in: unaided, of: text)
         guard let probabilities = boundaryModel.cutProbabilities(text: text, lattice: lattice, path: path) else { return nil }
-        let adjusted = Self.withAppleTokenHint(Self.withoutDigitGapVerdicts(probabilities, in: text), in: text)
+        let adjusted = Self.withAppleTokenHint(
+            Self.withoutDigitGapVerdicts(probabilities, in: text),
+            in: text,
+            ignoring: katakanaWrittenForEffect(path: path, in: text)
+        )
         return BoundaryCosts(cutProbabilities: adjusted, weight: Self.boundaryModelWeight)
     }
 
@@ -31,8 +35,8 @@ extension Segmenter {
     // its boundaries are no guide, but it rarely puts a boundary-free span across a real word
     // boundary: on held2k it cuts through 24 gold words to the path search's 62. The second of
     // the three sources segmentation and readings both draw on: usage, then Apple, then the
-    // dictionary.
-    static func withAppleTokenHint(_ probabilities: [Double], in text: String) -> [Double] {
+    // dictionary. Tokens inside an `ignoring` range (katakanaWrittenForEffect) get no say.
+    static func withAppleTokenHint(_ probabilities: [Double], in text: String, ignoring: [Range<Int>] = []) -> [Double] {
         let characters = Array(text)
         // Character index for each UTF-16 offset at a character start.
         var characterIndexByUTF16: [Int: Int] = [:]
@@ -48,7 +52,8 @@ extension Segmenter {
         var tokenType = CFStringTokenizerAdvanceToNextToken(tokenizer)
         while tokenType != [] {
             let range = CFStringTokenizerGetCurrentTokenRange(tokenizer)
-            if let start = characterIndexByUTF16[range.location], let end = characterIndexByUTF16[range.location + range.length], end - start > 1 {
+            if let start = characterIndexByUTF16[range.location], let end = characterIndexByUTF16[range.location + range.length], end - start > 1,
+               ignoring.contains(where: { $0.contains(start) && $0.upperBound >= end }) == false {
                 for gap in (start + 1)..<end where gap - 1 < adjusted.count {
                     adjusted[gap - 1] *= appleTokenCutFactor
                 }
@@ -56,6 +61,32 @@ extension Segmenter {
             tokenType = CFStringTokenizerAdvanceToNextToken(tokenizer)
         }
         return adjusted
+    }
+
+    // Character ranges of katakana runs written for effect: runs `path` reads as two or more words,
+    // one of them a conjugated form or a function word (ナカナイ, 泣かない; ヨ, よ). Apple returns a
+    // katakana run it doesn't know as one token, which is no verdict on such a run: it kept
+    // サヨナラゼッタイナカナイヨ whole. A loanword or name the path cuts into bare words (ナタ|ナエル,
+    // マ|イケル) has no grammar in it, and there Apple's whole token is right.
+    func katakanaWrittenForEffect(path: [LatticeEdge], in text: String) -> [Range<Int>] {
+        let lexical = transitionTable?.lexical ?? []
+        var ranges: [Range<Int>] = []
+        var run: [LatticeEdge] = []
+        // Closes the current run of katakana edges, keeping it when it holds grammar.
+        func closeRun() {
+            defer { run = [] }
+            guard run.count >= 2, let first = run.first, let last = run.last else { return }
+            let hasGrammar = run.contains { edge in
+                edge.inflectionSteps > 0 || TransitionClass.lexicalHiraganaReading(of: edge.surface, lexical: lexical) != nil
+            }
+            guard hasGrammar else { return }
+            ranges.append(text.distance(from: text.startIndex, to: first.start)..<text.distance(from: text.startIndex, to: last.end))
+        }
+        for edge in path {
+            if ScriptClassifier.isPureKatakana(edge.surface) { run.append(edge) } else { closeRun() }
+        }
+        closeRun()
+        return ranges
     }
 
     // Sets every gap between two digits (script class 5; kanji numerals count as kanji) to 0.5, a cut

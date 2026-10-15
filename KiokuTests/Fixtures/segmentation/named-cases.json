@@ -242,6 +242,13 @@
         {"text": "愛している", "segments": ["愛している"]},
         {"text": "食べてしまった", "segments": ["食べて", "しまった"]}
       ]
+    },
+    {
+      "why": "Japanese written in katakana for effect reads as its words: Apple's tokenizer returns a katakana run it doesn't know as one token, which is no verdict where the run holds a conjugated form or a function word (Segmenter.katakanaWrittenForEffect). A name or loanword cut into bare words keeps Apple's whole token.",
+      "cases": [
+        {"text": "サヨナラゼッタイナカナイヨ", "segments": ["サヨナラ", "ゼッタイ", "ナカナイ", "ヨ"]},
+        {"text": "イエスはナタナエルが", "segments": ["イエス", "は", "ナタナエル", "が"]}
+      ]
     }
   ]
 }
