@@ -1,9 +1,9 @@
 import SwiftUI
 
 // Word bubbles on the lyrics card's active line, in place of a line translation: as each word is
-// sung, a speech bubble with its meaning pops up above it and, where the song breakdown has a note
-// on it, a thought bubble below. Meanings come from the breakdown when it covers the line (its
-// in-context definitions and grammar tags, plus the line's grammar note on the last word), else
+// sung, a speech bubble with its meaning pops up beside the line pointing at it, and the line's
+// grammar note from the song breakdown goes with its last word. Meanings come from the breakdown
+// when it covers the line (its in-context definitions), else
 // from the dictionary through dictionaryGloss, which the Read view supplies so no lexical lookup
 // happens here. Drawn by LyricWordBubbleOverlay; shown while the Translation setting is on.
 extension LyricsView {
@@ -27,8 +27,8 @@ extension LyricsView {
     }
 
     // The breakdown line covering the cue, its words found in the note in order: the definition in
-    // the speech bubble (none for particles and vocalizations, whose tag says enough), the grammar
-    // tag in the thought bubble, and the line's grammar note added to the last word's. Nil when no
+    // the speech bubble (none for particles and vocalizations), and the line's grammar note as the
+    // last word's note. Nil when no
     // breakdown line covers the cue or none of its words could be found in it.
     private func breakdownWordBubbles(_ lines: [SongLine], in cueRange: NSRange) -> [LyricWordBubble]? {
         let lineRanges = SongBreakdownLineLocator.noteRanges(for: lines, in: noteText)
@@ -44,22 +44,19 @@ extension LyricsView {
             guard found.location != NSNotFound else { continue }
             cursor = NSMaxRange(found)
             guard NSIntersectionRange(found, cueRange).length > 0 else { continue }
+            // Particles and vocalizations get no meaning; grammar tags (past, particle…) aren't shown.
             let tag = Self.nonEmpty(word.grammarTag)
             let isFunctionWord = tag == "particle" || tag == "vocalization"
             bubbles.append(LyricWordBubble(
                 noteRange: found,
                 gloss: isFunctionWord ? nil : Self.shortGloss(word.definition),
-                comment: tag
+                comment: nil
             ))
         }
         if let grammarNote = Self.nonEmpty(line.grammarNote),
            let last = bubbles.indices.last {
             let word = bubbles[last]
-            bubbles[last] = LyricWordBubble(
-                noteRange: word.noteRange,
-                gloss: word.gloss,
-                comment: [word.comment, grammarNote].compactMap { $0 }.joined(separator: " — ")
-            )
+            bubbles[last] = LyricWordBubble(noteRange: word.noteRange, gloss: word.gloss, comment: grammarNote)
         }
         return bubbles.isEmpty ? nil : bubbles
     }

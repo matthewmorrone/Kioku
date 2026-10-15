@@ -1,11 +1,11 @@
 import SwiftUI
 import UIKit
 
-// Renders the lyrics card's word bubbles: a speech bubble per word holding its meaning and a
-// thought bubble holding the breakdown's note on it. They go in the empty space beside the line —
+// Renders the lyrics card's word bubbles: a white speech bubble per word holding its meaning, and
+// one holding the breakdown's grammar note for the line on its last word. They go in the empty space beside the line —
 // each word's bubbles in the column on its side, stacked in sung order around the line's middle,
-// with a tail toward the line and a leader arcing over to the word (solid for meanings, dotted for
-// notes). When the line is too wide to leave room beside it, they go in rows above (meanings) and
+// with a tail toward the line and a white leader arcing over to a bar on the word (solid for
+// meanings, dotted for notes). When the line is too wide to leave room beside it, they go in rows above (meanings) and
 // below (notes) it instead. Everything springs into place as words are added. Sits over the
 // renderer in its coordinates (rects from KiokuScrollingTextView.reportRangeRects) and may draw
 // into the bands the card reserves above and below the line (topBand / bottomBand). Ignores touches.
@@ -44,6 +44,8 @@ struct LyricWordBubbleOverlay: View {
         let tip: CGPoint
         let target: CGPoint
         let control: CGPoint?
+        // Width of the word the bar at the leader's end spans.
+        let wordWidth: CGFloat
     }
 
     var body: some View {
@@ -61,7 +63,9 @@ struct LyricWordBubbleOverlay: View {
         .allowsHitTesting(false)
     }
 
-    // One bubble with its leader: a meaning in a tailed speech bubble, a note in a soft one.
+    // One bubble with its pointer: a white leader from its tail to the word, ending in a short bar
+    // spanning the word (above it, or below for a note in the above/below layout) so it's plain
+    // which word it means; the bubble itself white, a meaning tailed, a note plain.
     private func bubble(_ slot: Slot) -> some View {
         ZStack(alignment: .topLeading) {
             Path { path in
@@ -72,10 +76,16 @@ struct LyricWordBubbleOverlay: View {
                     path.addLine(to: slot.target)
                 }
             }
-            .stroke(Color.secondary.opacity(0.45), style: StrokeStyle(lineWidth: 0.75, lineCap: .round, dash: slot.isNote ? [1.5, 3] : []))
+            .stroke(Self.pointerColor, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: slot.isNote ? [2, 3.5] : []))
+            .shadow(color: .black.opacity(0.35), radius: 1)
+            Capsule()
+                .fill(Self.pointerColor)
+                .frame(width: max(slot.wordWidth, 8), height: 3)
+                .position(x: slot.target.x, y: slot.target.y)
+                .shadow(color: .black.opacity(0.35), radius: 1)
             Text(slot.text)
                 .font(Font(slot.isNote ? Self.commentFont : Self.glossFont))
-                .foregroundStyle(slot.isNote ? Color.secondary : Color.primary)
+                .foregroundStyle(slot.isNote ? Color(white: 0.3) : Color.black)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .padding(.horizontal, Self.horizontalPadding)
@@ -84,17 +94,16 @@ struct LyricWordBubbleOverlay: View {
                 .background(
                     SpeechBubbleShape(edge: slot.tailEdge, tailFraction: slot.tailFraction,
                                       tailLength: slot.isNote ? 0 : Self.tailLength, cornerRadius: Self.cornerRadius)
-                        .fill(slot.isNote ? Color(.secondarySystemBackground) : Color(.systemBackground).opacity(0.94))
-                        .overlay(
-                            SpeechBubbleShape(edge: slot.tailEdge, tailFraction: slot.tailFraction,
-                                              tailLength: slot.isNote ? 0 : Self.tailLength, cornerRadius: Self.cornerRadius)
-                                .stroke(Color.secondary.opacity(0.4), lineWidth: 0.75)
-                        )
+                        .fill(Color.white)
+                        .shadow(color: .black.opacity(0.3), radius: 3, y: 1)
                 )
                 .position(x: slot.frame.midX, y: slot.frame.midY)
         }
         .transition(.scale(scale: 0.4, anchor: .center).combined(with: .opacity))
     }
+
+    // The pointer's colour: white like the bubbles, shadowed so it reads on a light card too.
+    static let pointerColor = Color.white
 
     // Keeps the text clear of a speech bubble's tail.
     private func edgeInsets(for slot: Slot) -> EdgeInsets {
@@ -155,7 +164,7 @@ struct LyricWordBubbleOverlay: View {
                 let x = isLeft ? line.minX - margin - entry.size.width : line.maxX + margin
                 let frame = CGRect(x: x, y: y, width: entry.size.width, height: entry.size.height)
                 let tip = CGPoint(x: isLeft ? frame.maxX : frame.minX, y: frame.midY)
-                let target = CGPoint(x: entry.bubble.anchor.midX, y: line.minY)
+                let target = CGPoint(x: entry.bubble.anchor.midX, y: line.minY - 2)
                 let control = CGPoint(x: entry.bubble.anchor.midX, y: min(tip.y, target.y) - 14)
                 slots.append(Slot(
                     id: entry.bubble.id * 2 + (entry.note ? 1 : 0),
@@ -166,7 +175,8 @@ struct LyricWordBubbleOverlay: View {
                     tailFraction: 0.5,
                     tip: tip,
                     target: target,
-                    control: control
+                    control: control,
+                    wordWidth: entry.bubble.anchor.width
                 ))
                 y += entry.size.height + entry.gapAfter
             }
@@ -212,8 +222,9 @@ struct LyricWordBubbleOverlay: View {
                     tailEdge: note ? .top : .bottom,
                     tailFraction: fraction,
                     tip: CGPoint(x: frame.minX + frame.width * fraction, y: note ? frame.minY : frame.maxY),
-                    target: CGPoint(x: bubble.anchor.midX, y: note ? bubble.anchor.maxY : bubble.anchor.minY),
-                    control: nil
+                    target: CGPoint(x: bubble.anchor.midX, y: note ? bubble.anchor.maxY + 2 : bubble.anchor.minY - 2),
+                    control: nil,
+                    wordWidth: bubble.anchor.width
                 ))
             }
         }
