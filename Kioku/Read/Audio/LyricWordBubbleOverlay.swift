@@ -4,7 +4,7 @@ import UIKit
 // Renders the lyrics card's word bubbles: comic-style white speech bubbles, one per word holding
 // its meaning, plus one holding the breakdown's grammar note for the line on its last word. Each
 // bubble's tail runs all the way to its word. They go in the empty space beside the line — each
-// word's bubbles on its side, one level with the line and the rest stacked above and below it so
+// side taking half the words, one level with the line and the rest split above and below it so
 // tails never cross the text (sideLayout), free to run past the card's top and bottom since the
 // neighbouring lines are centred too. When the line is too wide to leave room beside it, they go
 // in rows above (meanings) and below (notes) it instead, over the neighbouring lines; the card
@@ -99,8 +99,8 @@ struct LyricWordBubbleOverlay: View {
     }
 
     // The beside-the-line layout, or nil when neither side has room or a stack would run further
-    // past the card than sideOverflow. Each word's bubbles go on its side of the line's middle (all
-    // on one side when only that side has room). There, the word nearest the edge gets its meaning level with the line, the tail
+    // past the card than sideOverflow. The words are shared evenly between the sides, leftmost half
+    // left (all on one side when only that side has room). There, the word nearest the edge gets its meaning level with the line, the tail
     // pointing straight into the word's side; the side's other words split between a stack rising
     // from that bubble and one falling from it (earlier words up, later down), each bubble kept
     // clear of the line so its tail drops onto the word's top or bottom through empty space, never
@@ -115,15 +115,13 @@ struct LyricWordBubbleOverlay: View {
         let rightFits = rightWidth >= minColumnWidth
         guard leftFits || rightFits else { return nil }
         let sorted = bubbles.sorted { $0.anchor.midX < $1.anchor.midX }
-        // A word's side: the half of the line it's in, or the other side when that one has no room.
-        func goesLeft(_ bubble: PlacedLyricWordBubble) -> Bool {
-            let nearLeft = bubble.anchor.midX < line.midX
-            return nearLeft ? leftFits : rightFits == false
-        }
+        // The sides share the words evenly, the leftmost half going left (all of them to the one
+        // side with room when only one has).
+        let leftCount = leftFits && rightFits ? (sorted.count + 1) / 2 : (leftFits ? sorted.count : 0)
         var slots: [Slot] = []
         for isLeft in [true, false] {
             // The side's words, nearest the edge first.
-            let side = sorted.filter { goesLeft($0) == isLeft }
+            let side = isLeft ? Array(sorted.prefix(leftCount)) : Array(sorted.dropFirst(leftCount))
             let fromEdge = isLeft ? side : side.reversed()
             let columnWidth = isLeft ? leftWidth : rightWidth
             // A bubble's x: hugging the line's edge on this side.
@@ -163,9 +161,10 @@ struct LyricWordBubbleOverlay: View {
                 rest.insert(PlacedLyricWordBubble(id: edgeWord.id, anchor: edgeWord.anchor, gloss: nil, comment: edgeWord.comment), at: 0)
             }
 
-            // Earlier words (in sung order) up, later ones down.
+            // Earlier words (in sung order) up, later ones down, half each; an odd one out goes
+            // down on the left and up on the right, so above and below stay even overall.
             let sung = rest.sorted { $0.anchor.midX < $1.anchor.midX }
-            let splitAt = sung.count / 2
+            let splitAt = isLeft ? sung.count / 2 : (sung.count + 1) / 2
             let upWords = Set(sung.prefix(splitAt).map(\.id))
             for isAbove in [true, false] {
                 let words = rest.filter { upWords.contains($0.id) == isAbove }
