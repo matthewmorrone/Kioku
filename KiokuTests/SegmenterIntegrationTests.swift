@@ -706,7 +706,7 @@ final class SegmenterIntegrationTests: XCTestCase {
 
     // 消して conjugates both 消す and the literary サ変 消する, but only 消す carries a JMdict priority tag,
     // so the sheet shows it straight away; いった (言う, 行く, 要る) and きた (来る, 着る, 北) are several
-    // common words at once and stay unpicked until the user chooses.
+    // common words at once and open on the list's first, likeliest word.
     func testPreferredLookupCandidatePicksTheOnlyCommonWord() throws {
         let resources = try sharedResources()
         let lexicon = Lexicon(
@@ -718,8 +718,10 @@ final class SegmenterIntegrationTests: XCTestCase {
         let keshite = lexicon.lookupCandidates(surface: "消して")
         XCTAssertTrue(keshite.contains { $0.headword == "消する" }, "消して lists 消する as a possibility")
         XCTAssertEqual(Lexicon.preferredLookupCandidate(among: keshite)?.headword, "消す")
-        XCTAssertNil(Lexicon.preferredLookupCandidate(among: lexicon.lookupCandidates(surface: "いった")))
-        XCTAssertNil(Lexicon.preferredLookupCandidate(among: lexicon.lookupCandidates(surface: "きた")))
+        let itta = lexicon.lookupCandidates(surface: "いった")
+        XCTAssertEqual(Lexicon.preferredLookupCandidate(among: itta)?.entry.entryId, itta.first?.entry.entryId)
+        let kita = lexicon.lookupCandidates(surface: "きた")
+        XCTAssertEqual(Lexicon.preferredLookupCandidate(among: kita)?.entry.entryId, kita.first?.entry.entryId)
     }
 
     // や lists the particle: 嫌 also reads や and leads (uk, ranked), and the unranked particle used
