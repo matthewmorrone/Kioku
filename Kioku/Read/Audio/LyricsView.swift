@@ -83,8 +83,6 @@ struct LyricsView: View {
     // card (cue-local ranges → renderer coordinates, from KiokuScrollingTextView.reportRangeRects).
     @State var wordBubbleCache = LyricWordBubbleCache()
     @State var wordBubbleRects: [NSRange: CGRect] = [:]
-    // Whether the current line's bubbles use the rows above and below it (too wide for the sides).
-    @State var wordBubblesNeedBands = false
     // The results sheet shown when the singer taps Stop (LyricsView+Sing.swift).
     @State var isShowingSingSummary = false
     @State var isShowingSingOptions = false
@@ -454,16 +452,10 @@ struct LyricsView: View {
                                         cueOriginInNote: cueOriginInNote,
                                         cueLength: cueInput.text.utf16.count
                                     ),
-                                    lineRect: wordBubbleLineRect(cueLength: cueInput.text.utf16.count),
-                                    onNeedsBandsChange: { needs in
-                                        guard needs != wordBubblesNeedBands else { return }
-                                        withAnimation(.easeInOut(duration: 0.25)) { wordBubblesNeedBands = needs }
-                                    }
+                                    lineRect: wordBubbleLineRect(cueLength: cueInput.text.utf16.count)
                                 )
                             }
                         }
-                        // Room above and below only while the bubbles use the rows there.
-                        .padding(.vertical, isTranslationVisible && wordBubblesNeedBands ? LyricWordBubbleOverlay.band : 0)
                     }
                     if displayIndex < cues.count && hasMismatch(at: displayIndex) {
                         HStack(spacing: 4) {

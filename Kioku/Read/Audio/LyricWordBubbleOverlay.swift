@@ -6,16 +6,14 @@ import UIKit
 // bubble's tail runs all the way to its word. They go in the empty space beside the line — each
 // word's bubbles on its side, one level with the line and the rest stacked above and below it so
 // tails never cross the text (sideLayout), free to run past the card's top and bottom since the
-// neighbouring lines are centred too. When the line is too wide to leave room beside it, they go in rows above (meanings) and
-// below (notes) it instead, and the card makes room for those rows (onNeedsBandsChange). Everything
-// springs into place as words are added. Sits over the renderer in its coordinates (rects from
+// neighbouring lines are centred too. When the line is too wide to leave room beside it, they go
+// in rows above (meanings) and below (notes) it instead, over the neighbouring lines; the card
+// never grows for them. Everything springs into place as words are added. Sits over the renderer in its coordinates (rects from
 // KiokuScrollingTextView.reportRangeRects). Ignores touches.
 struct LyricWordBubbleOverlay: View {
     let bubbles: [PlacedLyricWordBubble]
     // The whole line's rect, for the room beside it; nil before it's measured.
     let lineRect: CGRect?
-    // Told whether the bubbles need the rows above and below the line (the fallback layout).
-    var onNeedsBandsChange: (Bool) -> Void = { _ in }
 
     static let glossFont = UIFont.systemFont(ofSize: 12, weight: .medium)
     static let commentFont = UIFont.italicSystemFont(ofSize: 11)
@@ -36,8 +34,6 @@ struct LyricWordBubbleOverlay: View {
     static let stackedRows = 2
     // Height of one bubble row in the above/below layout, which leaves room for the tail.
     static var rowHeight: CGFloat { ceil(glossFont.lineHeight) + 2 * verticalPadding + 12 }
-    // Room the card makes above and below the line for the above/below layout.
-    static var band: CGFloat { CGFloat(stackedRows) * rowHeight + gap }
 
     // One bubble's place: its body and the point on its word its tail reaches.
     struct Slot: Equatable {
@@ -52,7 +48,6 @@ struct LyricWordBubbleOverlay: View {
         GeometryReader { proxy in
             let side = Self.sideLayout(bubbles, lineRect: lineRect, size: proxy.size)
             let slots = side ?? Self.stackedLayout(bubbles, width: proxy.size.width)
-            let needsBands = side == nil && bubbles.isEmpty == false
             ZStack(alignment: .topLeading) {
                 ForEach(slots, id: \.id) { slot in
                     bubble(slot, in: proxy.size)
@@ -60,7 +55,6 @@ struct LyricWordBubbleOverlay: View {
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
             .animation(.spring(response: 0.4, dampingFraction: 0.85), value: slots)
-            .onChange(of: needsBands, initial: true) { _, needs in onNeedsBandsChange(needs) }
         }
         .allowsHitTesting(false)
     }
