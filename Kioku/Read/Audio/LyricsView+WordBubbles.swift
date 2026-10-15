@@ -102,12 +102,20 @@ extension LyricsView {
         return cue.startMs + (cue.endMs - cue.startMs) * max(0, local) / max(1, cueRange.length)
     }
 
-    // The cue-local ranges of the cue's words, for the renderer to measure.
+    // The cue-local ranges of the cue's words, plus the whole line (for the room beside it), for
+    // the renderer to measure.
     func wordBubbleRanges(forCueAt index: Int, cueOriginInNote: Int, cueLength: Int) -> [NSRange] {
-        wordBubbles(forCueAt: index).compactMap { bubble in
+        let words = wordBubbles(forCueAt: index).compactMap { bubble -> NSRange? in
             let local = NSRange(location: bubble.noteRange.location - cueOriginInNote, length: bubble.noteRange.length)
             return local.location >= 0 && NSMaxRange(local) <= cueLength ? local : nil
         }
+        guard words.isEmpty == false, cueLength > 0 else { return [] }
+        return words + [NSRange(location: 0, length: cueLength)]
+    }
+
+    // The measured rect of the whole active line, once the renderer has reported it.
+    func wordBubbleLineRect(cueLength: Int) -> CGRect? {
+        wordBubbleRects[NSRange(location: 0, length: cueLength)]
     }
 
     // The bubbles to draw now: on the line being played, the words sung so far; on a line the user

@@ -446,11 +446,14 @@ struct LyricsView: View {
                         // reserved above and below it (LyricsView+WordBubbles).
                         .overlay {
                             if isTranslationVisible {
-                                LyricWordBubbleOverlay(bubbles: placedWordBubbles(
-                                    forCueAt: displayIndex,
-                                    cueOriginInNote: cueOriginInNote,
-                                    cueLength: cueInput.text.utf16.count
-                                ))
+                                LyricWordBubbleOverlay(
+                                    bubbles: placedWordBubbles(
+                                        forCueAt: displayIndex,
+                                        cueOriginInNote: cueOriginInNote,
+                                        cueLength: cueInput.text.utf16.count
+                                    ),
+                                    lineRect: wordBubbleLineRect(cueLength: cueInput.text.utf16.count)
+                                )
                             }
                         }
                         .padding(.top, isTranslationVisible ? LyricWordBubbleOverlay.topBand : 0)
