@@ -575,8 +575,10 @@ extension ReadView {
     // below) and the Read-tab/LyricsView in-text coloring (via displayedDictionaryEntry, which
     // refines it by the displayed reading exactly as the sheet does) all resolve through this
     // single function, so they can never disagree about which entry a given piece of text belongs to.
-    func resolvedDictionaryEntry(forSurface surface: String) -> DictionaryEntry? {
+    // A particle written in katakana (ヨ) is looked up as the particle, as segmentation reads it.
+    func resolvedDictionaryEntry(forSurface writtenSurface: String) -> DictionaryEntry? {
         guard let store = dictionaryStore else { return nil }
+        let surface = segmenter.functionWord(spelledInKatakana: writtenSurface) ?? writtenSurface
         let lookupMode: LookupMode = ScriptClassifier.containsKanji(surface) ? .kanjiAndKana : .kanaOnly
         // Try the tapped surface directly — typically one logical lookup.
         if let entry = try? store.lookup(surface: surface, mode: lookupMode).first {
@@ -703,7 +705,8 @@ extension ReadView {
         )
     }
 
-    // Builds de-duplicated lookup candidates in priority order: tapped surface first, then lemma fallback.
+    // Builds de-duplicated lookup candidates in priority order: a katakana-written particle's particle,
+    // then the tapped surface, then lemma fallback.
     func orderedLookupCandidates(surface: String, lemma: String?) -> [String] {
         var candidates: [String] = []
         var seenCandidates = Set<String>()
@@ -719,6 +722,10 @@ extension ReadView {
         }
 
         let trimmedSurface = surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        // A particle written in katakana (ヨ) is the particle first, as segmentation reads it.
+        if let functionWord = segmenter.functionWord(spelledInKatakana: trimmedSurface) {
+            appendCandidate(functionWord)
+        }
         if trimmedSurface.isEmpty == false {
             appendCandidate(trimmedSurface)
             let expandedSurfaceCandidates = ScriptClassifier.iterationExpandedCandidates(for: trimmedSurface).sorted()

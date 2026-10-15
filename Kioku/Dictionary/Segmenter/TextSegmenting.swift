@@ -61,4 +61,13 @@ extension TextSegmenting {
     func preferredLemma(for surface: String, preferring auxiliarySet: Set<String>) -> String? {
         lemmaCandidates(for: surface).first(where: auxiliarySet.contains) ?? preferredLemma(for: surface)
     }
+
+    // The function word a katakana surface spells when the path search takes it for that word
+    // (TransitionClass.lexicalHiraganaReading): lyrics write particles in katakana for effect, and the
+    // ヨ of ナカナイヨ is よ, not the rare ヨ spelling of 余 "I". Lookups ask the dictionary for this word
+    // so the lookup sheet and the bubbles name the word segmentation used. Nil for anything else.
+    nonisolated func functionWord(spelledInKatakana surface: String) -> String? {
+        guard let lexical = (self as? Segmenter)?.transitionTable?.lexical else { return nil }
+        return TransitionClass.lexicalHiraganaReading(of: surface, lexical: lexical)
+    }
 }

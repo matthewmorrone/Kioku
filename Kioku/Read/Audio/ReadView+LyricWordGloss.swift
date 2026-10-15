@@ -11,11 +11,11 @@ extension ReadView {
     // that can be one (は, not 歯 "tooth"); nil for loanwords (isLyricLoanword), whose meaning
     // the reader can sound out; and nil for words with no entry. A negative form's meaning is negated.
     func lyricWordGloss(at location: Int, surface: String) -> String? {
+        let spelling = segmenter.functionWord(spelledInKatakana: surface) ?? surface
         guard isLyricLoanword(surface) == false,
-              PartOfSpeech.isParticle(dictionaryStore?.posBits(forSurface: surface) ?? 0) == false else { return nil }
+              PartOfSpeech.isParticle(dictionaryStore?.posBits(forSurface: spelling) ?? 0) == false else { return nil }
         guard let entry = displayedDictionaryEntry(forSurface: surface, at: location)
-                ?? unpickedLyricCandidates(forSurface: surface, at: location).first
-                ?? hiraganaSpelledEntry(forKatakana: surface),
+                ?? unpickedLyricCandidates(forSurface: surface, at: location).first,
               let lemmaGloss = entry.senses.first(where: { $0.glosses.isEmpty == false })?.glosses.first else { return nil }
         let gloss = inflectedLyricGloss(lemmaGloss, surface: surface, entry: entry)
         // A parenthesized gloss is qualifying itself — too much for a bubble and usually the wrong
@@ -64,18 +64,7 @@ extension ReadView {
     func isLyricLoanword(_ surface: String) -> Bool {
         guard ScriptClassifier.isKatakanaWord(surface),
               let stem = ScriptClassifier.leadingKatakanaPrefix(of: surface) else { return false }
-        guard let entry = resolvedDictionaryEntry(forSurface: stem) else {
-            return hiraganaSpelledEntry(forKatakana: surface) == nil
-        }
+        guard let entry = resolvedDictionaryEntry(forSurface: stem) else { return true }
         return entry.kanjiForms.isEmpty && entry.kanaForms.allSatisfy { ScriptClassifier.isPureKatakana($0.text) }
-    }
-
-    // A katakana lyric word's entry under its hiragana spelling (ゼッタイ → ぜったい, 絶対), for words
-    // the dictionary doesn't list in katakana. Nil for anything not in katakana.
-    private func hiraganaSpelledEntry(forKatakana surface: String) -> DictionaryEntry? {
-        guard ScriptClassifier.isKatakanaWord(surface) else { return nil }
-        let hiragana = KanaNormalizer.katakanaToHiragana(surface)
-        guard hiragana != surface else { return nil }
-        return resolvedDictionaryEntry(forSurface: hiragana)
     }
 }
