@@ -229,28 +229,6 @@ extension WordDetailView {
             }
         }
 
-        // Names — JMnedict's readings of the surface as a proper name, usual reading first.
-        if names.isEmpty == false {
-            Section("Names") {
-                ForEach(Array(names.enumerated()), id: \.offset) { _, name in
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            Text(name.reading)
-                            Spacer()
-                            Text(name.types.map(DictionaryStore.nameTypeLabel).joined(separator: ", "))
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                        if name.gloss.isEmpty == false {
-                            Text(name.gloss)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-        }
-
         // Examples — only the sentences that didn't route to a specific sense.
         // Per-sense examples render inside each sense card via senseCard(sentences:).
         if let unrouted = savedDisplayData?.unroutedSentences, unrouted.isEmpty == false {
@@ -395,6 +373,31 @@ extension WordDetailView {
             Section("Pitch Accent") {
                 ForEach(Array(pitchAccents.enumerated()), id: \.offset) { _, pa in
                     PitchAccentView(accent: pa)
+                }
+            }
+        }
+
+        // Names — JMnedict's readings of the surface as a proper name, usual reading first. Collapsed
+        // until opened, below the word's own sections: a common word's name readings are a long aside.
+        if names.isEmpty == false {
+            Section("Names") {
+                DisclosureGroup(names.count == 1 ? "1 name" : "\(names.count) names", isExpanded: $namesExpanded) {
+                    ForEach(Array(names.enumerated()), id: \.offset) { _, name in
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text(name.reading)
+                                Spacer()
+                                Text(name.types.map(DictionaryStore.nameTypeLabel).joined(separator: ", "))
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            if name.gloss.isEmpty == false {
+                                Text(name.gloss)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                 }
             }
         }

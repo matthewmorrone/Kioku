@@ -74,6 +74,8 @@ struct WordDetailView: View {
     @State var definitionsExpanded: Bool = false
     // Not private: read/written by wordDetailMetadataSections's Related Words section.
     @State var relatedExpanded: Bool = false
+    // Whether the Names section is open; it starts collapsed.
+    @State var namesExpanded: Bool = false
     // Not private: read/written by wordDetailMetadataSections's Kanji section.
     @State var presentedKanjiInfo: KanjiInfo? = nil
     // Tapping a row in Related Words / Synonyms opens a nested WordDetailView for that entry.
