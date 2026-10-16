@@ -3,6 +3,7 @@ import Foundation
 //   segcli lexicon < surfaces                    → "surface<TAB>lemma=…<TAB>candidates=…": the lookup sheet's lemma line and possibilities (Lexicon)
 //   segcli count <lexical.txt> < gold.jsonl       → "start,end,className" per gold token
 //   segcli fit <configs> <outdir> < sentences   configs: "WEIGHT CLAMP"; the dictionary's transition rows, lattice once, DP per config
+//   segcli readings < lines                       → each contextual reading decision with its score parts
 //   segcli lemmas < surfaces                     → what each surface resolves to, with each lemma's score (the audit's input)
 //   segcli oracle < gold.jsonl                   → per cut-through: is the gold parse in the lattice, and by how much does it lose
 //   segcli features < gold.jsonl                → per sentence: characters, gold gap labels, shipped cuts, lattice gap features (boundary model input)
@@ -250,6 +251,60 @@ if mode == "furigana" {
         let furigana = resolver.build(for: line, edges: segmenter.longestMatchEdges(for: line), surfaceReadingData: readingData)
         let rows: [[Any]] = furigana.byLocation.keys.sorted().map { [$0, furigana.lengthByLocation[$0] ?? 0, furigana.byLocation[$0] ?? ""] }
         print(String(data: try JSONSerialization.data(withJSONObject: rows), encoding: .utf8)!)
+    }
+    exit(0)
+}
+
+if mode == "readings" {
+    // segcli readings < lines → every contextual reading decision furigana makes: the kanji run, its
+    // neighbours' classes, Apple's reading, each candidate's score parts (prior, previous, next,
+    // apple), and the reading chosen.
+    let readingData = SurfaceReadingDataMap(try store.fetchSurfaceReadingData())
+    let resolver = FuriganaResolver(segmenter: segmenter)
+    while let line = readLine() {
+        let edges = segmenter.longestMatchEdges(for: line)
+        let furigana = resolver.build(for: line, edges: edges, surfaceReadingData: readingData)
+        for choice in resolver.contextualReadingChoices(
+            furigana: furigana.byLocation, lengths: furigana.lengthByLocation, edges: edges,
+            sourceText: line, surfaceReadingData: readingData
+        ) {
+            print("\(choice.kanji)@\(choice.location)  prev \(choice.previous)  next \(choice.next)  apple \(choice.apple ?? "-")  → \(choice.chosen ?? choice.current)")
+            for score in choice.scores {
+                print(String(format: "    %@ ×%d  prior %.2f  prev %.2f  next %.2f  apple %.1f  total %.2f",
+                             score.reading, score.count, score.prior, score.previous, score.next, score.apple, score.total))
+            }
+        }
+    }
+    exit(0)
+}
+
+if mode == "readings-json" {
+    // segcli readings-json < lines → per line, the furigana `build` gives plus every contextual
+    // reading decision with its raw counts (one JSON object per line), so scoring changes can be
+    // simulated offline (scripts/segmentation-eval/simulate_readings.py) without a rebuild each.
+    let readingData = SurfaceReadingDataMap(try store.fetchSurfaceReadingData())
+    let resolver = FuriganaResolver(segmenter: segmenter)
+    while let line = readLine() {
+        let edges = segmenter.longestMatchEdges(for: line)
+        let furigana = resolver.build(for: line, edges: edges, surfaceReadingData: readingData)
+        let decisions: [[String: Any]] = resolver.contextualReadingChoices(
+            furigana: furigana.byLocation, lengths: furigana.lengthByLocation, edges: edges,
+            sourceText: line, surfaceReadingData: readingData
+        ).map { choice in
+            [
+                "location": choice.location, "length": furigana.lengthByLocation[choice.location] ?? 0,
+                "kanji": choice.kanji, "previous": choice.previous, "next": choice.next,
+                "apple": choice.apple ?? NSNull(), "fallback": choice.chosen ?? choice.current,
+                "candidates": choice.scores.map { score -> [String: Any] in
+                    ["reading": score.reading, "n": score.count, "added": score.addedCount, "total": score.kanjiTotal,
+                     "k": score.candidateCount, "classes": score.classCount,
+                     "prevSeen": score.previousSeen, "nextSeen": score.nextSeen]
+                },
+            ]
+        }
+        let furiganaRows = furigana.byLocation.keys.sorted().map { [$0, furigana.lengthByLocation[$0] ?? 0, furigana.byLocation[$0] ?? ""] as [Any] }
+        let object: [String: Any] = ["furigana": furiganaRows, "decisions": decisions]
+        print(String(data: try JSONSerialization.data(withJSONObject: object), encoding: .utf8)!)
     }
     exit(0)
 }

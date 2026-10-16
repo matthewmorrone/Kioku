@@ -19,6 +19,26 @@ nonisolated extension FuriganaResolver {
         sourceText: String,
         surfaceReadingData: SurfaceReadingDataMap
     ) {
+        let choices = contextualReadingChoices(
+            furigana: furigana, lengths: lengths, edges: edges, sourceText: sourceText, surfaceReadingData: surfaceReadingData
+        )
+        for choice in choices {
+            if let chosen = choice.chosen, chosen != KanaNormalizer.katakanaToHiragana(choice.current) {
+                furigana[choice.location] = chosen
+            }
+        }
+    }
+
+    // Every decision applyContextualReadings makes, with what it was made from: the kanji run, its
+    // neighbours' classes, Apple's reading and each candidate's score. segcli's `readings` mode
+    // prints these, so a wrong reading can be traced to the part that chose it.
+    func contextualReadingChoices(
+        furigana: [Int: String],
+        lengths: [Int: Int],
+        edges: [LatticeEdge],
+        sourceText: String,
+        surfaceReadingData: SurfaceReadingDataMap
+    ) -> [ContextualReadingChoice] {
         let nsText = sourceText as NSString
         let table = (segmenter as? Segmenter)?.readingContexts
         let transitionTable = (segmenter as? Segmenter)?.transitionTable
@@ -32,6 +52,7 @@ nonisolated extension FuriganaResolver {
             guard let edge, edge.isDictionaryMatch, let transitionTable else { return TransitionClass.boundary }
             return TransitionClass.name(surface: edge.surface, partOfSpeech: edge.partOfSpeech, lexical: transitionTable.lexical)
         }
+        var choices: [ContextualReadingChoice] = []
         for (index, edge) in edges.enumerated() where edge.isDictionaryMatch {
             guard let run = singleRunRange(of: edge, in: sourceText),
                   lengths[run.location] == run.length,
@@ -41,18 +62,23 @@ nonisolated extension FuriganaResolver {
             // Apple's reading counts only when the dictionary lists it for this word.
             let apple = appleReadings[run.location].flatMap { $0.length == run.length && candidates.contains($0.reading) ? $0.reading : nil }
             let kanji = nsText.substring(with: run)
-            let counted = transitionTable == nil ? nil : table?.choose(
+            let previous = className(index > 0 ? edges[index - 1] : nil)
+            let next = className(index + 1 < edges.count ? edges[index + 1] : nil)
+            let scores = transitionTable == nil ? nil : table?.scores(
                 kanji: kanji,
                 candidates: candidates,
-                previous: className(index > 0 ? edges[index - 1] : nil),
-                next: className(index + 1 < edges.count ? edges[index + 1] : nil),
+                previous: previous,
+                next: next,
                 appleReading: apple,
                 addedCounts: registers?.addedCounts(kanji: kanji, register: register) ?? [:]
             )
-            if let chosen = counted ?? apple, chosen != KanaNormalizer.katakanaToHiragana(current) {
-                furigana[run.location] = chosen
-            }
+            let counted = scores.flatMap { ReadingContextTable.best(of: $0) }
+            choices.append(ContextualReadingChoice(
+                location: run.location, kanji: kanji, current: current, previous: previous, next: next,
+                apple: apple, scores: scores ?? [], chosen: counted ?? apple
+            ))
         }
+        return choices
     }
 
     // The UTF-16 range of an edge's one kanji run, or nil when it has none or several.
@@ -92,4 +118,18 @@ nonisolated extension FuriganaResolver {
         }
         return readings
     }
+}
+
+// One decision of FuriganaResolver.contextualReadingChoices: the kanji run at `location`, the reading
+// `build` gave it (`current`), its neighbours' classes, Apple's reading, every candidate's score, and
+// the reading chosen (nil leaves `current`).
+nonisolated struct ContextualReadingChoice {
+    let location: Int
+    let kanji: String
+    let current: String
+    let previous: String
+    let next: String
+    let apple: String?
+    let scores: [ReadingScore]
+    let chosen: String?
 }

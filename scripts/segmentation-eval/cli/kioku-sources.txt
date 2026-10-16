@@ -73,6 +73,7 @@ Read/Furigana/FuriganaResolver.swift
 Read/Furigana/FuriganaResolver+InflectedStem.swift
 Read/Furigana/FuriganaResolver+ContextualReadings.swift
 Read/Furigana/ReadingContextTable.swift
+Read/Furigana/ReadingScore.swift
 Read/Furigana/AppleTokenReadings.swift
 Read/Furigana/FuriganaAttributedString.swift
 Dictionary/KanjiReadingFallbackMap.swift

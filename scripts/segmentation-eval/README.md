@@ -17,6 +17,7 @@ python3 unpack-data.py              # data/*.jsonl.gz → work/data/<set>.jsonl 
 ./work/segcli run < work/data/held2k.txt > work/held2k.out      # ~1 min per 2k sentences; run long sets in the background
 python3 score.py work/data/held2k.jsonl work/held2k.out --examples 10
 python3 lyrics/score_lyrics.py      # the user-reviewed lyric lines
+python3 lyrics/diff_readings.py --help  # before any reading change: which lyric readings it moves (no lyric reading gold exists)
 python3 named_cases.py              # named cases (KiokuTests/Fixtures/segmentation/named-cases.json); seconds
 ```
 
@@ -34,6 +35,8 @@ files the CLI compiles — add whatever the compiler reports missing.
 | `fit <configs> <outdir>` | the dictionary's transition rows; lattice once per sentence, path search per `WEIGHT CLAMP` line — dozens of settings cost seconds |
 | `count <lexical.txt>` | transition class of every gold token, from the app's own classifier (input to the table generator) |
 | `explain` | stdin `text<TAB>seg\|seg\|…` → node cost, score, steps, class and transition for the chosen path **and** the wanted one, or which wanted edge is missing from the lattice. Use this before theorising about any single failure. |
+| `readings` | stdin lines → every contextual reading decision furigana makes: the kanji run, its neighbours' classes, Apple's reading, and each candidate's score parts (prior, previous, next, apple). Run this first on a wrong reading. |
+| `readings-json` | the same decisions with their raw counts, one JSON object per line: input to `simulate_readings.py`, which replays them under a scoring change (`--cap`, `--apple`, `--smoothing`) in seconds instead of a rebuild per setting. It matches the app exactly on train2k, held2k and fresh5k. |
 | `lemmas` | what each surface resolves to, with scores (input to the deinflection audit) |
 | `lexicon` | stdin surfaces → `surface<TAB>lemma=…<TAB>candidates=…`: the lookup sheet's lemma line (Lexicon.inflectionInfo) and its list of possibilities (Lexicon.lookupCandidates), from the app's real Lexicon |
 | `helpers` | stdin surfaces → `surface<TAB>lemma + helper…`: the helper words deinflection folds into each surface (DeinflectionRule.helper), as the lookup sheet's lemma line names them |

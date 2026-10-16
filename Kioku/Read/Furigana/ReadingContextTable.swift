@@ -19,6 +19,12 @@ nonisolated final class ReadingContextTable: Sendable {
     // close calls without overriding what the counts are sure of. Fitted on train2k (0: 94.17%,
     // 2: 94.57%, 4: 94.25%, 6: 93.85%), confirmed on held2k and fresh5k.
     static let appleVote = 2.0
+    // How many sightings of a reading count against a neighbour class never seen beside it. Uncapped,
+    // a class missing from 15,714 sightings of わたし cost it more than one missing from 5 of わたくし,
+    // so 私 before a verb with no particle between (lyrics drop them) read わたくし. Swept offline with
+    // simulate_readings.py: 10–1000 cost train2k up to 0.6 points; 3000 leaves train2k, held2k and
+    // fresh5k scores as they were (one ungraded fresh5k change: 私ども → わたし) and fixes the lyrics' 私.
+    static let classEvidenceCap = 3000.0
 
     // Counts by kanji run, then by its hiragana reading.
     private let countsByKanji: [String: [String: ReadingContextCounts]]
@@ -81,22 +87,60 @@ nonisolated final class ReadingContextTable: Sendable {
         appleReading: String? = nil,
         addedCounts: [String: Double] = [:]
     ) -> String? {
+        scores(kanji: kanji, candidates: candidates, previous: previous, next: next,
+               appleReading: appleReading, addedCounts: addedCounts).flatMap { Self.best(of: $0) }
+    }
+
+    // The reading with the highest total; the earlier one on a tie, so the frequency order breaks it.
+    static func best(of scores: [ReadingScore]) -> String? {
+        var best: ReadingScore?
+        for score in scores {
+            if let current = best, current.total >= score.total { continue }
+            best = score
+        }
+        return best?.reading
+    }
+
+    // Each candidate's score in its parts, in candidate order, with the counts behind them: what
+    // `choose` decides by, and what segcli's `readings` mode prints. Nil when no counts saw this kanji.
+    func scores(
+        kanji: String,
+        candidates: [String],
+        previous: String,
+        next: String,
+        appleReading: String? = nil,
+        addedCounts: [String: Double] = [:]
+    ) -> [ReadingScore]? {
         let seen = countsByKanji[kanji] ?? [:]
         guard seen.isEmpty == false || addedCounts.isEmpty == false, candidates.isEmpty == false else { return nil }
         let total = Double(seen.values.reduce(0) { $0 + $1.total }) + addedCounts.values.reduce(0, +)
-        var best: (reading: String, score: Double)?
-        for reading in candidates {
+        return candidates.map { reading in
             let counts = seen[reading]
             let n = Double(counts?.total ?? 0)
-            var score = log((n + (addedCounts[reading] ?? 0) + 1) / (total + Double(candidates.count)))
-            for (observed, name) in [(counts?.previous, previous), (counts?.next, next)] {
-                score += log((Double(observed?[name] ?? 0) + Self.classSmoothing) / (n + Self.classSmoothing * Double(classCount)))
+            let added = addedCounts[reading] ?? 0
+            let previousSeen = counts?.previous[previous] ?? 0
+            let nextSeen = counts?.next[next] ?? 0
+            // How likely the neighbour's class is beside this reading, from at most classEvidenceCap
+            // sightings.
+            func classTerm(_ observed: Int) -> Double {
+                let sightings = min(n, Self.classEvidenceCap)
+                return log((min(Double(observed), sightings) + Self.classSmoothing) / (sightings + Self.classSmoothing * Double(classCount)))
             }
-            if reading == appleReading { score += Self.appleVote }
-            if let current = best, current.score >= score { continue }
-            best = (reading, score)
+            return ReadingScore(
+                reading: reading,
+                count: Int(n),
+                addedCount: added,
+                kanjiTotal: total,
+                candidateCount: candidates.count,
+                classCount: classCount,
+                previousSeen: previousSeen,
+                nextSeen: nextSeen,
+                prior: log((n + added + 1) / (total + Double(candidates.count))),
+                previous: classTerm(previousSeen),
+                next: classTerm(nextSeen),
+                apple: reading == appleReading ? Self.appleVote : 0
+            )
         }
-        return best?.reading
     }
 }
 
