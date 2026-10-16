@@ -46,8 +46,8 @@ final class DictionaryDownloadManager {
     // whatever tag is pinned here if the local Resources/dictionary.sqlite doesn't hash-match
     // it — so editing dictionary.sqlite locally without bumping this pin first gets silently
     // reverted on the very next build.
-    nonisolated static let releaseTag = "dictionary-v16"
-    nonisolated static let expectedSHA256 = "924ffd15e036a3f9dd89eaeef54c7152baede996ed6811fea76863d840bafcba"
+    nonisolated static let releaseTag = "dictionary-v17"
+    nonisolated static let expectedSHA256 = "566ae85adc42a8536a0b1f636b3416c65b6d5ff0a9264c62ae6c452d85413edc"
 
     // Debug builds follow this moving release instead of the pin, so a dictionary rebuilt on the
     // Mac reaches the developer's phone without a new pinned version: scripts/
