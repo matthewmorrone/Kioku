@@ -6,6 +6,7 @@ struct DefaultComparisonKey: Hashable {
     let text: String
     let segmentRanges: [Range<String.Index>]
     let furigana: [Int: String]
+    let chosenEntryIDs: [Int: Int64]
     let segmenterRevision: Int
     let resourcesReady: Bool
     let isEditing: Bool

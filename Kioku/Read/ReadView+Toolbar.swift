@@ -35,14 +35,12 @@ extension ReadView {
     // Opens Changes from Default, which lists how the note differs from Kioku's own segmentation
     // and readings and holds the Reset that restores them.
     var resetButton: some View {
-        // Enabled only when the user has actually changed this note's segmentation or readings or
-        // the note no longer matches what the segmenter produces (differsFromDefault — a segmenter
-        // change with no edit to the note), and the note isn't in edit mode. Uses the explicit edit
-        // marker rather than `segments != nil`, which is true even for imported / precomputed notes
-        // that were never touched. Per the toggle standard, an enabled reset reads as "on" (accent)
-        // and a disabled one as "off" (secondary).
-        let isEnabled = (document.hasManualSegmentationEdits || document.differsFromDefault)
-            && editModeScroll.isEditMode == false
+        // Enabled only when Changes from Default has something to list (differsFromDefault: a
+        // segment, reading or picked word that isn't the default) and the note isn't in edit mode.
+        // Not the edited flag: picking the word already shown, or a reading that is the default,
+        // sets it while changing nothing, and the reset then opened an empty list. Per the toggle
+        // standard, an enabled reset reads as "on" (accent) and a disabled one as "off" (secondary).
+        let isEnabled = document.differsFromDefault && editModeScroll.isEditMode == false
         // Segmentation or its furigana pass is still running: the icon becomes a spinner.
         let isSegmenting = document.segmentationRefreshTask != nil || document.furiganaComputationTask != nil
         return Button {
@@ -171,7 +169,31 @@ extension ReadView {
             )
         }.value
         guard document.text == text else { return nil }
-        return lines
+        return lines + pickedWordLines(edges: currentEdges, text: text)
+    }
+
+    // A line per word picked in the lookup sheet's list (chosenEntryIDBySegmentLocation): the one
+    // change the segment and reading comparison can't see (私 picked as 私 わたし over 私 し), and
+    // what Reset also clears.
+    private func pickedWordLines(edges: [LatticeEdge], text: String) -> [String] {
+        let surfaceByLocation = Dictionary(
+            edges.map { (NSRange($0.start..<$0.end, in: text).location, $0.surface) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var seen = Set<String>()
+        return document.chosenEntryIDBySegmentLocation.sorted { $0.key < $1.key }.compactMap { location, entryID in
+            guard let surface = surfaceByLocation[location] else { return nil }
+            let entry: DictionaryEntry?
+            do {
+                entry = try dictionaryStore?.lookupEntry(entryID: entryID)
+            } catch {
+                AppLog.error(.segmentation, "Changes from Default: entry \(entryID) failed to load: \(error)")
+                entry = nil
+            }
+            let headword = entry.map { ($0.kanjiForms.first?.text ?? $0.kanaForms.first?.text ?? surface) + " " + ($0.kanaForms.first?.text ?? "") }
+            let line = "\(surface): picked \(headword ?? "entry \(entryID)")"
+            return seen.insert(line).inserted ? line : nil
+        }
     }
 
     // What the default comparison depends on; differsFromDefault is recomputed when it changes.
@@ -180,6 +202,7 @@ extension ReadView {
             text: document.text,
             segmentRanges: document.segmentRanges,
             furigana: document.furiganaBySegmentLocation,
+            chosenEntryIDs: document.chosenEntryIDBySegmentLocation,
             segmenterRevision: segmenterRevision,
             resourcesReady: readResourcesReady,
             isEditing: editModeScroll.isEditMode
