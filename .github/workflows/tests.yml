@@ -41,9 +41,9 @@ jobs:
           python3 scripts/ci_pin_source_mtimes.py .
           defaults write com.apple.dt.XCBuild IgnoreFileSystemDeviceInodeChanges -bool YES
 
-      # The project targets iOS 26.2 / Xcode 26+. The runner image carries
-      # several Xcode versions side-by-side; pick the newest stable so the
-      # symbol SVG asset compiler matches the source format.
+      # CI uses Xcode 26.5 and the installed iOS simulator runtime. The app
+      # deployment target is iOS 18.0; the simulator version used for CI is
+      # separate from that minimum deployment target.
       - name: Show installed Xcode versions
         run: ls /Applications | grep -i '^Xcode' || true
 
