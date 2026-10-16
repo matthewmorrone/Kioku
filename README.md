@@ -28,6 +28,12 @@ An iOS app for reading, looking up, and studying Japanese. It turns Japanese tex
 - Flashcards and multiple-choice review with progress tracking
 - Word of the Day notifications
 
+## Engineering overview
+
+Kioku combines an offline dictionary and language analysis with on-device audio processing. The app includes SQLite-backed dictionary storage and search, Japanese deinflection and conjugation handling, and a local Swift package for lyric alignment. That package uses Core ML and Accelerate for phoneme alignment and vocal isolation.
+
+The repository includes unit and UI test targets, a manually triggered iOS test workflow with coverage summaries, and invariant checks. See `.github/workflows/tests.yml` for the test workflow. Audio alignment quality fixtures are excluded from that simulator workflow and are intended for device evaluation.
+
 ## Privacy
 
 No accounts, analytics or tracking. Notes, saved words, study history and audio stay on the device and leave it only when you export a backup. The app downloads its dictionary once from this project's GitHub releases, and downloads models for lyric alignment and vocal isolation when you use those features. Optional AI features use Apple Intelligence or your own API key. See [docs/PRIVACY.md](docs/PRIVACY.md).
