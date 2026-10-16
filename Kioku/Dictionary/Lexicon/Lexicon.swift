@@ -457,10 +457,16 @@ nonisolated public final class Lexicon {
         // structural coincidence: the godan past rule kanaIn=った/kanaOut=う happens to
         // produce たう, which JMdict knows only as the noun 多雨 ("heavy rain"). Drop those.
         // Candidates with no JMdict entry at all are left alone — downstream lookup will
-        // fall back to surface display rather than misattribute meaning.
+        // fall back to surface display rather than misattribute meaning. The plural suffix
+        // (星たち → 星, Segmenter.nounSuffixLabel) is the one step that ends on a noun, so a lemma
+        // it reaches is exempt — unless the surface is a word itself (私たち, never 私 わたくし).
+        let surfaceIsWord = lookupEntries(for: trimmedSurface).isEmpty == false
         let validInflectableBits = PartOfSpeech.verb.bit | PartOfSpeech.adjective.bit
         entries.removeAll { entry in
             guard entry.depth > 0 else { return false }
+            let reachedByNounSuffix = surfaceIsWord == false
+                && (pathsByLemma[entry.lemma]?.contains { $0.chain == [Segmenter.nounSuffixLabel] } ?? false)
+            if reachedByNounSuffix { return false }
             let candidatePOSBits = posBits(for: entry.lemma)
             guard candidatePOSBits != 0 else { return false }
             return (candidatePOSBits & validInflectableBits) == 0

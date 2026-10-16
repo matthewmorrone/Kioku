@@ -19,6 +19,10 @@ nonisolated enum ConjugationClass {
         return nil
     }
 
+    // The rule grammars grammar(forPOSTag:) maps tags onto. A chain ending on any other grammar (the
+    // plural suffix's noun, 星たち → 星) says nothing about how its lemma conjugates.
+    static let conjugationGrammars: Set<String> = ["v1", "v5", "vk", "vs", "adj-i", "v2s", "v2k"]
+
     // The POS detail bit (PartOfSpeechDetail) a word must carry for a chain ending on `grammar` to
     // reach it, where the segmenter's coarse verb bit can't tell: a nidan rule (くる → く, する → す)
     // reaches only a word JMdict tags v2*, never 来 or 酢. Nil for the modern grammars.

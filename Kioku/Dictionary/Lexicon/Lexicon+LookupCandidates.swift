@@ -32,7 +32,13 @@ nonisolated extension Lexicon {
                deinflector.helperWords(from: pathsByLemma, targetLemma: lemma).isEmpty == false {
                 continue
             }
-            let grammars = deinflector.endingGrammars(from: pathsByLemma, targetLemma: lemma)
+            let chainGrammars = deinflector.endingGrammars(from: pathsByLemma, targetLemma: lemma)
+            let grammars = chainGrammars.intersection(ConjugationClass.conjugationGrammars)
+            // A lemma reached only through the plural suffix (星たち → 星) is the word only when the
+            // surface isn't one itself: 私たち is never 私 read わたくし.
+            if surfaceIsWord, lemma != surface, chainGrammars.isEmpty == false, grammars.isEmpty {
+                continue
+            }
             let entries = lookupEntries(for: lemma)
                 .filter { entry in
                     grammars.isEmpty
