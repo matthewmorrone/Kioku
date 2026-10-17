@@ -19,12 +19,10 @@ extension ReadView {
 
             // Title-row quick actions, in order: open a random note, open the
             // breakdown sheet and open the lyrics view.
-            // That last slot morphs into the minimized "now playing" control (ReadView+
-            // MiniPlayer.swift) once playback has started and the full lyrics view is
-            // dismissed — sharing lyricsMiniPlayerNamespace so the button visibly grows
-            // into the play/pause + scrubber control in place, pushing the correction/
-            // breakdown buttons left (never off-screen — the Spacer collapses first, and
-            // the scrubber itself is what yields if the row still runs out of room).
+            // Once playback has started and the full lyrics view is dismissed, the minimized
+            // "now playing" control (ReadView+MiniPlayer.swift) fills the row's empty leading
+            // space. The buttons keep fixed trailing slots, so the control appearing or
+            // disappearing never shifts them; the scrubber is what yields if room runs out.
             HStack {
                 // A word tapped before dictionary resources finish loading (see
                 // handleReadModeSegmentTap's readResourcesReady guard) highlights immediately
@@ -36,24 +34,19 @@ extension ReadView {
                         .scaleEffect(0.7)
                         .accessibilityLabel("Loading dictionary")
                 }
-                Spacer(minLength: 0)
+                if isShowingLyricsMiniPlayer {
+                    lyricsMiniPlayerInlineControl
+                        .transition(.opacity.combined(with: .scale(scale: 0.6, anchor: .trailing)))
+                } else {
+                    Spacer(minLength: 0)
+                }
                 titleShuffleButton
                 titleBreakdownButton
                     .tourTarget(.readBreakdown)
-                if isShowingLyricsMiniPlayer {
-                    lyricsMiniPlayerInlineControl
-                        .matchedGeometryEffect(id: "lyricsControl", in: lyricsMiniPlayerNamespace)
-                } else {
-                    titleLyricsButton
-                        .tourTarget(.readLyrics)
-                        .matchedGeometryEffect(id: "lyricsControl", in: lyricsMiniPlayerNamespace)
-                }
+                titleLyricsButton
+                    .tourTarget(.readLyrics)
             }
-            // dampingFraction close to 1 (near-critical damping): same settle time as before
-            // (response is unchanged) but without the slight overshoot/wobble 0.8 gave the
-            // morph between the button and the wider mini-player control — that overshoot read
-            // as jitter rather than motion, especially with the two very different frame sizes
-            // matchedGeometryEffect is interpolating between.
+            // Near-critical damping: the control settles without the overshoot that reads as jitter.
             .animation(.spring(response: 0.4, dampingFraction: 0.95), value: isShowingLyricsMiniPlayer)
         }
         .padding(.vertical, 8)

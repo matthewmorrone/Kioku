@@ -114,10 +114,6 @@ struct ReadView: View {
     // Scrub-in-progress flag for the minimized "now playing" bar (ReadView+MiniPlayer.swift) —
     // separate from LyricsView's own isScrubbing so dragging one never fights the other's state.
     @State var isMiniPlayerScrubbing = false
-    // Shared identity between titleLyricsButton and lyricsMiniPlayerInlineControl (both in
-    // ReadView+TitleView.swift's title row) so the button visibly morphs into the mini player's
-    // play/pause + scrubber, and back, instead of one abruptly replacing the other.
-    @Namespace var lyricsMiniPlayerNamespace
     @AppStorage(LyricsHighlightGranularity.storageKey) var lyricsHighlightGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
 
     // Typed view of the granularity AppStorage, falling back to the default when the persisted
