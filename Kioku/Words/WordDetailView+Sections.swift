@@ -34,6 +34,9 @@ extension WordDetailView {
             if ($0.entry.entryId == savedEntryID) != ($1.entry.entryId == savedEntryID) { return $0.entry.entryId == savedEntryID }
             let a = FrequencyData(frequencyRank: $0.entry.frequencyRank, wordfreqZipf: $0.entry.wordfreqZipf).normalizedScore ?? -1
             let b = FrequencyData(frequencyRank: $1.entry.frequencyRank, wordfreqZipf: $1.entry.wordfreqZipf).normalizedScore ?? -1
+            // A kana spelling's wordfreq count is shared by every homophone (あさ for 朝 and 麻), so
+            // equal scores fall back to each entry's own rank.
+            if a == b { return ($0.entry.frequencyRank ?? Int.max) < ($1.entry.frequencyRank ?? Int.max) }
             return a > b
         }
         if sortedData.isEmpty == false {
