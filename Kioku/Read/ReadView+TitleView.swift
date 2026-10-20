@@ -17,14 +17,14 @@ extension ReadView {
                     titleEdit.isShowingTitleAlert = true
                 }
 
-            // Title-row quick actions, in order: open a random note, open the
-            // breakdown sheet and open the lyrics view.
-            // That last slot morphs into the minimized "now playing" control (ReadView+
-            // MiniPlayer.swift) once playback has started and the full lyrics view is
-            // dismissed — sharing lyricsMiniPlayerNamespace so the button visibly grows
-            // into the play/pause + scrubber control in place, pushing the correction/
-            // breakdown buttons left (never off-screen — the Spacer collapses first, and
-            // the scrubber itself is what yields if the row still runs out of room).
+            // Title-row quick actions, in order: open the lyrics view, open the breakdown sheet
+            // and open a random note. The lyrics slot is leftmost because it morphs into the
+            // minimized "now playing" control (ReadView+MiniPlayer.swift) once playback has
+            // started and the full lyrics view is dismissed — sharing lyricsMiniPlayerNamespace so
+            // the button visibly grows into the play/pause + scrubber control in place. It grows
+            // into the Spacer to its left, so the breakdown and shuffle buttons stay put (the
+            // Spacer collapses first, and the scrubber itself is what yields if the row still
+            // runs out of room).
             HStack {
                 // A word tapped before dictionary resources finish loading (see
                 // handleReadModeSegmentTap's readResourcesReady guard) highlights immediately
@@ -37,9 +37,6 @@ extension ReadView {
                         .accessibilityLabel("Loading dictionary")
                 }
                 Spacer(minLength: 0)
-                titleShuffleButton
-                titleBreakdownButton
-                    .tourTarget(.readBreakdown)
                 if isShowingLyricsMiniPlayer {
                     lyricsMiniPlayerInlineControl
                         .matchedGeometryEffect(id: "lyricsControl", in: lyricsMiniPlayerNamespace)
@@ -48,6 +45,9 @@ extension ReadView {
                         .tourTarget(.readLyrics)
                         .matchedGeometryEffect(id: "lyricsControl", in: lyricsMiniPlayerNamespace)
                 }
+                titleBreakdownButton
+                    .tourTarget(.readBreakdown)
+                titleShuffleButton
             }
             // dampingFraction close to 1 (near-critical damping): same settle time as before
             // (response is unchanged) but without the slight overshoot/wobble 0.8 gave the
