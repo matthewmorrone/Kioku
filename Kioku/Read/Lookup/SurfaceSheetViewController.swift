@@ -308,7 +308,14 @@ final class SurfaceSheetViewController: UIViewController {
     func updateLemmaChain() {
         guard let lemmaLabel else { return }
         let info = sheet?.currentSheetLemmaInfo
-        let show = info != nil && info?.lemma != currentSurface
+        // An uninflected kana word's "lemma" is just its kanji spelling (また → 又): the sheet already
+        // lists the spellings in the word row, so the line is noise there. Inflected forms and
+        // multi-word lemma lines still show it.
+        let isSpellingOnly = info.map { found in
+            found.chain.isEmpty
+                && sheet?.currentSheetDictionaryEntry?.kanjiForms.contains { $0.text == found.lemma } == true
+        } ?? false
+        let show = info != nil && info?.lemma != currentSurface && isSpellingOnly == false
         lemmaLabel.attributedText = show ? info.map { NSAttributedString(string: $0.lemma) } : nil
         lemmaLabel.isHidden = !show
         syncFuriganaToCurrentIndex()
