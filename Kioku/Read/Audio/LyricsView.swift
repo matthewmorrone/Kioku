@@ -79,9 +79,6 @@ struct LyricsView: View {
     // location and surface; nil for particles and unknown words. Supplied by the Read view, which
     // owns the dictionary; nil (previews) leaves lines without a breakdown bubble-free.
     var dictionaryGloss: ((Int, String) -> String?)? = nil
-    // Whether a word is a katakana loanword, which gets no bubble even from a breakdown; supplied
-    // by the Read view, which owns the dictionary. Nil (previews) treats every word as Japanese.
-    var isLoanword: ((String) -> Bool)? = nil
     // The word bubbles of the line last built, and the measured rects of its words in the active
     // card (cue-local ranges → renderer coordinates, from KiokuScrollingTextView.reportRangeRects).
     @State var wordBubbleCache = LyricWordBubbleCache()

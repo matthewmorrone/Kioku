@@ -45,12 +45,11 @@ extension LyricsView {
             let found = note.range(of: surface, options: [], range: NSRange(location: cursor, length: NSMaxRange(lineRange) - cursor))
             guard found.location != NSNotFound else { continue }
             cursor = NSMaxRange(found)
-            guard NSIntersectionRange(found, cueRange).length > 0 else { continue }
-            // Particles, vocalizations and katakana loanwords (which the reader can sound out) get no
-            // meaning; grammar tags (past, particle…) aren't shown.
+            // Punctuation (a "（" the model was asked to gloss) is no word and gets no bubble.
+            guard NSIntersectionRange(found, cueRange).length > 0, surface.contains(where: \.isLetter) else { continue }
+            // Particles and vocalizations get no meaning; grammar tags (past, particle…) aren't shown.
             let tag = Self.nonEmpty(word.grammarTag)
-            let isFunctionWord = tag == "particle" || tag == "vocalization"
-            let needsNoMeaning = isFunctionWord || isLoanword?(surface) == true
+            let needsNoMeaning = tag == "particle" || tag == "vocalization"
             bubbles.append(LyricWordBubble(
                 noteRange: found,
                 gloss: needsNoMeaning ? nil : Self.shortGloss(word.definition),

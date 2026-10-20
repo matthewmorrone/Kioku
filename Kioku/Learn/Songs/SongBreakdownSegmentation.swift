@@ -25,8 +25,9 @@ enum SongBreakdownSegmentation {
         return rows.joined(separator: "\n")
     }
 
-    // The line's segments in order, each with its readings inlined; whitespace-only segments
-    // are left out since they aren't words.
+    // The line's segments in order, each with its readings inlined; segments without a letter
+    // (whitespace, punctuation like "（") are left out since they aren't words — rule 12 would
+    // otherwise make the model gloss them ("open parenthesis").
     private static func segments(in lineRange: NSRange, of snapshot: NoteReadingSnapshot) -> [String] {
         let text = snapshot.text as NSString
         let lineEnd = lineRange.location + lineRange.length
@@ -37,7 +38,7 @@ enum SongBreakdownSegmentation {
             let end = min(ns.location + ns.length, lineEnd)
             guard end > start else { continue }
             let word = annotated(NSRange(location: start, length: end - start), in: text, snapshot: snapshot)
-            if word.trimmingCharacters(in: .whitespaces).isEmpty == false {
+            if word.contains(where: \.isLetter) {
                 words.append(word.trimmingCharacters(in: .whitespaces))
             }
         }
