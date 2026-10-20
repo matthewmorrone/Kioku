@@ -28,14 +28,17 @@ extension WordDetailView {
     }
 
     // This word and every other written the same way, in one fixed order — most frequent first,
-    // ties by entry id — so the arrows and the list read the same from every word's page. Just this
+    // ties by rank, then entry id — so the arrows and the list read the same from every word's page. Just this
     // word when it shares its spelling with none.
     var sameSpellingAllEntries: [DictionaryEntry] {
         guard let active = allDisplayData.first(where: { $0.entry.entryId == activeEntryID })?.entry else { return [] }
         return (sameSpellingEntries + [active]).sorted {
             let a = FrequencyData(frequencyRank: $0.frequencyRank, wordfreqZipf: $0.wordfreqZipf).normalizedScore ?? -1
             let b = FrequencyData(frequencyRank: $1.frequencyRank, wordfreqZipf: $1.wordfreqZipf).normalizedScore ?? -1
-            return a != b ? a > b : $0.entryId < $1.entryId
+            if a != b { return a > b }
+            // Homophones share a kana spelling's wordfreq count, so equal scores go by each entry's own rank.
+            let ranks = ($0.frequencyRank ?? Int.max, $1.frequencyRank ?? Int.max)
+            return ranks.0 != ranks.1 ? ranks.0 < ranks.1 : $0.entryId < $1.entryId
         }
     }
 
