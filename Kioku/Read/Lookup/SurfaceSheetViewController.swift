@@ -640,7 +640,7 @@ final class SurfaceSheetViewController: UIViewController {
         if isAwaitingPick == false, let setLearnedState = sheet?.sheetSetLearnedState {
             // Deferred write + self-refresh for the same reason as the popover star: applying the
             // mark inline collides with the menu's teardown and the icon flips a beat late.
-            saveButton.menu = learnedStateUIMenu(currentState: learnedState) { [weak self] state in
+            saveButton.menu = learnedStateUIMenu(currentState: learnedState, isSaved: isSaved) { [weak self] state in
                 DispatchQueue.main.async {
                     setLearnedState(state)
                     self?.updateSaveButtonAppearance()

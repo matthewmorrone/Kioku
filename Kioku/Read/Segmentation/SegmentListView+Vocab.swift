@@ -378,6 +378,7 @@ extension SegmentListView {
             if let entryID = canonicalEntryIDBySurface[normalizedIdentity] {
                 learnedStateMenuButtons(
                     currentState: learnedState,
+                    isSaved: isSavedSurface(normalizedSurface: normalizedIdentity),
                     setState: learnedStateSetter(entryID: entryID, wordsStore: wordsStore, surface: identity, sourceNoteID: sourceNoteID)
                 )
             }

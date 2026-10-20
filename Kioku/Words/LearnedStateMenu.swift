@@ -12,8 +12,9 @@ import UIKit
 // item automatically. The binding's `set` ignores whatever value SwiftUI would assign and always
 // calls setState with this option's own state; only `get` (compared against currentState) matters.
 @ViewBuilder
-func learnedStateMenuButtons(currentState: LearnedState, setState: @escaping (LearnedState) -> Void) -> some View {
-    Toggle(isOn: Binding(get: { currentState == .unmarked }, set: { _ in setState(.unmarked) })) {
+func learnedStateMenuButtons(currentState: LearnedState, isSaved: Bool, setState: @escaping (LearnedState) -> Void) -> some View {
+    // Save is checked only for a saved word with no mark: an unsaved word has no state to show.
+    Toggle(isOn: Binding(get: { isSaved && currentState == .unmarked }, set: { _ in setState(.unmarked) })) {
         Label("Save", systemImage: "star")
     }
     Toggle(isOn: Binding(get: { currentState == .learned }, set: { _ in setState(.learned) })) {
@@ -56,12 +57,12 @@ func learnedStateSetter(
 // `button.showsMenuAsPrimaryAction = false` so a plain tap still fires the button's normal
 // touchUpInside action while touch-and-hold shows this menu. `.state = .on` is UIMenu's own
 // checked-item indicator, the UIKit counterpart of the SwiftUI Toggle-in-Menu trick above.
-func learnedStateUIMenu(currentState: LearnedState, setState: @escaping (LearnedState) -> Void) -> UIMenu {
+func learnedStateUIMenu(currentState: LearnedState, isSaved: Bool, setState: @escaping (LearnedState) -> Void) -> UIMenu {
     UIMenu(children: [
         UIAction(
             title: "Save",
             image: UIImage(systemName: "star"),
-            state: currentState == .unmarked ? .on : .off
+            state: isSaved && currentState == .unmarked ? .on : .off
         ) { _ in setState(.unmarked) },
         UIAction(
             title: "Learned",

@@ -160,6 +160,18 @@ final class WordsStore: ObservableObject {
         persist(updated)
     }
 
+    // Sets one mark on every saved word in `ids` in a single write — the batch counterpart of
+    // setLearnedState. Ids with no saved card are skipped: a batch only converts what is saved.
+    func setLearnedState(_ state: LearnedState, forAll ids: Set<Int64>) {
+        var updated = words
+        var changed = false
+        for idx in updated.indices where ids.contains(updated[idx].canonicalEntryID) && updated[idx].learnedMark != state {
+            updated[idx].learnedMark = state
+            changed = true
+        }
+        if changed { persist(updated) }
+    }
+
     // True when the word has been marked learned (manually or automatically).
     func isLearned(id: Int64) -> Bool { learned.contains(id) }
 

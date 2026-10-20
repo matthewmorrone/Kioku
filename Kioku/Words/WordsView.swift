@@ -34,6 +34,7 @@ enum WordsStatScope: String {
     case markedWrong
     case dueForReview
     case neverReviewed
+    case saved
     case learned
     case notLearned
 }

@@ -125,6 +125,23 @@ extension WordsView {
                                 Label("Manage Lists…", systemImage: "text.badge.plus")
                             }
                         }
+                        // Converts every selected word's mark at once; the same three choices as a star's
+                        // long-press menu.
+                        if selectedWordIDs.isEmpty == false, activeTab != .history {
+                            Menu {
+                                Button { wordsStore.setLearnedState(.unmarked, forAll: selectedWordIDs) } label: {
+                                    Label("Save", systemImage: "star")
+                                }
+                                Button { wordsStore.setLearnedState(.learned, forAll: selectedWordIDs) } label: {
+                                    Label("Learned", systemImage: "checkmark")
+                                }
+                                Button { wordsStore.setLearnedState(.notLearned, forAll: selectedWordIDs) } label: {
+                                    Label("Not Learned", systemImage: "questionmark")
+                                }
+                            } label: {
+                                Label("Mark As… (\(selectedWordIDs.count))", systemImage: "checkmark.circle")
+                            }
+                        }
                         Button(role: .destructive) {
                             if activeTab == .history {
                                 historyStore.remove(canonicalEntryIDs: selectedWordIDs)

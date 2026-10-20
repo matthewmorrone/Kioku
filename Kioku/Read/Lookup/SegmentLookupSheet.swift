@@ -346,7 +346,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
             // The mark is applied (and the glyph refreshed) on the next runloop rather than inline:
             // a synchronous write lands while UIKit is still tearing the menu down, which delays the
             // resulting icon change by a beat — same reasoning as learnedStateSetter.
-            popoverStarButton?.menu = learnedStateUIMenu(currentState: learnedState) { [weak self] state in
+            popoverStarButton?.menu = learnedStateUIMenu(currentState: learnedState, isSaved: isSaved) { [weak self] state in
                 DispatchQueue.main.async {
                     onSetLearnedState(state)
                     self?.refreshPopoverStarAppearance()

@@ -430,7 +430,7 @@ struct WordDetailView: View {
                     .offset(x: 34, y: headwordShift)
                     .accessibilityLabel(isSaved ? "Unsave Word" : "Save Word")
                     .contextMenu {
-                        learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(
+                        learnedStateMenuButtons(currentState: learnedState, isSaved: isSaved, setState: learnedStateSetter(
                             entryID: activeEntryID,
                             wordsStore: wordsStore,
                             surface: word.surface,

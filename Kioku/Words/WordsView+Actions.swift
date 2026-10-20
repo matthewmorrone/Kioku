@@ -48,6 +48,8 @@ extension WordsView {
             filtered = filtered.filter { wordsStore.isDueForReview(id: $0.canonicalEntryID) }
         case .neverReviewed:
             filtered = filtered.filter { wordsStore.stats[$0.canonicalEntryID] == nil }
+        case .saved:
+            filtered = filtered.filter { wordsStore.learnedState(for: $0.canonicalEntryID) == .unmarked }
         case .learned:
             filtered = filtered.filter { wordsStore.isLearned(id: $0.canonicalEntryID) }
         case .notLearned:

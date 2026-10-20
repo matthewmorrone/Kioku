@@ -113,7 +113,7 @@ extension WordsView {
                 .buttonStyle(.plain)
                 .accessibilityLabel(saved ? "Unsave" : "Save")
                 .contextMenu {
-                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(
+                    learnedStateMenuButtons(currentState: learnedState, isSaved: saved, setState: learnedStateSetter(
                         entryID: entryID,
                         wordsStore: wordsStore,
                         surface: surface,
@@ -140,7 +140,7 @@ extension WordsView {
         .modifier(SwipeActionsWhenNotEditing(isEditing: editMode == .active) {
             wordRowSwipeAction(entryID: entryID, surface: surface, entry: entry)
             Menu {
-                learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(
+                learnedStateMenuButtons(currentState: learnedState, isSaved: saved, setState: learnedStateSetter(
                     entryID: entryID,
                     wordsStore: wordsStore,
                     surface: surface,

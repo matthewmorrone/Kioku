@@ -68,7 +68,7 @@ extension WordsView {
                 .buttonStyle(.plain)
                 .accessibilityLabel(saved ? "Unsave Word" : "Save Word")
                 .contextMenu {
-                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(
+                    learnedStateMenuButtons(currentState: learnedState, isSaved: saved, setState: learnedStateSetter(
                         entryID: entry.entryId,
                         wordsStore: wordsStore,
                         surface: entry.primarySearchSurface,

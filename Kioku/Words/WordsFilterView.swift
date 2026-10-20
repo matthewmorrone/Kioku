@@ -97,6 +97,9 @@ struct WordsFilterView: View {
             Button { tapStatScope(.neverReviewed) } label: {
                 Label(neverReviewedLabel, systemImage: statScope == .neverReviewed ? "checkmark" : "circle.dashed")
             }
+            Button { tapStatScope(.saved) } label: {
+                Label(savedLabel, systemImage: statScope == .saved ? "checkmark" : "star")
+            }
             Button { tapStatScope(.learned) } label: {
                 Label(learnedLabel, systemImage: statScope == .learned ? "checkmark" : "checkmark.circle")
             }
@@ -172,6 +175,7 @@ struct WordsFilterView: View {
         case .markedWrong:   return "Marked Wrong"
         case .dueForReview:  return "Due for Review"
         case .neverReviewed: return "Never Reviewed"
+        case .saved:         return "Saved"
         case .learned:       return "Learned"
         case .notLearned:    return "Not Learned"
         }
@@ -206,6 +210,12 @@ struct WordsFilterView: View {
     private var neverReviewedLabel: String {
         let count = wordsStore.words.filter { wordsStore.stats[$0.canonicalEntryID] == nil }.count
         return count > 0 ? "Never Reviewed (\(count))" : "Never Reviewed"
+    }
+
+    // Saved words carrying neither mark — the third save type beside Learned and Not Learned.
+    private var savedLabel: String {
+        let count = wordsStore.words.filter { wordsStore.learnedState(for: $0.canonicalEntryID) == .unmarked }.count
+        return count > 0 ? "Saved (\(count))" : "Saved"
     }
 
     private var learnedLabel: String {

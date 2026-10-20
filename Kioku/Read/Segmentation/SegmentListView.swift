@@ -323,6 +323,7 @@ struct SegmentListView: View {
                                     let learnedState = wordsStore.learnedState(for: entryID)
                                     learnedStateMenuButtons(
                                         currentState: learnedState,
+                                        isSaved: isSavedSurface(normalizedSurface: normalizedSurfaceForFiltering(rowIdentity)),
                                         setState: learnedStateSetter(
                                             entryID: entryID,
                                             wordsStore: wordsStore,
@@ -341,6 +342,7 @@ struct SegmentListView: View {
                                 Menu {
                                     learnedStateMenuButtons(
                                         currentState: learnedState,
+                                        isSaved: isSavedSurface(normalizedSurface: normalizedSurfaceForFiltering(rowIdentity)),
                                         setState: learnedStateSetter(
                                             entryID: entryID,
                                             wordsStore: wordsStore,
