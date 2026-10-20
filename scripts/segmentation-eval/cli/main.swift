@@ -118,6 +118,11 @@ if mode == "choose" {
     struct Tally { var decided = 0, scored = 0, chooserRight = 0, defaultRight = 0, bothScored = 0 }
     var tallies: [Int: Tally] = [:]
     var ambiguous = 0, withGold = 0
+    // Edges where the chooser overrides the default: wins/losses by "defaultClass>pickClass", with a few examples.
+    var flips: [String: (win: Int, loss: Int, both: Int, examples: [String])] = [:]
+    func className(_ c: LookupCandidate, _ surface: String) -> String {
+        TransitionClass.name(surface: surface, partOfSpeech: c.entry.senses.reduce(UInt64(0)) { $0 | PartOfSpeech.bits(from: $1.pos) }, lexical: table.lexical)
+    }
     var candidateCache: [String: [LookupCandidate]] = [:]
     func matches(_ candidate: LookupCandidate, _ lemma: String) -> Bool {
         candidate.entry.kanjiForms.contains { $0.text == lemma } || candidate.entry.kanaForms.contains { $0.text == lemma }
@@ -142,6 +147,8 @@ if mode == "choose" {
             }
             // SAME_SPELLING=1: only words that are written exactly as the surface (怒り the noun and 怒り the stem), not conjugations of other lemmas.
             if ProcessInfo.processInfo.environment["SAME_SPELLING"] == "1" { candidates = candidates.filter { $0.lemma == edge.surface } }
+            // COMMON=1: only words the dictionary ranks (rare homographs like 占む, 同じる are not options).
+            if ProcessInfo.processInfo.environment["COMMON"] == "1" { candidates = candidates.filter { $0.entry.frequencyRank != nil } }
             guard candidates.count > 1 else { continue }
             ambiguous += 1
             let scalars = sentence.unicodeScalars
@@ -162,6 +169,13 @@ if mode == "choose" {
                 if let gold {
                     tally.scored += 1
                     let right = matches(pick, gold), defaultRight = matches(fallback, gold)
+                    if margin == ContextualClassChoice.margin, pick.entry.entryId != fallback.entry.entryId {
+                        let key = "\(className(fallback, edge.surface))>\(className(pick, edge.surface))"
+                        var f = flips[key, default: (0, 0, 0, [])]
+                        if right && !defaultRight { f.win += 1 } else if defaultRight && !right { f.loss += 1 } else { f.both += 1 }
+                        if f.examples.count < 3, right != defaultRight { f.examples.append("\(right ? "+" : "-")\(edge.surface)(pick \(pick.lemma), default \(fallback.lemma), gold \(gold))") }
+                        flips[key] = f
+                    }
                     if right { tally.chooserRight += 1 }
                     if defaultRight { tally.defaultRight += 1 }
                     if right == false, margin == ContextualClassChoice.margin || margins.isEmpty == false && margin == sweep[0] {
@@ -174,6 +188,10 @@ if mode == "choose" {
     }
     print("ambiguous edges: \(ambiguous) (with a gold token on the same span: \(withGold))")
     print("margin\tdecided\tscored\tchooser-right\tdefault-right (same decided edges)")
+    print("flips at the shipped margin (default class > chooser class): wins / losses / neither right")
+    for (key, f) in flips.sorted(by: { $0.value.win + $0.value.loss > $1.value.win + $1.value.loss }).prefix(25) {
+        print("\(key)\t+\(f.win)\t-\(f.loss)\t\(f.both)\t\(f.examples.joined(separator: " "))")
+    }
     for margin in sweep {
         let t = tallies[margin, default: Tally()]
         print("\(margin)\t\(t.decided)\t\(t.scored)\t\(t.chooserRight)\t\(t.defaultRight)")
