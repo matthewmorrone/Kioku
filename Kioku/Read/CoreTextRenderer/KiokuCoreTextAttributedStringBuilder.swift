@@ -314,7 +314,7 @@ enum KiokuCoreTextAttributedStringBuilder {
     }
 
     // How far toward white the second of two same-colored neighbours is drawn (purple → lavender).
-    static let repeatedSegmentLightening: CGFloat = 0.3
+    static let repeatedSegmentLightening: CGFloat = 0.55
 
     // Two neighbouring segments drawn in the same color (two saved words in a row, both purple)
     // read as one word, so within such a run every other segment takes a lighter shade of the
