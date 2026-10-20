@@ -28,7 +28,10 @@ extension WordDetailView {
             let allUK = data.entry.allSensesUsuallyKana
             return !(kanjiHopeless && allUK)
         }
+        // The saved word's own entry leads (朝's "morning" is first on the page of the word saved as 朝,
+        // not under 麻 for sharing its reading); the homophones follow by frequency.
         let sortedData = filteredData.sorted {
+            if ($0.entry.entryId == savedEntryID) != ($1.entry.entryId == savedEntryID) { return $0.entry.entryId == savedEntryID }
             let a = FrequencyData(frequencyRank: $0.entry.frequencyRank, wordfreqZipf: $0.entry.wordfreqZipf).normalizedScore ?? -1
             let b = FrequencyData(frequencyRank: $1.entry.frequencyRank, wordfreqZipf: $1.entry.wordfreqZipf).normalizedScore ?? -1
             return a > b
