@@ -11,6 +11,7 @@ import Foundation
 //   segcli helpers < surfaces                    → "surface<TAB>lemma + helper…": the words deinflection folds into each surface
 //   segcli compounds < surfaces                  → "surface<TAB>base + auxiliary" for each surface the lookup sheet names as a compound verb
 //   segcli furigana < sentences                  → per sentence, a JSON list of [utf16Location, utf16Length, reading]: the Read view's furigana for dictionary words
+//   segcli choose [margins…] < sentences|gold.jsonl → the neighbour-class chooser (ContextualClassChoice) over every ambiguous spelling in the shipped parse: how many it decides and how often the pick is the gold token's lemma, per margin (default 0 20 40 80 120 200); disagreements at the shipped margin follow on stderr
 //   segcli registers < sentences                 → per sentence, the register furigana gives it (RegisterClassifier), or "none"
 // NO_EXTRAS=1                                  → skip the built-in Custom Words (Resources/extras.json)
 // NO_BOUNDARY_MODEL=1                          → the path search without the boundary model
@@ -100,6 +101,82 @@ if mode == "lexicon" {
         let info = lexicon.inflectionInfo(surface: line).map { "\($0.lemma) [\($0.chain.joined(separator: ","))]" } ?? "-"
         let candidates = lexicon.lookupCandidates(surface: line).map { "\($0.lemma):\($0.headword)/\($0.reading)" }
         print("\(line)\tlemma=\(info)\tcandidates=\(candidates.joined(separator: " "))")
+    }
+    exit(0)
+}
+
+if mode == "choose" {
+    guard let table = segmenter.transitionTable else { fatalError("no transition table") }
+    let lexicon = Lexicon(
+        dictionaryStore: store,
+        segmenter: segmenter,
+        deinflector: deinflector,
+        surfaceReadingData: try store.fetchSurfaceReadingData()
+    )
+    let margins = CommandLine.arguments.dropFirst(2).compactMap { Int($0) }
+    let sweep = margins.isEmpty ? [0, 20, 40, 80, 120, 200] : margins
+    struct Tally { var decided = 0, scored = 0, chooserRight = 0, defaultRight = 0, bothScored = 0 }
+    var tallies: [Int: Tally] = [:]
+    var ambiguous = 0, withGold = 0
+    var candidateCache: [String: [LookupCandidate]] = [:]
+    func matches(_ candidate: LookupCandidate, _ lemma: String) -> Bool {
+        candidate.entry.kanjiForms.contains { $0.text == lemma } || candidate.entry.kanaForms.contains { $0.text == lemma }
+    }
+    while let line = readLine() {
+        var sentence = line
+        var goldBySpan: [String: String] = [:]
+        if line.hasPrefix("{"), let data = line.data(using: .utf8),
+           let record = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let text = record["s"] as? String {
+            sentence = text
+            for token in (record["g"] as? [[Any]]) ?? [] {
+                if let a = token[0] as? Int, let b = token[1] as? Int, let lemma = token[2] as? String { goldBySpan["\(a),\(b)"] = lemma }
+            }
+        }
+        let edges = segmenter.longestMatchEdges(for: sentence)
+        for (index, edge) in edges.enumerated() where edge.isDictionaryMatch {
+            var candidates: [LookupCandidate]
+            if let cached = candidateCache[edge.surface] { candidates = cached } else {
+                candidates = lexicon.lookupCandidates(surface: edge.surface)
+                candidateCache[edge.surface] = candidates
+            }
+            // SAME_SPELLING=1: only words that are written exactly as the surface (怒り the noun and 怒り the stem), not conjugations of other lemmas.
+            if ProcessInfo.processInfo.environment["SAME_SPELLING"] == "1" { candidates = candidates.filter { $0.lemma == edge.surface } }
+            guard candidates.count > 1 else { continue }
+            ambiguous += 1
+            let scalars = sentence.unicodeScalars
+            let a = scalars.distance(from: scalars.startIndex, to: edge.start.samePosition(in: scalars) ?? scalars.startIndex)
+            let b = scalars.distance(from: scalars.startIndex, to: edge.end.samePosition(in: scalars) ?? scalars.endIndex)
+            let gold = goldBySpan["\(a),\(b)"]
+            if gold != nil { withGold += 1 }
+            let neighbours = ContextualClassChoice.Neighbours(
+                previous: index > 0 ? edges[index - 1] : nil,
+                next: index + 1 < edges.count ? edges[index + 1] : nil
+            )
+            // What the sheet shows with no context: the common-word rule, else the engine's first row.
+            let fallback = Lexicon.shownLookupCandidate(among: candidates, chosenEntryID: nil, displayedReading: nil) ?? candidates[0]
+            for margin in sweep {
+                guard let pick = Lexicon.contextuallyPreferredCandidate(among: candidates, surface: edge.surface, neighbours: neighbours, table: table, margin: margin) else { continue }
+                var tally = tallies[margin, default: Tally()]
+                tally.decided += 1
+                if let gold {
+                    tally.scored += 1
+                    let right = matches(pick, gold), defaultRight = matches(fallback, gold)
+                    if right { tally.chooserRight += 1 }
+                    if defaultRight { tally.defaultRight += 1 }
+                    if right == false, margin == ContextualClassChoice.margin || margins.isEmpty == false && margin == sweep[0] {
+                        FileHandle.standardError.write("MISS \(edge.surface)\tpick=\(pick.lemma)/\(pick.reading)\tgold=\(gold)\tdefault=\(fallback.lemma)\t\(sentence)\n".data(using: .utf8)!)
+                    }
+                }
+                tallies[margin] = tally
+            }
+        }
+    }
+    print("ambiguous edges: \(ambiguous) (with a gold token on the same span: \(withGold))")
+    print("margin\tdecided\tscored\tchooser-right\tdefault-right (same decided edges)")
+    for margin in sweep {
+        let t = tallies[margin, default: Tally()]
+        print("\(margin)\t\(t.decided)\t\(t.scored)\t\(t.chooserRight)\t\(t.defaultRight)")
     }
     exit(0)
 }

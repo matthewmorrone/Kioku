@@ -402,6 +402,7 @@ extension ReadView {
                             furiganaLengthBySegmentLocation: document.furiganaLengthBySegmentLocation
                         ),
                         dictionaryStore: dictionaryStore,
+                        lexicon: lexicon,
                         segmenterRevision: segmenterRevision,
                         focusNoteLocation: readSheets.breakdownFocusLocation,
                         autoplay: readSheets.breakdownAutoplay,

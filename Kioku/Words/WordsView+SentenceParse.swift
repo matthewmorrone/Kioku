@@ -133,6 +133,40 @@ extension WordsView {
         }
     }
 
+    // The word each token is HERE where several share its spelling (verb stem vs noun), by the
+    // neighbouring segments' classes — the same ContextualClassChoice the lookup sheet uses. Aligned
+    // with parseTokens(_:using:); nil where the spelling is one word or context does not decide.
+    nonisolated static func contextualEntryIDs(
+        _ text: String,
+        using segmenter: (any TextSegmenting)?,
+        lexicon: Lexicon?
+    ) -> [Int64?] {
+        guard let segmenter else { return [] }
+        let edges = segmenter.longestMatchEdges(for: text)
+        let table = (segmenter as? Segmenter)?.transitionTable
+        let boundary = Segmenter.boundaryCharacters
+        var result: [Int64?] = []
+        for (index, edge) in edges.enumerated() {
+            let surface = edge.surface
+            if surface.isEmpty { continue }
+            if surface.count == 1, let only = surface.first, boundary.contains(only) { continue }
+            guard let lexicon, let table, edge.isDictionaryMatch else {
+                result.append(nil)
+                continue
+            }
+            let candidates = lexicon.lookupCandidates(surface: surface)
+            let neighbours = ContextualClassChoice.Neighbours(
+                previous: index > 0 ? edges[index - 1] : nil,
+                next: index + 1 < edges.count ? edges[index + 1] : nil
+            )
+            result.append(
+                Lexicon.contextuallyPreferredCandidate(among: candidates, surface: surface, neighbours: neighbours, table: table)?
+                    .entry.entryId
+            )
+        }
+        return result
+    }
+
     // Resolves each segment surface to its best dictionary hit. Runs off-main; safe to call
     // from a detached task. Returns segments in their original order.
     //
@@ -147,7 +181,8 @@ extension WordsView {
     // the first few seconds after launch.
     nonisolated static func resolveParsedSegments(
         tokens: [String],
-        store: DictionaryStore
+        store: DictionaryStore,
+        contextEntryIDs: [Int64?] = []
     ) -> [ParsedSegment] {
         // Collect each unique surface's canonical entry id (skip nils — those will fall
         // back to dictionaryTop below).
@@ -162,7 +197,7 @@ extension WordsView {
         }
 
         // One batched SQL roundtrip for every entry id we found via the canonical map.
-        let entryIDs = Array(Set(canonicalIDBySurface.values))
+        let entryIDs = Array(Set(canonicalIDBySurface.values).union(contextEntryIDs.compactMap { $0 }))
         let batched = (try? store.lookupEntries(entryIDs: entryIDs)) ?? []
         let entryByID = Dictionary(uniqueKeysWithValues: batched.map { ($0.entryId, $0) })
 
@@ -172,7 +207,10 @@ extension WordsView {
             fallbackBySurface[surface] = dictionaryTop(store: store, surface: surface)
         }
 
-        return tokens.map { surface in
+        return tokens.enumerated().map { position, surface in
+            if position < contextEntryIDs.count, let contextID = contextEntryIDs[position], let entry = entryByID[contextID] {
+                return ParsedSegment(surface: surface, entry: entry)
+            }
             if let entryID = canonicalIDBySurface[surface], let entry = entryByID[entryID] {
                 return ParsedSegment(surface: surface, entry: entry)
             }

@@ -29,7 +29,8 @@ nonisolated enum ContextualClassChoice {
         surface: String,
         partOfSpeech: (Option) -> UInt64,
         neighbours: Neighbours,
-        table: SegmenterTransitionTable
+        table: SegmenterTransitionTable,
+        margin: Int = ContextualClassChoice.margin
     ) -> Option? {
         guard options.count > 1 else { return nil }
         let before = table.classIDs(for: neighbours.previous)

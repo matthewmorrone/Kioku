@@ -352,6 +352,8 @@ extension WordsView {
 
         isSearching = true
         let capturedSegmenter = segmenter
+        // Lexicon only reads immutable dictionary data, so sharing it with the detached parse is safe.
+        let capturedLexicon = UncheckedSendableBox(value: lexicon)
         searchTask = Task {
             try? await Task.sleep(for: .milliseconds(250))
             if Task.isCancelled { return }
@@ -372,7 +374,12 @@ extension WordsView {
                 }.value
                 if tokens.count >= 2 {
                     let segments = await Task.detached(priority: .userInitiated) {
-                        WordsView.resolveParsedSegments(tokens: tokens, store: store)
+                        let contextIDs = WordsView.contextualEntryIDs(trimmed, using: parseSegmenter, lexicon: capturedLexicon.value)
+                        return WordsView.resolveParsedSegments(
+                            tokens: tokens,
+                            store: store,
+                            contextEntryIDs: contextIDs.count == tokens.count ? contextIDs : []
+                        )
                     }.value
                     // A multi-token query is a phrase — pull matching corpus sentences so the
                     // whole-phrase lookup the user almost certainly wants is one section away.

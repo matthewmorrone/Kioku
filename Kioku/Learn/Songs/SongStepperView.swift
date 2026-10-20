@@ -43,6 +43,9 @@ struct SongStepperView: View {
     // Resolves tapped breakdown words to a dictionary entry for the lookup sheet. Optional so the
     // legacy SongsHomeView caller (no dictionary in scope) still compiles; tap-to-lookup no-ops there.
     let dictionaryStore: DictionaryStore?
+    // Lists the words a tapped spelling can be, so the neighbouring words in its line can pick between
+    // them (verb stem vs noun). Nil where no Lexicon is in scope; the tap then takes the top entry.
+    var lexicon: Lexicon? = nil
     // Called when Listen-along's track finishes playing on its own (not via a per-line stop or
     // an explicit pause) — see SongStepperView+Listen's `onDidFinishPlayingNaturally` wiring.
     // Nil for callers with no "next note" concept (e.g. ReadView's Breakdown sheet, which shows
@@ -128,6 +131,7 @@ struct SongStepperView: View {
          kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap(),
          noteReadings: NoteReadingSnapshot? = nil,
          dictionaryStore: DictionaryStore? = nil,
+         lexicon: Lexicon? = nil,
          onFinishedPlaying: ((Note) -> Void)? = nil,
          segmenterRevision: Int = 0,
          focusNoteLocation: Int? = nil,
@@ -139,6 +143,7 @@ struct SongStepperView: View {
         self.kanjiReadingFallback = kanjiReadingFallback
         self.noteReadings = noteReadings
         self.dictionaryStore = dictionaryStore
+        self.lexicon = lexicon
         self.onFinishedPlaying = onFinishedPlaying
         self.segmenterRevision = segmenterRevision
         self.focusNoteLocation = focusNoteLocation
@@ -608,7 +613,7 @@ struct SongStepperView: View {
                                 case nil: break
                                 }
                             },
-                            onWordTapped: { presentWordLookup($0) },
+                            onWordTapped: { presentWordLookup($0, in: item.line) },
                             onJumpToLine: { targetIndex in
                                 guard let target = items.first(where: { $0.line.index == targetIndex }) else { return }
                                 expandedByLineIndex.insert(target.line.index)
@@ -735,12 +740,14 @@ struct SongStepperView: View {
     // Resolves a tapped breakdown word to a dictionary entry and opens the shared lookup sheet.
     // Tries the sung surface first, then the segmenter's lemma for conjugated forms (歌った → 歌う)
     // that don't resolve directly; silently no-ops when there's no dictionary or no entry.
-    private func presentWordLookup(_ word: SongWord) {
+    private func presentWordLookup(_ word: SongWord, in line: SongLine) {
         let surface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
         guard surface.isEmpty == false, let dictionaryStore else { return }
 
         let entryID: Int64?
-        if let direct = dictionaryStore.lookupFirstEntryID(surface: surface) {
+        if let contextual = contextualEntryID(surface: surface, in: line) {
+            entryID = contextual
+        } else if let direct = dictionaryStore.lookupFirstEntryID(surface: surface) {
             entryID = direct
         } else if let lemma = segmenter?.preferredLemma(for: surface), lemma.isEmpty == false {
             entryID = dictionaryStore.lookupFirstEntryID(surface: lemma)
@@ -773,6 +780,29 @@ struct SongStepperView: View {
                 wordsStore.setLearnedState(state, for: entryID, ensureSavedWithSurface: surface)
             }
         )
+    }
+
+    // The word `surface` is in this line when several share its spelling: the line is segmented and the
+    // words either side of the matching segment pick between them (ContextualClassChoice, the same
+    // choice the lookup sheet makes). Nil when the spelling is one word, matches no segment, or context
+    // does not decide, and the tap falls back to the top entry.
+    private func contextualEntryID(surface: String, in line: SongLine) -> Int64? {
+        guard let lexicon, let segmenter,
+              let table = (segmenter as? Segmenter)?.transitionTable else { return nil }
+        let candidates = lexicon.lookupCandidates(surface: surface)
+        guard candidates.count > 1 else { return nil }
+        let edges = segmenter.longestMatchEdges(for: line.original)
+        guard let index = edges.firstIndex(where: { $0.surface == surface }) else { return nil }
+        let neighbours = ContextualClassChoice.Neighbours(
+            previous: index > 0 ? edges[index - 1] : nil,
+            next: index + 1 < edges.count ? edges[index + 1] : nil
+        )
+        return Lexicon.contextuallyPreferredCandidate(
+            among: candidates,
+            surface: surface,
+            neighbours: neighbours,
+            table: table
+        )?.entry.entryId
     }
 
     // Flips saved state for a looked-up breakdown word, attributing it to this note. Mirrors the

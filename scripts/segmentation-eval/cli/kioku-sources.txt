@@ -105,3 +105,5 @@ Dictionary/Lexicon/Lexicon.swift
 Dictionary/Lexicon/LookupCandidate.swift
 Words/DictionaryEntry+SearchMetadata.swift
 Dictionary/JMdictTagExpander.swift
+Dictionary/Segmenter/ContextualClassChoice.swift
+Dictionary/Lexicon/Lexicon+ContextualCandidate.swift

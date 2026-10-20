@@ -9,14 +9,16 @@ nonisolated extension Lexicon {
         among candidates: [LookupCandidate],
         surface: String,
         neighbours: ContextualClassChoice.Neighbours,
-        table: SegmenterTransitionTable
+        table: SegmenterTransitionTable,
+        margin: Int = ContextualClassChoice.margin
     ) -> LookupCandidate? {
         ContextualClassChoice.best(
             among: candidates,
             surface: surface,
             partOfSpeech: { $0.entry.senses.reduce(UInt64(0)) { $0 | PartOfSpeech.bits(from: $1.pos) } },
             neighbours: neighbours,
-            table: table
+            table: table,
+            margin: margin
         )
     }
 }
