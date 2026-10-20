@@ -322,6 +322,8 @@ extension ReadView {
             }
         }
         .sheet(isPresented: $readSheets.isShowingSegmentList) {
+            // Spellings that are several words get the one the note's context names (see ReadView+ContextLemmas).
+            let contextLemmas = contextLemmaBySurface()
             SegmentListView(
                 text: document.text,
                 edges: document.segmentEdges,
@@ -331,7 +333,7 @@ extension ReadView {
                 lexicon: lexicon,
                 sourceNoteID: document.activeNoteID,
                 note: currentDisplayedNote,
-                lemmaForSurface: { segmenter.preferredLemma(for: $0) },
+                lemmaForSurface: { contextLemmas[$0] ?? segmenter.preferredLemma(for: $0) },
                 lemmaCandidatesForSurface: { segmenter.lemmaCandidates(for: $0) },
                 onMergeLeft: { edgeIndex in
                     mergeSegmentFromSegmentList(at: edgeIndex, isMergingLeft: true)

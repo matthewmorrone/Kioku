@@ -56,4 +56,6 @@ final class ReadDocumentState {
     // Cache for the "hide furigana for known words" segment set — same memoization rationale
     // as savedHighlightMemo above.
     var knownWordFuriganaMemo = KnownWordFuriganaMemo()
+    // Cache for the extract-words list's context-chosen lemmas (ReadView+ContextLemmas).
+    var contextLemmaMemo = ContextLemmaMemo()
 }
