@@ -619,7 +619,7 @@ extension ReadView {
         if candidates.count > 1, Lexicon.lookupCandidates(candidates, sharingReading: displayed).isEmpty == false {
             return Lexicon.shownLookupCandidate(
                 among: candidates,
-                chosenEntryID: document.chosenEntryIDBySegmentLocation[location],
+                chosenEntryID: chosenEntryID(at: location, surface: surface, among: candidates, displayedReading: displayed),
                 displayedReading: displayed
             )?.entry
         }

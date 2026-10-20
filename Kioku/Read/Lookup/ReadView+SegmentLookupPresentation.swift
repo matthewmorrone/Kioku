@@ -277,8 +277,20 @@ extension ReadView {
                 },
                 sheetLookupCandidatesProvider: {
                     guard let surface = currentSelectedSurface(), let lexicon else { return (candidates: [], chosenEntryID: nil) }
-                    let chosen = segmentSelection.selectedSegmentLocation.flatMap { document.chosenEntryIDBySegmentLocation[$0] }
-                    return (candidates: lexicon.lookupCandidates(surface: surface), chosenEntryID: chosen)
+                    let candidates = lexicon.lookupCandidates(surface: surface)
+                    // The reading the sheet will open on, so context picks among the words that share it.
+                    let location = segmentSelection.selectedSegmentLocation
+                    let readings = ReadingVariants.orderedReadings(
+                        surface: surface,
+                        lexicon: lexicon,
+                        segmenter: segmenter,
+                        surfaceReadingData: surfaceReadingData
+                    )
+                    let reconstructed = location.map { reconstructedReading(for: surface, at: $0) } ?? ""
+                    let chosen = location.flatMap {
+                        chosenEntryID(at: $0, surface: surface, among: candidates, displayedReading: reconstructed.isEmpty ? readings.first : reconstructed)
+                    }
+                    return (candidates: candidates, chosenEntryID: chosen)
                 },
                 onWillDismiss: { completion in
                     restoreScrollAfterSheetDismissal(sourceView: sourceView, completion: completion)
