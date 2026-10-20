@@ -366,15 +366,15 @@ struct WordDetailView: View {
                 let described = InflectionFormNames.describe(info.chain)
                 return described.isEmpty ? nil : described
             }()
+            let lookupHeader = LookupHeaderView(surface: word.surface, reading: surfaceReading, lemma: lemma)
+            // The furigana above (and lemma below) the headword push the row's center off the headword's;
+            // the side controls shift by this to sit on the headword itself.
+            let headwordShift = lookupHeader.headwordCenterShift
             VStack(spacing: 10) {
                 // Headword row: the title hugs its content (.fixedSize) and centers as if it
                 // were alone — the speaker rides as a trailing OVERLAY offset past the word's
                 // edge, so neither it nor the star (also an overlay, below) shifts the title.
-                LookupHeaderView(
-                    surface: word.surface,
-                    reading: surfaceReading,
-                    lemma: lemma
-                )
+                lookupHeader
                 .fixedSize()
                 // Long-press copy/share, as the lookup sheet's component headword offers.
                 .contextMenu {
@@ -404,7 +404,7 @@ struct WordDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(Color.primary)
-                    .offset(x: -34)
+                    .offset(x: -34, y: headwordShift)
                 }
                 .overlay(alignment: .trailing) {
                     let isSaved = isActiveEntrySaved
@@ -427,7 +427,7 @@ struct WordDetailView: View {
                             .foregroundStyle(isSaved ? Color.primary : Color.secondary)
                     }
                     .buttonStyle(.plain)
-                    .offset(x: 34)
+                    .offset(x: 34, y: headwordShift)
                     .accessibilityLabel(isSaved ? "Unsave Word" : "Save Word")
                     .contextMenu {
                         learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(
@@ -442,8 +442,8 @@ struct WordDetailView: View {
                 .frame(maxWidth: .infinity)
                 // Reading switcher — chevrons at the row edges flank the headword (and its speaker/
                 // star overlays), shown only for words with more than one reading sharing the spelling.
-                .overlay(alignment: .leading) { readingSwitcherChevron(.previous) }
-                .overlay(alignment: .trailing) { readingSwitcherChevron(.next) }
+                .overlay(alignment: .leading) { readingSwitcherChevron(.previous).offset(y: headwordShift) }
+                .overlay(alignment: .trailing) { readingSwitcherChevron(.next).offset(y: headwordShift) }
 
                 // The custom reading the text gave this word where it was looked up — kept off the
                 // header, which shows the word's dictionary reading. Same pencil as the lookup sheet's.

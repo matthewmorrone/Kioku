@@ -12,6 +12,15 @@ struct LookupHeaderView: UIViewRepresentable {
     private let headwordFont = UIFont.systemFont(ofSize: 34, weight: .bold)
     private let rubyFont = UIFont.systemFont(ofSize: 17)
 
+    // How far below the header's vertical center the headword's center sits: the furigana row adds
+    // height above it and the lemma line below it, so side controls centered on the whole header
+    // ride high. Positive moves them down. Mirrors updateUIView's stack spacing (2 pt).
+    var headwordCenterShift: CGFloat {
+        let rubyRow = buildSegmentColumns().isEmpty ? 0 : ceil(rubyFont.lineHeight) + 2
+        let lemmaRow = (lemma != nil && lemma != surface) ? ceil(UIFont.preferredFont(forTextStyle: .title3).lineHeight) + 2 : 0
+        return (rubyRow - lemmaRow) / 2
+    }
+
     // Creates the UIStackView host for the header layout so UIKit constraints can control vertical alignment.
     func makeUIView(context: Context) -> UIStackView {
         let stack = UIStackView()
