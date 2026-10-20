@@ -1,6 +1,6 @@
 import UIKit
 
-// Long-press Copy / Copy Reading / Edit Reading / Share for the lookup sheet's headword, so a looked-up word can
+// Long-press Copy (headword / reading submenu) / Edit Reading / Share for the lookup sheet's headword, so a looked-up word can
 // leave the app. Reads the surface and reading through closures because both change while the
 // sheet stays open (merge, split, reading arrows).
 final class LookupHeaderMenuDelegate: NSObject, UIContextMenuInteractionDelegate {
@@ -45,14 +45,19 @@ final class LookupHeaderMenuDelegate: NSObject, UIContextMenuInteractionDelegate
         lastMenuEventAt = Date()
         let shownReading = reading()
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
-            var actions = [
-                UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { _ in
-                    UIPasteboard.general.string = word
-                }
-            ]
+            var actions: [UIMenuElement] = []
+            let copyWord = UIAction(title: word, image: UIImage(systemName: "textformat")) { _ in
+                UIPasteboard.general.string = word
+            }
             if let shownReading, shownReading.isEmpty == false, shownReading != word {
-                actions.append(UIAction(title: "Copy Reading", image: UIImage(systemName: "character.phonetic.ja")) { _ in
+                // One Copy entry; its submenu offers the headword and the reading.
+                let copyReading = UIAction(title: shownReading, image: UIImage(systemName: "character.phonetic.ja")) { _ in
                     UIPasteboard.general.string = shownReading
+                }
+                actions.append(UIMenu(title: "Copy", image: UIImage(systemName: "doc.on.doc"), children: [copyWord, copyReading]))
+            } else {
+                actions.append(UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { _ in
+                    UIPasteboard.general.string = word
                 })
             }
             if self?.canEditReading() == true, let editReading = self?.editReading {
