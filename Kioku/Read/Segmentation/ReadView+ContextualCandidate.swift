@@ -18,15 +18,15 @@ extension ReadView {
         return Lexicon.contextuallyPreferredCandidate(
             among: sharing,
             surface: surface,
-            previous: neighbours.previous,
-            next: neighbours.next,
+            neighbours: neighbours,
             table: table
         )?.entry.entryId
     }
 
     // The segments on either side of the one starting at `location`, found by binary search over the
-    // note's ascending edges so the saved-word sweep stays linear. Nil when no segment starts there.
-    private func neighbourEdges(atLocation location: Int) -> (previous: LatticeEdge?, next: LatticeEdge?)? {
+    // note's ascending edges so a sweep over every segment stays linear. Nil when no segment starts
+    // there. Any ContextualClassChoice caller in the Read tab starts from this.
+    func neighbourEdges(atLocation location: Int) -> ContextualClassChoice.Neighbours? {
         let edges = document.segmentEdges
         let target = String.Index(utf16Offset: location, in: document.text)
         var low = 0
@@ -36,6 +36,9 @@ extension ReadView {
             if edges[middle].start < target { low = middle + 1 } else { high = middle }
         }
         guard low < edges.count, edges[low].start == target else { return nil }
-        return (low > 0 ? edges[low - 1] : nil, low + 1 < edges.count ? edges[low + 1] : nil)
+        return ContextualClassChoice.Neighbours(
+            previous: low > 0 ? edges[low - 1] : nil,
+            next: low + 1 < edges.count ? edges[low + 1] : nil
+        )
     }
 }
