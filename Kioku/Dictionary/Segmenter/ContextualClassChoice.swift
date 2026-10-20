@@ -18,7 +18,8 @@ nonisolated enum ContextualClassChoice {
     }
 
     // How much cheaper, in centi-nats, the best class must be than the next one before it decides.
-    // Smaller gaps are context that does not really say, and the choice stays open.
+    // Smaller gaps are context that does not really say, and the choice stays open. Unfitted: on held2k
+    // the noun-vs-stem pair scores the same from 0 to 80.
     static let margin = 40
 
     // The option whose class fits `neighbours` best, or nil when context does not decide: fewer than
@@ -46,10 +47,19 @@ nonisolated enum ContextualClassChoice {
             optionsByClass[name, default: []].append(option)
         }
         let ranked = costByClass.sorted { $0.value < $1.value }
-        guard ranked.count > 1,
-              let best = ranked.first,
+        // Measured on held2k (segcli choose): context beats the default only for a noun against a
+        // verb's stem; adverb vs adjective and rare-lemma flips lose, so the two best classes must be those.
+        guard ranked.count > 1, isNounAgainstVerbStem(ranked[0].key, ranked[1].key) else { return nil }
+        guard let best = ranked.first,
               optionsByClass[best.key]?.count == 1,
               ranked[1].value - best.value >= margin else { return nil }
         return optionsByClass[best.key]?.first
+    }
+
+    // True for the pair {noun, conjugated verb class} such as n and v5:い — the 怒り, 考え case.
+    private static func isNounAgainstVerbStem(_ first: String, _ second: String) -> Bool {
+        // A conjugated verb class (v5:い) rather than a dictionary-form one (v5:る).
+        func isStem(_ name: String) -> Bool { name.hasPrefix("v") && name.contains(":") }
+        return (first == "n" && isStem(second)) || (second == "n" && isStem(first))
     }
 }
