@@ -4,22 +4,16 @@ import UIKit
 // Reference-type cache for the "hide furigana for known words" computation. Held by @State so it
 // persists across `body` re-evaluations; because it's a class, ReadView mutates its fields
 // without writing the @State wrapper (which would be illegal during a view update). `signature`
-// is the hash of the computation's inputs at the time `locations` was computed; `lemmaBySurface`
-// memoizes per-segment lemma resolution for one text (keyed by `lemmaTextKey`), storing only
-// SUCCESSFUL (non-nil) resolutions — the first pass can run before the segmenter's deinflection
-// resources are loaded, so caching a nil would freeze a conjugated surface as "no lemma" for
-// the session.
+// is the hash of the computation's inputs at the time `locations` was computed.
 final class KnownWordFuriganaMemo {
     var signature: Int?
     var locations: Set<Int> = []
-    var lemmaTextKey: Int = 0
-    var lemmaBySurface: [String: String] = [:]
 }
 
 // Reference-type cache for the saved-highlight computation. Same @State-held-class rationale
-// as KnownWordFuriganaMemo above. No per-segment lemma cache here — the computation resolves
-// through displayedDictionaryEntry(forSurface:at:) (ReadView+Segmentation), which is a straight
-// dictionary/Lexicon lookup, not a segmenter-lemma sweep.
+// as KnownWordFuriganaMemo above. Both computations resolve each segment through
+// savedWord(forSegmentAt:) below, so the saved glow and the known-word furigana always agree on
+// which word a segment is.
 final class SavedHighlightMemo {
     var signature: Int?
     var locations: Set<Int> = []
@@ -186,19 +180,7 @@ extension ReadView {
             let surface = ns.substring(with: nsRange).trimmingCharacters(in: .whitespacesAndNewlines)
             guard surface.isEmpty == false else { continue }
 
-            // Keyed by surface + displayed reading: the same surface can belong to different
-            // words depending on its furigana (怒り おこり → 怒る, いかり → 怒り).
-            // The user's candidate pick (chosenEntryIDBySegmentLocation) decides too.
-            let chosenID = document.chosenEntryIDBySegmentLocation[nsRange.location].map(String.init) ?? ""
-            let cacheKey = surface + "\u{0}" + reconstructedReading(for: surface, at: nsRange.location) + "\u{0}" + chosenID
-            let saved: SavedWord? = {
-                if let cached = savedWordBySurface[cacheKey] { return cached }
-                let value = displayedDictionaryEntry(forSurface: surface, at: nsRange.location).flatMap { entry in
-                    wordsStore.words.first { $0.canonicalEntryID == entry.entryId }
-                }
-                savedWordBySurface[cacheKey] = value
-                return value
-            }()
+            let saved = savedWord(forSegmentAt: nsRange, surface: surface, cache: &savedWordBySurface)
             guard let saved else { continue }
 
             // Each category has its own independent visibility toggle and its own fixed color —
@@ -246,6 +228,10 @@ extension ReadView {
         }
         for id in wordsStore.learned.sorted() { hasher.combine(id) }
         for id in wordsStore.mastered.sorted() { hasher.combine(id) }
+        // The segment's word depends on the user's pick and on the neighbours (displayedDictionaryEntry).
+        hasher.combine(document.chosenEntryIDBySegmentLocation)
+        hasher.combine(document.furiganaBySegmentLocation)
+        hasher.combine(document.segmentEdges.count)
         let signature = hasher.finalize()
         if document.knownWordFuriganaMemo.signature == signature {
             return
@@ -256,57 +242,42 @@ extension ReadView {
     }
 
     // The heavy computation behind furiganaSuppressedForKnownWordsSegmentLocations, run only
-    // on a memo miss. Resolves each segment's surface to a canonicalEntryID via the saved
-    // words' encountered-surface sets (lemma-bridged, same technique as the saved-glow
-    // computation above), then checks that entry against WordsStore's learned/mastered sets.
-    // Words that were never saved have no canonicalEntryID to check and are left alone.
+    // on a memo miss. Resolves each segment to its saved word through savedWord(forSegmentAt:) — the
+    // same single choice of word the saved glow and the lookup sheet make — and checks it against
+    // WordsStore's learned/mastered sets. Words that were never saved are left alone.
     private func computeFuriganaSuppressedForKnownWordsSegmentLocations() -> Set<Int> {
         guard wordsStore.learned.isEmpty == false || wordsStore.mastered.isEmpty == false else {
             return []
         }
-
-        var entryIDBySurface: [String: Int64] = [:]
-        for word in wordsStore.words {
-            entryIDBySurface[word.surface] = word.canonicalEntryID
-            for surface in word.encounteredSurfaces {
-                entryIDBySurface[surface] = word.canonicalEntryID
-            }
-        }
-        guard entryIDBySurface.isEmpty == false else { return [] }
-
-        let textKey = document.text.hashValue
-        if document.knownWordFuriganaMemo.lemmaTextKey != textKey {
-            document.knownWordFuriganaMemo.lemmaTextKey = textKey
-            document.knownWordFuriganaMemo.lemmaBySurface = [:]
-        }
-        let resolveLemma: (String) -> String? = { [segmenter, knownWordFuriganaMemo = document.knownWordFuriganaMemo] surface in
-            if let cached = knownWordFuriganaMemo.lemmaBySurface[surface] { return cached }
-            let value = segmenter.preferredLemma(for: surface)
-            if let value { knownWordFuriganaMemo.lemmaBySurface[surface] = value }
-            return value
-        }
-
         let ns = document.text as NSString
         var locations = Set<Int>()
-        var isKnownBySurface: [String: Bool] = [:]
+        var savedWordBySurface: [String: SavedWord?] = [:]
         for range in document.segmentRanges {
             let nsRange = NSRange(range, in: document.text)
             guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
             let surface = ns.substring(with: nsRange).trimmingCharacters(in: .whitespacesAndNewlines)
-            guard surface.isEmpty == false else { continue }
-
-            let isKnown = isKnownBySurface[surface] ?? {
-                let entryID = entryIDBySurface[surface] ?? resolveLemma(surface).flatMap { entryIDBySurface[$0] }
-                let value = entryID.map { wordsStore.learned.contains($0) || wordsStore.mastered.contains($0) } ?? false
-                isKnownBySurface[surface] = value
-                return value
-            }()
-
-            if isKnown {
+            guard surface.isEmpty == false,
+                  let saved = savedWord(forSegmentAt: nsRange, surface: surface, cache: &savedWordBySurface) else { continue }
+            if wordsStore.learned.contains(saved.canonicalEntryID) || wordsStore.mastered.contains(saved.canonicalEntryID) {
                 locations.insert(nsRange.location)
             }
         }
         return locations
+    }
+
+    // The saved word a segment is, by the one resolution every Read-tab word-state feature uses:
+    // displayedDictionaryEntry (the user's pick, else the neighbours' choice, else the sheet's own
+    // rules). Keyed by surface + displayed reading + pick: the same surface can belong to different
+    // words depending on its furigana (怒り おこり → 怒る, いかり → 怒り). Nil when it isn't saved.
+    private func savedWord(forSegmentAt nsRange: NSRange, surface: String, cache: inout [String: SavedWord?]) -> SavedWord? {
+        let chosenID = document.chosenEntryIDBySegmentLocation[nsRange.location].map(String.init) ?? ""
+        let cacheKey = surface + "\u{0}" + reconstructedReading(for: surface, at: nsRange.location) + "\u{0}" + chosenID
+        if let cached = cache[cacheKey] { return cached }
+        let value = displayedDictionaryEntry(forSurface: surface, at: nsRange.location).flatMap { entry in
+            wordsStore.words.first { $0.canonicalEntryID == entry.entryId }
+        }
+        cache[cacheKey] = value
+        return value
     }
 
     // Furigana maps actually handed to the renderers: gated by the master Furigana toggle,
