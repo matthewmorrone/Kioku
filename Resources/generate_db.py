@@ -2299,7 +2299,11 @@ def materialize_word_frequency(conn):
             JOIN kana_forms kf ON kf.id = kkl.kana_id
             UNION ALL
             SELECT kf.entry_id, NULL AS kanji_id, kf.id AS kana_id,
-                   NULL AS frequency_rank, kf.wordfreq_zipf
+                   NULL AS frequency_rank,
+                   -- A kana form JMdict flags as outdated, irregular, search-only or rare (ok, ik, sk,
+                   -- rk, gikun) is not how the word is written, so its string's count is not the
+                   -- word's: 麻's obsolete お (re_inf ok) carried the particle お's 6.32 and outranked 朝.
+                   CASE WHEN COALESCE(kf.info, '') = '' THEN kf.wordfreq_zipf END
             FROM kana_forms kf;
 
         CREATE INDEX idx_wf_entry_id ON word_frequency(entry_id);
