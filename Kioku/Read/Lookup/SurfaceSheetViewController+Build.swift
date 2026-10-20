@@ -52,6 +52,8 @@ extension SurfaceSheetViewController {
 
         // Tapping the header row opens a custom reading alert.
         let headerTapHandler = ClosureTarget { [weak self] in
+            // A long press for Copy/Share is not a tap on the header.
+            guard self?.headerMenuDelegate?.isTapSuppressed != true else { return }
             self?.presentCustomReadingAlert()
         }
         let headerTapRecognizer = UITapGestureRecognizer(target: headerTapHandler, action: #selector(ClosureTarget.invoke))

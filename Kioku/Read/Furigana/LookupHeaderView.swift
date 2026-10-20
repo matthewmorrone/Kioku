@@ -99,6 +99,14 @@ struct LookupHeaderView: UIViewRepresentable {
         // buildHeaderRow falls back to a plain headword label. Otherwise each column reserves an
         // empty ruby row above the glyphs, which pushes the title down and lifts the vertically
         // centered leading/trailing speaker & star overlays above the actual characters.
+        // A katakana word (ツンと, セラヴィ) has no kanji run but still gets its hiragana reading above
+        // the whole word, so a learner can read it in kana they know.
+        if runs.isEmpty, surface.unicodeScalars.contains(where: ScriptClassifier.isKatakanaScalar) {
+            let hiragana = KanaNormalizer.katakanaToHiragana(reading ?? surface)
+            if hiragana != surface {
+                segments = [Segment(text: surface, ruby: hiragana)]
+            }
+        }
         if segments.allSatisfy({ $0.ruby == nil }) { return [] }
 
         return segments.map { segment in

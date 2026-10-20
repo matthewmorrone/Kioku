@@ -7,6 +7,16 @@ final class LookupHeaderMenuDelegate: NSObject, UIContextMenuInteractionDelegate
     private let surface: () -> String
     private let reading: () -> String?
     private weak var presenter: UIViewController?
+    // When the long press last began or its menu last closed. The header's tap (custom reading) must
+    // not fire off the same touch, so it asks isTapSuppressed before acting.
+    private var lastMenuEventAt: Date?
+    private var isMenuOpen = false
+
+    // True while the menu is open or just closed, so the touch that opened or dismissed it is not
+    // also read as a tap on the header.
+    var isTapSuppressed: Bool {
+        isMenuOpen || (lastMenuEventAt.map { Date().timeIntervalSince($0) < 0.8 } ?? false)
+    }
 
     // Captures the live surface/reading providers and the controller that presents the share sheet.
     init(surface: @escaping () -> String, reading: @escaping () -> String?, presenter: UIViewController) {
@@ -22,6 +32,7 @@ final class LookupHeaderMenuDelegate: NSObject, UIContextMenuInteractionDelegate
     ) -> UIContextMenuConfiguration? {
         let word = surface()
         guard word.isEmpty == false else { return nil }
+        lastMenuEventAt = Date()
         let shownReading = reading()
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
             var actions = [
@@ -39,6 +50,26 @@ final class LookupHeaderMenuDelegate: NSObject, UIContextMenuInteractionDelegate
             })
             return UIMenu(title: "", children: actions)
         }
+    }
+
+    // Marks the menu open so the press that opened it never counts as a tap.
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        willDisplayMenuFor configuration: UIContextMenuConfiguration,
+        animator: UIContextMenuInteractionAnimating?
+    ) {
+        isMenuOpen = true
+        lastMenuEventAt = Date()
+    }
+
+    // Marks the menu closed; the dismissing touch is still suppressed for a moment (isTapSuppressed).
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        willEndFor configuration: UIContextMenuConfiguration,
+        animator: UIContextMenuInteractionAnimating?
+    ) {
+        isMenuOpen = false
+        lastMenuEventAt = Date()
     }
 
     // Presents the system share sheet from the sheet controller, anchored to the header for iPad.

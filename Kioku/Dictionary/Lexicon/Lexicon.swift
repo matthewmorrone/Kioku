@@ -244,6 +244,17 @@ nonisolated public final class Lexicon {
         }
         let (lemmas, pathsByLemma) = admittedLemmasAndPaths(for: surface)
         for (lemma, _) in lemmas where lemma != surface && lookupEntries(for: lemma).isEmpty == false {
+            // The chain must end on a grammar one of the lemma's entries conjugates as: 生きる is not
+            // 生る (godan, "to bear fruit") + きる, because the きる rule that reaches 生る is the ichidan
+            // stem's and 生る has no ichidan entry.
+            let grammars = deinflector.endingGrammars(from: pathsByLemma, targetLemma: lemma)
+                .intersection(ConjugationClass.conjugationGrammars)
+            if grammars.isEmpty == false,
+               lookupEntries(for: lemma).contains(where: {
+                   ConjugationClass.grammars(forPOSStrings: $0.senses.compactMap(\.pos)).isDisjoint(with: grammars) == false
+               }) == false {
+                continue
+            }
             let helpers = deinflector.helperWords(from: pathsByLemma, targetLemma: lemma)
             if helpers.isEmpty == false { return ([lemma] + helpers).joined(separator: " + ") }
         }
