@@ -14,7 +14,7 @@ extension WordDetailView {
     var decompositionRow: some View {
         // Layout-only container: chips flow within the row's width rather than forcing a
         // horizontal scroll on a long expression like からには or 目から鱗が落ちる.
-        FlowLayout(spacing: 6) {
+        FlowLayout(spacing: 6, centersVertically: true) {
             ForEach(Array(entryDecomposition.enumerated()), id: \.element.id) { index, piece in
                 if index > 0 {
                     Text("+")
