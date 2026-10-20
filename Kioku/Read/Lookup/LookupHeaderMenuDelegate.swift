@@ -1,11 +1,13 @@
 import UIKit
 
-// Long-press Copy / Copy Reading / Share for the lookup sheet's headword, so a looked-up word can
+// Long-press Copy / Copy Reading / Edit Reading / Share for the lookup sheet's headword, so a looked-up word can
 // leave the app. Reads the surface and reading through closures because both change while the
 // sheet stays open (merge, split, reading arrows).
 final class LookupHeaderMenuDelegate: NSObject, UIContextMenuInteractionDelegate {
     private let surface: () -> String
     private let reading: () -> String?
+    private let canEditReading: () -> Bool
+    private let editReading: () -> Void
     private weak var presenter: UIViewController?
     // When the long press last began or its menu last closed. The header's tap (custom reading) must
     // not fire off the same touch, so it asks isTapSuppressed before acting.
@@ -19,7 +21,15 @@ final class LookupHeaderMenuDelegate: NSObject, UIContextMenuInteractionDelegate
     }
 
     // Captures the live surface/reading providers and the controller that presents the share sheet.
-    init(surface: @escaping () -> String, reading: @escaping () -> String?, presenter: UIViewController) {
+    init(
+        surface: @escaping () -> String,
+        reading: @escaping () -> String?,
+        canEditReading: @escaping () -> Bool,
+        editReading: @escaping () -> Void,
+        presenter: UIViewController
+    ) {
+        self.canEditReading = canEditReading
+        self.editReading = editReading
         self.surface = surface
         self.reading = reading
         self.presenter = presenter
@@ -43,6 +53,11 @@ final class LookupHeaderMenuDelegate: NSObject, UIContextMenuInteractionDelegate
             if let shownReading, shownReading.isEmpty == false, shownReading != word {
                 actions.append(UIAction(title: "Copy Reading", image: UIImage(systemName: "character.phonetic.ja")) { _ in
                     UIPasteboard.general.string = shownReading
+                })
+            }
+            if self?.canEditReading() == true, let editReading = self?.editReading {
+                actions.append(UIAction(title: "Edit Reading", image: UIImage(systemName: "pencil")) { _ in
+                    editReading()
                 })
             }
             actions.append(UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { _ in
