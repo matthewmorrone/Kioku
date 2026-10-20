@@ -63,7 +63,6 @@ extension SurfaceSheetViewController {
         // Long-press copy/share rides alongside the tap; the controller keeps the delegate alive.
         let menuDelegate = LookupHeaderMenuDelegate(
             surface: { [weak self] in self?.currentSurface ?? "" },
-            reading: { [weak self] in self?.displayedReading() },
             // Offered only for kanji words, as the header tap is (allowsCustomReading).
             canEditReading: { [weak self] in self?.allowsCustomReading == true },
             editReading: { [weak self] in self?.presentCustomReadingAlert() },

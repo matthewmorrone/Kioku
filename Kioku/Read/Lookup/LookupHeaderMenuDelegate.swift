@@ -1,13 +1,12 @@
 import UIKit
 
-// Long-press Copy (headword / reading submenu) / Share on the lookup sheet's headword, so a looked-up word can
-// leave the app; Edit Reading on a press of its furigana. Reads the surface and reading through closures because both change while the
-// sheet stays open (merge, split, reading arrows).
+// Long-press Copy (the headword) / Share on the lookup sheet's headword, so a looked-up word can
+// leave the app; Edit Reading on a press of its furigana. Reads the surface through a closure because it changes while the
+// sheet stays open (merge, split).
 final class LookupHeaderMenuDelegate: NSObject, UIContextMenuInteractionDelegate {
     // View tag marking a furigana label, so a press on it can be told from one on the headword.
     static let rubyTag = 7001
     private let surface: () -> String
-    private let reading: () -> String?
     private let canEditReading: () -> Bool
     private let editReading: () -> Void
     private weak var presenter: UIViewController?
@@ -22,10 +21,9 @@ final class LookupHeaderMenuDelegate: NSObject, UIContextMenuInteractionDelegate
         isMenuOpen || (lastMenuEventAt.map { Date().timeIntervalSince($0) < 0.8 } ?? false)
     }
 
-    // Captures the live surface/reading providers and the controller that presents the share sheet.
+    // Captures the live surface provider and the controller that presents the share sheet.
     init(
         surface: @escaping () -> String,
-        reading: @escaping () -> String?,
         canEditReading: @escaping () -> Bool,
         editReading: @escaping () -> Void,
         presenter: UIViewController
@@ -33,11 +31,10 @@ final class LookupHeaderMenuDelegate: NSObject, UIContextMenuInteractionDelegate
         self.canEditReading = canEditReading
         self.editReading = editReading
         self.surface = surface
-        self.reading = reading
         self.presenter = presenter
     }
 
-    // Builds the menu at press time so it reflects the surface and reading shown right now.
+    // Builds the menu at press time so it reflects the surface shown right now.
     func contextMenuInteraction(
         _ interaction: UIContextMenuInteraction,
         configurationForMenuAtLocation location: CGPoint
@@ -54,23 +51,11 @@ final class LookupHeaderMenuDelegate: NSObject, UIContextMenuInteractionDelegate
                 ])
             }
         }
-        let shownReading = reading()
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
             var actions: [UIMenuElement] = []
-            let copyWord = UIAction(title: word, image: UIImage(systemName: "textformat")) { _ in
+            actions.append(UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { _ in
                 UIPasteboard.general.string = word
-            }
-            if let shownReading, shownReading.isEmpty == false, shownReading != word {
-                // One Copy entry; its submenu offers the headword and the reading.
-                let copyReading = UIAction(title: shownReading, image: UIImage(systemName: "character.phonetic.ja")) { _ in
-                    UIPasteboard.general.string = shownReading
-                }
-                actions.append(UIMenu(title: "Copy", image: UIImage(systemName: "doc.on.doc"), children: [copyWord, copyReading]))
-            } else {
-                actions.append(UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { _ in
-                    UIPasteboard.general.string = word
-                })
-            }
+            })
             actions.append(UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { _ in
                 self?.share(word, from: interaction.view)
             })
