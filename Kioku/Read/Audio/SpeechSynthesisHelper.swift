@@ -39,6 +39,16 @@ final class SpeechSynthesisHelper {
         synthesizer.speak(utterance)
     }
 
+    // Speaks a word by its kana reading when it has kanji and a reading is known. The synthesizer
+    // guesses kanji readings on its own and gets compounds wrong (視覚野 read しかくの, not しかくや).
+    func speakWord(_ surface: String, reading: String?, languageCode: String) {
+        if let reading, reading.isEmpty == false, ScriptClassifier.containsKanji(surface) {
+            speak(reading, languageCode: languageCode)
+        } else {
+            speak(surface, languageCode: languageCode)
+        }
+    }
+
     // Activates a playback-category audio session so the utterance is audible even with the
     // hardware mute switch on, mirroring AudioPlaybackController's own session setup for song
     // playback. `.mixWithOthers` avoids interrupting song audio that may already be playing.

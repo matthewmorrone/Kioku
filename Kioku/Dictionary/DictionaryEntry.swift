@@ -71,4 +71,17 @@ nonisolated public struct DictionaryEntry: Equatable, Sendable {
         }
         return matches.isEmpty ? senses : matches
     }
+
+    // Reorders senses for a word shown in kana: JMdict tags a sense "uk" when it is usually written
+    // in kana, so those senses are the ones a kana spelling means (いっぱい: "full", "a lot") while the
+    // untagged leading senses belong to the kanji spelling (一杯: "one cup of"). Stable within each
+    // group; kanji spellings and entries with no "uk" sense keep JMdict order.
+    public static func sensesLeadingWithKanaUsage(_ senses: [DictionaryEntrySense], surface: String?) -> [DictionaryEntrySense] {
+        guard let surface, ScriptClassifier.containsKanji(surface) == false else { return senses }
+        // True when the sense's misc tags include "uk" (usually written in kana).
+        func isUsuallyKana(_ sense: DictionaryEntrySense) -> Bool {
+            (sense.misc ?? "").split(separator: ",").contains { $0.trimmingCharacters(in: .whitespaces) == "uk" }
+        }
+        return senses.filter(isUsuallyKana) + senses.filter { isUsuallyKana($0) == false }
+    }
 }

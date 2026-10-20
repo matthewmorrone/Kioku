@@ -246,9 +246,10 @@ extension SegmentLookupSheet {
             return
         }
 
-        let visibleSenses = currentSheetDictionaryEntry?
-            .senses(forReading: selectedReading, kanji: selectedKanji)
-            .filter { $0.glosses.isEmpty == false } ?? []
+        let visibleSenses = DictionaryEntry.sensesLeadingWithKanaUsage(
+            currentSheetDictionaryEntry?.senses(forReading: selectedReading, kanji: selectedKanji) ?? [],
+            surface: surface
+        ).filter { $0.glosses.isEmpty == false }
         guard visibleSenses.isEmpty == false else {
             // No dictionary on disk yet (first launch, or a new release still downloading): a
             // spinner instead of an empty sheet. The sheet is refreshed once the store is rebuilt.

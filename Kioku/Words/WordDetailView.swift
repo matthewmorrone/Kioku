@@ -397,7 +397,7 @@ struct WordDetailView: View {
                 // title so neither shifts the centered headword.
                 .overlay(alignment: .leading) {
                     Button {
-                        speak(word.surface)
+                        SpeechSynthesisHelper.shared.speakWord(word.surface, reading: surfaceReading, languageCode: "ja-JP")
                     } label: {
                         Image(systemName: "speaker.wave.2.fill")
                             .font(.title3)

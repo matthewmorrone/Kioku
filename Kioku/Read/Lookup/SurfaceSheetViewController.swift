@@ -42,6 +42,8 @@ final class SurfaceSheetViewController: UIViewController {
     var headerStack: UIStackView!
     var headerRow: UIStackView!
     var lemmaLabel: UILabel!
+    // Owns the header's long-press copy/share menu (interactions hold their delegate weakly).
+    var headerMenuDelegate: LookupHeaderMenuDelegate?
     var headerContainer: UIView!
     var prevReadingButton: UIButton!
     var nextReadingButton: UIButton!

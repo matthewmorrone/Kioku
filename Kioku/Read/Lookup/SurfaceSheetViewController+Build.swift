@@ -58,6 +58,14 @@ extension SurfaceSheetViewController {
         headerTapRecognizer.cancelsTouchesInView = false
         headerStack.isUserInteractionEnabled = true
         headerStack.addGestureRecognizer(headerTapRecognizer)
+        // Long-press copy/share rides alongside the tap; the controller keeps the delegate alive.
+        let menuDelegate = LookupHeaderMenuDelegate(
+            surface: { [weak self] in self?.currentSurface ?? "" },
+            reading: { [weak self] in self?.displayedReading() },
+            presenter: self
+        )
+        headerMenuDelegate = menuDelegate
+        headerStack.addInteraction(UIContextMenuInteraction(delegate: menuDelegate))
         objc_setAssociatedObject(
             headerStack as Any,
             &SegmentLookupSheet.tapHandlerKey,
@@ -328,7 +336,7 @@ extension SurfaceSheetViewController {
 
         speakButton.addAction(UIAction { [weak self] _ in
             guard let self else { return }
-            SpeechSynthesisHelper.shared.speak(self.currentSurface, languageCode: "ja-JP")
+            SpeechSynthesisHelper.shared.speakWord(self.currentSurface, reading: self.displayedReading(), languageCode: "ja-JP")
         }, for: .touchUpInside)
     }
 
