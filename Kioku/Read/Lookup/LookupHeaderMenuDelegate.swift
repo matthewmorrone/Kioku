@@ -1,9 +1,11 @@
 import UIKit
 
-// Long-press Copy (headword / reading submenu) / Edit Reading / Share for the lookup sheet's headword, so a looked-up word can
-// leave the app. Reads the surface and reading through closures because both change while the
+// Long-press Copy (headword / reading submenu) / Share on the lookup sheet's headword, so a looked-up word can
+// leave the app; Edit Reading on a press of its furigana. Reads the surface and reading through closures because both change while the
 // sheet stays open (merge, split, reading arrows).
 final class LookupHeaderMenuDelegate: NSObject, UIContextMenuInteractionDelegate {
+    // View tag marking a furigana label, so a press on it can be told from one on the headword.
+    static let rubyTag = 7001
     private let surface: () -> String
     private let reading: () -> String?
     private let canEditReading: () -> Bool
@@ -43,6 +45,15 @@ final class LookupHeaderMenuDelegate: NSObject, UIContextMenuInteractionDelegate
         let word = surface()
         guard word.isEmpty == false else { return nil }
         lastMenuEventAt = Date()
+        // A press on the furigana is the reading's menu; anywhere else is the headword's.
+        if interaction.view?.hitTest(location, with: nil)?.tag == Self.rubyTag {
+            guard canEditReading() else { return nil }
+            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+                UIMenu(title: "", children: [
+                    UIAction(title: "Edit Reading", image: UIImage(systemName: "pencil")) { _ in self?.editReading() }
+                ])
+            }
+        }
         let shownReading = reading()
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
             var actions: [UIMenuElement] = []
@@ -58,11 +69,6 @@ final class LookupHeaderMenuDelegate: NSObject, UIContextMenuInteractionDelegate
             } else {
                 actions.append(UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { _ in
                     UIPasteboard.general.string = word
-                })
-            }
-            if self?.canEditReading() == true, let editReading = self?.editReading {
-                actions.append(UIAction(title: "Edit Reading", image: UIImage(systemName: "pencil")) { _ in
-                    editReading()
                 })
             }
             actions.append(UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { _ in

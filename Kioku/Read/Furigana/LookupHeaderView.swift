@@ -100,12 +100,24 @@ struct LookupHeaderView: UIViewRepresentable {
         // empty ruby row above the glyphs, which pushes the title down and lifts the vertically
         // centered leading/trailing speaker & star overlays above the actual characters.
         // A katakana word (ツンと, セラヴィ) has no kanji run but still gets its hiragana reading above
-        // the whole word, so a learner can read it in kana they know.
+        // each katakana run (ツン → つん; the と needs none), so a learner can read it in kana they know.
         if runs.isEmpty, surface.unicodeScalars.contains(where: ScriptClassifier.isKatakanaScalar) {
-            let hiragana = KanaNormalizer.katakanaToHiragana(reading ?? surface)
-            if hiragana != surface {
-                segments = [Segment(text: surface, ruby: hiragana)]
+            segments = []
+            var current = ""
+            var currentIsKatakana = false
+            // Closes the run being built into a segment.
+            func flush() {
+                guard current.isEmpty == false else { return }
+                segments.append(Segment(text: current, ruby: currentIsKatakana ? KanaNormalizer.katakanaToHiragana(current) : nil))
+                current = ""
             }
+            for character in surface {
+                let isKatakana = character.unicodeScalars.allSatisfy(ScriptClassifier.isKatakanaScalar)
+                if isKatakana != currentIsKatakana { flush() }
+                currentIsKatakana = isKatakana
+                current.append(character)
+            }
+            flush()
         }
         if segments.allSatisfy({ $0.ruby == nil }) { return [] }
 

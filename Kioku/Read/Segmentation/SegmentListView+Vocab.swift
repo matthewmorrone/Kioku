@@ -46,6 +46,18 @@ extension SegmentListView {
         displayRows.filter { ScriptClassifier.isPureKatakana(resolvedRowSurface(for: $0.edge)) }
     }
 
+    // The rest of displayRows — kanji and hiragana words — backing the Japanese pill, the katakana
+    // pill's counterpart.
+    fileprivate var japaneseVocabRows: [(sourceIndex: Int, edge: LatticeEdge)] {
+        displayRows.filter { ScriptClassifier.isPureKatakana(resolvedRowSurface(for: $0.edge)) == false }
+    }
+
+    // True once every Japanese (non-katakana) row is checked.
+    fileprivate var allJapaneseVocabSelected: Bool {
+        let rows = japaneseVocabRows
+        return rows.isEmpty == false && rows.allSatisfy { vocabRowIsChecked($0) }
+    }
+
     // Drives the collapsed All/None label on the Katakana pill: true once every katakana row is
     // checked. Mirrors allVocabSelected, scoped to just the katakana subset.
     fileprivate var allKatakanaVocabSelected: Bool {
@@ -237,6 +249,23 @@ extension SegmentListView {
                     }
                 }
                 .disabled(katakanaVocabRows.isEmpty)
+                // The same subset flip for every non-katakana word, so either script can be cleared or
+                // checked in one tap without touching the other's flips.
+                optionToggleButton(
+                    title: "Japanese",
+                    isOn: allJapaneseVocabSelected,
+                    accessibilityLabel: allJapaneseVocabSelected ? "Deselect All Japanese Words" : "Select All Japanese Words"
+                ) {
+                    let wantChecked = allJapaneseVocabSelected == false
+                    for identity in japaneseVocabRows.map({ normalizedSurfaceForFiltering(resolvedRowSurface(for: $0.edge)) }) {
+                        if vocabRowCountsAsSaved(identity) != wantChecked {
+                            selectedVocabIdentities.insert(identity)
+                        } else {
+                            selectedVocabIdentities.remove(identity)
+                        }
+                    }
+                }
+                .disabled(japaneseVocabRows.isEmpty)
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)

@@ -80,6 +80,7 @@ extension SegmentLookupSheet {
             rubyLabel.textColor = .secondaryLabel
             rubyLabel.textAlignment = .center
             rubyLabel.text = segment.ruby
+            rubyLabel.tag = LookupHeaderMenuDelegate.rubyTag
             rubyLabel.alpha = segment.ruby != nil ? 1 : 0
             rubyLabel.heightAnchor.constraint(equalToConstant: ceil(rubyFont.lineHeight)).isActive = true
 
