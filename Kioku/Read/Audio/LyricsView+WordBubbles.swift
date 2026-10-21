@@ -80,19 +80,36 @@ extension LyricsView {
         return trimmed
     }
 
-    // When a word is sung: the first karaoke checkpoint reaching its first character, else its
-    // share of the cue's span when the cue has no checkpoints.
+    // When a word's bubble appears: when it's sung — the first karaoke checkpoint reaching its
+    // first character, else its share of the cue's span when the cue has no checkpoints — but no
+    // later than bubbleDeadlineMs, so a word timed at the line's very end (or past it, from a late
+    // alignment) still gets its bubble before the card moves on.
     private func wordStartMs(_ bubble: LyricWordBubble, cueAt index: Int, cueSpan: NSRange) -> Int {
         guard index < cues.count else { return 0 }
         let cue = cues[index]
         let local = bubble.noteRange.location - cueSpan.location
         let checkpoints = cue.checkpoints.sorted { $0.charOffsetInCue < $1.charOffsetInCue }
+        let sungMs: Int
         if let hit = checkpoints.first(where: { $0.charOffsetInCue + max($0.charLength, 1) > local }) {
-            return hit.timeMs
+            sungMs = hit.timeMs
+        } else if let last = checkpoints.last {
+            sungMs = last.timeMs
+        } else {
+            sungMs = cue.startMs + (cue.endMs - cue.startMs) * max(0, local) / max(1, cueSpan.length)
         }
-        if let last = checkpoints.last { return last.timeMs }
-        return cue.startMs + (cue.endMs - cue.startMs) * max(0, local) / max(1, cueSpan.length)
+        return min(sungMs, bubbleDeadlineMs(forCueAt: index))
     }
+
+    // The latest a line's bubbles may appear: bubbleLeadMs before the cue ends (when the card moves
+    // to the next line), and never before the cue starts — a line shorter than that shows every
+    // bubble at once.
+    private func bubbleDeadlineMs(forCueAt index: Int) -> Int {
+        let cue = cues[index]
+        return max(cue.startMs, cue.endMs - Self.bubbleLeadMs)
+    }
+
+    // How long the last bubbles of a line stay up, at least, before the card moves on.
+    static let bubbleLeadMs = 400
 
     // A word's range in the card's text, clipped to it (a word straddling the cue's edge keeps its
     // visible part).
@@ -137,10 +154,16 @@ extension LyricsView {
 
     // Shows the bubbles on `line` once the card has stayed there a moment, and hides them while the
     // lines are being dragged or scrubbed through; a cancelled wait (the line moved on) shows nothing.
+    // On the line being played the wait ends by its bubble deadline, so a short line still shows
+    // its bubbles before the card moves on.
     func settleWordBubbles(on line: Int, isMoving: Bool) async {
         settledBubbleLine = nil
         guard isMoving == false else { return }
-        try? await Task.sleep(for: .milliseconds(350))
+        var waitMs = 350
+        if line == activeIndex, line < cues.count {
+            waitMs = min(waitMs, max(0, bubbleDeadlineMs(forCueAt: line) - controller.currentTimeMs))
+        }
+        try? await Task.sleep(for: .milliseconds(waitMs))
         guard Task.isCancelled == false else { return }
         settledBubbleLine = line
     }
