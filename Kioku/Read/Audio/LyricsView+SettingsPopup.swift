@@ -20,6 +20,8 @@ extension LyricsView {
             Divider()
 
             Toggle("Translation", isOn: $isTranslationVisible)
+            Toggle("Particle Meanings", isOn: $showsParticleBubbles)
+                .disabled(isTranslationVisible == false)
             Toggle("Segmentation", isOn: $isSegmentationVisible)
             Toggle("Furigana", isOn: $isFuriganaVisible)
         }

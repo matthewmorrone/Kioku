@@ -18,6 +18,14 @@ extension ReadView {
         return gloss.contains(where: { "()（）".contains($0) }) ? nil : gloss
     }
 
+    // Whether a lyric word can be a particle, for the Particle Meanings setting: counting, as the
+    // segmenter does (TransitionClass), any spelling that can be one (は, even where it's 歯 "tooth"),
+    // and katakana spellings of function words (ハ).
+    func isLyricParticle(_ surface: String) -> Bool {
+        let spelling = segmenter.functionWord(spelledInKatakana: surface) ?? surface
+        return PartOfSpeech.isParticle(dictionaryStore?.posBits(forSurface: spelling) ?? 0)
+    }
+
     // The lemma's meaning turned into the sung form's where the form flips it: 足りない under 足りる
     // reads "not sufficient", not "to be sufficient". Only negation is carried over (tense and
     // politeness don't change what the word means in a bubble), and only when `entry` is the lemma —

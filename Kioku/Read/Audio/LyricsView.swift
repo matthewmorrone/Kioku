@@ -79,6 +79,9 @@ struct LyricsView: View {
     // location and surface; nil for unknown words. Supplied by the Read view, which
     // owns the dictionary; nil (previews) leaves lines without a breakdown bubble-free.
     var dictionaryGloss: ((Int, String) -> String?)? = nil
+    // Whether a word can be a particle, for hiding particles' bubbles on lines the breakdown doesn't
+    // cover. Supplied by the Read view, which owns the dictionary; nil (previews) counts none.
+    var isParticle: ((String) -> Bool)? = nil
     // The word bubbles of the line last built, and the measured rects of its words in the active
     // card (cue-local ranges → renderer coordinates, from KiokuScrollingTextView.reportRangeRects).
     @State var wordBubbleCache = LyricWordBubbleCache()
@@ -249,6 +252,7 @@ struct LyricsView: View {
     @AppStorage(AudioSettings.autoAdvanceToNextNoteKey) var autoAdvanceToNextNoteEnabled: Bool = AudioSettings.defaultAutoAdvanceToNextNote
     @AppStorage(AudioSettings.lyricsOnNowPlayingKey) var lyricsOnNowPlayingEnabled: Bool = AudioSettings.defaultLyricsOnNowPlaying
     @AppStorage(LyricsPopupSettings.showTranslationKey) var isTranslationVisible: Bool = LyricsPopupSettings.defaultShowTranslation
+    @AppStorage(LyricsPopupSettings.showParticleBubblesKey) var showsParticleBubbles: Bool = LyricsPopupSettings.defaultShowParticleBubbles
     @AppStorage(LyricsPopupSettings.showSegmentationKey) var isSegmentationVisible: Bool = LyricsPopupSettings.defaultShowSegmentation
     @AppStorage(LyricsPopupSettings.showFuriganaKey) var isFuriganaVisible: Bool = LyricsPopupSettings.defaultShowFurigana
 

@@ -4,7 +4,8 @@ import SwiftUI
 // sung, a speech bubble with its meaning pops up beside the line pointing at it. Meanings come from the breakdown
 // when it covers the line (its in-context definitions), else
 // from the dictionary through dictionaryGloss, which the Read view supplies so no lexical lookup
-// happens here. Drawn by LyricWordBubbleOverlay; shown while the Translation setting is on.
+// happens here. Drawn by LyricWordBubbleOverlay; shown while the Translation setting is on, and
+// for particles only while Particle Meanings is on too.
 extension LyricsView {
     // The words of the text the card shows for a cue (`cueSpan`, in note coordinates — the same
     // span the renderer draws, so no word at its edges is lost to a slightly different cue range)
@@ -18,6 +19,7 @@ extension LyricsView {
         hasher.combine(breakdown?.generatedAt)
         hasher.combine(noteText.utf16.count)
         hasher.combine(segmentationRanges.count)
+        hasher.combine(showsParticleBubbles)
         let signature = hasher.finalize()
         if wordBubbleCache.signature == signature { return wordBubbleCache.bubbles }
         let bubbles = breakdown.flatMap { breakdownWordBubbles($0.lines, in: cueSpan) }
@@ -28,7 +30,9 @@ extension LyricsView {
     }
 
     // The breakdown line covering the cue, its words found in the note in order, each with its
-    // definition in the speech bubble — particles and vocalizations too. The line's
+    // definition in the speech bubble — vocalizations too, and particles (tagged `[particle]`, or in
+    // older breakdowns a single-kana particle, as SongWordVisibility counts them) unless their
+    // bubbles are turned off. The line's
     // pattern-to-bank note stays out: bubbles hold meanings only. Nil when no breakdown line
     // covers the cue or none of its words could be found in it.
     private func breakdownWordBubbles(_ lines: [SongLine], in cueRange: NSRange) -> [LyricWordBubble]? {
@@ -46,20 +50,25 @@ extension LyricsView {
             cursor = NSMaxRange(found)
             // Punctuation (a "（" the model was asked to gloss) is no word and gets no bubble.
             guard NSIntersectionRange(found, cueRange).length > 0, surface.contains(where: \.isLetter) else { continue }
+            let isParticle = word.grammarTag?.lowercased() == SongWordVisibility.particleTag || KanaData.particleSet.contains(surface)
+            if isParticle, showsParticleBubbles == false { continue }
             bubbles.append(LyricWordBubble(noteRange: found, gloss: Self.shortGloss(word.definition)))
         }
         return bubbles.isEmpty ? nil : bubbles
     }
 
     // The cue's segments, each with its dictionary meaning (none for anything the dictionary
-    // doesn't know, which dictionaryGloss returns nil for).
+    // doesn't know, which dictionaryGloss returns nil for, nor for particles while their bubbles
+    // are off).
     private func dictionaryWordBubbles(in cueRange: NSRange) -> [LyricWordBubble] {
         guard let dictionaryGloss else { return [] }
         return segmentationRanges.compactMap { range in
             let nsRange = NSRange(range, in: noteText)
             guard nsRange.length > 0, NSIntersectionRange(nsRange, cueRange).length > 0 else { return nil }
             let surface = String(noteText[range])
-            guard surface.contains(where: \.isLetter), let gloss = dictionaryGloss(nsRange.location, surface) else { return nil }
+            guard surface.contains(where: \.isLetter),
+                  showsParticleBubbles || isParticle?(surface) != true,
+                  let gloss = dictionaryGloss(nsRange.location, surface) else { return nil }
             return LyricWordBubble(noteRange: nsRange, gloss: Self.shortGloss(gloss))
         }
     }

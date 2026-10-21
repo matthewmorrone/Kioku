@@ -12,6 +12,10 @@ enum LyricsPopupSettings {
     static let showTranslationKey = "kioku.settings.lyricsPopup.showTranslation"
     static let defaultShowTranslation = true
 
+    // Whether particles get word bubbles too (LyricsView+WordBubbles).
+    static let showParticleBubblesKey = "kioku.settings.lyricsPopup.showParticleBubbles"
+    static let defaultShowParticleBubbles = true
+
     static let showFuriganaKey = "kioku.settings.lyricsPopup.showFurigana"
     static let defaultShowFurigana = true
 
