@@ -64,7 +64,9 @@ extension DictionaryStore {
     // Fetches example sentence pairs matching any of the given search terms.
     // Searches for the surface first, then any additional terms (e.g. lemma kanji forms)
     // so results favor the exact surface while still finding sentences that use the base form.
-    // Uses FTS5 for fast substring search, deduplicates on Japanese text, sorted shortest first.
+    // Plain substring scan (instr), not FTS5: the index tokenizes with unicode61, which cannot split
+    // unspaced Japanese, so MATCH only finds a term standing alone between punctuation (学校 hit 7
+    // of its 1962 sentences; 弧 hit none). Capped per term, deduplicated on Japanese text, shortest first.
     nonisolated public func fetchSentencePairs(terms: [String]) throws -> [SentencePair] {
         // Deduplicate and filter empty terms while preserving priority order.
         var uniqueTerms: [String] = []
@@ -78,9 +80,9 @@ extension DictionaryStore {
             let sql = """
             SELECT sp.japanese, sp.english
             FROM sentence_pairs sp
-            JOIN sentence_pairs_fts ON sentence_pairs_fts.rowid = sp.rowid
-            WHERE sentence_pairs_fts MATCH ?1
+            WHERE instr(sp.japanese, ?1) > 0
             ORDER BY LENGTH(sp.japanese) ASC
+            LIMIT 20
             """
 
             var allPairs: [SentencePair] = []
@@ -91,8 +93,7 @@ extension DictionaryStore {
                 defer { sqlite3_finalize(statement) }
 
                 try prepare(sql: sql, statement: &statement)
-                // FTS5 phrase search wraps the term in quotes for exact substring matching.
-                try bindText("\"\(term)\"", index: 1, statement: statement)
+                try bindText(term, index: 1, statement: statement)
 
                 let rows = try stepRows(statement: statement) { stmt -> SentencePair? in
                     guard
