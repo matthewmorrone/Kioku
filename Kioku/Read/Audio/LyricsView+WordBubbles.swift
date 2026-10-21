@@ -1,8 +1,7 @@
 import SwiftUI
 
 // Word bubbles on the lyrics card's active line, in place of a line translation: as each word is
-// sung, a speech bubble with its meaning pops up beside the line pointing at it, and the line's
-// grammar note from the song breakdown goes with its last word. Meanings come from the breakdown
+// sung, a speech bubble with its meaning pops up beside the line pointing at it. Meanings come from the breakdown
 // when it covers the line (its in-context definitions), else
 // from the dictionary through dictionaryGloss, which the Read view supplies so no lexical lookup
 // happens here. Drawn by LyricWordBubbleOverlay; shown while the Translation setting is on.
@@ -28,10 +27,10 @@ extension LyricsView {
         return bubbles
     }
 
-    // The breakdown line covering the cue, its words found in the note in order: the definition in
-    // the speech bubble (none for particles and vocalizations), and the line's grammar note as the
-    // last word's note. Nil when no
-    // breakdown line covers the cue or none of its words could be found in it.
+    // The breakdown line covering the cue, its words found in the note in order, with the
+    // definition in the speech bubble (none for particles and vocalizations). The line's
+    // pattern-to-bank note stays out: bubbles hold meanings only. Nil when no breakdown line
+    // covers the cue or none of its words could be found in it.
     private func breakdownWordBubbles(_ lines: [SongLine], in cueRange: NSRange) -> [LyricWordBubble]? {
         let lineRanges = SongBreakdownLineLocator.noteRanges(for: lines, in: noteText)
         guard let line = lines.first(where: { lineRanges[$0.index].map { NSIntersectionRange($0, cueRange).length > 0 } ?? false }),
@@ -52,14 +51,8 @@ extension LyricsView {
             let needsNoMeaning = tag == "particle" || tag == "vocalization"
             bubbles.append(LyricWordBubble(
                 noteRange: found,
-                gloss: needsNoMeaning ? nil : Self.shortGloss(word.definition),
-                comment: nil
+                gloss: needsNoMeaning ? nil : Self.shortGloss(word.definition)
             ))
-        }
-        if let grammarNote = Self.nonEmpty(line.grammarNote),
-           let last = bubbles.indices.last {
-            let word = bubbles[last]
-            bubbles[last] = LyricWordBubble(noteRange: word.noteRange, gloss: word.gloss, comment: grammarNote)
         }
         return bubbles.isEmpty ? nil : bubbles
     }
@@ -73,7 +66,7 @@ extension LyricsView {
             guard nsRange.length > 0, NSIntersectionRange(nsRange, cueRange).length > 0 else { return nil }
             let surface = String(noteText[range])
             guard surface.contains(where: \.isLetter), let gloss = dictionaryGloss(nsRange.location, surface) else { return nil }
-            return LyricWordBubble(noteRange: nsRange, gloss: Self.shortGloss(gloss), comment: nil)
+            return LyricWordBubble(noteRange: nsRange, gloss: Self.shortGloss(gloss))
         }
     }
 
@@ -143,7 +136,6 @@ extension LyricsView {
                 id: bubble.noteRange.location,
                 anchor: rect,
                 gloss: bubble.gloss,
-                comment: bubble.comment,
                 isShown: isSung
             )
         }
