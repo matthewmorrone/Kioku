@@ -36,6 +36,23 @@ struct ExampleSentenceView: View {
         return ceil(rubyFont.lineHeight) + CGFloat(furiganaGap)
     }
 
+    // The sentence as the speaker should say it: every kanji run replaced by the furigana shown over
+    // it. The synthesizer guesses kanji readings on its own and can pick a different one than the
+    // ruby (銀杏 read いちょう under ぎんなん), so speaking the shown readings keeps ear and eye in
+    // agreement. The plain sentence when no furigana has resolved.
+    private var spokenText: String {
+        guard let cache, cache.furiganaBySegmentLocation.isEmpty == false else { return japanese }
+        let spoken = NSMutableString(string: japanese)
+        // Back to front so earlier UTF-16 locations stay valid while later runs are replaced.
+        for location in cache.furiganaBySegmentLocation.keys.sorted(by: >) {
+            guard let reading = cache.furiganaBySegmentLocation[location],
+                  let length = cache.furiganaLengthBySegmentLocation[location],
+                  location + length <= spoken.length else { continue }
+            spoken.replaceCharacters(in: NSRange(location: location, length: length), with: reading)
+        }
+        return spoken as String
+    }
+
     // UTF-16 range of the first highlight surface present in the sentence, for the renderer's
     // selected-highlight overlay (and the plain-text fallback's colored run).
     private var highlightRange: NSRange? {
@@ -53,7 +70,7 @@ struct ExampleSentenceView: View {
             // example, instead of ragged-right after sentences of varying width.
             HStack(alignment: .top, spacing: 8) {
                 Button {
-                    onSpeak(japanese)
+                    onSpeak(spokenText)
                 } label: {
                     Image(systemName: "speaker.wave.2")
                         .font(.subheadline)
