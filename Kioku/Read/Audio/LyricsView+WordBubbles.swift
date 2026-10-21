@@ -27,8 +27,8 @@ extension LyricsView {
         return bubbles
     }
 
-    // The breakdown line covering the cue, its words found in the note in order, with the
-    // definition in the speech bubble (none for particles and vocalizations). The line's
+    // The breakdown line covering the cue, its words found in the note in order, each with its
+    // definition in the speech bubble — particles and vocalizations too. The line's
     // pattern-to-bank note stays out: bubbles hold meanings only. Nil when no breakdown line
     // covers the cue or none of its words could be found in it.
     private func breakdownWordBubbles(_ lines: [SongLine], in cueRange: NSRange) -> [LyricWordBubble]? {
@@ -46,19 +46,13 @@ extension LyricsView {
             cursor = NSMaxRange(found)
             // Punctuation (a "（" the model was asked to gloss) is no word and gets no bubble.
             guard NSIntersectionRange(found, cueRange).length > 0, surface.contains(where: \.isLetter) else { continue }
-            // Particles and vocalizations get no meaning; grammar tags (past, particle…) aren't shown.
-            let tag = Self.nonEmpty(word.grammarTag)
-            let needsNoMeaning = tag == "particle" || tag == "vocalization"
-            bubbles.append(LyricWordBubble(
-                noteRange: found,
-                gloss: needsNoMeaning ? nil : Self.shortGloss(word.definition)
-            ))
+            bubbles.append(LyricWordBubble(noteRange: found, gloss: Self.shortGloss(word.definition)))
         }
         return bubbles.isEmpty ? nil : bubbles
     }
 
-    // The cue's segments, each with its dictionary meaning (none for particles and anything the
-    // dictionary doesn't know, which dictionaryGloss returns nil for).
+    // The cue's segments, each with its dictionary meaning (none for anything the dictionary
+    // doesn't know, which dictionaryGloss returns nil for).
     private func dictionaryWordBubbles(in cueRange: NSRange) -> [LyricWordBubble] {
         guard let dictionaryGloss else { return [] }
         return segmentationRanges.compactMap { range in

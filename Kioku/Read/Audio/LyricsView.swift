@@ -76,7 +76,7 @@ struct LyricsView: View {
     // ReadView, so the Read tab can show the same results.
     @ObservedObject var singSession: SingSession
     // A word's dictionary meaning for its word bubble (LyricsView+WordBubbles), given its note
-    // location and surface; nil for particles and unknown words. Supplied by the Read view, which
+    // location and surface; nil for unknown words. Supplied by the Read view, which
     // owns the dictionary; nil (previews) leaves lines without a breakdown bubble-free.
     var dictionaryGloss: ((Int, String) -> String?)? = nil
     // The word bubbles of the line last built, and the measured rects of its words in the active

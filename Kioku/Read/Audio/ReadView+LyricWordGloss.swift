@@ -6,12 +6,9 @@ extension ReadView {
     // A lyric word's meaning for the lyrics card's word bubbles: the first gloss of the entry the
     // lookup sheet would show for it there (displayedDictionaryEntry), so the bubble and the sheet
     // agree. Where the sheet leaves the word unpicked (kana あなた: 貴方, 彼方 both read あなた), the
-    // likeliest word's meaning alone — "you / beyond" is more than a bubble should say. Nil for particles — their
-    // glosses describe grammar — counting, as the segmenter does (TransitionClass), any spelling
-    // that can be one (は, not 歯 "tooth"); and nil for words with no entry. A negative form's meaning is negated.
+    // likeliest word's meaning alone — "you / beyond" is more than a bubble should say. Nil for
+    // words with no entry. A negative form's meaning is negated.
     func lyricWordGloss(at location: Int, surface: String) -> String? {
-        let spelling = segmenter.functionWord(spelledInKatakana: surface) ?? surface
-        guard PartOfSpeech.isParticle(dictionaryStore?.posBits(forSurface: spelling) ?? 0) == false else { return nil }
         guard let entry = displayedDictionaryEntry(forSurface: surface, at: location)
                 ?? unpickedLyricCandidates(forSurface: surface, at: location).first,
               let lemmaGloss = entry.senses.first(where: { $0.glosses.isEmpty == false })?.glosses.first else { return nil }
