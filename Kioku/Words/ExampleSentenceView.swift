@@ -174,11 +174,52 @@ struct ExampleSentenceView: View {
             edges: edges,
             surfaceReadingData: surfaceReadingData
         )
+        let split = splitRubyAtHighlight(byLocation: resolved.byLocation, lengthByLocation: resolved.lengthByLocation)
         cache = LineFuriganaCache(
             sourceText: japanese,
             segmentationRanges: edges.map { $0.start..<$0.end },
-            furiganaBySegmentLocation: resolved.byLocation,
-            furiganaLengthBySegmentLocation: resolved.lengthByLocation
+            furiganaBySegmentLocation: split.byLocation,
+            furiganaLengthBySegmentLocation: split.lengthByLocation
         )
+    }
+
+    // Splits a compound's ruby where the highlighted word ends inside it (化石 in 化石燃料), so the
+    // accent colour covers only the reading of the highlighted kanji (かせき) and the rest of the
+    // compound (ねんりょう) keeps the sentence colour. The split needs the highlighted word's own
+    // dictionary reading to start (or end) the compound's reading; a compound that voices or
+    // otherwise changes it keeps its single ruby rather than guess where to cut.
+    private func splitRubyAtHighlight(
+        byLocation: [Int: String],
+        lengthByLocation: [Int: Int]
+    ) -> (byLocation: [Int: String], lengthByLocation: [Int: Int]) {
+        guard let accent = highlightRange else { return (byLocation, lengthByLocation) }
+        let surface = (japanese as NSString).substring(with: accent)
+        guard let listed = FuriganaResolver.listedReadings(surface, surfaceReadingData: surfaceReadingData) else {
+            return (byLocation, lengthByLocation)
+        }
+        let readings = listed.map(KanaNormalizer.katakanaToHiragana)
+        var newByLocation = byLocation
+        var newLengthByLocation = lengthByLocation
+        for (location, reading) in byLocation {
+            guard let length = lengthByLocation[location],
+                  accent.length < length,
+                  accent.location >= location,
+                  accent.upperBound <= location + length else { continue }
+            let compound = KanaNormalizer.katakanaToHiragana(reading)
+            if accent.location == location,
+               let head = readings.first(where: { compound.hasPrefix($0) && compound.count > $0.count }) {
+                newByLocation[location] = head
+                newLengthByLocation[location] = accent.length
+                newByLocation[accent.upperBound] = String(compound.dropFirst(head.count))
+                newLengthByLocation[accent.upperBound] = length - accent.length
+            } else if accent.upperBound == location + length,
+                      let tail = readings.first(where: { compound.hasSuffix($0) && compound.count > $0.count }) {
+                newByLocation[location] = String(compound.dropLast(tail.count))
+                newLengthByLocation[location] = length - accent.length
+                newByLocation[accent.location] = tail
+                newLengthByLocation[accent.location] = accent.length
+            }
+        }
+        return (newByLocation, newLengthByLocation)
     }
 }
