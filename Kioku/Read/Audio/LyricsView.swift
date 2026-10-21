@@ -79,9 +79,10 @@ struct LyricsView: View {
     // location and surface; nil for unknown words. Supplied by the Read view, which
     // owns the dictionary; nil (previews) leaves lines without a breakdown bubble-free.
     var dictionaryGloss: ((Int, String) -> String?)? = nil
-    // Whether a word can be a particle, for hiding particles' bubbles on lines the breakdown doesn't
-    // cover. Supplied by the Read view, which owns the dictionary; nil (previews) counts none.
-    var isParticle: ((String) -> Bool)? = nil
+    // Whether a word's dictionary meaning is a particle's, given its note location and surface, for
+    // hiding particles' bubbles on lines the breakdown doesn't cover. Supplied by the Read view,
+    // which owns the dictionary; nil (previews) counts none.
+    var isParticle: ((Int, String) -> Bool)? = nil
     // The word bubbles of the line last built, and the measured rects of its words in the active
     // card (cue-local ranges → renderer coordinates, from KiokuScrollingTextView.reportRangeRects).
     @State var wordBubbleCache = LyricWordBubbleCache()

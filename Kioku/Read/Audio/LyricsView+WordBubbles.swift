@@ -67,7 +67,7 @@ extension LyricsView {
             guard nsRange.length > 0, NSIntersectionRange(nsRange, cueRange).length > 0 else { return nil }
             let surface = String(noteText[range])
             guard surface.contains(where: \.isLetter),
-                  showsParticleBubbles || isParticle?(surface) != true,
+                  showsParticleBubbles || isParticle?(nsRange.location, surface) != true,
                   let gloss = dictionaryGloss(nsRange.location, surface) else { return nil }
             return LyricWordBubble(noteRange: nsRange, gloss: Self.shortGloss(gloss))
         }

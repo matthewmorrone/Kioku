@@ -9,8 +9,7 @@ extension ReadView {
     // likeliest word's meaning alone — "you / beyond" is more than a bubble should say. Nil for
     // words with no entry. A negative form's meaning is negated.
     func lyricWordGloss(at location: Int, surface: String) -> String? {
-        guard let entry = displayedDictionaryEntry(forSurface: surface, at: location)
-                ?? unpickedLyricCandidates(forSurface: surface, at: location).first,
+        guard let entry = lyricBubbleEntry(at: location, surface: surface),
               let lemmaGloss = entry.senses.first(where: { $0.glosses.isEmpty == false })?.glosses.first else { return nil }
         let gloss = inflectedLyricGloss(lemmaGloss, surface: surface, entry: entry)
         // A parenthesized gloss is qualifying itself — too much for a bubble and usually the wrong
@@ -18,12 +17,21 @@ extension ReadView {
         return gloss.contains(where: { "()（）".contains($0) }) ? nil : gloss
     }
 
-    // Whether a lyric word can be a particle, for the Particle Meanings setting: counting, as the
-    // segmenter does (TransitionClass), any spelling that can be one (は, even where it's 歯 "tooth"),
-    // and katakana spellings of function words (ハ).
-    func isLyricParticle(_ surface: String) -> Bool {
-        let spelling = segmenter.functionWord(spelledInKatakana: surface) ?? surface
-        return PartOfSpeech.isParticle(dictionaryStore?.posBits(forSurface: spelling) ?? 0)
+    // Whether a lyric word's bubble would give a particle's meaning, for the Particle Meanings
+    // setting: judged by the sense the bubble shows (lyricBubbleEntry), so は given as 歯 "tooth"
+    // keeps its bubble while the topic marker は loses it.
+    func isLyricParticle(at location: Int, surface: String) -> Bool {
+        guard let sense = lyricBubbleEntry(at: location, surface: surface)?.senses.first(where: { $0.glosses.isEmpty == false }) else {
+            return false
+        }
+        return PartOfSpeech.isParticle(PartOfSpeech.bits(from: sense.pos))
+    }
+
+    // The entry a lyric word's bubble speaks for: the one the lookup sheet shows, else, where the
+    // sheet leaves the word unpicked, the likeliest of the words sharing its reading.
+    private func lyricBubbleEntry(at location: Int, surface: String) -> DictionaryEntry? {
+        displayedDictionaryEntry(forSurface: surface, at: location)
+            ?? unpickedLyricCandidates(forSurface: surface, at: location).first
     }
 
     // The lemma's meaning turned into the sung form's where the form flips it: 足りない under 足りる
