@@ -25,38 +25,49 @@ extension DictionaryStore {
         jlptLevelMap[entryID]
     }
 
-    // Loads the entire entry_jlpt_level table into a Swift dictionary — ~8k Tanos-sourced rows
-    // plus ~194k frequency-estimated rows (see generate_db.py's estimate_jlpt_levels_from_frequency);
-    // one scan either way. Tolerates the table being absent (older DB without the migration) by
-    // returning empty.
-    nonisolated func fetchJLPTLevelMap() throws -> [Int64: Int] {
-        try withSerializedDatabaseAccess {
-            guard tableExists("entry_jlpt_level") else { return [:] }
+    // True when the entry's level is a frequency guess rather than a Tanos-list label. Word detail
+    // hides these: frequency barely separates N1 from N2, so showing the guess as a fact misleads.
+    nonisolated func isJLPTLevelEstimated(for entryID: Int64) -> Bool {
+        jlptEstimatedEntryIDs.contains(entryID)
+    }
 
-            let sql = "SELECT entry_id, level FROM entry_jlpt_level"
+    // Loads the entire entry_jlpt_level table — ~8k Tanos-sourced rows plus ~194k frequency-estimated
+    // rows (see generate_db.py's estimate_jlpt_levels_from_frequency); one scan either way. The
+    // estimated ids come back separately so filters can keep using every level while the detail
+    // badge shows only real ones. Tolerates the table being absent (older DB without the
+    // migration) by returning empty.
+    nonisolated func fetchJLPTLevelMap() throws -> (levels: [Int64: Int], estimated: Set<Int64>) {
+        try withSerializedDatabaseAccess {
+            guard tableExists("entry_jlpt_level") else { return ([:], []) }
+
+            let sql = "SELECT entry_id, level, is_estimated FROM entry_jlpt_level"
             var statement: OpaquePointer?
             defer { sqlite3_finalize(statement) }
             try prepare(sql: sql, statement: &statement)
 
             var map: [Int64: Int] = [:]
+            var estimated = Set<Int64>()
             var stepCode = sqlite3_step(statement)
             while stepCode == SQLITE_ROW {
                 let entryID = Int64(sqlite3_column_int64(statement, 0))
                 let level = Int(sqlite3_column_int(statement, 1))
                 map[entryID] = level
+                if sqlite3_column_int(statement, 2) != 0 { estimated.insert(entryID) }
                 stepCode = sqlite3_step(statement)
             }
             guard stepCode == SQLITE_DONE else {
                 throw DictionarySQLiteError.step(message: errorMessage()).logged()
             }
-            return map
+            return (map, estimated)
         }
     }
 
     // Populates the in-memory JLPT level map. Must run once at app start before the store is
     // published to the UI, mirroring populateCanonicalEntryIDMap's lifecycle contract.
     nonisolated func populateJLPTLevelMap() throws {
-        jlptLevelMap = try fetchJLPTLevelMap()
+        let loaded = try fetchJLPTLevelMap()
+        jlptLevelMap = loaded.levels
+        jlptEstimatedEntryIDs = loaded.estimated
     }
 
     // Fetches entries at a JLPT level, ordered by frequency rank (most frequent first; unranked

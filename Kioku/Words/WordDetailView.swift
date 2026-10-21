@@ -541,7 +541,9 @@ struct WordDetailView: View {
                     }
 
                     // JLPT level of the word itself (the Kanji section only carries per-kanji levels).
-                    if let jlpt = dictionaryStore?.jlptLevel(for: activeEntryID) {
+                    // Frequency-estimated levels are guesses, so only list-sourced ones are shown.
+                    if dictionaryStore?.isJLPTLevelEstimated(for: activeEntryID) == false,
+                       let jlpt = dictionaryStore?.jlptLevel(for: activeEntryID) {
                         Text("JLPT \(DictionaryStore.jlptLabel(for: jlpt))")
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(.secondary)

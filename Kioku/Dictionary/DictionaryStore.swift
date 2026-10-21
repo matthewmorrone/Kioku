@@ -52,6 +52,9 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
     // per-saved-word level checks are hashtable hits rather than SQL. See DictionaryStore+JLPT.
     var jlptLevelMap: [Int64: Int] = [:]
 
+    // Entry ids in jlptLevelMap whose level is a frequency estimate, not a Tanos-list label.
+    var jlptEstimatedEntryIDs: Set<Int64> = []
+
     // Resolves and opens the downloaded dictionary database from Application Support (see
     // DictionaryDownloadManager). Throws .databaseNotFound if the user hasn't downloaded it yet;
     // every call site already treats DictionaryStore as optional (see WordsView.swift's `if

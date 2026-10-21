@@ -23,9 +23,14 @@ extension DictionaryStore {
         }
 
         // Build search terms: surface first (highest priority), then lemma kanji and kana forms.
+        // Kana forms are searched only for kana-only entries: a bare reading like こ (弧) is a
+        // substring of countless unrelated sentences and would outrank the real examples. A kana
+        // surface the user actually met is already the first term.
         var terms = [surface]
         terms += entry.kanjiForms.map(\.text)
-        terms += entry.kanaForms.map(\.text)
+        if entry.kanjiForms.isEmpty {
+            terms += entry.kanaForms.map(\.text)
+        }
         let sentences = try fetchSentencePairs(terms: terms)
 
         return WordDisplayData(entry: entry, pitchAccents: pitchAccents, sentences: sentences)
