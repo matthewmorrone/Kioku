@@ -263,7 +263,8 @@ extension ReadView {
                 segmentationRanges: document.segmentRanges,
                 noteText: document.text,
                 playbackHighlightRangeOverride: $audioPlayback.playbackHighlightRangeOverride,
-                activePlaybackCueIndex: $audioPlayback.activePlaybackCueIndex
+                activePlaybackCueIndex: $audioPlayback.activePlaybackCueIndex,
+                hasPlaybackProgress: $audioPlayback.hasPlaybackProgress
             )
         }
         .overlay(alignment: .topLeading) {

@@ -12,7 +12,7 @@ extension ReadView {
     var isShowingLyricsMiniPlayer: Bool {
         audioPlayback.activeAudioAttachmentID != nil
             && audioPlayback.isShowingLyricsView == false
-            && (audioPlayback.audioController.isPlaying || audioPlayback.audioController.currentTimeMs > 0)
+            && audioPlayback.hasPlaybackProgress
     }
 
     // Press and hold on the mini player's play or ♪ button: ends playback. Stopping rewinds to the

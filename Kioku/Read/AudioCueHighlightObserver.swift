@@ -22,6 +22,7 @@ struct AudioCueHighlightObserver: View {
     let noteText: String
     @Binding var playbackHighlightRangeOverride: NSRange?
     @Binding var activePlaybackCueIndex: Int?
+    @Binding var hasPlaybackProgress: Bool
 
     var body: some View {
         Color.clear
@@ -58,6 +59,7 @@ struct AudioCueHighlightObserver: View {
             Self.lastTickLog = now
             KaraokeDebugLog.log("observer.tick isPlaying=\(isPlaying) cueIndex=\(cueIndex.map(String.init) ?? "nil") t=\(currentTimeMs)ms hlCount=\(highlightRanges.count)")
         }
+        hasPlaybackProgress = isPlaying || currentTimeMs > 0
         guard isPlaying, let cueIndex, cueIndex < cues.count else {
             playbackHighlightRangeOverride = nil
             activePlaybackCueIndex = nil

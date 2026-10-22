@@ -19,6 +19,11 @@ final class AudioPlaybackUIState {
     var activePlaybackCueIndex: Int? = nil
     var activeAudioAttachmentID: UUID? = nil
     var isShowingLyricsView = false
+    // Mirrors "playing, or paused mid-track" from the controller. ReadView can't observe the
+    // controller's @Published values through this @Observable wrapper, so AudioCueHighlightObserver
+    // writes this flag and the mini player's visibility reads it — stopping from a paused state
+    // changes nothing else ReadView watches, and the mini player would otherwise stay on screen.
+    var hasPlaybackProgress = false
     // Which version of the song is playing (mix / isolated vocals / instrumental), and whether a
     // switch is still building its file.
     var audioSource: LyricsAudioSource = .mix

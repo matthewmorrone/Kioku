@@ -563,6 +563,7 @@ struct ContentView: View {
             // Stage 2 — slow path: full segmenter/lexicon build + DictionaryStore prewarming. Reuses
             // the reading map already built above so it isn't scanned a second time.
             let result = Self.makeReadResources(prebuiltSurfaceReadingData: earlyReadingData)
+            let rankStore = result.dictionaryStore
             await MainActor.run {
                 // Preserve the placeholder Segmenter's identity: any closure that captured a reference to it before this
                 // point — e.g. a SwiftUI view's implicit `self` capture inside a UIKit-bridged
@@ -584,7 +585,8 @@ struct ContentView: View {
                     lexicon: result.lexicon,
                     surfaceReadingData: result.surfaceReadingData,
                     kanjiReadingFallback: result.kanjiReadingFallback,
-                    frequencyRankBySurface: result.frequencyRankBySurface,
+                    // Filled by the follow-up below: nothing on the startup path reads it.
+                    frequencyRankBySurface: readResources.frequencyRankBySurface,
                     // Ready only with a dictionary behind the segmenter. Without one (a fresh
                     // install whose download hasn't finished) the trie is empty, and the Read tab
                     // would segment the open note character by character and persist that, after
@@ -594,13 +596,28 @@ struct ContentView: View {
                 )
                 StartupTimer.mark("readResourcesReady published to UI")
             }
+
+            // Per-ENTRY best frequency rank, propagated to every spelling of the entry. Backs the
+            // lookup and split-editor frequency display, where a kana split piece like こと / する
+            // should report its word's rank instead of rendering a bare "–". NOT what the segmenter
+            // scores with: it reads the rank of each surface as written, via
+            // Segmenter(…frequenciesFrom:). Built after publishing so its ~0.4 s doesn't delay the
+            // lexicon, which the saved-word coloring waits on.
+            if let store = rankStore {
+                let ranks: [String: Int] = StartupTimer.measure("frequencyRankBySurface build") {
+                    (try? store.fetchBestRankBySurface()) ?? [:]
+                }
+                await MainActor.run {
+                    readResources.frequencyRankBySurface = FrequencyRankMap(ranks)
+                }
+            }
         }
     }
 
     // Builds the read-tab segmenter and dictionary store used for furigana lookup.
     private nonisolated static func makeReadResources(
         prebuiltSurfaceReadingData: [String: SurfaceReadingData]? = nil
-    ) -> (segmenter: any TextSegmenting, dictionaryStore: DictionaryStore?, lexicon: Lexicon?, surfaceReadingData: SurfaceReadingDataMap, kanjiReadingFallback: KanjiReadingFallbackMap, frequencyRankBySurface: FrequencyRankMap) {
+    ) -> (segmenter: any TextSegmenting, dictionaryStore: DictionaryStore?, lexicon: Lexicon?, surfaceReadingData: SurfaceReadingDataMap, kanjiReadingFallback: KanjiReadingFallbackMap) {
         StartupTimer.mark("makeReadResources started")
         let overallStart = CFAbsoluteTimeGetCurrent()
 
@@ -721,14 +738,6 @@ struct ContentView: View {
             AppLog.error(.dictionary, "Deinflector initialization failed: \(error)")
         }
 
-        // Per-ENTRY best frequency rank, propagated to every spelling of the entry. Backs the lookup and
-        // split-editor frequency display, where a kana split piece like こと / する should report its
-        // word's rank instead of rendering a bare "–". NOT what the segmenter scores with: it reads
-        // the rank of each surface as written, via Segmenter(…frequenciesFrom:) below.
-        let frequencyRankBySurface: [String: Int] = StartupTimer.measure("frequencyRankBySurface build") {
-            (try? dictionaryStore?.fetchBestRankBySurface()) ?? [:]
-        }
-
         let segmenter: any TextSegmenting = StartupTimer.measure("Segmenter.init") {
             Segmenter(
                 trie: trie,
@@ -759,8 +768,7 @@ struct ContentView: View {
             dictionaryStore: dictionaryStore,
             lexicon: lexicon,
             surfaceReadingData: SurfaceReadingDataMap(surfaceReadingData),
-            kanjiReadingFallback: KanjiReadingFallbackMap(kanjiReadingFallback),
-            frequencyRankBySurface: FrequencyRankMap(frequencyRankBySurface)
+            kanjiReadingFallback: KanjiReadingFallbackMap(kanjiReadingFallback)
         )
     }
 }
