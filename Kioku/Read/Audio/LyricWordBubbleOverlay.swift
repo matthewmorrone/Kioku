@@ -6,8 +6,8 @@ import UIKit
 // beside the line — each side taking half the words, one level with the line and the rest split
 // above and below it so tails never cross the text (sideLayout), free to run past the card's top
 // and bottom since the neighbouring lines are centred too. When the line is too wide to leave room
-// beside it, they go in rows above it instead, over the neighbouring lines; the card never grows
-// for them. Places are planned for the whole line, so each bubble pops in where it stays. Sits over the renderer in its coordinates (rects from
+// beside it, they go in rows above and below it instead, over the neighbouring lines; the card
+// never grows for them. Places are planned for the whole line, so each bubble pops in where it stays. Sits over the renderer in its coordinates (rects from
 // KiokuScrollingTextView.reportRangeRects). Ignores touches.
 struct LyricWordBubbleOverlay: View {
     let bubbles: [PlacedLyricWordBubble]
@@ -28,7 +28,6 @@ struct LyricWordBubbleOverlay: View {
     // Least space between the line and a stacked side bubble, and between stacked bubbles.
     static let lineClearance: CGFloat = 4
     static let stackGap: CGFloat = 10
-    static let stackedRows = 2
     // Height of a one-line bubble row in the above/below layout, which leaves room for the tail.
     static var rowHeight: CGFloat { ceil(glossFont.lineHeight) + 2 * verticalPadding + 12 }
 
@@ -183,40 +182,53 @@ struct LyricWordBubbleOverlay: View {
         return slots
     }
 
-    // The fallback for a line too wide to leave room beside it: meanings in rows above the line,
-    // each centred on its word where there's room, else in the next row out (or pushed right in
-    // the last row), its tail reaching the word.
+    // The fallback for a line too wide to leave room beside it: meanings in rows above and below
+    // the line, each centred on its word, its tail reaching the word. Words alternate which side
+    // they try first, so the two sides stay even; a bubble takes the nearest row on either side
+    // with room at its place, else opens a new row on the side with fewer, so bubbles never overlap.
     static func stackedLayout(_ bubbles: [PlacedLyricWordBubble], width: CGFloat) -> [Slot] {
         guard width > 0 else { return [] }
         let lineTop = bubbles.map(\.anchor.minY).min() ?? 0
-        var slots: [Slot] = []
-        var rowEnds: [CGFloat] = []
+        let lineBottom = bubbles.map(\.anchor.maxY).max() ?? 0
         // Rows sit one tallest bubble (plus tail room) apart, since long ones wrap.
         let rowStep = bubbles.compactMap(\.gloss)
             .map { size($0, maxWidth: min(width, maxGlossWidth)).height + 12 }
             .max() ?? rowHeight
+        // Each row's right end, nearest the line first.
+        var aboveEnds: [CGFloat] = []
+        var belowEnds: [CGFloat] = []
+        var slots: [Slot] = []
+        var placed = 0
         for bubble in bubbles.sorted(by: { $0.anchor.midX < $1.anchor.midX }) {
             guard let text = bubble.gloss else { continue }
             let size = size(text, maxWidth: min(width, maxGlossWidth))
-            var x = min(max(0, bubble.anchor.midX - size.width / 2), width - size.width)
-            var row = rowEnds.firstIndex { $0 + gap <= x }
-            if row == nil {
-                if rowEnds.count < stackedRows {
-                    rowEnds.append(-gap)
-                    row = rowEnds.count - 1
-                } else {
-                    row = rowEnds.count - 1
-                    x = min(max(x, rowEnds[row!] + gap), max(0, width - size.width))
+            let x = min(max(0, bubble.anchor.midX - size.width / 2), max(0, width - size.width))
+            let prefersAbove = placed % 2 == 0
+            placed += 1
+            // Rows in the order tried: nearest first, the preferred side before the other.
+            var choice: (above: Bool, row: Int)?
+            for row in 0..<max(aboveEnds.count, belowEnds.count) where choice == nil {
+                for above in [prefersAbove, !prefersAbove] {
+                    let ends = above ? aboveEnds : belowEnds
+                    if row < ends.count, ends[row] + gap <= x {
+                        choice = (above, row)
+                        break
+                    }
                 }
             }
-            guard let row else { continue }
-            rowEnds[row] = x + size.width
+            if choice == nil {
+                let above = aboveEnds.count == belowEnds.count ? prefersAbove : aboveEnds.count < belowEnds.count
+                if above { aboveEnds.append(-gap) } else { belowEnds.append(-gap) }
+                choice = (above, above ? aboveEnds.count - 1 : belowEnds.count - 1)
+            }
+            guard let (above, row) = choice else { continue }
+            if above { aboveEnds[row] = x + size.width } else { belowEnds[row] = x + size.width }
             let offset = 10 + CGFloat(row) * rowStep
             slots.append(Slot(
                 id: bubble.id,
                 text: text,
-                frame: CGRect(x: x, y: lineTop - offset - size.height, width: size.width, height: size.height),
-                tip: CGPoint(x: bubble.anchor.midX, y: bubble.anchor.minY - 1)
+                frame: CGRect(x: x, y: above ? lineTop - offset - size.height : lineBottom + offset, width: size.width, height: size.height),
+                tip: CGPoint(x: bubble.anchor.midX, y: above ? bubble.anchor.minY - 1 : bubble.anchor.maxY + 1)
             ))
         }
         return slots
