@@ -5,7 +5,8 @@ import SwiftUI
 // when it covers the line (its in-context definitions), else
 // from the dictionary through dictionaryGloss, which the Read view supplies so no lexical lookup
 // happens here. Drawn by LyricWordBubbleOverlay; shown while the Bubbles setting is on, and
-// each kind of word only while its option in the Bubbles menu is on.
+// each kind of word (particles, katakana loanwords, katakana words) only while its option in
+// the Bubbles menu is on. Words written in Latin letters never get one.
 extension LyricsView {
     // The words of the text the card shows for a cue (`cueSpan`, in note coordinates — the same
     // span the renderer draws, so no word at its edges is lost to a slightly different cue range)
@@ -20,6 +21,8 @@ extension LyricsView {
         hasher.combine(noteText.utf16.count)
         hasher.combine(segmentationRanges.count)
         hasher.combine(showsParticleBubbles)
+        hasher.combine(showsLoanwordBubbles)
+        hasher.combine(showsKatakanaBubbles)
         let signature = hasher.finalize()
         if wordBubbleCache.signature == signature { return wordBubbleCache.bubbles }
         let bubbles = breakdown.flatMap { breakdownWordBubbles($0.lines, in: cueSpan) }
@@ -48,8 +51,7 @@ extension LyricsView {
             let found = note.range(of: surface, options: [], range: NSRange(location: cursor, length: NSMaxRange(lineRange) - cursor))
             guard found.location != NSNotFound else { continue }
             cursor = NSMaxRange(found)
-            // Punctuation (a "（" the model was asked to gloss) is no word and gets no bubble.
-            guard NSIntersectionRange(found, cueRange).length > 0, surface.contains(where: \.isLetter) else { continue }
+            guard NSIntersectionRange(found, cueRange).length > 0, showsBubble(forSurface: surface) else { continue }
             let isParticle = word.grammarTag?.lowercased() == SongWordVisibility.particleTag || KanaData.particleSet.contains(surface)
             if isParticle, showsParticleBubbles == false { continue }
             bubbles.append(LyricWordBubble(noteRange: found, gloss: Self.shortGloss(word.definition)))
@@ -66,11 +68,22 @@ extension LyricsView {
             let nsRange = NSRange(range, in: noteText)
             guard nsRange.length > 0, NSIntersectionRange(nsRange, cueRange).length > 0 else { return nil }
             let surface = String(noteText[range])
-            guard surface.contains(where: \.isLetter),
+            guard showsBubble(forSurface: surface),
                   showsParticleBubbles || isParticle?(nsRange.location, surface) != true,
                   let gloss = dictionaryGloss(nsRange.location, surface) else { return nil }
             return LyricWordBubble(noteRange: nsRange, gloss: Self.shortGloss(gloss))
         }
+    }
+
+    // Whether a word may get a bubble at all, by its spelling and the Bubbles menu: never for
+    // punctuation (a "（" the breakdown model was asked to gloss) or words in Latin letters — only
+    // Japanese script counts — and not for katakana words, or the loanwords among them, while
+    // their options are off.
+    private func showsBubble(forSurface surface: String) -> Bool {
+        guard surface.contains(where: \.isLetter), ScriptClassifier.containsJapanese(surface) else { return false }
+        if showsKatakanaBubbles == false, ScriptClassifier.isKatakanaWord(surface) { return false }
+        if showsLoanwordBubbles == false, isLoanword?(surface) == true { return false }
+        return true
     }
 
     // A meaning short enough for a bubble: its first sense, up to the first semicolon or comma —

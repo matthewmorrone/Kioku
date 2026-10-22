@@ -34,6 +34,19 @@ extension ReadView {
             ?? unpickedLyricCandidates(forSurface: surface, at: location).first
     }
 
+    // Whether a lyric word is a loanword in katakana (ベイビー, ドア, キスした), for the English Words
+    // setting: its katakana stem's entry is spelled only in katakana. A Japanese word written in
+    // katakana (キラキラ, ダメ, ウソ) has a hiragana or kanji spelling too and counts as Japanese. A
+    // katakana stem the dictionary doesn't know in katakana or in hiragana is taken for a loanword —
+    // lyrics write Japanese words in katakana for emphasis (ゼッタイ for 絶対) that the dictionary
+    // only spells ぜったい.
+    func isLyricLoanword(_ surface: String) -> Bool {
+        guard ScriptClassifier.isKatakanaWord(surface),
+              let stem = ScriptClassifier.leadingKatakanaPrefix(of: surface) else { return false }
+        guard let entry = resolvedDictionaryEntry(forSurface: stem) else { return true }
+        return entry.kanjiForms.isEmpty && entry.kanaForms.allSatisfy { ScriptClassifier.isPureKatakana($0.text) }
+    }
+
     // The lemma's meaning turned into the sung form's where the form flips it: 足りない under 足りる
     // reads "not sufficient", not "to be sufficient". Only negation is carried over (tense and
     // politeness don't change what the word means in a bubble), and only when `entry` is the lemma —

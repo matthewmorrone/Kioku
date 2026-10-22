@@ -85,6 +85,9 @@ struct LyricsView: View {
     // hiding particles' bubbles on lines the breakdown doesn't cover. Supplied by the Read view,
     // which owns the dictionary; nil (previews) counts none.
     var isParticle: ((Int, String) -> Bool)? = nil
+    // Whether a word is a katakana loanword, for hiding loanwords' bubbles; supplied by the Read
+    // view, which owns the dictionary. Nil (previews) counts none.
+    var isLoanword: ((String) -> Bool)? = nil
     // The word bubbles of the line last built, and the measured rects of its words in the active
     // card (cue-local ranges → renderer coordinates, from KiokuScrollingTextView.reportRangeRects).
     @State var wordBubbleCache = LyricWordBubbleCache()
@@ -260,6 +263,8 @@ struct LyricsView: View {
     @AppStorage(LyricsPopupSettings.showTranslationKey) var isTranslationVisible: Bool = LyricsPopupSettings.defaultShowTranslation
     @AppStorage(LyricsPopupSettings.showBubblesKey) var showsBubbles: Bool = LyricsPopupSettings.defaultShowBubbles
     @AppStorage(LyricsPopupSettings.showParticleBubblesKey) var showsParticleBubbles: Bool = LyricsPopupSettings.defaultShowParticleBubbles
+    @AppStorage(LyricsPopupSettings.showLoanwordBubblesKey) var showsLoanwordBubbles: Bool = LyricsPopupSettings.defaultShowLoanwordBubbles
+    @AppStorage(LyricsPopupSettings.showKatakanaBubblesKey) var showsKatakanaBubbles: Bool = LyricsPopupSettings.defaultShowKatakanaBubbles
     @AppStorage(LyricsPopupSettings.showSegmentationKey) var isSegmentationVisible: Bool = LyricsPopupSettings.defaultShowSegmentation
     @AppStorage(LyricsPopupSettings.showFuriganaKey) var isFuriganaVisible: Bool = LyricsPopupSettings.defaultShowFurigana
 

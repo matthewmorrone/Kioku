@@ -25,6 +25,8 @@ extension LyricsView {
                 Toggle("Bubbles", isOn: $showsBubbles)
                 Menu {
                     Toggle("Particles", isOn: $showsParticleBubbles)
+                    Toggle("English Words", isOn: $showsLoanwordBubbles)
+                    Toggle("Katakana", isOn: $showsKatakanaBubbles)
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .font(.title3)

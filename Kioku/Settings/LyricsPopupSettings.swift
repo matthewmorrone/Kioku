@@ -22,6 +22,14 @@ enum LyricsPopupSettings {
     static let showParticleBubblesKey = "kioku.settings.lyricsPopup.showParticleBubbles"
     static let defaultShowParticleBubbles = true
 
+    // Whether katakana loanwords (ベイビー, ドア) get word bubbles — the English Words option.
+    static let showLoanwordBubblesKey = "kioku.settings.lyricsPopup.showLoanwordBubbles"
+    static let defaultShowLoanwordBubbles = true
+
+    // Whether any word written in katakana gets a word bubble, loanwords or not (キラキラ).
+    static let showKatakanaBubblesKey = "kioku.settings.lyricsPopup.showKatakanaBubbles"
+    static let defaultShowKatakanaBubbles = true
+
     static let showFuriganaKey = "kioku.settings.lyricsPopup.showFurigana"
     static let defaultShowFurigana = true
 

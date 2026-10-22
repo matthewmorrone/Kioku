@@ -314,7 +314,8 @@ extension ReadView {
                     singRomanize: lyricRomanizer.spans(for:),
                     singSession: singSession,
                     dictionaryGloss: { location, surface in lyricWordGloss(at: location, surface: surface) },
-                    isParticle: { location, surface in isLyricParticle(at: location, surface: surface) }
+                    isParticle: { location, surface in isLyricParticle(at: location, surface: surface) },
+                    isLoanword: { isLyricLoanword($0) }
                 )
                 .opacity(audioPlayback.isShowingLyricsView ? 1 : 0)
                 .allowsHitTesting(audioPlayback.isShowingLyricsView)
