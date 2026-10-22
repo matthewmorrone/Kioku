@@ -1,5 +1,6 @@
 import SwiftUI
 import LyricAlignment
+import Translation
 import UIKit
 
 // Floating karaoke-style lyrics popup rendered as an overlay on ReadView.
@@ -16,7 +17,8 @@ struct LyricsView: View {
     let noteText: String
     let attachmentID: UUID?
     // The note's own id — used to look up its SongBreakdown for the word bubbles
-    // (LyricsView+WordBubbles). Nil-safe: without it the bubbles use the dictionary.
+    // (LyricsView+WordBubbles) and the translation line's gists (LyricsView+BreakdownGist).
+    // Nil-safe: without it the bubbles use the dictionary and the translation is Apple's.
     let noteID: UUID?
     // Narrowed playback highlight in noteText UTF-16 coords, computed upstream from the granularity
     // setting + cue timings. nil means no sub-cue highlight (Sentence behavior).
@@ -222,7 +224,9 @@ struct LyricsView: View {
     // the cumulative translation onto an absolute time rather than integrating per-frame.
     @State private var fineScrubBaseMs: Int? = nil
 
-    // Supplies the note's SongBreakdown (if any) for the word bubbles' meanings and notes.
+    @State private var translationTrigger: TranslationSession.Configuration? = nil
+    // Supplies the note's SongBreakdown (if any) for the word bubbles' meanings and the translation
+    // line's gists.
     // Auto-injected from the ancestor tree (ContentView) — no manual threading needed. Not
     // `private`: accessed from the LyricsView+WordBubbles extension in a separate file.
     @EnvironmentObject var songBreakdownStore: SongBreakdownStore
@@ -243,6 +247,7 @@ struct LyricsView: View {
     @AppStorage(TokenColorSettings.savedLearnedColorKey) private var savedLearnedHex: String = TokenColorSettings.defaultSavedLearnedHex
     @AppStorage(TokenColorSettings.savedNotLearnedColorKey)
     private var savedNotLearnedHex: String = TokenColorSettings.defaultSavedNotLearnedHex
+    @StateObject var translationCache = LyricsTranslationCache()
 
     // Backing storage for the in-place settings popup (LyricsView+SettingsPopup.swift). All four
     // display toggles are popup-scoped (LyricsPopupSettings) — NOT shared with ReadView's own
@@ -470,6 +475,15 @@ struct LyricsView: View {
                             await settleWordBubbles(on: displayIndex, isMoving: isDragging || isScrubbing)
                         }
                     }
+                    // The line's English translation under the card (LyricsView+BreakdownGist).
+                    if isTranslationVisible, let translation = displayedTranslation(for: displayIndex) {
+                        Text(translation)
+                            .scaledFont(size: 12)
+                            .foregroundStyle(.secondary)
+                            .italic()
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                    }
                     if displayIndex < cues.count && hasMismatch(at: displayIndex) {
                         HStack(spacing: 4) {
                             Circle()
@@ -485,6 +499,13 @@ struct LyricsView: View {
                 .padding(.vertical, 8)
                 // Above the lyric rows below, which word bubbles running past the card overlap.
                 .zIndex(1)
+                .translationTask(translationTrigger) { session in
+                    // Batch-translate all untranslated cues up front so translations are ready during playback.
+                    await translateAllCues(session: session)
+                }
+                .onAppear {
+                    translationTrigger = translationConfig
+                }
 
                 ScrollView {
                     VStack(alignment: .center, spacing: 0) {
@@ -571,6 +592,9 @@ struct LyricsView: View {
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(color: .black.opacity(0.4), radius: 24, x: 0, y: 8)
+        .onAppear {
+            if let attachmentID { translationCache.load(for: attachmentID) }
+        }
         .onDisappear {
             if singSession.isActive, let previous = singSession.restoreAudioSource { onSetAudioSource(previous) }
             singSession.stop()
