@@ -352,7 +352,8 @@ def build_rules(lex_lines, grammar_path, extras_path, unidic_sha):
                 add(group, surface, aux, [aux_word_grammar], [aux_word_grammar], f'UniDic 助動詞 {aux} {cform}')
 
     for row in grammar['fixedSequences']:
-        add(row['group'], row['kanaIn'], row['kanaOut'], row['rulesIn'], row['rulesOut'], f"fixedSequences: {row['note']}")
+        add(row['group'], row['kanaIn'], row['kanaOut'], row['rulesIn'], row['rulesOut'], f"fixedSequences: {row['note']}",
+            row.get('helper'))
 
     omitted = {(o['kanaIn'], o['kanaOut'], tuple(o['rulesOut'])) for o in grammar['omitted']}
     patterns = grammar['omittedPatterns']['patterns']
