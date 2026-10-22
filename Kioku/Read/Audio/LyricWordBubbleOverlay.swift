@@ -104,8 +104,8 @@ struct LyricWordBubbleOverlay: View {
         return CGSize(width: inner + 2 * horizontalPadding, height: height + 2 * verticalPadding)
     }
 
-    // The beside-the-line layout, or nil when neither side has room or a stack would run further
-    // past the card than sideOverflow. The words are shared evenly between the sides, leftmost half
+    // The beside-the-line layout, or nil when neither side has room, a bubble would run off the
+    // card's side, or a stack would run further past the card than sideOverflow. The words are shared evenly between the sides, leftmost half
     // left (all on one side when only that side has room). There, the word nearest the edge gets its meaning level with the line, the tail
     // pointing straight into the word's side; the side's other words split between a stack rising
     // from that bubble and one falling from it (earlier words up, later down), each bubble kept
@@ -179,6 +179,9 @@ struct LyricWordBubbleOverlay: View {
             }
         }
 
+        // A bubble never narrows below its longest word, so a column squeezed by a wide line can hold
+        // a bubble wider than itself, running off the card — then the rows layout takes over.
+        guard slots.allSatisfy({ $0.frame.minX >= 0 && $0.frame.maxX <= width }) else { return nil }
         return slots
     }
 
