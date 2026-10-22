@@ -252,7 +252,7 @@ struct LyricsView: View {
     @AppStorage(AudioSettings.backgroundPlaybackKey) var backgroundPlaybackEnabled: Bool = AudioSettings.defaultBackgroundPlayback
     @AppStorage(AudioSettings.autoAdvanceToNextNoteKey) var autoAdvanceToNextNoteEnabled: Bool = AudioSettings.defaultAutoAdvanceToNextNote
     @AppStorage(AudioSettings.lyricsOnNowPlayingKey) var lyricsOnNowPlayingEnabled: Bool = AudioSettings.defaultLyricsOnNowPlaying
-    @AppStorage(LyricsPopupSettings.showBubblesKey) var showsBubbles: Bool = LyricsPopupSettings.defaultShowBubbles
+    @AppStorage(LyricsPopupSettings.showTranslationKey) var isTranslationVisible: Bool = LyricsPopupSettings.defaultShowTranslation
     @AppStorage(LyricsPopupSettings.showParticleBubblesKey) var showsParticleBubbles: Bool = LyricsPopupSettings.defaultShowParticleBubbles
     @AppStorage(LyricsPopupSettings.showSegmentationKey) var isSegmentationVisible: Bool = LyricsPopupSettings.defaultShowSegmentation
     @AppStorage(LyricsPopupSettings.showFuriganaKey) var isFuriganaVisible: Bool = LyricsPopupSettings.defaultShowFurigana
@@ -442,7 +442,7 @@ struct LyricsView: View {
                             },
                             isScrollEnabled: false,
                             textAlignment: .center,
-                            reportedRanges: showsBubbles
+                            reportedRanges: isTranslationVisible
                                 ? wordBubbleRanges(forCueAt: displayIndex, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count)
                                 : [],
                             onRangeRects: { wordBubbleRects = $0 }
@@ -453,7 +453,7 @@ struct LyricsView: View {
                         // Word meanings over the line as it's sung, beside it or in rows above and
                         // below it (LyricsView+WordBubbles).
                         .overlay {
-                            if showsBubbles, settledBubbleLine == displayIndex {
+                            if isTranslationVisible, settledBubbleLine == displayIndex {
                                 LyricWordBubbleOverlay(
                                     bubbles: placedWordBubbles(
                                         forCueAt: displayIndex,

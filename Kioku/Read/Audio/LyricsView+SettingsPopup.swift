@@ -19,17 +19,9 @@ extension LyricsView {
 
             Divider()
 
-            // The word bubbles, with a menu of what they cover; more options go in the menu.
-            HStack {
-                Toggle("Bubbles", isOn: $showsBubbles)
-                Menu {
-                    Toggle("Particles", isOn: $showsParticleBubbles)
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.title3)
-                }
-                .disabled(showsBubbles == false)
-            }
+            Toggle("Translation", isOn: $isTranslationVisible)
+            Toggle("Particle Meanings", isOn: $showsParticleBubbles)
+                .disabled(isTranslationVisible == false)
             Toggle("Segmentation", isOn: $isSegmentationVisible)
             Toggle("Furigana", isOn: $isFuriganaVisible)
         }
