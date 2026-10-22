@@ -9,6 +9,10 @@ import Foundation
 // against a clean pre-change baseline build, 2026-09-22). Keeping these independent trades away
 // the cross-tab mirroring for a working app.
 enum LyricsPopupSettings {
+    // Whether the line's translation shows. Its stored value is independent of the bubbles'.
+    static let showTranslationKey = "kioku.settings.lyricsPopup.showLineTranslation"
+    static let defaultShowTranslation = true
+
     // Whether the active line's word bubbles show (LyricsView+WordBubbles). The stored key keeps
     // its old "showTranslation" spelling so the choice made before the rename carries over.
     static let showBubblesKey = "kioku.settings.lyricsPopup.showTranslation"

@@ -19,6 +19,7 @@ extension LyricsView {
 
             Divider()
 
+            Toggle("Translation", isOn: $isTranslationVisible)
             // The word bubbles, with a menu of what they cover; more options go in the menu.
             HStack {
                 Toggle("Bubbles", isOn: $showsBubbles)
