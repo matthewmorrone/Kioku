@@ -11,4 +11,7 @@ nonisolated struct LookupCandidate: Equatable, Sendable {
     let reading: String
     let entry: DictionaryEntry
     var surfaceReadings: [String] = []
+    // True when the chain reaching `lemma` ends in the godan potential (溶ける as 溶く "can dissolve"),
+    // so PotentialChoice can tell it from the tapped form's own word (溶ける "to melt").
+    var viaPotential = false
 }

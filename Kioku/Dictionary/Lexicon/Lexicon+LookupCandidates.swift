@@ -75,7 +75,8 @@ nonisolated extension Lexicon {
                     headword: entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text ?? lemma,
                     reading: entry.kanaForms.first?.text ?? lemma,
                     entry: entry,
-                    surfaceReadings: readings
+                    surfaceReadings: readings,
+                    viaPotential: transitions?.contains { $0.label == "potential" } == true
                 )
                 if index == 0 {
                     leaders.append(candidate)
