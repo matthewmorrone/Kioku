@@ -4,8 +4,8 @@ import SwiftUI
 // sung, a speech bubble with its meaning pops up beside the line pointing at it. Meanings come from the breakdown
 // when it covers the line (its in-context definitions), else
 // from the dictionary through dictionaryGloss, which the Read view supplies so no lexical lookup
-// happens here. Drawn by LyricWordBubbleOverlay; shown while the Translation setting is on, and
-// for particles only while Particle Meanings is on too.
+// happens here. Drawn by LyricWordBubbleOverlay; shown while the Bubbles setting is on, and
+// each kind of word only while its option in the Bubbles menu is on.
 extension LyricsView {
     // The words of the text the card shows for a cue (`cueSpan`, in note coordinates — the same
     // span the renderer draws, so no word at its edges is lost to a slightly different cue range)
