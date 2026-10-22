@@ -33,9 +33,8 @@ extension LyricsView {
     }
 
     // The breakdown line covering the cue, its words found in the note in order, each with its
-    // definition in the speech bubble — vocalizations too, and particles (tagged `[particle]`, or in
-    // older breakdowns a single-kana particle, as SongWordVisibility counts them) unless their
-    // bubbles are turned off. The line's
+    // definition in the speech bubble — vocalizations too, and particles (tagged `[particle]`) unless
+    // their bubbles are turned off. The line's
     // pattern-to-bank note stays out: bubbles hold meanings only. Nil when no breakdown line
     // covers the cue or none of its words could be found in it.
     private func breakdownWordBubbles(_ lines: [SongLine], in cueRange: NSRange) -> [LyricWordBubble]? {
@@ -52,8 +51,7 @@ extension LyricsView {
             guard found.location != NSNotFound else { continue }
             cursor = NSMaxRange(found)
             guard NSIntersectionRange(found, cueRange).length > 0, showsBubble(forSurface: surface) else { continue }
-            let isParticle = word.grammarTag?.lowercased() == SongWordVisibility.particleTag || KanaData.particleSet.contains(surface)
-            if isParticle, showsParticleBubbles == false { continue }
+            if word.grammarTag?.lowercased() == SongWordVisibility.particleTag, showsParticleBubbles == false { continue }
             bubbles.append(LyricWordBubble(noteRange: found, gloss: Self.shortGloss(word.definition)))
         }
         return bubbles.isEmpty ? nil : bubbles
