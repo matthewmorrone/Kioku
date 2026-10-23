@@ -2,7 +2,7 @@ import Foundation
 
 // Versioned full-app backup payload covering all persisted Kioku user data.
 nonisolated struct AppBackupPayload: Codable {
-    static let currentVersion = 4
+    static let currentVersion = 5
 
     var version: Int
     var exportedAt: Date
@@ -25,6 +25,9 @@ nonisolated struct AppBackupPayload: Codable {
     // The Custom Words list and the defaults already offered. nil in backups made before it
     // existed, which leave the list as it is on restore.
     var customWords: CustomWordStoreState?
+    // Breakdowns, saved kanji, sing history, caches and settings (added in v5). nil in older
+    // backups, which leave those areas as they are on restore.
+    var extras: AppBackupExtras?
 
     // Creates a full backup payload from the current in-memory stores.
     init(
@@ -42,7 +45,8 @@ nonisolated struct AppBackupPayload: Codable {
         lifetimeCorrect: Int,
         lifetimeAgain: Int,
         audioAttachments: [AudioAttachmentBackup] = [],
-        customWords: CustomWordStoreState? = nil
+        customWords: CustomWordStoreState? = nil,
+        extras: AppBackupExtras? = nil
     ) {
         self.version = version
         self.exportedAt = exportedAt
@@ -59,12 +63,13 @@ nonisolated struct AppBackupPayload: Codable {
         self.lifetimeAgain = lifetimeAgain
         self.audioAttachments = audioAttachments
         self.customWords = customWords
+        self.extras = extras
     }
 
     private enum CodingKeys: String, CodingKey {
         case version, exportedAt, notes, words, wordLists, history
         case reviewStats, markedWrong, learned, notLearned, mastered, lifetimeCorrect, lifetimeAgain
-        case audioAttachments, customWords
+        case audioAttachments, customWords, extras
     }
 
     // Custom decoder so version-1 backups (no audioAttachments key) decode cleanly.
@@ -85,5 +90,6 @@ nonisolated struct AppBackupPayload: Codable {
         lifetimeAgain = try c.decode(Int.self, forKey: .lifetimeAgain)
         audioAttachments = try c.decodeIfPresent([AudioAttachmentBackup].self, forKey: .audioAttachments) ?? []
         customWords = try c.decodeIfPresent(CustomWordStoreState.self, forKey: .customWords)
+        extras = try c.decodeIfPresent(AppBackupExtras.self, forKey: .extras)
     }
 }

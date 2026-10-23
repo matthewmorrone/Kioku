@@ -16,7 +16,8 @@ struct SettingsView: View {
     @EnvironmentObject var wordListsStore: WordListsStore
     @EnvironmentObject var historyStore: HistoryStore
     @EnvironmentObject var customWordStore: CustomWordStore
-    @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
+    @EnvironmentObject var songBreakdownStore: SongBreakdownStore
+    @EnvironmentObject var savedKanjiStore: SavedKanjiStore
 
     // Selected theme id — drives chrome and, unless customized, every text color. See ThemeID.
     @AppStorage(Theme.themeIDKey) var themeIDRaw: String = ThemeID.system.rawValue
@@ -89,6 +90,9 @@ struct SettingsView: View {
             lifetimeAgain: 0
         )
     )
+    @State var exportContentType: UTType = .json
+    @State var exportOptions = AppBackupExportOptions()
+    @State var isPreparingExport = false
     @State var isShowingExporter = false
     @State private var isShowingImporter = false
     @State var isShowingTransferAlert = false
@@ -247,12 +251,16 @@ struct SettingsView: View {
                         Button {
                             beginAppExport()
                         } label: {
-                            Label("Export", systemImage: "square.and.arrow.up")
+                            Label(isPreparingExport ? "Preparing…" : "Export", systemImage: "square.and.arrow.up")
                         }
                         .buttonStyle(.borderless)
+                        .disabled(isPreparingExport)
                         Spacer()
-                        InfoButton(text: "Save your notes, saved words, lists, history, review progress, audio and custom words to one file.")
+                        InfoButton(text: "Save your notes, saved words and kanji, lists, history, review progress, song breakdowns, translations, custom words and preferences to one file.")
                     }
+                    Toggle("Include audio files", isOn: $exportOptions.includeAudio)
+                    Toggle("Include vocal stems", isOn: $exportOptions.includeStems)
+                    Toggle("Include API keys", isOn: $exportOptions.includeAPIKeys)
                     HStack {
                         Button {
                             // A UI-test launch restores its own export without the importer.
@@ -280,6 +288,8 @@ struct SettingsView: View {
                     }
                 } header: {
                     Text("Data")
+                } footer: {
+                    Text("Audio files or vocal stems make the export a zip instead of a single JSON file. API keys are saved as plain text in the file, so keep it private.")
                 }
 
                 // MARK: Diagnostics and debug sections. See engineSettings.
@@ -343,14 +353,14 @@ struct SettingsView: View {
         .fileExporter(
             isPresented: $isShowingExporter,
             document: exportDocument,
-            contentType: .json,
+            contentType: exportContentType,
             defaultFilename: "kioku-export"
         ) { result in
             handleExportResult(result)
         }
         .fileImporter(
             isPresented: $isShowingImporter,
-            allowedContentTypes: [.json],
+            allowedContentTypes: [.json, .zip],
             allowsMultipleSelection: false
         ) { result in
             handleImportResult(result)
@@ -371,10 +381,12 @@ struct SettingsView: View {
             Button("Import", role: .destructive) {
                 if let pendingImportDocument {
                     importAppBackup(pendingImportDocument)
+                    pendingImportDocument.discardAssets()
                 }
                 pendingImportDocument = nil
             }
             Button("Cancel", role: .cancel) {
+                pendingImportDocument?.discardAssets()
                 pendingImportDocument = nil
             }
         } message: {

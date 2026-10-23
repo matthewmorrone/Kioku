@@ -36,6 +36,16 @@ final class GuessedGlossStore {
         defaults.set(glosses, forKey: storageKey)
     }
 
+    // Every stored guess, for the full-app backup.
+    func allGlosses() -> [String: String] {
+        storedGlosses()
+    }
+
+    // Replaces the whole map with a restored backup's guesses.
+    func replaceAll(with glosses: [String: String]) {
+        defaults.set(glosses, forKey: storageKey)
+    }
+
     // Joins surface and line with a unit separator, which neither contains.
     private func key(surface: String, line: String) -> String {
         surface + "\u{1F}" + line.trimmingCharacters(in: .whitespacesAndNewlines)

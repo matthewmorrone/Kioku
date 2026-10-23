@@ -171,6 +171,22 @@ final class SongBreakdownStore: ObservableObject {
         }
     }
 
+    // Every breakdown on disk, for the full-app backup. Reads each file once; a file that no
+    // longer decodes is logged by readFromDisk and left out.
+    func allBreakdowns() -> [SongBreakdown] {
+        knownNoteIDsOnDisk
+            .sorted { $0.uuidString < $1.uuidString }
+            .compactMap { breakdown(forNoteID: $0) }
+    }
+
+    // Replaces every breakdown with a restored backup's, so an import leaves exactly the backup's set.
+    func replaceAll(with breakdowns: [SongBreakdown]) {
+        clearAll()
+        for breakdown in breakdowns {
+            setBreakdown(breakdown)
+        }
+    }
+
     // MARK: - Background generation
 
     // Returns true while there's an in-flight (running) generation Task for the note.

@@ -34,6 +34,16 @@ final class SingHistoryStore {
         UserDefaultsJSON.save(records, forKey: storageKey, to: defaults, logAs: .audioPlayback)
     }
 
+    // Every stored session across notes, for the full-app backup.
+    func allRecords() -> [SingSessionRecord] {
+        all()
+    }
+
+    // Replaces the whole history with a restored backup's sessions.
+    func replaceAll(with records: [SingSessionRecord]) {
+        UserDefaultsJSON.save(records, forKey: storageKey, to: defaults, logAs: .audioPlayback)
+    }
+
     // Every stored session across notes.
     private func all() -> [SingSessionRecord] {
         UserDefaultsJSON.load([SingSessionRecord].self, forKey: storageKey, from: defaults, logAs: .audioPlayback) ?? []

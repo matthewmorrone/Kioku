@@ -191,6 +191,13 @@ final class SavedKanjiStore: ObservableObject {
         kanji = SavedKanjiStorage.loadSavedKanji(storageKey: storageKey, userDefaults: userDefaults)
     }
 
+    // Replaces every saved kanji with a restored backup's records (deduplicated by literal) and
+    // persists them, so an import leaves exactly the backup's kanji.
+    func replaceAll(with entries: [SavedKanji]) {
+        kanji = SavedKanjiStorage.normalizedEntries(entries)
+        persist()
+    }
+
     // Persists the current in-memory snapshot off-main on persistQueue. Mirrors
     // WordsStore's pattern — star-toggles return immediately, the disk write
     // happens shortly after on a serial queue so concurrent toggles can't race.

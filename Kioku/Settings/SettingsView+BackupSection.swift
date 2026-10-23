@@ -1,11 +1,14 @@
 import Foundation
+import UniformTypeIdentifiers
 
 // Backup export/import logic, extracted from SettingsView to keep the parent file under the
 // project's 1000-line invariant. All @State / @EnvironmentObject this extension touches are
 // declared non-private on SettingsView specifically so this file can reach them — see the "Not
 // private" comments at each property's declaration site.
 extension SettingsView {
-    // Captures the latest full app state before presenting the system export flow.
+    // Captures the latest full app state and presents the system export flow. With audio or stems
+    // chosen, the files are staged and zipped off the main thread first, so a large library does
+    // not freeze Settings.
     func beginAppExport() {
         let reviewStats = wordsStore.stats
             .map { AppBackupReviewStats(canonicalEntryID: $0.key, stats: $0.value) }
@@ -13,32 +16,74 @@ extension SettingsView {
 
         let notes = notesStore.exportNotes()
         let audioStore = NotesAudioStore.shared
-        let audioAttachments: [AudioAttachmentBackup] = notes
-            .compactMap { $0.audioAttachmentID }
-            .compactMap { audioStore.exportAttachment(for: $0) }
-
-        exportDocument = AppBackupDocument(
-            payload: AppBackupPayload(
-                notes: notes,
-                words: wordsStore.words,
-                wordLists: wordListsStore.lists,
-                history: historyStore.entries,
-                reviewStats: reviewStats,
-                markedWrong: Array(wordsStore.markedWrong).sorted(),
-                learned: Array(wordsStore.learned).sorted(),
-                notLearned: Array(wordsStore.notLearned).sorted(),
-                mastered: Array(wordsStore.mastered).sorted(),
-                lifetimeCorrect: wordsStore.lifetimeCorrect,
-                lifetimeAgain: wordsStore.lifetimeAgain,
-                audioAttachments: audioAttachments,
-                customWords: customWordStore.state
-            )
+        let options = exportOptions
+        // Audio bytes never go into the JSON: they travel as files in the zip, or not at all. The
+        // attachment records still carry the cues, so a JSON-only restore keeps the timings.
+        let attachmentIDs = notes.compactMap { $0.audioAttachmentID }
+        let audioAttachments: [AudioAttachmentBackup] = attachmentIDs
+            .compactMap { audioStore.exportAttachment(for: $0, includeAudioData: false) }
+        let audioFiles: [AppBackupArchive.AudioFile] = options.includeAudio
+            ? audioAttachments.compactMap { attachment in
+                audioStore.audioURL(for: attachment.attachmentID).map {
+                    AppBackupArchive.AudioFile(source: $0, name: attachment.attachmentID.uuidString + "." + $0.pathExtension)
+                }
+            }
+            : []
+        let extras = AppBackupExtrasStore.collect(
+            notes: notes,
+            options: options,
+            breakdownStore: songBreakdownStore,
+            savedKanjiStore: savedKanjiStore
+        )
+        let payload = AppBackupPayload(
+            notes: notes,
+            words: wordsStore.words,
+            wordLists: wordListsStore.lists,
+            history: historyStore.entries,
+            reviewStats: reviewStats,
+            markedWrong: Array(wordsStore.markedWrong).sorted(),
+            learned: Array(wordsStore.learned).sorted(),
+            notLearned: Array(wordsStore.notLearned).sorted(),
+            mastered: Array(wordsStore.mastered).sorted(),
+            lifetimeCorrect: wordsStore.lifetimeCorrect,
+            lifetimeAgain: wordsStore.lifetimeAgain,
+            audioAttachments: audioAttachments,
+            customWords: customWordStore.state,
+            extras: extras
         )
         AppLog.debug(
             .backup,
-            "export: staged \(notes.count) notes, \(audioAttachments.count) audio attachments, \(reviewStats.count) review records"
+            "export: staged \(notes.count) notes, \(audioFiles.count) audio files, \(extras.stemFiles.count) stems, \(reviewStats.count) review records"
         )
-        isShowingExporter = true
+
+        guard options.includeAudio || options.includeStems else {
+            exportDocument = AppBackupDocument(payload: payload)
+            exportContentType = .json
+            isShowingExporter = true
+            return
+        }
+
+        isPreparingExport = true
+        let stemsDirectory = AppBackupExtrasStore.stemsDirectory()
+        let stemFiles = extras.stemFiles
+        Task {
+            do {
+                let json = try AppBackupDocument(payload: payload).encodedPayload()
+                let archive = try await Task.detached(priority: .userInitiated) {
+                    try AppBackupArchive.build(json: json, audio: audioFiles, stemsDirectory: stemsDirectory, stemFiles: stemFiles)
+                }.value
+                var document = AppBackupDocument(payload: payload)
+                document.archiveURL = archive
+                exportDocument = document
+                exportContentType = .zip
+                isPreparingExport = false
+                isShowingExporter = true
+            } catch {
+                isPreparingExport = false
+                AppLog.error(.backup, "export: archive failed — \(error.localizedDescription)")
+                showTransferAlert(title: "Export Failed", message: error.localizedDescription)
+            }
+        }
     }
 
     // Reports whether the export operation finished or failed.
@@ -109,7 +154,8 @@ extension SettingsView {
         var stagedAttachmentIDs: [UUID] = []
         for attachment in payload.audioAttachments {
             do {
-                try audioStore.importAttachment(attachment)
+                let audioSource = document.assetsDirectory.flatMap { AppBackupArchive.audioFile(for: attachment.attachmentID, in: $0) }
+                try audioStore.importAttachment(attachment, audioSource: audioSource)
                 stagedAttachmentIDs.append(attachment.attachmentID)
             } catch {
                 // Roll back files staged by this import; an ID also referenced by a
@@ -146,6 +192,14 @@ extension SettingsView {
         if let customWords = payload.customWords {
             customWordStore.replaceAll(with: customWords)
         }
+        if let extras = payload.extras {
+            AppBackupExtrasStore.apply(
+                extras,
+                stemsSource: document.assetsDirectory.map { AppBackupArchive.stemsDirectory(in: $0) },
+                breakdownStore: songBreakdownStore,
+                savedKanjiStore: savedKanjiStore
+            )
+        }
         // Applies the parallel review arrays on top of the just-restored words. For a backup
         // exported after the ReviewStore/WordsStore merge this just reapplies the same data
         // that `payload.words` already carries; for an older backup (where review data lived
@@ -166,7 +220,16 @@ extension SettingsView {
         )
         var message = "Imported \(payload.notes.count) notes, \(payload.words.count) words, \(payload.wordLists.count) lists, \(payload.history.count) history entries, and \(payload.reviewStats.count) review records."
         if payload.audioAttachments.isEmpty == false {
-            message += " Restored \(payload.audioAttachments.count) audio attachment(s)."
+            let withAudio = payload.audioAttachments.filter { attachment in
+                attachment.audioData.isEmpty == false
+                    || document.assetsDirectory.flatMap { AppBackupArchive.audioFile(for: attachment.attachmentID, in: $0) } != nil
+            }.count
+            message += withAudio == 0
+                ? " Restored lyric timings for \(payload.audioAttachments.count) audio attachment(s); this backup has no audio files."
+                : " Restored \(withAudio) audio file(s)."
+        }
+        if let extras = payload.extras {
+            message += " Also restored \(extras.breakdowns.count) song breakdowns and \(extras.savedKanji.count) saved kanji."
         }
 
         showTransferAlert(title: "Import Complete", message: message)

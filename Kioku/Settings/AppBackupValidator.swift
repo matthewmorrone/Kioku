@@ -43,6 +43,38 @@ nonisolated enum AppBackupValidator {
         for attachment in payload.audioAttachments {
             try validateCues(attachment.cues ?? [])
         }
+        if let extras = payload.extras {
+            try validateExtras(extras, noteIDs: noteIDs, listIDs: listIDs)
+        }
+    }
+
+    // Checks the version-5 data: references resolve, identifiers are unique, and every name that
+    // becomes a file path or a UserDefaults key is well formed.
+    private static func validateExtras(_ extras: AppBackupExtras, noteIDs: Set<UUID>, listIDs: Set<UUID>) throws {
+        try requireUnique(extras.breakdowns.map(\.noteID), label: "breakdown note identifiers")
+        for breakdown in extras.breakdowns where noteIDs.contains(breakdown.noteID) == false {
+            throw AppBackupValidationError.invalid("a breakdown references a missing note.")
+        }
+        for key in extras.breakdownUserNotes.keys {
+            guard let id = UUID(uuidString: key), noteIDs.contains(id) else {
+                throw AppBackupValidationError.invalid("a breakdown note references a missing note.")
+            }
+        }
+        try requireUnique(extras.savedKanji.map(\.literal), label: "saved-kanji literals")
+        for kanji in extras.savedKanji {
+            guard Set(kanji.sourceNoteIDs).isSubset(of: noteIDs), Set(kanji.wordListIDs).isSubset(of: listIDs) else {
+                throw AppBackupValidationError.invalid("a saved kanji references a missing note or word list.")
+            }
+        }
+        for key in extras.lyricsTranslations.keys where UUID(uuidString: key) == nil {
+            throw AppBackupValidationError.invalid("a lyrics translation is keyed by an invalid attachment identifier.")
+        }
+        for name in extras.stemFiles {
+            guard name.isEmpty == false, name.contains("/") == false, name != ".", name != ".." else {
+                throw AppBackupValidationError.invalid("a stem file name is not a plain file name.")
+            }
+        }
+        try requireUnique(extras.stemFiles, label: "stem file names")
     }
 
     // Verifies karaoke checkpoint ranges. Checkpoints are restored as-is and later

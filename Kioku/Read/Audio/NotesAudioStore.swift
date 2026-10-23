@@ -155,9 +155,17 @@ final class NotesAudioStore: NotesAttachmentDeleting {
 
     // Reads all files for one attachment and returns a backup snapshot.
     // Returns nil if no audio file exists for the attachment (nothing to back up).
-    func exportAttachment(for attachmentID: UUID) -> AudioAttachmentBackup? {
+    // With `includeAudioData` false the snapshot carries no audio bytes (an empty Data): the zip
+    // backup stores the audio file beside the JSON instead of base64-encoding it into it.
+    func exportAttachment(for attachmentID: UUID, includeAudioData: Bool = true) -> AudioAttachmentBackup? {
         guard let audioURL = audioURL(for: attachmentID) else { return nil }
-        guard let audioData = OptionalFileRead.data(at: audioURL, logAs: .backup) else { return nil }
+        let audioData: Data
+        if includeAudioData {
+            guard let bytes = OptionalFileRead.data(at: audioURL, logAs: .backup) else { return nil }
+            audioData = bytes
+        } else {
+            audioData = Data()
+        }
         // Cues carry their checkpoints inline and are the single source of truth, so the backup
         // needs only the cue list. The SRT is regenerated from those cues purely so an older app
         // version (which restored a .srt sidecar) can still decode this backup; `timings` stays nil
@@ -175,7 +183,9 @@ final class NotesAudioStore: NotesAttachmentDeleting {
 
     // Writes the audio file and cues from a backup snapshot back to disk.
     // Safe to call multiple times — existing files are overwritten.
-    func importAttachment(_ backup: AudioAttachmentBackup) throws {
+    // `audioSource` is the extracted audio file of a zip backup; when given, it is copied in
+    // instead of writing `backup.audioData`.
+    func importAttachment(_ backup: AudioAttachmentBackup, audioSource: URL? = nil) throws {
         let ext = (backup.audioFilename as NSString).pathExtension
         let destination = audioDirectory.appendingPathComponent(
             storedFilename(
@@ -184,10 +194,17 @@ final class NotesAudioStore: NotesAttachmentDeleting {
                 fallbackExtension: ext.isEmpty ? "mp3" : ext
             )
         )
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.removeItem(at: destination)
+        // A backup with no audio bytes (JSON export without audio) restores the cues alone.
+        if audioSource != nil || backup.audioData.isEmpty == false {
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            if let audioSource {
+                try FileManager.default.copyItem(at: audioSource, to: destination)
+            } else {
+                try backup.audioData.write(to: destination, options: .atomic)
+            }
         }
-        try backup.audioData.write(to: destination, options: .atomic)
 
         // cues.json is the only persisted truth — no .srt sidecar is written. Prefer the backup's
         // cues; fall back to parsing its (legacy) SRT text so an old cues-less backup still restores.
