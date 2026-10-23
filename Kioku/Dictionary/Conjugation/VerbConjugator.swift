@@ -93,6 +93,61 @@ private extension VerbConjugator {
         ])
     }
 
+    // Volition (食べよう, "let's eat / I'll eat") and its negative まい. Volition has no past:
+    // 食べたろう is past conjecture and lives in presumptiveGroup instead.
+    static func volitionalGroup(volitional: String, negative: String) -> ConjugationGroup {
+        ConjugationGroup(name: "Volitional", rows: [
+            ConjugationRow(label: "Volitional",     surface: volitional),
+            ConjugationRow(label: "Negative (まい)", surface: negative),
+        ])
+    }
+
+    // Conjecture ("probably…") built on the plain forms: modern だろう on all four, plus the literary
+    // たろう past (食べたろう, 読んだろう) that used to be mislabelled as a past volitional.
+    static func presumptiveGroup(plain: String, negative: String, past: String, negativePast: String) -> ConjugationGroup {
+        ConjugationGroup(name: "Presumptive", rows: [
+            ConjugationRow(label: "Presumptive",              surface: plain + "だろう"),
+            ConjugationRow(label: "Negative",                 surface: negative + "だろう"),
+            ConjugationRow(label: "Past",                     surface: past + "だろう"),
+            ConjugationRow(label: "Negative past",            surface: negativePast + "だろう"),
+            ConjugationRow(label: "Past (literary)",          surface: past + "ろう"),
+            ConjugationRow(label: "Negative past (literary)", surface: negativePast + "ろう"),
+        ])
+    }
+
+    // The ば and たら conditionals, each labelled by its construction. たら is built on the た-form
+    // but is not a past-tense condition (食べたら = "if/when (I) eat"), so it is never labelled "Past".
+    static func conditionalGroup(ba: String, negativeBa: String, past: String, negativePast: String) -> ConjugationGroup {
+        ConjugationGroup(name: "Conditional", rows: [
+            ConjugationRow(label: "Conditional (ば)",  surface: ba),
+            ConjugationRow(label: "Negative (ば)",     surface: negativeBa),
+            ConjugationRow(label: "Conditional (たら)", surface: past + "ら"),
+            ConjugationRow(label: "Negative (たら)",    surface: negativePast + "ら"),
+        ])
+    }
+
+    // The connective "without doing" constructions only: ないで on the modern negative, ずに on the
+    // negative-auxiliary stem. That stem is the verb's own 未然形 (あらずに), never ある's suppletive ない.
+    static func withoutDoingGroup(negative: String, negativeStem: String) -> ConjugationGroup {
+        ConjugationGroup(name: "Without doing", rows: [
+            ConjugationRow(label: "Without doing (ないで)", surface: negative + "で"),
+            ConjugationRow(label: "Without doing (ずに)",  surface: negativeStem + "ずに"),
+        ])
+    }
+
+    // Bare negatives outside the ない paradigm, kept apart from the connectives above: literary ず and
+    // ぬ, and the contracted ん. ある has no ん row (あらん reads as the classical volitional あらむ).
+    static func otherNegativesGroup(negativeStem: String, hasContraction: Bool = true) -> ConjugationGroup {
+        var rows = [
+            ConjugationRow(label: "Literary (ず)", surface: negativeStem + "ず"),
+            ConjugationRow(label: "Literary (ぬ)", surface: negativeStem + "ぬ"),
+        ]
+        if hasContraction {
+            rows.append(ConjugationRow(label: "Contracted (ん)", surface: negativeStem + "ん"))
+        }
+        return ConjugationGroup(name: "Other negatives", rows: rows)
+    }
+
     // MARK: I-adjective
 
     // Produces the paradigm for i-adjectives (dictionary form ends in い), e.g. 欲しい, 高い, 良い.
@@ -174,13 +229,8 @@ private extension VerbConjugator {
                 past: stem + "たかった",
                 negativePast: stem + "たくなかった"
             ),
-            fullGroup(
-                name: "Volitional",
-                form: stem + "よう",
-                negative: base + "まい",
-                past: stem + "たろう",
-                negativePast: stem + "なかったろう"
-            ),
+            volitionalGroup(volitional: stem + "よう", negative: base + "まい"),
+            presumptiveGroup(plain: base, negative: stem + "ない", past: stem + "た", negativePast: stem + "なかった"),
             fullGroup(
                 name: "Potential",
                 form: stem + "られる",
@@ -209,21 +259,13 @@ private extension VerbConjugator {
                 past: stem + "させられた",
                 negativePast: stem + "させられなかった"
             ),
-            ConjugationGroup(name: "Conditional", rows: [
-                ConjugationRow(label: "Conditional",   surface: stem + "れば"),
-                ConjugationRow(label: "Negative",      surface: stem + "なければ"),
-                ConjugationRow(label: "Past",          surface: stem + "たら"),
-                ConjugationRow(label: "Negative past", surface: stem + "なかったら"),
-            ]),
+            conditionalGroup(ba: stem + "れば", negativeBa: stem + "なければ", past: stem + "た", negativePast: stem + "なかった"),
             ConjugationGroup(name: "Te-form", rows: [
                 ConjugationRow(label: "Te-form",   surface: stem + "て"),
                 ConjugationRow(label: "Tari-form", surface: stem + "たり"),
             ]),
-            ConjugationGroup(name: "Without doing", rows: [
-                ConjugationRow(label: "Without doing", surface: stem + "ないで"),
-                ConjugationRow(label: "Formal",        surface: stem + "ずに"),
-                ConjugationRow(label: "Classical",     surface: stem + "ぬ／ん"),
-            ]),
+            withoutDoingGroup(negative: stem + "ない", negativeStem: stem),
+            otherNegativesGroup(negativeStem: stem),
             ConjugationGroup(name: "Imperative", rows: [
                 ConjugationRow(label: "Imperative", surface: imperative),
                 ConjugationRow(label: "Negative",   surface: base + "な"),
@@ -268,6 +310,7 @@ private extension VerbConjugator {
 
         // ある's short-form negative is suppletive (ない, not あらない); negBase is the prefix
         // those forms build on, so it collapses to "" instead of stem+aStem for ある alone.
+        // The ず/ぬ auxiliaries are not suppletive and keep the regular stem (あらずに, あらぬ).
         let negBase = isAruIrregular(base) ? "" : stem + aStem
 
         // い-stem/imperative override for the honorific -aru verbs (v5aru); regular godan verbs
@@ -304,13 +347,8 @@ private extension VerbConjugator {
                 past: stem + honorificStem + "たかった",
                 negativePast: stem + honorificStem + "たくなかった"
             ),
-            fullGroup(
-                name: "Volitional",
-                form: stem + oStem + "う",
-                negative: base + "まい",
-                past: ta + "ろう",
-                negativePast: negBase + "なかったろう"
-            ),
+            volitionalGroup(volitional: stem + oStem + "う", negative: base + "まい"),
+            presumptiveGroup(plain: base, negative: negBase + "ない", past: ta, negativePast: negBase + "なかった"),
             fullGroup(
                 name: "Potential",
                 form: stem + eStem + "る",
@@ -339,21 +377,13 @@ private extension VerbConjugator {
                 past: stem + aStem + "せられた",
                 negativePast: stem + aStem + "せられなかった"
             ),
-            ConjugationGroup(name: "Conditional", rows: [
-                ConjugationRow(label: "Conditional",   surface: stem + eStem + "ば"),
-                ConjugationRow(label: "Negative",      surface: negBase + "なければ"),
-                ConjugationRow(label: "Past",          surface: ta + "ら"),
-                ConjugationRow(label: "Negative past", surface: negBase + "なかったら"),
-            ]),
+            conditionalGroup(ba: stem + eStem + "ば", negativeBa: negBase + "なければ", past: ta, negativePast: negBase + "なかった"),
             ConjugationGroup(name: "Te-form", rows: [
                 ConjugationRow(label: "Te-form",   surface: te),
                 ConjugationRow(label: "Tari-form", surface: ta + "り"),
             ]),
-            ConjugationGroup(name: "Without doing", rows: [
-                ConjugationRow(label: "Without doing", surface: negBase + "ないで"),
-                ConjugationRow(label: "Formal",        surface: negBase + "ずに"),
-                ConjugationRow(label: "Classical",     surface: negBase + "ぬ／ん"),
-            ]),
+            withoutDoingGroup(negative: negBase + "ない", negativeStem: stem + aStem),
+            otherNegativesGroup(negativeStem: stem + aStem, hasContraction: isAruIrregular(base) == false),
             ConjugationGroup(name: "Imperative", rows: [
                 ConjugationRow(label: "Imperative", surface: imperative),
                 ConjugationRow(label: "Negative",   surface: base + "な"),
@@ -415,13 +445,8 @@ private extension VerbConjugator {
                 past: prefix + "したかった",
                 negativePast: prefix + "したくなかった"
             ),
-            fullGroup(
-                name: "Volitional",
-                form: prefix + "しよう",
-                negative: prefix + "するまい",
-                past: prefix + "したろう",
-                negativePast: prefix + "しなかったろう"
-            ),
+            volitionalGroup(volitional: prefix + "しよう", negative: prefix + "するまい"),
+            presumptiveGroup(plain: base, negative: prefix + "しない", past: prefix + "した", negativePast: prefix + "しなかった"),
             fullGroup(
                 name: "Potential",
                 form: prefix + "できる",
@@ -450,21 +475,13 @@ private extension VerbConjugator {
                 past: prefix + "させられた",
                 negativePast: prefix + "させられなかった"
             ),
-            ConjugationGroup(name: "Conditional", rows: [
-                ConjugationRow(label: "Conditional",   surface: prefix + "すれば"),
-                ConjugationRow(label: "Negative",      surface: prefix + "しなければ"),
-                ConjugationRow(label: "Past",          surface: prefix + "したら"),
-                ConjugationRow(label: "Negative past", surface: prefix + "しなかったら"),
-            ]),
+            conditionalGroup(ba: prefix + "すれば", negativeBa: prefix + "しなければ", past: prefix + "した", negativePast: prefix + "しなかった"),
             ConjugationGroup(name: "Te-form", rows: [
                 ConjugationRow(label: "Te-form",   surface: prefix + "して"),
                 ConjugationRow(label: "Tari-form", surface: prefix + "したり"),
             ]),
-            ConjugationGroup(name: "Without doing", rows: [
-                ConjugationRow(label: "Without doing", surface: prefix + "しないで"),
-                ConjugationRow(label: "Formal",        surface: prefix + "せずに"),
-                ConjugationRow(label: "Classical",     surface: prefix + "せぬ／ん"),
-            ]),
+            withoutDoingGroup(negative: prefix + "しない", negativeStem: prefix + "せ"),
+            otherNegativesGroup(negativeStem: prefix + "せ"),
             ConjugationGroup(name: "Imperative", rows: [
                 ConjugationRow(label: "Imperative",       surface: prefix + "しろ"),
                 ConjugationRow(label: "Imperative (alt)", surface: prefix + "せよ"),
@@ -488,26 +505,19 @@ private extension VerbConjugator {
                 fullGroup(name: "Polite",     form: prefix + "きます",  negative: prefix + "きません",    past: prefix + "きました",   negativePast: prefix + "きませんでした"),
                 fullGroup(name: "Progressive",form: prefix + "きている", negative: prefix + "きていない",  past: prefix + "きていた",   negativePast: prefix + "きていなかった"),
                 fullGroup(name: "Desire",     form: prefix + "きたい",  negative: prefix + "きたくない",  past: prefix + "きたかった", negativePast: prefix + "きたくなかった"),
-                fullGroup(name: "Volitional", form: prefix + "こよう",  negative: prefix + "くるまい",    past: prefix + "きたろう",   negativePast: prefix + "こなかったろう"),
+                volitionalGroup(volitional: prefix + "こよう", negative: prefix + "くるまい"),
+                presumptiveGroup(plain: base, negative: prefix + "こない", past: prefix + "きた", negativePast: prefix + "こなかった"),
                 fullGroup(name: "Potential",  form: prefix + "こられる", negative: prefix + "こられない",  past: prefix + "こられた",   negativePast: prefix + "こられなかった"),
                 fullGroup(name: "Passive",    form: prefix + "こられる", negative: prefix + "こられない",  past: prefix + "こられた",   negativePast: prefix + "こられなかった"),
                 fullGroup(name: "Causative",  form: prefix + "こさせる", negative: prefix + "こさせない",  past: prefix + "こさせた",   negativePast: prefix + "こさせなかった"),
                 fullGroup(name: "Causative-passive", form: prefix + "こさせられる", negative: prefix + "こさせられない", past: prefix + "こさせられた", negativePast: prefix + "こさせられなかった"),
-                ConjugationGroup(name: "Conditional", rows: [
-                    ConjugationRow(label: "Conditional",   surface: prefix + "くれば"),
-                    ConjugationRow(label: "Negative",      surface: prefix + "こなければ"),
-                    ConjugationRow(label: "Past",          surface: prefix + "きたら"),
-                    ConjugationRow(label: "Negative past", surface: prefix + "こなかったら"),
-                ]),
+                conditionalGroup(ba: prefix + "くれば", negativeBa: prefix + "こなければ", past: prefix + "きた", negativePast: prefix + "こなかった"),
                 ConjugationGroup(name: "Te-form", rows: [
                     ConjugationRow(label: "Te-form",   surface: prefix + "きて"),
                     ConjugationRow(label: "Tari-form", surface: prefix + "きたり"),
                 ]),
-                ConjugationGroup(name: "Without doing", rows: [
-                    ConjugationRow(label: "Without doing", surface: prefix + "こないで"),
-                    ConjugationRow(label: "Formal",        surface: prefix + "こずに"),
-                    ConjugationRow(label: "Classical",     surface: prefix + "こぬ／ん"),
-                ]),
+                withoutDoingGroup(negative: prefix + "こない", negativeStem: prefix + "こ"),
+                otherNegativesGroup(negativeStem: prefix + "こ"),
                 ConjugationGroup(name: "Imperative", rows: [
                     ConjugationRow(label: "Imperative", surface: prefix + "こい"),
                     ConjugationRow(label: "Negative",   surface: base + "な"),
@@ -526,26 +536,19 @@ private extension VerbConjugator {
                 fullGroup(name: "Polite",     form: prefix + "来ます",   negative: prefix + "来ません",    past: prefix + "来ました",   negativePast: prefix + "来ませんでした"),
                 fullGroup(name: "Progressive",form: prefix + "来ている",  negative: prefix + "来ていない",  past: prefix + "来ていた",   negativePast: prefix + "来ていなかった"),
                 fullGroup(name: "Desire",     form: prefix + "来たい",   negative: prefix + "来たくない",  past: prefix + "来たかった", negativePast: prefix + "来たくなかった"),
-                fullGroup(name: "Volitional", form: prefix + "来よう",   negative: prefix + "来るまい",    past: prefix + "来たろう",   negativePast: prefix + "来なかったろう"),
+                volitionalGroup(volitional: prefix + "来よう", negative: prefix + "来るまい"),
+                presumptiveGroup(plain: base, negative: prefix + "来ない", past: prefix + "来た", negativePast: prefix + "来なかった"),
                 fullGroup(name: "Potential",  form: prefix + "来られる",  negative: prefix + "来られない",  past: prefix + "来られた",   negativePast: prefix + "来られなかった"),
                 fullGroup(name: "Passive",    form: prefix + "来られる",  negative: prefix + "来られない",  past: prefix + "来られた",   negativePast: prefix + "来られなかった"),
                 fullGroup(name: "Causative",  form: prefix + "来させる",  negative: prefix + "来させない",  past: prefix + "来させた",   negativePast: prefix + "来させなかった"),
                 fullGroup(name: "Causative-passive", form: prefix + "来させられる", negative: prefix + "来させられない", past: prefix + "来させられた", negativePast: prefix + "来させられなかった"),
-                ConjugationGroup(name: "Conditional", rows: [
-                    ConjugationRow(label: "Conditional",   surface: prefix + "来れば"),
-                    ConjugationRow(label: "Negative",      surface: prefix + "来なければ"),
-                    ConjugationRow(label: "Past",          surface: prefix + "来たら"),
-                    ConjugationRow(label: "Negative past", surface: prefix + "来なかったら"),
-                ]),
+                conditionalGroup(ba: prefix + "来れば", negativeBa: prefix + "来なければ", past: prefix + "来た", negativePast: prefix + "来なかった"),
                 ConjugationGroup(name: "Te-form", rows: [
                     ConjugationRow(label: "Te-form",   surface: prefix + "来て"),
                     ConjugationRow(label: "Tari-form", surface: prefix + "来たり"),
                 ]),
-                ConjugationGroup(name: "Without doing", rows: [
-                    ConjugationRow(label: "Without doing", surface: prefix + "来ないで"),
-                    ConjugationRow(label: "Formal",        surface: prefix + "来ずに"),
-                    ConjugationRow(label: "Classical",     surface: prefix + "来ぬ／ん"),
-                ]),
+                withoutDoingGroup(negative: prefix + "来ない", negativeStem: prefix + "来"),
+                otherNegativesGroup(negativeStem: prefix + "来"),
                 ConjugationGroup(name: "Imperative", rows: [
                     ConjugationRow(label: "Imperative", surface: prefix + "来い"),
                     ConjugationRow(label: "Negative",   surface: base + "な"),

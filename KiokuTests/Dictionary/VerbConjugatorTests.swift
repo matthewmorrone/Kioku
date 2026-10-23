@@ -34,9 +34,28 @@ final class VerbConjugatorTests: XCTestCase {
     func test_ichidan_naideSezu() {
         let groups = VerbConjugator.conjugationGroups(for: "食べる", verbClass: .ichidan)
         let g = groups.first(where: { $0.name == "Without doing" })!
-        XCTAssertEqual(g.rows[0].surface, "食べないで")
-        XCTAssertEqual(g.rows[1].surface, "食べずに")
-        XCTAssertEqual(g.rows[2].surface, "食べぬ／ん")
+        XCTAssertEqual(g.rows.map(\.surface), ["食べないで", "食べずに"])
+        let other = groups.first(where: { $0.name == "Other negatives" })!
+        XCTAssertEqual(other.rows.map(\.surface), ["食べず", "食べぬ", "食べん"])
+    }
+
+    func test_ichidan_volitionalHasNoPast() {
+        // 食べたろう is past conjecture, not a past volitional
+        let groups = VerbConjugator.conjugationGroups(for: "食べる", verbClass: .ichidan)
+        let volitional = groups.first(where: { $0.name == "Volitional" })!
+        XCTAssertEqual(volitional.rows.map(\.surface), ["食べよう", "食べるまい"])
+        let presumptive = groups.first(where: { $0.name == "Presumptive" })!
+        XCTAssertEqual(presumptive.rows.map(\.surface),
+                       ["食べるだろう", "食べないだろう", "食べただろう", "食べなかっただろう", "食べたろう", "食べなかったろう"])
+    }
+
+    func test_ichidan_conditionalLabelsNameTheConstruction() {
+        // たら is built on the た-form but is not a past-tense condition
+        let groups = VerbConjugator.conjugationGroups(for: "食べる", verbClass: .ichidan)
+        let conditional = groups.first(where: { $0.name == "Conditional" })!
+        XCTAssertEqual(conditional.rows.map(\.label),
+                       ["Conditional (ば)", "Negative (ば)", "Conditional (たら)", "Negative (たら)"])
+        XCTAssertEqual(conditional.rows.map(\.surface), ["食べれば", "食べなければ", "食べたら", "食べなかったら"])
     }
 
     func test_ichidan_nounForm() {
@@ -72,9 +91,13 @@ final class VerbConjugatorTests: XCTestCase {
     func test_godan_naideSezu() {
         let groups = VerbConjugator.conjugationGroups(for: "探す", verbClass: .godan)
         let g = groups.first(where: { $0.name == "Without doing" })!
-        XCTAssertEqual(g.rows[0].surface, "探さないで")
-        XCTAssertEqual(g.rows[1].surface, "探さずに")
-        XCTAssertEqual(g.rows[2].surface, "探さぬ／ん")
+        XCTAssertEqual(g.rows.map(\.surface), ["探さないで", "探さずに"])
+    }
+
+    func test_godan_mu_presumptiveLiteraryPast() {
+        let groups = VerbConjugator.conjugationGroups(for: "読む", verbClass: .godan)
+        let presumptive = groups.first(where: { $0.name == "Presumptive" })!
+        XCTAssertEqual(presumptive.rows[4].surface, "読んだろう")
     }
 
     // MARK: Suru
@@ -91,9 +114,9 @@ final class VerbConjugatorTests: XCTestCase {
     func test_suru_naideSezu() {
         let groups = VerbConjugator.conjugationGroups(for: "勉強する", verbClass: .suru)
         let g = groups.first(where: { $0.name == "Without doing" })!
-        XCTAssertEqual(g.rows[0].surface, "勉強しないで")
-        XCTAssertEqual(g.rows[1].surface, "勉強せずに")
-        XCTAssertEqual(g.rows[2].surface, "勉強せぬ／ん")
+        XCTAssertEqual(g.rows.map(\.surface), ["勉強しないで", "勉強せずに"])
+        let other = groups.first(where: { $0.name == "Other negatives" })!
+        XCTAssertEqual(other.rows.map(\.surface), ["勉強せず", "勉強せぬ", "勉強せん"])
     }
 
     // MARK: Kuru
@@ -157,6 +180,11 @@ final class VerbConjugatorTests: XCTestCase {
         XCTAssertEqual(plain.rows[2].surface, "あった")
         let polite = groups.first(where: { $0.name == "Polite" })!
         XCTAssertEqual(polite.rows[1].surface, "ありません")
+        // The ず/ぬ auxiliaries take ある's own stem: あらずに, not a bare ずに
+        let withoutDoing = groups.first(where: { $0.name == "Without doing" })!
+        XCTAssertEqual(withoutDoing.rows[1].surface, "あらずに")
+        let other = groups.first(where: { $0.name == "Other negatives" })!
+        XCTAssertEqual(other.rows.map(\.surface), ["あらず", "あらぬ"])
     }
 
     func test_honorificGodanAru_kudasaru() {
