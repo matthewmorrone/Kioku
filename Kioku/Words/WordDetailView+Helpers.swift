@@ -225,19 +225,25 @@ extension WordDetailView {
             // Derivation description for the header — names the base word + affix for derived
             // forms (弱さ, お酒, 生まれる, 生きてゆく). The resolver hands the analyzer the JMdict POS
             // tags of any candidate lemma so it can confirm and label the base. nil → plain POS line.
-            let detected = await Task { @MainActor in
-                DerivationAnalyzer.analyze(
+            // A lexical compound verb (巡り会う → 巡る + 会う) has no auxiliary for the analyzer to find,
+            // so CompoundVerbSplitter names its two verbs when nothing else matched.
+            let detected = await Task { @MainActor () -> DerivationAnalyzer.Result? in
+                let senseTags: (String) -> [[String]] = { lemma in
+                    let entries = (try? store.lookup(surface: lemma, mode: .kanjiAndKana)) ?? []
+                    return entries.flatMap { $0.senses.compactMap(\.pos) }.map { $0.components(separatedBy: ",") }
+                }
+                let analyzed = DerivationAnalyzer.analyze(
                     surface: analysisForm, components: componentLemmas,
-                    baseResolver: { lemma in
-                        let entries = (try? store.lookup(surface: lemma, mode: .kanjiAndKana)) ?? []
-                        return entries.flatMap { $0.senses.compactMap(\.pos) }
-                            .flatMap { $0.components(separatedBy: ",") }
-                    },
+                    baseResolver: { senseTags($0).flatMap { $0 } },
                     glossResolver: { lemma in
                         let entries = (try? store.lookup(surface: lemma, mode: .kanjiAndKana)) ?? []
                         return entries.first?.senses.first?.glosses.first
                     }
                 )
+                if let analyzed { return analyzed }
+                return CompoundVerbSplitter.lexicalParts(verb: analysisForm, segmenter: segmenter, senseTags: senseTags).map { parts in
+                    DerivationAnalyzer.Result(summary: "Compound verb — \(parts.base) + \(parts.auxiliary)", compoundVerbParts: parts)
+                }
             }.value
             derivation = detected
 

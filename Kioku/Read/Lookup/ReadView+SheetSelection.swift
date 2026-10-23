@@ -641,9 +641,9 @@ extension ReadView {
             surface: surface,
             edges: sublatticeEdgesForCurrentSelectedSegment(),
             segmenter: segmenter,
-            posTags: { candidate in
+            senseTags: { candidate in
                 let entries = (try? dictionaryStore.lookup(surface: candidate, mode: .kanjiAndKana)) ?? []
-                return entries.flatMap { $0.senses.compactMap(\.pos) }.flatMap { $0.components(separatedBy: ",") }
+                return entries.flatMap { $0.senses.compactMap(\.pos) }.map { $0.components(separatedBy: ",") }
             }
         )
     }

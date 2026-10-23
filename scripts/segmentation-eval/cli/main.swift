@@ -209,13 +209,13 @@ if mode == "helpers" {
 }
 
 if mode == "compounds" {
-    let posTags: (String) -> [String] = { candidate in
+    let senseTags: (String) -> [[String]] = { candidate in
         let entries = (try? store.lookup(surface: candidate, mode: .kanjiAndKana)) ?? []
-        return entries.flatMap { $0.senses.compactMap(\.pos) }.flatMap { $0.components(separatedBy: ",") }
+        return entries.flatMap { $0.senses.compactMap(\.pos) }.map { $0.components(separatedBy: ",") }
     }
     while let line = readLine() {
         let edges = segmenter.longestMatchResult(for: line).latticeEdges
-        if let parts = CompoundVerbSplitter.parts(surface: line, edges: edges, segmenter: segmenter, posTags: posTags) {
+        if let parts = CompoundVerbSplitter.parts(surface: line, edges: edges, segmenter: segmenter, senseTags: senseTags) {
             print("\(line)\t\(parts.base) + \(parts.auxiliary)")
         }
     }

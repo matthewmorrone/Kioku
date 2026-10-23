@@ -40,7 +40,7 @@ files the CLI compiles — add whatever the compiler reports missing.
 | `lemmas` | what each surface resolves to, with scores (input to the deinflection audit) |
 | `lexicon` | stdin surfaces → `surface<TAB>lemma=…<TAB>candidates=…`: the lookup sheet's lemma line (Lexicon.inflectionInfo) and its list of possibilities (Lexicon.lookupCandidates), from the app's real Lexicon |
 | `helpers` | stdin surfaces → `surface<TAB>lemma + helper…`: the helper words deinflection folds into each surface (DeinflectionRule.helper), as the lookup sheet's lemma line names them |
-| `compounds` | stdin surfaces → `surface<TAB>base + auxiliary` for each one the lookup sheet's subtitle names as a compound verb (CompoundVerbSplitter). Feed it every common verb headword to review the splits after changing the splitter or `DerivationAnalyzer.auxiliaryVerbs`. |
+| `compounds` | stdin surfaces → `surface<TAB>base + second verb` for each one the lookup sheet's subtitle names as a compound verb (CompoundVerbSplitter): auxiliary compounds (思い出す) and lexical ones (巡り会う → 巡る + 会う). Feed it every common verb headword to review the splits after changing the splitter or `DerivationAnalyzer.auxiliaryVerbs`. |
 | `oracle` | stdin gold jsonl → for each cut-through, whether the gold parse is in the lattice at all and its node-cost margin. On 2026-09-20 half of all cut-throughs had **no lattice edge** for the gold token — measure this before tuning costs. |
 
 Environment: `DB=<path>` another dictionary file · `STRATEGY=local` the greedy walk with its demotion list
