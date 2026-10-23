@@ -40,17 +40,10 @@ extension LyricsView {
     // the cue or none of its words could be found in it.
     private func breakdownWordBubbles(_ placement: SongBreakdownPlacement, in cueRange: NSRange) -> [LyricWordBubble]? {
         guard let line = placement.line(overlapping: cueRange) else { return nil }
-        let visibility = SongWordVisibility(
-            showsParticles: showsParticleBubbles,
-            showsKatakana: showsKatakanaBubbles,
-            showsVocalizations: showsVocalizationBubbles,
-            showsPatterns: false
-        )
+        let filter = meaningFilter
         var bubbles: [LyricWordBubble] = []
         for placed in line.words {
-            let surface = placed.word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard NSIntersectionRange(placed.range, cueRange).length > 0,
-                  showsBubble(forSurface: surface), visibility.shows(placed.word) else { continue }
+            guard NSIntersectionRange(placed.range, cueRange).length > 0, filter.allows(breakdownWord: placed.word) else { continue }
             bubbles.append(LyricWordBubble(noteRange: placed.range, gloss: Self.shortGloss(placed.word.definition)))
         }
         return bubbles.isEmpty ? nil : bubbles
@@ -61,26 +54,28 @@ extension LyricsView {
     // are off).
     private func dictionaryWordBubbles(in cueRange: NSRange) -> [LyricWordBubble] {
         guard let dictionaryGloss else { return [] }
+        let filter = meaningFilter
         return segmentationRanges.compactMap { range in
             let nsRange = NSRange(range, in: noteText)
             guard nsRange.length > 0, NSIntersectionRange(nsRange, cueRange).length > 0 else { return nil }
             let surface = String(noteText[range])
-            guard showsBubble(forSurface: surface),
-                  showsParticleBubbles || isParticle?(nsRange.location, surface) != true,
+            guard filter.allows(dictionaryWord: surface, at: nsRange.location),
                   let gloss = dictionaryGloss(nsRange.location, surface) else { return nil }
             return LyricWordBubble(noteRange: nsRange, gloss: Self.shortGloss(gloss))
         }
     }
 
-    // Whether a word may get a bubble at all, by its spelling and the Bubbles menu: never for
-    // punctuation (a "（" the breakdown model was asked to gloss) or words in Latin letters — only
-    // Japanese script counts — and not for katakana words, or the loanwords among them, while
-    // their options are off.
-    private func showsBubble(forSurface surface: String) -> Bool {
-        guard surface.contains(where: \.isLetter), ScriptClassifier.containsJapanese(surface) else { return false }
-        if showsKatakanaBubbles == false, ScriptClassifier.isKatakanaWord(surface) { return false }
-        if showsLoanwordBubbles == false, isLoanword?(surface) == true { return false }
-        return true
+    // Which words get a bubble: the shared lyric-word filter, from this card's toggles and the
+    // Read view's particle and loanword checks.
+    private var meaningFilter: LyricWordMeaningFilter {
+        LyricWordMeaningFilter(
+            showsParticles: showsParticleBubbles,
+            showsKatakana: showsKatakanaBubbles,
+            showsVocalizations: showsVocalizationBubbles,
+            showsLoanwords: showsLoanwordBubbles,
+            isParticle: isParticle,
+            isLoanword: isLoanword
+        )
     }
 
     // A meaning short enough for a bubble: its first sense, up to the first semicolon or comma —
@@ -99,36 +94,18 @@ extension LyricsView {
         return trimmed
     }
 
-    // When a word's bubble appears: when it's sung — the first karaoke checkpoint reaching its
-    // first character, else its share of the cue's span when the cue has no checkpoints — but no
-    // later than bubbleDeadlineMs, so a word timed at the line's very end (or past it, from a late
-    // alignment) still gets its bubble before the card moves on.
+    // When a word's bubble appears: when it's sung, brought forward to the line's deadline at the
+    // latest (LyricWordTiming, the rule the full-screen word view follows too).
     private func wordStartMs(_ bubble: LyricWordBubble, cueAt index: Int, cueSpan: NSRange) -> Int {
         guard index < cues.count else { return 0 }
         let cue = cues[index]
-        let local = bubble.noteRange.location - cueSpan.location
-        let checkpoints = cue.checkpoints.sorted { $0.charOffsetInCue < $1.charOffsetInCue }
-        let sungMs: Int
-        if let hit = checkpoints.first(where: { $0.charOffsetInCue + max($0.charLength, 1) > local }) {
-            sungMs = hit.timeMs
-        } else if let last = checkpoints.last {
-            sungMs = last.timeMs
-        } else {
-            sungMs = cue.startMs + (cue.endMs - cue.startMs) * max(0, local) / max(1, cueSpan.length)
-        }
-        return min(sungMs, bubbleDeadlineMs(forCueAt: index))
+        return LyricWordTiming.startMs(
+            localOffset: bubble.noteRange.location - cueSpan.location,
+            spanLength: cueSpan.length,
+            cue: cue,
+            checkpoints: LyricWordTiming.sortedCheckpoints(cue)
+        )
     }
-
-    // The latest a line's bubbles may appear: bubbleLeadMs before the cue ends (when the card moves
-    // to the next line), and never before the cue starts — a line shorter than that shows every
-    // bubble at once.
-    private func bubbleDeadlineMs(forCueAt index: Int) -> Int {
-        let cue = cues[index]
-        return max(cue.startMs, cue.endMs - Self.bubbleLeadMs)
-    }
-
-    // How long the last bubbles of a line stay up, at least, before the card moves on.
-    static let bubbleLeadMs = 400
 
     // A word's range in the card's text, clipped to it (a word straddling the cue's edge keeps its
     // visible part).
@@ -180,7 +157,7 @@ extension LyricsView {
         guard isMoving == false else { return }
         var waitMs = 350
         if line == activeIndex, line < cues.count {
-            waitMs = min(waitMs, max(0, bubbleDeadlineMs(forCueAt: line) - controller.currentTimeMs))
+            waitMs = min(waitMs, max(0, LyricWordTiming.deadlineMs(for: cues[line]) - controller.currentTimeMs))
         }
         try? await Task.sleep(for: .milliseconds(waitMs))
         guard Task.isCancelled == false else { return }

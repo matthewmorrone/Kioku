@@ -333,6 +333,8 @@ extension ReadView {
                 furiganaBySegmentLocation: document.furiganaBySegmentLocation,
                 furiganaLengthBySegmentLocation: document.furiganaLengthBySegmentLocation,
                 dictionaryGloss: { location, surface in lyricWordGloss(at: location, surface: surface) },
+                isParticle: { location, surface in isLyricParticle(at: location, surface: surface) },
+                isLoanword: { isLyricLoanword($0) },
                 noteID: document.activeNoteID,
                 onPlayRandom: { ReadNoteNavigation.shared.isRandomPlaybackRequested = true },
                 onOpenLyrics: { openLyricsFromWordFocus() },

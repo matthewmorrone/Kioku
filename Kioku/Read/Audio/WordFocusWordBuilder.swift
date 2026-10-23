@@ -23,7 +23,7 @@ enum WordFocusWordBuilder {
         for (index, cue) in cues.enumerated() {
             guard SubtitleParser.isNonSpeechCue(cue.text.trimmingCharacters(in: .whitespacesAndNewlines)) == false,
                   let span = cueSpan(at: index, cue: cue, highlightRanges: highlightRanges, note: note) else { continue }
-            let checkpoints = cue.checkpoints.sorted { $0.charOffsetInCue < $1.charOffsetInCue }
+            let checkpoints = LyricWordTiming.sortedCheckpoints(cue)
             var cursor = firstSegment(endingAfter: span.location, in: segments)
             while cursor < segments.count, segments[cursor].location < NSMaxRange(span) {
                 let clipped = NSIntersectionRange(segments[cursor], span)
@@ -31,7 +31,13 @@ enum WordFocusWordBuilder {
                 guard clipped.length > 0 else { continue }
                 let surface = note.substring(with: clipped)
                 guard surface.contains(where: \.isLetter) else { continue }
-                let sungMs = max(lastStartMs, startMs(of: clipped, in: span, cue: cue, checkpoints: checkpoints))
+                // The same sung time the lyrics card's bubbles use, last words brought forward included.
+                let sungMs = max(lastStartMs, LyricWordTiming.startMs(
+                    localOffset: clipped.location - span.location,
+                    spanLength: span.length,
+                    cue: cue,
+                    checkpoints: checkpoints
+                ))
                 lastStartMs = sungMs
                 words.append(WordFocusWord(
                     id: clipped.location,
@@ -73,15 +79,6 @@ enum WordFocusWordBuilder {
             if NSMaxRange(segments[mid]) <= location { low = mid + 1 } else { high = mid }
         }
         return low
-    }
-
-    // When a word is sung: the first karaoke checkpoint reaching its first character, else the
-    // cue's last checkpoint, else its share of the cue's span.
-    private static func startMs(of word: NSRange, in span: NSRange, cue: SubtitleCue, checkpoints: [CueCharTiming]) -> Int {
-        let local = word.location - span.location
-        if let hit = checkpoints.first(where: { $0.charOffsetInCue + max($0.charLength, 1) > local }) { return hit.timeMs }
-        if let last = checkpoints.last { return last.timeMs }
-        return cue.startMs + (cue.endMs - cue.startMs) * max(0, local) / max(1, span.length)
     }
 
     // The word split into runs: each furigana entry that starts inside it covers its kanji run, and

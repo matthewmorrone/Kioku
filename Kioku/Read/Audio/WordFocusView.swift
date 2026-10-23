@@ -16,9 +16,20 @@ struct WordFocusView: View {
     // A word's dictionary meaning given its note location and surface; supplied by the Read view,
     // which owns the dictionary. Nil (previews) shows no meanings.
     var dictionaryGloss: ((Int, String) -> String?)? = nil
+    // Whether the dictionary counts a word as a particle (given its note location and surface), and
+    // whether a word is a katakana loanword — the Read view's checks the lyrics card uses too, for
+    // hiding the meanings of the kinds of word the shared filters hide. Nil (previews) counts none.
+    var isParticle: ((Int, String) -> Bool)? = nil
+    var isLoanword: ((String) -> Bool)? = nil
     // The note's id, to find its song breakdown, whose meanings come before the dictionary's.
     var noteID: UUID? = nil
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
+    // The word filters shared with the lyrics card's bubbles and the Breakdown (LyricWordMeaningFilter):
+    // a hidden kind of word still takes its turn here, without its meaning.
+    @AppStorage(BreakdownListenSettings.showParticlesKey) private var showsParticles = BreakdownListenSettings.defaultShowParticles
+    @AppStorage(BreakdownListenSettings.showKatakanaKey) private var showsKatakana = BreakdownListenSettings.defaultShowKatakana
+    @AppStorage(BreakdownListenSettings.showVocalizationsKey) private var showsVocalizations = BreakdownListenSettings.defaultShowVocalizations
+    @AppStorage(LyricsPopupSettings.showLoanwordBubblesKey) private var showsLoanwords = LyricsPopupSettings.defaultShowLoanwordBubbles
     // Plays a random other song, keeping this view open.
     var onPlayRandom: () -> Void = {}
     // Top-bar jumps from the current word: its place in the lyrics view, the breakdown (given the
@@ -232,16 +243,31 @@ struct WordFocusView: View {
     }
 
     // Looks up the meanings of the words on screen (and one further each way, so the next
-    // step has its meaning ready), once each: the breakdown's, else the dictionary's.
+    // step has its meaning ready), once each: the breakdown's, else the dictionary's, each only
+    // where the shared filter lets that word have one (the same words that get a bubble).
     private func loadGlosses(around index: Int) async {
+        let filter = LyricWordMeaningFilter(
+            showsParticles: showsParticles,
+            showsKatakana: showsKatakana,
+            showsVocalizations: showsVocalizations,
+            showsLoanwords: showsLoanwords,
+            isParticle: isParticle,
+            isLoanword: isLoanword
+        )
         for i in (index - 2)...(index + 2) where words.indices.contains(i) && glosses[words[i].id] == nil {
             let word = words[i]
             let wordRange = NSRange(location: word.id, length: (word.surface as NSString).length)
-            let fromBreakdown = breakdownPlacement?.words(overlapping: wordRange)
-                .lazy.compactMap { LyricsView.shortGloss($0.word.definition) }.first
-            glosses[word.id] = fromBreakdown
-                ?? dictionaryGloss?(word.id, word.surface).flatMap(LyricsView.shortGloss)
-                ?? ""
+            let placed = breakdownPlacement?.words(overlapping: wordRange) ?? []
+            let fromBreakdown = placed.lazy
+                .filter { filter.allows(breakdownWord: $0.word) }
+                .compactMap { LyricsView.shortGloss($0.word.definition) }.first
+            // A word the breakdown covers but whose kind is hidden gets no dictionary meaning either;
+            // one whose breakdown meaning is just too long for here falls back to the dictionary's.
+            let isHidden = placed.contains { filter.allows(breakdownWord: $0.word) == false }
+            let fromDictionary = isHidden == false && filter.allows(dictionaryWord: word.surface, at: word.id)
+                ? dictionaryGloss?(word.id, word.surface).flatMap(LyricsView.shortGloss)
+                : nil
+            glosses[word.id] = fromBreakdown ?? fromDictionary ?? ""
         }
     }
 }
