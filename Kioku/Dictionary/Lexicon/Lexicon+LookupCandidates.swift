@@ -127,12 +127,16 @@ nonisolated extension Lexicon {
     }
 
     // True when `surface` is kana and the entry is a word normally written that way: no kanji form,
-    // or JMdict's "usually written using kana alone" (uk) on a sense. Such entries are what a kana
-    // surface most likely is, ranked or not; a kanji word that merely reads the same is not.
+    // JMdict's "usually written using kana alone" (uk) on a sense, or `surface` tagged common while
+    // none of the kanji forms is (the particle の, whose 乃 and 之 are rare, ahead of 野). Such
+    // entries are what a kana surface most likely is, ranked or not; a kanji word that merely
+    // reads the same is not.
     private func isWrittenInKana(_ entry: DictionaryEntry, surface: String) -> Bool {
         guard ScriptClassifier.containsKanji(surface) == false else { return false }
         if entry.kanjiForms.isEmpty { return true }
-        return entry.senses.contains { ($0.misc ?? "").split(separator: ",").contains("uk") }
+        if entry.senses.contains(where: { ($0.misc ?? "").split(separator: ",").contains("uk") }) { return true }
+        let kanaIsCommon = entry.kanaForms.contains { $0.text == surface && $0.priority?.isEmpty == false }
+        return kanaIsCommon && entry.kanjiForms.allSatisfy { $0.priority?.isEmpty != false }
     }
 
     // The candidate to show before the user picks, or nil when the form is genuinely ambiguous.
