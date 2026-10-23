@@ -539,31 +539,63 @@ struct ContentView: View {
             }
 
             // Stage 1 — fast path: open the read-only SQLite handle so the dictionary search bar is
-            // usable, AND build the surface-reading/frequency map (a ~0.3s scan) so the lookup/split
-            // frequency readout can resolve scores now, instead of waiting for the slow trie+lexicon.
+            // usable at once.
             let earlyStore = try? DictionaryStore()
-            var earlyReadingData: [String: SurfaceReadingData]? = nil
             if let earlyStore {
-                earlyReadingData = try? StartupTimer.measure("fetchSurfaceReadingData (early)") {
-                    try earlyStore.fetchSurfaceReadingData()
-                }
-                let publishedReadingData = earlyReadingData
                 await MainActor.run {
                     if readResources.dictionaryStore == nil {
                         readResources.dictionaryStore = earlyStore
                         StartupTimer.mark("dictionaryStore published (fast path)")
                     }
-                    if let publishedReadingData {
-                        readResources.surfaceReadingData = SurfaceReadingDataMap(publishedReadingData)
-                        StartupTimer.mark("surfaceReadingData published (early)")
-                    }
                 }
             }
 
-            // Stage 2 — slow path: full segmenter/lexicon build + DictionaryStore prewarming. Reuses
-            // the reading map already built above so it isn't scanned a second time.
-            let result = Self.makeReadResources(prebuiltSurfaceReadingData: earlyReadingData)
+            // The surface-reading/frequency map (~0.8 s scan) on the fast-path connection, beside
+            // Stage 2 rather than ahead of it, published as soon as it lands so the lookup/split
+            // frequency readout doesn't wait for the trie and lexicon.
+            async let earlyReadingData: [String: SurfaceReadingData]? = {
+                guard let earlyStore else { return nil }
+                let readingData = try? StartupTimer.measure("fetchSurfaceReadingData (early)") {
+                    try earlyStore.fetchSurfaceReadingData()
+                }
+                if let readingData {
+                    await MainActor.run {
+                        readResources.surfaceReadingData = SurfaceReadingDataMap(readingData)
+                        StartupTimer.mark("surfaceReadingData published (early)")
+                    }
+                }
+                return readingData
+            }()
+
+            // Stage 2 — slow path: full segmenter build + DictionaryStore prewarming.
+            let result = await Self.makeReadResources()
             let rankStore = result.dictionaryStore
+
+            // The lexicon needs the reading map; a failed early scan is retried on Stage 2's store.
+            var surfaceReadingData = await earlyReadingData ?? [:]
+            if surfaceReadingData.isEmpty, let store = result.dictionaryStore {
+                do { surfaceReadingData = try StartupTimer.measure("fetchSurfaceReadingData") {
+                    try store.fetchSurfaceReadingData()
+                }} catch { AppLog.error(.dictionary, "fetchSurfaceReadingData failed: \(error)") }
+            }
+            var lexicon: Lexicon?
+            if let deinflector = result.deinflector {
+                lexicon = StartupTimer.measure("Lexicon.init") {
+                    Lexicon(
+                        dictionaryStore: result.dictionaryStore,
+                        segmenter: result.segmenter,
+                        deinflector: deinflector,
+                        surfaceReadingData: surfaceReadingData
+                    )
+                }
+            } else {
+                AppLog.error(.dictionary, "Lexicon data surface initialization failed: missing deinflector")
+            }
+            let publishedLexicon = lexicon
+            let publishedReadingData = SurfaceReadingDataMap(surfaceReadingData)
+            let builtSegmenter = result.segmenter
+            let builtStore = result.dictionaryStore
+            let builtKanjiReadingFallback = result.kanjiReadingFallback
             await MainActor.run {
                 // Preserve the placeholder Segmenter's identity: any closure that captured a reference to it before this
                 // point — e.g. a SwiftUI view's implicit `self` capture inside a UIKit-bridged
@@ -572,26 +604,26 @@ struct ContentView: View {
                 // forever because readResources.segmenter got replaced out from under it.
                 let publishedSegmenter: any TextSegmenting
                 if let existingSegmenter = readResources.segmenter as? Segmenter,
-                   let newSegmenter = result.segmenter as? Segmenter {
+                   let newSegmenter = builtSegmenter as? Segmenter {
                     existingSegmenter.reconfigure(from: newSegmenter)
                     publishedSegmenter = existingSegmenter
                 } else {
-                    publishedSegmenter = result.segmenter
+                    publishedSegmenter = builtSegmenter
                 }
 
                 readResources = ReadResources(
                     segmenter: publishedSegmenter,
-                    dictionaryStore: result.dictionaryStore,
-                    lexicon: result.lexicon,
-                    surfaceReadingData: result.surfaceReadingData,
-                    kanjiReadingFallback: result.kanjiReadingFallback,
+                    dictionaryStore: builtStore,
+                    lexicon: publishedLexicon,
+                    surfaceReadingData: publishedReadingData,
+                    kanjiReadingFallback: builtKanjiReadingFallback,
                     // Filled by the follow-up below: nothing on the startup path reads it.
                     frequencyRankBySurface: readResources.frequencyRankBySurface,
                     // Ready only with a dictionary behind the segmenter. Without one (a fresh
                     // install whose download hasn't finished) the trie is empty, and the Read tab
                     // would segment the open note character by character and persist that, after
                     // which the real dictionary only refreshes furigana over the bad segments.
-                    ready: result.dictionaryStore != nil,
+                    ready: builtStore != nil,
                     segmenterRevision: currentRevision + 1
                 )
                 StartupTimer.mark("readResourcesReady published to UI")
@@ -612,164 +644,6 @@ struct ContentView: View {
                 }
             }
         }
-    }
-
-    // Builds the read-tab segmenter and dictionary store used for furigana lookup.
-    private nonisolated static func makeReadResources(
-        prebuiltSurfaceReadingData: [String: SurfaceReadingData]? = nil
-    ) -> (segmenter: any TextSegmenting, dictionaryStore: DictionaryStore?, lexicon: Lexicon?, surfaceReadingData: SurfaceReadingDataMap, kanjiReadingFallback: KanjiReadingFallbackMap) {
-        StartupTimer.mark("makeReadResources started")
-        let overallStart = CFAbsoluteTimeGetCurrent()
-
-        var trie = DictionaryTrie()
-        var dictionaryStore: DictionaryStore?
-        var lexicon: Lexicon?
-        var surfaceReadingData: [String: SurfaceReadingData] = [:]
-        var kanjiReadingFallback: [Character: String] = [:]
-        var deinflector: Deinflector?
-        // Per-entry POS bits, captured from the same surface-data scan that builds the trie.
-        // Threaded into the trie-Viterbi Segmenter so its lemma-candidate POS gate can tell a
-        // verb (する) from a noun — without it the gate sees all-zero bits and drops every
-        // deinflected verb candidate (e.g. した → する).
-        var partOfSpeechByEntryID: [Int: UInt64] = [:]
-
-        do {
-            let store = try StartupTimer.measure("DictionaryStore.init") {
-                try DictionaryStore()
-            }
-            dictionaryStore = store
-
-            // Populate the surface → canonical entry id map before publishing so all later
-            // saved-word identity lookups (Add All, prewarm, CSV import) become hashtable
-            // hits instead of per-surface SQL — eliminates the fallback storm that used to
-            // dominate Add All latency.
-            do { try StartupTimer.measure("populateCanonicalEntryIDMap") {
-                try store.populateCanonicalEntryIDMap()
-            }} catch {
-                // An empty map makes every saved-word and extracted-vocab lookup miss at once
-                // while segmentation still looks healthy, so a Debug build stops here.
-                AppLog.error(.dictionary, "populateCanonicalEntryIDMap failed: \(error)")
-                assertionFailure("populateCanonicalEntryIDMap failed: \(error)")
-            }
-
-            // ent_seq ⇄ row-id maps, so saved words keyed by the stable JMdict ent_seq can resolve
-            // to the current (rebuild-unstable) row id.
-            do { try StartupTimer.measure("populateEntSeqMaps") {
-                try store.populateEntSeqMaps()
-            }} catch { AppLog.error(.dictionary, "populateEntSeqMaps failed: \(error)") }
-
-            // Surface → POS bits map. Used by Lexicon's deinflection pruning to gate
-            // candidates without per-call SQL — the old hot path hit `posBits(for:)`
-            // hundreds of times during a single tap because every BFS-generated
-            // deinflection candidate needed an entry lookup just to check POS.
-            do { try StartupTimer.measure("populateSurfacePOSBitsMap") {
-                try store.populateSurfacePOSBitsMap()
-            }} catch { AppLog.error(.dictionary, "populateSurfacePOSBitsMap failed: \(error)") }
-
-            // entry_id → JLPT level map. Backs the Words JLPT filter and the Flashcards/Multiple
-            // Choice level pickers with O(1) per-saved-word lookups instead of SQL. Empty (and
-            // harmless) on a dictionary built before the entry_jlpt_level migration.
-            do { try StartupTimer.measure("populateJLPTLevelMap") {
-                try store.populateJLPTLevelMap()
-            }} catch { AppLog.error(.dictionary, "populateJLPTLevelMap failed: \(error)") }
-
-            // Reuse the map already built on the Stage 1 fast path when available, so the heavy
-            // surface-reading scan isn't run twice.
-            if let prebuiltSurfaceReadingData {
-                surfaceReadingData = prebuiltSurfaceReadingData
-            } else {
-                do { surfaceReadingData = try StartupTimer.measure("fetchSurfaceReadingData") {
-                    try store.fetchSurfaceReadingData()
-                }} catch { AppLog.error(.dictionary, "fetchSurfaceReadingData failed: \(error)") }
-            }
-
-            // Last-resort per-kanji furigana source. Loaded alongside the word-level map so any
-            // kanji without a dictionary word/lemma reading still gets *some* ruby (see
-            // KanjiReadingFallbackMap). Cheap relative to the 327k-entry surface map (~13k kanji).
-            do { kanjiReadingFallback = try StartupTimer.measure("fetchKanjiReadingFallbackMap") {
-                try store.fetchKanjiReadingFallbackMap()
-            }} catch { AppLog.error(.dictionary, "fetchKanjiReadingFallbackMap failed: \(error)") }
-
-            do {
-                // The trie saved on an earlier launch for this exact dictionary file, when there is
-                // one: it only needs the per-entry POS bits beside it, not the 456k surface records.
-                let snapshotKey = TrieSnapshotCache.key(store: store)
-                if let snapshotKey, let restored = StartupTimer.measure("trie snapshot load", block: { TrieSnapshotCache.load(key: snapshotKey) }) {
-                    trie = restored
-                    partOfSpeechByEntryID = try StartupTimer.measure("fetchPartOfSpeechByEntryID") {
-                        try store.fetchPartOfSpeechByEntryID()
-                    }
-                } else {
-                    // SurfaceRecords carry the POS bits the path search classes each word by
-                    // (TransitionClass). The fetch path aggregates
-                    // POS per entry in a first pass (small) and join in-memory against surface rows
-                    // in a second pass — avoids the JOIN-explosion that OOM-killed the app earlier.
-                    let surfaceData = try StartupTimer.measure("fetchSurfaceData") {
-                        try store.fetchSurfaceData()
-                    }
-                    partOfSpeechByEntryID = surfaceData.partOfSpeechByEntryID
-                    StartupTimer.measure("trie population (\(surfaceData.surfaceRecords.count) records)") {
-                        for record in surfaceData.surfaceRecords { trie.insert(record) }
-                    }
-                    // Saved for the next launch, off the startup path; the trie is only read from here on.
-                    if let snapshotKey {
-                        let builtTrie = trie
-                        Task.detached(priority: .utility) {
-                            StartupTimer.measure("trie snapshot save") {
-                                TrieSnapshotCache.save(builtTrie, key: snapshotKey)
-                            }
-                        }
-                    }
-                }
-            } catch { AppLog.error(.dictionary, "fetchSurfaceData failed: \(error)") }
-
-        } catch {
-            AppLog.error(.dictionary, "DictionaryStore initialization failed: \(error)")
-        }
-
-        // The rules ship inside the dictionary (generated into it from UniDic and the grammar table).
-        do {
-            if let ruleSet = try dictionaryStore?.fetchDeinflectionRuleSet() {
-                deinflector = StartupTimer.measure("Deinflector.init") {
-                    Deinflector(ruleSet: ruleSet, trie: trie)
-                }
-            }
-        } catch {
-            AppLog.error(.dictionary, "Deinflector initialization failed: \(error)")
-        }
-
-        let segmenter: any TextSegmenting = StartupTimer.measure("Segmenter.init") {
-            Segmenter(
-                trie: trie,
-                deinflector: deinflector,
-                partOfSpeechByEntryID: partOfSpeechByEntryID,
-                frequenciesFrom: dictionaryStore
-            )
-        }
-
-        if let deinflector {
-            lexicon = StartupTimer.measure("Lexicon.init") {
-                Lexicon(
-                    dictionaryStore: dictionaryStore,
-                    segmenter: segmenter,
-                    deinflector: deinflector,
-                    surfaceReadingData: surfaceReadingData
-                )
-            }
-        } else {
-            AppLog.error(.dictionary, "Lexicon data surface initialization failed: missing deinflector")
-        }
-
-        let overallElapsed = (CFAbsoluteTimeGetCurrent() - overallStart) * 1000
-        StartupTimer.mark("makeReadResources total: \(String(format: "%.1f", overallElapsed)) ms")
-
-        return (
-            segmenter: segmenter,
-            dictionaryStore: dictionaryStore,
-            lexicon: lexicon,
-            surfaceReadingData: SurfaceReadingDataMap(surfaceReadingData),
-            kanjiReadingFallback: KanjiReadingFallbackMap(kanjiReadingFallback)
-        )
     }
 }
 
