@@ -31,7 +31,8 @@ struct WordFocusView: View {
     @State private var words: [WordFocusWord] = []
     // Short meanings by word id, filled for the words on screen ("" = none), so body never queries the dictionary.
     @State private var glosses: [Int: String] = [:]
-    @State private var breakdownGlosses: [(range: NSRange, gloss: String)] = []
+    // The note's breakdown placed on its text, whose word meanings come before the dictionary's.
+    @State private var breakdownPlacement: SongBreakdownPlacement?
     @State private var isScrubbing = false
 
     // Index of the word being sung: the last one whose start has passed, the first before any.
@@ -226,8 +227,7 @@ struct WordFocusView: View {
             furiganaBySegmentLocation: furiganaBySegmentLocation,
             furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation
         )
-        breakdownGlosses = noteID.flatMap { songBreakdownStore.breakdown(forNoteID: $0) }
-            .map { WordFocusBreakdownGlosses.glosses(lines: $0.lines, noteText: noteText) } ?? []
+        breakdownPlacement = noteID.flatMap { songBreakdownStore.placement(forNoteID: $0, noteText: noteText) }
         glosses = [:]
     }
 
@@ -237,7 +237,8 @@ struct WordFocusView: View {
         for i in (index - 2)...(index + 2) where words.indices.contains(i) && glosses[words[i].id] == nil {
             let word = words[i]
             let wordRange = NSRange(location: word.id, length: (word.surface as NSString).length)
-            let fromBreakdown = breakdownGlosses.first { NSIntersectionRange($0.range, wordRange).length > 0 }?.gloss
+            let fromBreakdown = breakdownPlacement?.words(overlapping: wordRange)
+                .lazy.compactMap { LyricsView.shortGloss($0.word.definition) }.first
             glosses[word.id] = fromBreakdown
                 ?? dictionaryGloss?(word.id, word.surface).flatMap(LyricsView.shortGloss)
                 ?? ""

@@ -23,36 +23,35 @@ extension LyricsView {
         hasher.combine(showsParticleBubbles)
         hasher.combine(showsLoanwordBubbles)
         hasher.combine(showsKatakanaBubbles)
+        hasher.combine(showsVocalizationBubbles)
         let signature = hasher.finalize()
         if wordBubbleCache.signature == signature { return wordBubbleCache.bubbles }
-        let bubbles = breakdown.flatMap { breakdownWordBubbles($0.lines, in: cueSpan) }
+        let bubbles = breakdownPlacement.flatMap { breakdownWordBubbles($0, in: cueSpan) }
             ?? dictionaryWordBubbles(in: cueSpan)
         wordBubbleCache.signature = signature
         wordBubbleCache.bubbles = bubbles
         return bubbles
     }
 
-    // The breakdown line covering the cue, its words found in the note in order, each with its
-    // definition in the speech bubble — vocalizations too, and particles (tagged `[particle]`) unless
-    // their bubbles are turned off. The line's
-    // pattern-to-bank note stays out: bubbles hold meanings only. Nil when no breakdown line
-    // covers the cue or none of its words could be found in it.
-    private func breakdownWordBubbles(_ lines: [SongLine], in cueRange: NSRange) -> [LyricWordBubble]? {
-        let lineRanges = SongBreakdownLineLocator.noteRanges(for: lines, in: noteText)
-        guard let line = lines.first(where: { lineRanges[$0.index].map { NSIntersectionRange($0, cueRange).length > 0 } ?? false }),
-              let lineRange = lineRanges[line.index] else { return nil }
-        let note = noteText as NSString
-        var cursor = lineRange.location
+    // The breakdown line covering the cue (SongBreakdownPlacement), its words in the cue each with
+    // its definition in the speech bubble, minus the kinds of word the shared filters hide — the
+    // same SongWordVisibility rule the Breakdown's cards and listen-along use. The line's
+    // pattern-to-bank note stays out: bubbles hold meanings only. Nil when no breakdown line covers
+    // the cue or none of its words could be found in it.
+    private func breakdownWordBubbles(_ placement: SongBreakdownPlacement, in cueRange: NSRange) -> [LyricWordBubble]? {
+        guard let line = placement.line(overlapping: cueRange) else { return nil }
+        let visibility = SongWordVisibility(
+            showsParticles: showsParticleBubbles,
+            showsKatakana: showsKatakanaBubbles,
+            showsVocalizations: showsVocalizationBubbles,
+            showsPatterns: false
+        )
         var bubbles: [LyricWordBubble] = []
-        for word in line.words {
-            let surface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard surface.isEmpty == false, cursor < NSMaxRange(lineRange) else { continue }
-            let found = note.range(of: surface, options: [], range: NSRange(location: cursor, length: NSMaxRange(lineRange) - cursor))
-            guard found.location != NSNotFound else { continue }
-            cursor = NSMaxRange(found)
-            guard NSIntersectionRange(found, cueRange).length > 0, showsBubble(forSurface: surface) else { continue }
-            if word.grammarTag?.lowercased() == SongWordVisibility.particleTag, showsParticleBubbles == false { continue }
-            bubbles.append(LyricWordBubble(noteRange: found, gloss: Self.shortGloss(word.definition)))
+        for placed in line.words {
+            let surface = placed.word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard NSIntersectionRange(placed.range, cueRange).length > 0,
+                  showsBubble(forSurface: surface), visibility.shows(placed.word) else { continue }
+            bubbles.append(LyricWordBubble(noteRange: placed.range, gloss: Self.shortGloss(placed.word.definition)))
         }
         return bubbles.isEmpty ? nil : bubbles
     }

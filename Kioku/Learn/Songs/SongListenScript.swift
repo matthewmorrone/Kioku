@@ -163,7 +163,7 @@ nonisolated enum SongListenScript {
     }
 
     // Same "own value, else the referenced line's value" rule as SongLineCard.effectiveGist.
-    private static func effectiveGist(for line: SongLine, linesByIndex: [Int: SongLine]) -> String? {
+    static func effectiveGist(for line: SongLine, linesByIndex: [Int: SongLine]) -> String? {
         effectiveValue(for: line, linesByIndex: linesByIndex, field: \.gist)
     }
 

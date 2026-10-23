@@ -18,17 +18,11 @@ enum LyricsPopupSettings {
     static let showBubblesKey = "kioku.settings.lyricsPopup.showTranslation"
     static let defaultShowBubbles = true
 
-    // Whether particles get word bubbles too — one of the bubble options in the settings popup.
-    static let showParticleBubblesKey = "kioku.settings.lyricsPopup.showParticleBubbles"
-    static let defaultShowParticleBubbles = true
-
     // Whether katakana loanwords (ベイビー, ドア) get word bubbles — the English Words option.
     static let showLoanwordBubblesKey = "kioku.settings.lyricsPopup.showLoanwordBubbles"
     static let defaultShowLoanwordBubbles = true
-
-    // Whether any word written in katakana gets a word bubble, loanwords or not (キラキラ).
-    static let showKatakanaBubblesKey = "kioku.settings.lyricsPopup.showKatakanaBubbles"
-    static let defaultShowKatakanaBubbles = true
+    // Particles, katakana words and vocalizations are the shared word filters in
+    // BreakdownListenSettings, so the bubbles and the Breakdown hide the same words.
 
     static let showFuriganaKey = "kioku.settings.lyricsPopup.showFurigana"
     static let defaultShowFurigana = true

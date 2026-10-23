@@ -27,12 +27,16 @@ extension LyricsView {
                     Toggle("Particles", isOn: $showsParticleBubbles)
                     Toggle("English Words", isOn: $showsLoanwordBubbles)
                     Toggle("Katakana", isOn: $showsKatakanaBubbles)
+                    Toggle("Vocalizations", isOn: $showsVocalizationBubbles)
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .font(.title3)
                 }
                 .disabled(showsBubbles == false)
             }
+            Text("Particles, Katakana and Vocalizations also apply to the Breakdown.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Toggle("Segmentation", isOn: $isSegmentationVisible)
             Toggle("Furigana", isOn: $isFuriganaVisible)
         }

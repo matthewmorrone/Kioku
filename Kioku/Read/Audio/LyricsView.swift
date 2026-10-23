@@ -262,9 +262,11 @@ struct LyricsView: View {
     @AppStorage(AudioSettings.lyricsOnNowPlayingKey) var lyricsOnNowPlayingEnabled: Bool = AudioSettings.defaultLyricsOnNowPlaying
     @AppStorage(LyricsPopupSettings.showTranslationKey) var isTranslationVisible: Bool = LyricsPopupSettings.defaultShowTranslation
     @AppStorage(LyricsPopupSettings.showBubblesKey) var showsBubbles: Bool = LyricsPopupSettings.defaultShowBubbles
-    @AppStorage(LyricsPopupSettings.showParticleBubblesKey) var showsParticleBubbles: Bool = LyricsPopupSettings.defaultShowParticleBubbles
+    // The word filters shared with the Breakdown's Show options (BreakdownListenSettings).
+    @AppStorage(BreakdownListenSettings.showParticlesKey) var showsParticleBubbles: Bool = BreakdownListenSettings.defaultShowParticles
+    @AppStorage(BreakdownListenSettings.showKatakanaKey) var showsKatakanaBubbles: Bool = BreakdownListenSettings.defaultShowKatakana
+    @AppStorage(BreakdownListenSettings.showVocalizationsKey) var showsVocalizationBubbles: Bool = BreakdownListenSettings.defaultShowVocalizations
     @AppStorage(LyricsPopupSettings.showLoanwordBubblesKey) var showsLoanwordBubbles: Bool = LyricsPopupSettings.defaultShowLoanwordBubbles
-    @AppStorage(LyricsPopupSettings.showKatakanaBubblesKey) var showsKatakanaBubbles: Bool = LyricsPopupSettings.defaultShowKatakanaBubbles
     @AppStorage(LyricsPopupSettings.showSegmentationKey) var isSegmentationVisible: Bool = LyricsPopupSettings.defaultShowSegmentation
     @AppStorage(LyricsPopupSettings.showFuriganaKey) var isFuriganaVisible: Bool = LyricsPopupSettings.defaultShowFurigana
 

@@ -37,6 +37,10 @@ final class SongBreakdownStore: ObservableObject {
     // accessor stays safe to call during SwiftUI body evaluation — the field is not
     // observed, so the mutation doesn't invalidate views.
     private var diskMemoCache: [UUID: SongBreakdown] = [:]
+    // The last placement built per note (placement(forNoteID:noteText:)), with the breakdown's
+    // generation time and the note text it was built against. Not published: a cache, safe to
+    // fill from a view body.
+    private var placementCache: [UUID: (generatedAt: Date, noteText: String, placement: SongBreakdownPlacement)] = [:]
 
     // Hold strong refs to running Tasks. Erasing the entry on completion is enough — the
     // Task type wraps a structured-concurrency handle, not a cancellation channel, so the
@@ -82,6 +86,18 @@ final class SongBreakdownStore: ObservableObject {
         }
         diskMemoCache[id] = loaded
         return loaded
+    }
+
+    // The note's breakdown placed on its text (SongBreakdownPlacement), built once per breakdown
+    // and text so the lyrics card can ask per frame. Nil when the note has no breakdown.
+    func placement(forNoteID id: UUID, noteText: String) -> SongBreakdownPlacement? {
+        guard let breakdown = breakdown(forNoteID: id) else { return nil }
+        if let cached = placementCache[id], cached.generatedAt == breakdown.generatedAt, cached.noteText == noteText {
+            return cached.placement
+        }
+        let placement = SongBreakdownPlacement(breakdownLines: breakdown.lines, noteText: noteText)
+        placementCache[id] = (breakdown.generatedAt, noteText, placement)
+        return placement
     }
 
     // Whether a breakdown exists for the note, without reading it off disk — cheap enough for a
@@ -140,6 +156,7 @@ final class SongBreakdownStore: ObservableObject {
     func clearBreakdown(forNoteID id: UUID) {
         breakdownsByNoteID.removeValue(forKey: id)
         diskMemoCache.removeValue(forKey: id)
+        placementCache.removeValue(forKey: id)
         knownNoteIDsOnDisk.remove(id)
 
         let url = fileURL(for: id)
@@ -164,6 +181,7 @@ final class SongBreakdownStore: ObservableObject {
         generationStateByNoteID = [:]
         breakdownsByNoteID = [:]
         diskMemoCache = [:]
+        placementCache = [:]
         knownNoteIDsOnDisk = []
 
         for url in OptionalFileRead.contents(of: directoryURL, logAs: .storage) {
