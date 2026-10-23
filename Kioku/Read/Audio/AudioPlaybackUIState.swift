@@ -19,6 +19,8 @@ final class AudioPlaybackUIState {
     var activePlaybackCueIndex: Int? = nil
     var activeAudioAttachmentID: UUID? = nil
     var isShowingLyricsView = false
+    // The full-screen word-by-word view (WordFocusView), opened from the lyrics card's top bar.
+    var isShowingWordFocus = false
     // Mirrors "playing, or paused mid-track" from the controller. ReadView can't observe the
     // controller's @Published values through this @Observable wrapper, so AudioCueHighlightObserver
     // writes this flag and the mini player's visibility reads it — stopping from a paused state

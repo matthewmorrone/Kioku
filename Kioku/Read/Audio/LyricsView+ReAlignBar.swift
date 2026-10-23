@@ -142,6 +142,21 @@ extension LyricsView {
             .buttonStyle(.plain)
             .accessibilityLabel("Open This Line in Breakdown")
 
+            // Opens the full-screen word-by-word view.
+            Button {
+                onOpenWordFocus()
+            } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .scaledFont(size: 12, weight: .semibold)
+                    .foregroundStyle(Color.secondary)
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
+                    .background(Color.secondary.opacity(0.16))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Word by Word")
+
             Button {
                 isShowingSettingsPopup = true
             } label: {

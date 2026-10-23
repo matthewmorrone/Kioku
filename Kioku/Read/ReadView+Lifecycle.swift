@@ -311,7 +311,7 @@ extension ReadView {
                     onCycleAudioSource: { cycleLyricAudioSource() },
                     onSetAudioSource: { setLyricAudioSource($0) },
                     onOpenBreakdown: { openNoteDestination(.breakdown, atNoteLocation: activeLyricNoteLocation()) },
-                    onPlayRandom: { ReadNoteNavigation.shared.isRandomPlaybackRequested = true },
+                    onOpenWordFocus: { audioPlayback.isShowingWordFocus = true },
                     singRomanize: lyricRomanizer.spans(for:),
                     singSession: singSession,
                     dictionaryGloss: { location, surface in lyricWordGloss(at: location, surface: surface) },
@@ -322,6 +322,24 @@ extension ReadView {
                 .allowsHitTesting(audioPlayback.isShowingLyricsView)
                 .animation(.easeInOut(duration: 0.2), value: audioPlayback.isShowingLyricsView)
             }
+        }
+        .fullScreenCover(isPresented: $audioPlayback.isShowingWordFocus) {
+            WordFocusView(
+                controller: audioPlayback.audioController,
+                cues: audioPlayback.audioAttachmentCues,
+                highlightRanges: audioPlayback.audioAttachmentHighlightRanges,
+                noteText: document.text,
+                segmentationRanges: document.segmentRanges,
+                furiganaBySegmentLocation: document.furiganaBySegmentLocation,
+                furiganaLengthBySegmentLocation: document.furiganaLengthBySegmentLocation,
+                dictionaryGloss: { location, surface in lyricWordGloss(at: location, surface: surface) },
+                noteID: document.activeNoteID,
+                onPlayRandom: { ReadNoteNavigation.shared.isRandomPlaybackRequested = true },
+                onOpenLyrics: { openLyricsFromWordFocus() },
+                onOpenBreakdown: { openBreakdownFromWordFocus(atNoteLocation: $0) },
+                onOpenWordDetail: { openWordDetailFromWordFocus(atNoteLocation: $0, surface: $1) },
+                onDismiss: { audioPlayback.isShowingWordFocus = false }
+            )
         }
         .sheet(isPresented: $readSheets.isShowingSegmentList) {
             // Spellings that are several words get the one the note's context names (see ReadView+ContextLemmas).

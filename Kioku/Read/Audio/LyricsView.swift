@@ -69,8 +69,8 @@ struct LyricsView: View {
     var onSetAudioSource: (LyricsAudioSource) -> Void = { _ in }
     // The top bar's breakdown button: opens the note's breakdown on the line playing now.
     var onOpenBreakdown: () -> Void = {}
-    // The transport bar's shuffle button: plays a random other song with the lyrics view open.
-    var onPlayRandom: () -> Void = {}
+    // The top bar's full-screen button: opens the word-by-word view.
+    var onOpenWordFocus: () -> Void = {}
     // Romanizes one lyric line for Sing mode's phoneme targets (ReadView's LyricRomanizer). Nil
     // hides the Sing button (previews).
     var singRomanize: (@Sendable (String) -> [RomanizedSpan])? = nil
