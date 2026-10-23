@@ -153,6 +153,28 @@ enum CTCAlignmentCore {
         }
     }
 
+    // A line's tokens can straddle an interlude: the DP parks the line's first few tokens in the last
+    // frames of the sung region before it and the rest where the line is really sung, which would
+    // start the line before the ♪. Tokens more than `interludeGap` apart split the line into runs;
+    // the run holding the most tokens (the later one on a tie) is where the line is sung, so the
+    // line starts and ends there. Tokens of the other runs are clamped into the line when
+    // checkpoints are built.
+    private static func sungRun(of placed: [Int], tokenSpans: [(start: Int, end: Int)], frameSec: Double) -> [Int] {
+        let interludeGap = 4.0
+        var runs: [[Int]] = []
+        for token in placed {
+            if let previous = runs.last?.last,
+               Double(tokenSpans[token].start - tokenSpans[previous].end) * frameSec > interludeGap {
+                runs.append([token])
+            } else if runs.isEmpty {
+                runs.append([token])
+            } else {
+                runs[runs.count - 1].append(token)
+            }
+        }
+        return runs.reduce([]) { best, run in run.count >= best.count ? run : best }
+    }
+
     // Turns token spans into per-line timings and per-span checkpoints. A line starts at the
     // onset of its first placed token and ends at its last; the end is bridged to the
     // next line's start when the gap is short (a held final vowel plus a breath — CTC leaves
@@ -175,7 +197,7 @@ enum CTCAlignmentCore {
         var lineStart: [Double?] = []
         var lineEnd: [Double?] = []
         for ranges in spanTokenRanges {
-            let placed = ranges.flatMap { Array($0) }
+            let placed = sungRun(of: ranges.flatMap { Array($0) }, tokenSpans: tokenSpans, frameSec: frameSec)
             if let first = placed.first, let last = placed.last {
                 lineStart.append(max(0, time(onsetOf(tokenSpans[first].start)) - onsetLead))
                 lineEnd.append(time(tokenSpans[last].end))

@@ -431,9 +431,9 @@ struct LyricsView: View {
                             isSavedHighlightEnabled: isShowingSingResults || isSavedHighlightEnabled,
                             savedSegmentLocations: isShowingSingResults ? [] : rebaseIntoCue(savedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
                             savedHighlightColor: readingColors.saved,
-                            savedLearnedSegmentLocations: rebaseIntoCue(isShowingSingResults ? singHeardLocations : savedLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                            savedLearnedSegmentLocations: rebaseIntoCue(isShowingSingResults ? singColoredLocations.heard : savedLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
                             savedLearnedHighlightColor: isShowingSingResults ? Self.singHeardColor : readingColors.savedLearned,
-                            savedNotLearnedSegmentLocations: rebaseIntoCue(isShowingSingResults ? singMissedLocations : savedNotLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                            savedNotLearnedSegmentLocations: rebaseIntoCue(isShowingSingResults ? singColoredLocations.missed : savedNotLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
                             savedNotLearnedHighlightColor: isShowingSingResults ? Self.singMissedColor : readingColors.savedNotLearned,
                             // Overrides the highlighted range's glyph color so it never has to
                             // compete with whatever semantic token color (red vocab, blue, etc.)

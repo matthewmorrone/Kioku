@@ -19,6 +19,31 @@ extension LyricsView {
     // Note locations of words Sing mode listened for and didn't hear.
     var singMissedLocations: Set<Int> { Set(singSession.verdicts.filter { $0.value == false }.keys) }
 
+    // Locations to colour: the graded words, plus each word too short to grade (を) in its graded
+    // neighbour's colour, so a particle doesn't stay white between green and red words.
+    var singColoredLocations: (heard: Set<Int>, missed: Set<Int>) {
+        Self.singColoredLocations(
+            session: singSession, words: segmentationRanges.map { NSRange($0, in: noteText) }, noteText: noteText
+        )
+    }
+
+    // Shared by the lyrics card and the Read tab: verdict locations with ungradeable words
+    // borrowing the verdict of the word they're hidden with (`singOwner`).
+    static func singColoredLocations(session: SingSession, words: [NSRange], noteText: String) -> (heard: Set<Int>, missed: Set<Int>) {
+        var heard = Set(session.verdicts.filter { $0.value }.keys)
+        var missed = Set(session.verdicts.filter { $0.value == false }.keys)
+        let targets = session.targetIDs.sorted()
+        let noteNS = noteText as NSString
+        for word in words where word.length > 0 && NSMaxRange(word) <= noteNS.length {
+            guard targets.contains(where: { NSLocationInRange($0, word) }) == false,
+                  isSingableWord(noteNS.substring(with: word)),
+                  let owner = singOwner(of: word, targets: targets, in: noteNS),
+                  let verdict = session.verdicts[owner] else { continue }
+            if verdict { heard.insert(word.location) } else { missed.insert(word.location) }
+        }
+        return (heard, missed)
+    }
+
     @ViewBuilder
     var singControls: some View {
         Button {
@@ -207,9 +232,11 @@ extension LyricsView {
         let shown = singMasked(text, origin: cueRange.location)
         let length = (shown as NSString).length
         var attributed = AttributedString(shown)
+        let colored = singColoredLocations
         for range in segmentationRanges.map({ NSRange($0, in: noteText) }) {
             let start = max(range.location, cueRange.location), end = min(NSMaxRange(range), cueRange.location + length)
-            guard end > start, let heard = singSession.verdicts[start],
+            let heard: Bool? = colored.heard.contains(start) ? true : colored.missed.contains(start) ? false : nil
+            guard end > start, let heard,
                   let local = Range(NSRange(location: start - cueRange.location, length: end - start), in: shown),
                   let attributedRange = Range(local, in: attributed) else { continue }
             attributed[attributedRange].foregroundColor = heard ? Color(Self.singHeardColor) : Color(Self.singMissedColor)

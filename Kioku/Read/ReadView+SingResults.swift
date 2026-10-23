@@ -15,6 +15,13 @@ extension ReadView {
     // Note locations of words the last Sing session listened for and didn't hear.
     var singMissedLocations: Set<Int> { Set(singSession.verdicts.filter { $0.value == false }.keys) }
 
+    // Locations to colour: graded words plus ungradeable ones (を) in their graded neighbour's colour.
+    var singColoredLocations: (heard: Set<Int>, missed: Set<Int>) {
+        LyricsView.singColoredLocations(
+            session: singSession, words: document.segmentRanges.map { NSRange($0, in: document.text) }, noteText: document.text
+        )
+    }
+
     // Bottom-corner badge while results show: the score, and tapping clears the colours.
     @ViewBuilder
     var singResultsBadge: some View {

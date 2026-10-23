@@ -351,9 +351,9 @@ extension ReadView {
                         isSavedHighlightEnabled: isShowingSingResults || isSavedHighlightEnabled,
                         savedSegmentLocations: isShowingSingResults ? [] : savedSegmentLocations,
                         savedHighlightColor: colors.saved,
-                        savedLearnedSegmentLocations: isShowingSingResults ? singHeardLocations : savedLearnedSegmentLocations,
+                        savedLearnedSegmentLocations: isShowingSingResults ? singColoredLocations.heard : savedLearnedSegmentLocations,
                         savedLearnedHighlightColor: isShowingSingResults ? LyricsView.singHeardColor : colors.savedLearned,
-                        savedNotLearnedSegmentLocations: isShowingSingResults ? singMissedLocations : savedNotLearnedSegmentLocations,
+                        savedNotLearnedSegmentLocations: isShowingSingResults ? singColoredLocations.missed : savedNotLearnedSegmentLocations,
                         savedNotLearnedHighlightColor: isShowingSingResults ? LyricsView.singMissedColor : colors.savedNotLearned,
                         debugFlags: KiokuDebugOverlayView.Flags(
                             headwordRects: debugHeadwordRects,
