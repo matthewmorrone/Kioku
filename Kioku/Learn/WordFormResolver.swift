@@ -83,6 +83,10 @@ struct ResolvedWordFields: Sendable {
     // Every gloss of every sense of the entry, selected or not — any of them is a true meaning of
     // the word, so none may be offered as a wrong answer.
     let entryGlosses: [String]
+    // Every everyday kanji spelling and reading valid for the selected senses, so a typed Japanese
+    // answer passes on 解る as well as 分かる (see `DictionaryEntry.acceptedSpellings`).
+    let acceptedKanji: [String]
+    let acceptedKana: [String]
     // Raw JMdict pos codes across the word's selected senses (e.g. "v1", "vt", "n"). Collapsed to
     // a `WordClass` once it reaches a StudyItem; kept raw here so this stays a plain data carrier.
     let posTags: [String]

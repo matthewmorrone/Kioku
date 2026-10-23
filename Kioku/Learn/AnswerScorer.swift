@@ -1,10 +1,11 @@
 import Foundation
 
-// Grades a typed Japanese answer against the expected kanji/kana string for a production-direction
-// quiz question (meaning→kanji, meaning→kana). Not exact-match: tolerates romaji input (converted to
-// kana before comparing), kana spelling variants, and a single small typo on longer answers — without
-// calling out to an LLM. `nonisolated` (like `RomajiToKana`/`KanaNormalizer`, which it composes) since
-// it's pure, stateless comparison logic with no MainActor state.
+// Grades a typed answer against the expected kanji/kana/English string for a Fill in the Blank
+// question, without calling out to an LLM. A Japanese answer must be spelled exactly (katakana and
+// hiragana are interchangeable, and romaji is converted to kana first): one kana is often the whole
+// difference between two words (びょういん hospital, びよういん beauty salon). An English answer folds
+// dictionary scaffolding and tolerates one typo on longer words. `nonisolated` (like
+// `RomajiToKana`/`KanaNormalizer`, which it composes) since it's pure, stateless comparison logic.
 nonisolated enum AnswerScorer {
     // The outcome of grading one typed answer, plus the normalized forms actually compared — useful
     // for "you typed X, expected Y" feedback UI without the caller re-deriving normalization itself.
@@ -44,33 +45,38 @@ nonisolated enum AnswerScorer {
     static func grade(input: String, expected: String) -> Verdict {
         let trimmedInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedExpected = expected.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedExpected = normalize(trimmedExpected)
+        let expectsJapanese = ScriptClassifier.containsJapanese(trimmedExpected)
+        var normalizedExpected = normalize(trimmedExpected)
 
         guard trimmedInput.isEmpty == false else {
             return Verdict(isCorrect: false, normalizedInput: "", normalizedExpected: normalizedExpected)
         }
 
-        // Romaji input (no kana/kanji scalars at all) is converted to kana before comparison, so
-        // typing "tabemono" matches たべもの. Against a kanji-expected answer this conversion simply
-        // won't match, which is correct — a kana/romaji answer shouldn't pass a kanji-production
-        // question, or it wouldn't be testing kanji recall at all.
-        let candidate: String
-        if ScriptClassifier.containsJapanese(trimmedInput) == false,
+        // Romaji input is converted to kana only when a Japanese answer is expected, so "tabemono"
+        // matches たべもの while an English answer ("some", "name") is compared as typed. Against a
+        // kanji-expected answer the conversion simply won't match, which is correct — a kana/romaji
+        // answer shouldn't pass a kanji-production question.
+        var normalizedInput: String
+        if expectsJapanese,
+           ScriptClassifier.containsJapanese(trimmedInput) == false,
            let romaji = RomajiToKana.convert(trimmedInput) {
-            candidate = romaji.kana
+            normalizedInput = normalize(romaji.kana)
+            // Hepburn writes ず and づ both as "zu" (じ and ぢ as "ji"), so a romaji answer can't be
+            // held to that distinction: tsuzuku is a correct romanization of つづく. Typed kana is.
+            normalizedInput = KanaNormalizer.normalizeForFuriganaAlignment(normalizedInput)
+            normalizedExpected = KanaNormalizer.normalizeForFuriganaAlignment(normalizedExpected)
         } else {
-            candidate = trimmedInput
+            normalizedInput = normalize(trimmedInput)
         }
-
-        let normalizedInput = normalize(candidate)
 
         let isCorrect: Bool
         if normalizedInput == normalizedExpected {
             isCorrect = true
+        } else if expectsJapanese {
+            isCorrect = false
         } else {
-            // Tolerate one small typo, scaled to the answer's length so short words still require an
-            // exact match — a 1-edit tolerance on a 2-character word (e.g. 木 vs 本) would accept a
-            // different, unrelated word rather than a typo of the right one.
+            // Tolerate one small typo in English, scaled to the answer's length so short words still
+            // require an exact match ("cat" for "car" is a different word, not a typo).
             let distance = editDistance(normalizedInput, normalizedExpected)
             let maxAllowed = normalizedExpected.count >= 4 ? 1 : 0
             isCorrect = distance <= maxAllowed
@@ -79,12 +85,11 @@ nonisolated enum AnswerScorer {
         return Verdict(isCorrect: isCorrect, normalizedInput: normalizedInput, normalizedExpected: normalizedExpected)
     }
 
-    // Folds script variants (katakana→hiragana, kana spelling variants like づ/ず) and lowercases
-    // (for any incidental latin characters), so equivalent spellings compare equal. Text with no
+    // Folds katakana to hiragana and lowercases (for any incidental latin characters). Kana spelling
+    // is otherwise kept as typed: づ/ず and small/large kana are different spellings. Text with no
     // Japanese in it is additionally folded as English prose — see `normalizeEnglish`.
     private static func normalize(_ text: String) -> String {
-        let folded = KanaNormalizer.katakanaToHiragana(text)
-        let normalized = KanaNormalizer.normalizeForFuriganaAlignment(folded).lowercased()
+        let normalized = KanaNormalizer.katakanaToHiragana(text).lowercased()
         return ScriptClassifier.containsJapanese(normalized) ? normalized : normalizeEnglish(normalized)
     }
 

@@ -25,8 +25,31 @@ struct StudyItem: Identifiable {
     // Multiple Choice never offers one of the word's own meanings as a wrong answer — "usual"
     // against the answer "ordinary" is a second right answer.
     var entryGlosses: [String] = []
+    // The word's other everyday spellings valid for its selected senses, so a typed answer in
+    // Fill in the Blank passes on any of them, not only the one form `value(for:)` shows.
+    var acceptedKanji: [String] = []
+    var acceptedKana: [String] = []
 
     var id: Int64 { word.canonicalEntryID }
+
+    // Every answer that counts as right when `field` is the one being typed: all the glosses for a
+    // meaning, else the displayed form first and then the word's other spellings of that kind.
+    func acceptedAnswers(for field: StudyField) -> [String] {
+        switch field {
+        case .meaning:
+            return glosses
+        case .kanji:
+            return deduplicated([value(for: .kanji)] + acceptedKanji)
+        case .kana:
+            return deduplicated([value(for: .kana)] + acceptedKana)
+        }
+    }
+
+    // Drops repeats while keeping first-seen order, so the displayed form stays first.
+    private func deduplicated(_ forms: [String]) -> [String] {
+        var seen = Set<String>()
+        return forms.filter { seen.insert($0).inserted }
+    }
 
     // The display string for one quizzable field, falling back to the surface when the dictionary
     // has no distinct form so every item can still stand in as a distractor for any field.
@@ -145,7 +168,9 @@ enum LearnWordPool {
                 glosses: fields.glosses.isEmpty ? [gloss] : fields.glosses,
                 hasKanjiForm: surfaceHasKanji,
                 wordClass: WordClass.from(posTags: fields.posTags),
-                entryGlosses: fields.entryGlosses
+                entryGlosses: fields.entryGlosses,
+                acceptedKanji: fields.acceptedKanji,
+                acceptedKana: fields.acceptedKana
             ))
         }
         return items
@@ -234,9 +259,22 @@ enum LearnWordPool {
             selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses,
             chosenReading: chosenReading
         )
+        let senseRestrictions: [SenseRestriction]
+        do {
+            senseRestrictions = try store.fetchSenseRestrictions(entryID: entryID)
+        } catch {
+            // Without restrictions every everyday form is accepted, which only widens what passes.
+            AppLog.error(.dictionary, "Sense restrictions unavailable for entry \(entryID): \(error)")
+            senseRestrictions = []
+        }
+        let accepted = data.entry.acceptedSpellings(
+            selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses,
+            senseRestrictions: senseRestrictions
+        )
         return ResolvedWordFields(
             entryID: entryID, english: primary, kanji: forms.kanji, kana: forms.kana,
-            glosses: glosses, entryGlosses: data.entry.senses.flatMap(\.glosses), posTags: posTags
+            glosses: glosses, entryGlosses: data.entry.senses.flatMap(\.glosses),
+            acceptedKanji: accepted.kanji, acceptedKana: accepted.kana, posTags: posTags
         )
     }
 }

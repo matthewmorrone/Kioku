@@ -16,31 +16,76 @@ extension DictionaryEntry {
     ) -> String? {
         let fallback = kanaForms.first?.text
         guard kanaForms.isEmpty == false else { return fallback }
+        let validKana = formsValidForSelection(
+            kanaForms.map(\.text), kind: .stagr,
+            selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses,
+            senseRestrictions: senseRestrictions
+        )
+        return validKana.first ?? fallback
+    }
 
+    // Every spelling a learner may type for this word in a production quiz: the everyday kanji forms
+    // and the everyday readings (no rare, outdated, irregular or search-only forms) that apply to the
+    // selected senses under stagk/stagr. 分かる also accepts 解る; 明日 as a reading accepts あした and あす.
+    nonisolated func acceptedSpellings(
+        selectedSenseIDs: [Int64],
+        selectedGlosses: [GlossRef],
+        senseRestrictions: [SenseRestriction]
+    ) -> (kanji: [String], kana: [String]) {
+        let everydayKanji = kanjiForms
+            .filter { DictionaryEntry.kanjiFormIsNonEveryday(info: $0.info) == false }
+            .map(\.text)
+        let everydayKana = kanaForms
+            .filter { DictionaryEntry.kanaFormIsNonEveryday(info: $0.info) == false }
+            .map(\.text)
+        let kanji = formsValidForSelection(
+            everydayKanji, kind: .stagk,
+            selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses,
+            senseRestrictions: senseRestrictions
+        )
+        let kana = formsValidForSelection(
+            everydayKana, kind: .stagr,
+            selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses,
+            senseRestrictions: senseRestrictions
+        )
+        return (kanji, kana)
+    }
+
+    // ik/ok/sk readings (irregular, outdated, search-only) are not spellings a learner should be
+    // taught, so a quiz never accepts them as an answer.
+    nonisolated static func kanaFormIsNonEveryday(info: String?) -> Bool {
+        guard let info, info.isEmpty == false else { return false }
+        return info.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .contains { ["ik", "ok", "sk"].contains($0) }
+    }
+
+    // The subset of `forms` (kept in entry order) that every selected sense applies to: a sense with
+    // restrictions of `kind` applies only to the listed forms, one without applies to all. Nothing
+    // selected, or an empty intersection (an inconsistent selection), leaves `forms` unfiltered.
+    private nonisolated func formsValidForSelection(
+        _ forms: [String],
+        kind: SenseRestrictionKind,
+        selectedSenseIDs: [Int64],
+        selectedGlosses: [GlossRef],
+        senseRestrictions: [SenseRestriction]
+    ) -> [String] {
         var selectedIndexes = Set<Int>()
-        for senseID in selectedSenseIDs {
+        for senseID in selectedSenseIDs + selectedGlosses.map(\.senseID) {
             if let idx = senses.firstIndex(where: { $0.senseID == senseID }) {
                 selectedIndexes.insert(idx)
             }
         }
-        for ref in selectedGlosses {
-            if let idx = senses.firstIndex(where: { $0.senseID == ref.senseID }) {
-                selectedIndexes.insert(idx)
-            }
-        }
-        guard selectedIndexes.isEmpty == false else { return fallback }
-
-        let allKanaTexts = Set(kanaForms.map(\.text))
-        var validKana = allKanaTexts
+        var valid = Set(forms)
         for senseIdx in selectedIndexes {
-            let stagrForSense = senseRestrictions
-                .filter { $0.senseOrderIndex == senseIdx && $0.type == .stagr }
+            let restricted = senseRestrictions
+                .filter { $0.senseOrderIndex == senseIdx && $0.type == kind }
                 .map(\.value)
-            if stagrForSense.isEmpty { continue }
-            validKana.formIntersection(stagrForSense)
+            if restricted.isEmpty { continue }
+            valid.formIntersection(restricted)
         }
-        guard validKana.isEmpty == false else { return fallback }
-        return kanaForms.first(where: { validKana.contains($0.text) })?.text ?? fallback
+        guard valid.isEmpty == false else { return forms }
+        return forms.filter { valid.contains($0) }
     }
 
     // The English meanings that match the user's selection, in selection precedence and

@@ -1,8 +1,8 @@
 import XCTest
 @testable import Kioku
 
-// Characterizes AnswerScorer's tolerance rules: exact match, romaji-to-kana conversion, kana variant
-// folding, small-typo tolerance scaled by length, and rejection of wrong-script or wrong-word answers.
+// Characterizes AnswerScorer's rules: exact Japanese spelling (script folding and romaji conversion
+// only), English folding with a small-typo tolerance, and rejection of wrong-script or wrong-word answers.
 final class AnswerScorerTests: XCTestCase {
 
     // MARK: - Exact match
@@ -39,25 +39,60 @@ final class AnswerScorerTests: XCTestCase {
         XCTAssertTrue(verdict.isCorrect)
     }
 
-    // MARK: - Typo tolerance
+    // MARK: - Japanese spelling is exact
 
-    // A single-character typo on a 4+ character answer still passes.
-    func testSingleTypoOnLongAnswerIsCorrect() {
-        let verdict = AnswerScorer.grade(input: "たべもみ", expected: "たべもの") // last kana wrong
+    // One kana is often the whole difference between two words: びよういん is "beauty salon".
+    func testSmallKanaMattersInJapaneseAnswer() {
+        let verdict = AnswerScorer.grade(input: "びよういん", expected: "びょういん")
+        XCTAssertFalse(verdict.isCorrect)
+    }
+
+    // ず for づ is a misspelling when the learner typed kana.
+    func testZuForDzuIsIncorrectInTypedKana() {
+        let verdict = AnswerScorer.grade(input: "つずく", expected: "つづく")
+        XCTAssertFalse(verdict.isCorrect)
+    }
+
+    // Hepburn romaji writes づ as "zu", so a romaji answer can't be held to that distinction.
+    func testHepburnRomajiZuMatchesDzu() {
+        let verdict = AnswerScorer.grade(input: "tsuzuku", expected: "つづく")
         XCTAssertTrue(verdict.isCorrect)
     }
 
-    // Two typos on the same answer exceed the tolerance.
-    func testTwoTyposOnLongAnswerIsIncorrect() {
-        let verdict = AnswerScorer.grade(input: "たびもみ", expected: "たべもの") // two kana wrong
+    // A one-kana slip on a long Japanese answer is still wrong.
+    func testSingleKanaTypoOnLongJapaneseAnswerIsIncorrect() {
+        let verdict = AnswerScorer.grade(input: "たべもみ", expected: "たべもの")
         XCTAssertFalse(verdict.isCorrect)
     }
 
-    // Short answers (under 4 characters) require an exact match — a 1-edit tolerance would accept an
-    // entirely different word (木 vs 本 is 1 edit apart but unrelated).
-    func testShortAnswerRequiresExactMatch() {
+    func testDifferentKanjiIsIncorrect() {
         let verdict = AnswerScorer.grade(input: "本", expected: "木")
         XCTAssertFalse(verdict.isCorrect)
+    }
+
+    // MARK: - English answers
+
+    // English input is compared as English, never converted to kana first.
+    func testEnglishAnswerIsNotConvertedToKana() {
+        XCTAssertTrue(AnswerScorer.grade(input: "some", expected: "some").isCorrect)
+        XCTAssertTrue(AnswerScorer.grade(input: "name", expected: "name").isCorrect)
+    }
+
+    // A single typo on a 4+ character English answer still passes.
+    func testSingleTypoOnLongEnglishAnswerIsCorrect() {
+        let verdict = AnswerScorer.grade(input: "restaurnt", expected: "restaurant")
+        XCTAssertTrue(verdict.isCorrect)
+    }
+
+    // Short English answers require an exact match: "cat" for "car" is a different word.
+    func testShortEnglishAnswerRequiresExactMatch() {
+        let verdict = AnswerScorer.grade(input: "cat", expected: "car")
+        XCTAssertFalse(verdict.isCorrect)
+    }
+
+    func testAnyAcceptedSpellingPasses() {
+        let verdict = AnswerScorer.grade(input: "解る", anyOf: ["分かる", "解る", "判る"])
+        XCTAssertTrue(verdict.isCorrect)
     }
 
     func testShortAnswerExactMatchStillPasses() {

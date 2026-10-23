@@ -7,8 +7,8 @@ struct FillInBlankQuestion: Identifiable {
     let prompt: String
     let correct: String
     let direction: QuestionDirection
-    // The accepted answers. One string for a Japanese answer; every gloss of the word's selected
-    // senses when the answer is English, where "to eat" and "eat" are the same answer.
+    // The accepted answers: every everyday spelling of the asked kind for a Japanese answer (分かる,
+    // 解る); every gloss of the word's selected senses when the answer is English.
     let accepted: [String]
     // Whether the word has a kanji form, so answering can tell WordsStore which promotion bar
     // applies (see `QuestionDirection.applicable`).
@@ -361,9 +361,9 @@ struct FillInBlankView: View {
                 prompt: prompt,
                 correct: correct,
                 direction: direction,
-                // An English answer passes on any of the word's glosses; a Japanese answer has
-                // exactly one accepted string.
-                accepted: direction.answerIsMeaning ? item.glosses : [correct],
+                // An English answer passes on any of the word's glosses; a Japanese answer on any
+                // of the word's everyday spellings of the asked kind.
+                accepted: item.acceptedAnswers(for: fields.answer),
                 hasKanjiForm: item.hasKanjiForm
             ))
         }
