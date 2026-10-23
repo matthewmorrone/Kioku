@@ -6,6 +6,9 @@ import UIKit
 private let maxVisibleSheetSenses = 3
 // Glosses within one sense are near-synonyms, so the first few carry the meaning.
 private let maxGlossesPerSheetSense = 3
+// "uk" (usually written in kana) is a note about spelling, not usage, and the sheet already shows
+// the form the reader is looking at; every other misc tag is a usage label and is shown.
+private let spellingOnlyMiscTags: Set<String> = ["uk"]
 
 extension SegmentLookupSheet {
     // Builds one compact sense line: optional number, glosses (capped), and a dim part-of-speech
@@ -46,12 +49,39 @@ extension SegmentLookupSheet {
             ))
         }
 
+        // This sense's own register / domain / dialect labels, exactly as JMdict tags it, so a
+        // derogatory or archaic sense says so on its own line rather than for the whole entry.
+        let usageTags = sheetUsageTags(for: sense)
+        if usageTags.isEmpty == false {
+            line.append(NSAttributedString(
+                string: "  ·  \(usageTags.joined(separator: ", "))",
+                attributes: [.font: detailFont, .foregroundColor: UIColor.secondaryLabel]
+            ))
+        }
+        // s_inf usage notes ("esp. as 持ってる"), one per line under the glosses.
+        for note in (sense.info ?? "").components(separatedBy: "\n") where note.isEmpty == false {
+            line.append(NSAttributedString(
+                string: "\n\(note)",
+                attributes: [.font: detailFont, .foregroundColor: UIColor.tertiaryLabel]
+            ))
+        }
+
         let label = UILabel()
         label.attributedText = line
         label.numberOfLines = 0
         label.textAlignment = .natural
         label.preferredMaxLayoutWidth = maxLayoutWidth
         return label
+    }
+
+    // A sense's misc, field and dialect tags expanded to English, in that order, minus the
+    // spelling-only flags. Source tags only: nothing is inferred from the glosses.
+    private func sheetUsageTags(for sense: DictionaryEntrySense) -> [String] {
+        [sense.misc, sense.field, sense.dialect]
+            .compactMap { $0 }
+            .flatMap { $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } }
+            .filter { $0.isEmpty == false && spellingOnlyMiscTags.contains($0) == false }
+            .map(JMdictTagExpander.expand)
     }
 
     // Multi-line UILabels need preferredMaxLayoutWidth set before the first systemLayoutSizeFitting
