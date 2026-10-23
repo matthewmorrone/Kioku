@@ -6,23 +6,38 @@ import Foundation
 enum WordFocusWordBuilder {
     // Every word of every sung cue, in order, with its start time. Words come from the note's
     // segmentation inside each cue's span (the span the lyrics card draws, clipped at the first
-    // newline); punctuation and non-speech cues carry none. Start times never run backwards, so the
-    // word playing is always the last one started.
+    // newline); punctuation carries none, and each non-speech (♪) cue is one interlude stop, as the
+    // lyrics card shows it. Segments lying inside one of `wordRanges` (the song breakdown's words,
+    // placed in the note) join into one stop, so a word the breakdown treats as one (のような, 夜の帳)
+    // is one stop with one meaning rather than pieces that each borrow it. Start times never run
+    // backwards, so the word playing is always the last one started.
     static func words(
         cues: [SubtitleCue],
         highlightRanges: [NSRange?],
         noteText: String,
         segmentationRanges: [Range<String.Index>],
         furiganaBySegmentLocation: [Int: String],
-        furiganaLengthBySegmentLocation: [Int: Int]
+        furiganaLengthBySegmentLocation: [Int: Int],
+        wordRanges: [NSRange] = []
     ) -> [WordFocusWord] {
         let note = noteText as NSString
         let segments = segmentationRanges.map { NSRange($0, in: noteText) }.filter { $0.location != NSNotFound && $0.length > 0 }
         var words: [WordFocusWord] = []
         var lastStartMs = 0
         for (index, cue) in cues.enumerated() {
-            guard SubtitleParser.isNonSpeechCue(cue.text.trimmingCharacters(in: .whitespacesAndNewlines)) == false,
-                  let span = cueSpan(at: index, cue: cue, highlightRanges: highlightRanges, note: note) else { continue }
+            if SubtitleParser.isNonSpeechCue(cue.text.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                let startMs = max(lastStartMs, cue.startMs)
+                lastStartMs = startMs
+                words.append(WordFocusWord(
+                    id: -(index + 1),
+                    surface: "",
+                    pieces: [],
+                    startMs: startMs,
+                    interludeDurationMs: cue.endMs - cue.startMs
+                ))
+                continue
+            }
+            guard let span = cueSpan(at: index, cue: cue, highlightRanges: highlightRanges, note: note) else { continue }
             let checkpoints = LyricWordTiming.sortedCheckpoints(cue)
             var cursor = firstSegment(endingAfter: span.location, in: segments)
             while cursor < segments.count, segments[cursor].location < NSMaxRange(span) {
@@ -52,7 +67,37 @@ enum WordFocusWordBuilder {
                 ))
             }
         }
-        return words
+        return joined(words, within: wordRanges)
+    }
+
+    // Joins runs of consecutive words that all sit inside the same range of `wordRanges` into one
+    // word: its spelling and pieces in order, the first one's place in the note and start time.
+    // Interlude stops and words outside every range are left as they are.
+    private static func joined(_ words: [WordFocusWord], within wordRanges: [NSRange]) -> [WordFocusWord] {
+        guard wordRanges.isEmpty == false else { return words }
+        // The range holding a word wholly, if any.
+        func container(of word: WordFocusWord) -> NSRange? {
+            guard word.interludeDurationMs == nil else { return nil }
+            let range = NSRange(location: word.id, length: (word.surface as NSString).length)
+            return wordRanges.first { NSIntersectionRange($0, range) == range }
+        }
+        var result: [WordFocusWord] = []
+        var runContainer: NSRange?
+        for word in words {
+            let wordContainer = container(of: word)
+            if let wordContainer, wordContainer == runContainer, let previous = result.last {
+                result[result.count - 1] = WordFocusWord(
+                    id: previous.id,
+                    surface: previous.surface + word.surface,
+                    pieces: previous.pieces + word.pieces,
+                    startMs: previous.startMs
+                )
+            } else {
+                result.append(word)
+            }
+            runContainer = wordContainer
+        }
+        return result
     }
 
     // The cue's range in the note: its resolved highlight range, else where its text appears

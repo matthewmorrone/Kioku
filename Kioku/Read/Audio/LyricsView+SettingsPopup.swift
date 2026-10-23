@@ -7,9 +7,7 @@ import SwiftUI
 extension LyricsView {
     var settingsPopup: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Toggle("Background Audio", isOn: $backgroundPlaybackEnabled)
-            Toggle("Continue to Next Note", isOn: $autoAdvanceToNextNoteEnabled)
-            Toggle("Lyrics on Lock Screen", isOn: $lyricsOnNowPlayingEnabled)
+            LyricsPlaybackOptions()
 
             Picker("Track By", selection: $quickGranularityRaw) {
                 Text("Line").tag(LyricsHighlightGranularity.sentence.rawValue)
@@ -24,10 +22,7 @@ extension LyricsView {
             HStack {
                 Toggle("Bubbles", isOn: $showsBubbles)
                 Menu {
-                    Toggle("Particles", isOn: $showsParticleBubbles)
-                    Toggle("English Words", isOn: $showsLoanwordBubbles)
-                    Toggle("Katakana", isOn: $showsKatakanaBubbles)
-                    Toggle("Vocalizations", isOn: $showsVocalizationBubbles)
+                    LyricWordFilterMenuItems()
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .font(.title3)

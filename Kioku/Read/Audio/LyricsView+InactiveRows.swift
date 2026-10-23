@@ -17,7 +17,7 @@ extension LyricsView {
         // rather than the raw "♪" cue text, so a long instrumental break reads differently from
         // a short one while scrolling past. No pulse here — only the active card animates.
         let text = isNonSpeechCue(at: index)
-            ? Self.interludeGlyphs(durationMs: index < cues.count ? cues[index].endMs - cues[index].startMs : 0)
+            ? InterludeNotes.glyphs(durationMs: index < cues.count ? cues[index].endMs - cues[index].startMs : 0)
             : displayText(for: index)
         let metrics = inactiveCueMetrics(distance: distance)
         let defaultSize = CGFloat(TypographySettings.defaultTextSize)

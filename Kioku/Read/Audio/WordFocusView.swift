@@ -1,10 +1,11 @@
 import SwiftUI
 
 // Full-screen word-by-word lyrics: the word being sung large in the middle with its furigana above
-// and a short meaning below, the previous and next words dimmed to either side. Sections, top to
-// bottom: a close button, the word row, and the transport bar (play/pause + scrubber). The word
+// and a short meaning below, its neighbours shrinking and fading away from it — above and below in
+// portrait, left and right in landscape. Sections, top to bottom: the top bar (jumps to lyrics,
+// breakdown and word detail; shuffle; the settings gear; close), the word strip, and the transport bar (play/pause + scrubber, rewind). The word
 // list is the note's own segmentation timed by the cues (WordFocusWordBuilder), so it follows the
-// same karaoke timing as the lyrics card; tapping a side word seeks to it.
+// same karaoke timing as the lyrics card; tapping a neighbouring word seeks to it.
 struct WordFocusView: View {
     @ObservedObject var controller: AudioPlaybackController
     let cues: [SubtitleCue]
@@ -30,6 +31,11 @@ struct WordFocusView: View {
     @AppStorage(BreakdownListenSettings.showKatakanaKey) private var showsKatakana = BreakdownListenSettings.defaultShowKatakana
     @AppStorage(BreakdownListenSettings.showVocalizationsKey) private var showsVocalizations = BreakdownListenSettings.defaultShowVocalizations
     @AppStorage(LyricsPopupSettings.showLoanwordBubblesKey) private var showsLoanwords = LyricsPopupSettings.defaultShowLoanwordBubbles
+    // Whether meanings and furigana show at all: the same choices as the lyrics card's Bubbles and
+    // Furigana toggles, set from either view's settings popup.
+    @AppStorage(LyricsPopupSettings.showBubblesKey) private var showsMeanings = LyricsPopupSettings.defaultShowBubbles
+    @AppStorage(LyricsPopupSettings.showFuriganaKey) private var showsFurigana = LyricsPopupSettings.defaultShowFurigana
+    @State private var isShowingSettings = false
     // Plays a random other song, keeping this view open.
     var onPlayRandom: () -> Void = {}
     // Top-bar jumps from the current word: its place in the lyrics view, the breakdown (given the
@@ -68,10 +74,20 @@ struct WordFocusView: View {
                     if words.indices.contains(active) {
                         let word = words[active]
                         jumpButton(systemImage: "music.note.list", label: "Show in Lyrics", action: onOpenLyrics)
-                        jumpButton(systemImage: "list.bullet.rectangle", label: "Show in Breakdown") { onOpenBreakdown(word.id) }
-                        jumpButton(systemImage: "character.book.closed", label: "Word Detail") { onOpenWordDetail(word.id, word.surface) }
+                        // An interlude has no place in the note, so only the lyrics jump applies to it.
+                        if word.interludeDurationMs == nil {
+                            jumpButton(systemImage: "list.bullet.rectangle", label: "Show in Breakdown") { onOpenBreakdown(word.id) }
+                            jumpButton(systemImage: "character.book.closed", label: "Word Detail") { onOpenWordDetail(word.id, word.surface) }
+                        }
                     }
                     Spacer()
+                    // Up here, away from the transport the thumb rests on, so a stray tap doesn't change the song.
+                    jumpButton(systemImage: "shuffle", label: "Play a Random Song", action: onPlayRandom)
+                    jumpButton(systemImage: "gearshape", label: "Settings") { isShowingSettings = true }
+                        .popover(isPresented: $isShowingSettings) {
+                            settingsPopup
+                                .presentationCompactAdaptation(.popover)
+                        }
                     Button(action: onDismiss) {
                         Image(systemName: "xmark")
                             .scaledFont(size: 15, weight: .semibold)
@@ -87,8 +103,9 @@ struct WordFocusView: View {
                 .padding(.top, 8)
 
                 GeometryReader { geo in
-                    wordRow(active: active, width: geo.size.width)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    wordStrip(active: active, size: geo.size)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
                 }
 
                 HStack(spacing: 10) {
@@ -107,8 +124,6 @@ struct WordFocusView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(controller.isPlaying ? "Pause" : "Play")
                     LyricsScrubber(controller: controller, isScrubbing: $isScrubbing)
-                    transportButton(systemImage: "shuffle", label: "Play a Random Song")
-                        .onTapGesture { onPlayRandom() }
                     // Like the lyrics card's: tap returns to the start of the line, long press to the start of the song.
                     transportButton(systemImage: "backward.end.fill", label: "Return to start of line")
                         .onTapGesture { seekToLineStart() }
@@ -118,50 +133,95 @@ struct WordFocusView: View {
                 .padding(.bottom, 12)
             }
         }
-        .task(id: WordListKey(noteID: noteID, textLength: noteText.utf16.count, cueCount: cues.count)) { rebuildWords() }
+        .task(id: WordListKey(
+            noteID: noteID,
+            textLength: noteText.utf16.count,
+            cueCount: cues.count,
+            breakdownGeneratedAt: noteID.flatMap { songBreakdownStore.breakdown(forNoteID: $0)?.generatedAt }
+        )) { rebuildWords() }
         .task(id: active &* 100_003 &+ words.count) { await loadGlosses(around: active) }
+        // A filter change re-decides which words have a meaning.
+        .onChange(of: filterSignature) { _, _ in
+            glosses = [:]
+            Task { await loadGlosses(around: activeIndex) }
+        }
     }
 
-    // The previous, current and next words side by side. The sides get a fixed share of the width and
-    // shrink their text to fit; the current word takes the rest.
-    private func wordRow(active: Int, width: CGFloat) -> some View {
-        let sideWidth = width * 0.22
-        return HStack(alignment: .center, spacing: 8) {
-            neighbor(at: active - 1, width: sideWidth, alignment: .trailing)
-            if words.indices.contains(active) {
-                wordColumn(words[active], size: 56, glossSize: 22, glossLines: 2)
-                    .frame(maxWidth: .infinity)
-                    .layoutPriority(1)
-                    .id(words[active].id)
+    // How many words show on each side of the one being sung, and how much smaller and fainter each
+    // step away from it is drawn.
+    private static let neighborCount = 4
+    private static let scaleByDistance: [CGFloat] = [1, 0.55, 0.42, 0.33, 0.26]
+    private static let opacityByDistance: [Double] = [1, 0.5, 0.3, 0.17, 0.08]
+
+    // The word being sung with its neighbours in reading order, shrinking and fading with distance:
+    // top to bottom when the screen is taller than wide, left to right when wider. Each word keeps
+    // its identity, so on every step the strip slides along and each word grows or shrinks into its
+    // new place rather than being redrawn.
+    private func wordStrip(active: Int, size: CGSize) -> some View {
+        let isHorizontal = size.width > size.height
+        // The current word's slot: its length along the strip and its breadth across it. A word is laid
+        // out at the current word's size, then scaled, so its text never re-wraps as it shrinks.
+        let slotLength = isHorizontal ? min(size.width * 0.34, 280) : min(size.height * 0.24, 170)
+        let slotBreadth = isHorizontal ? size.height : size.width - 32
+        let slotWidth = isHorizontal ? slotLength : slotBreadth
+        let slotHeight = isHorizontal ? slotBreadth : slotLength
+        let window = (active - Self.neighborCount)...(active + Self.neighborCount)
+        return ZStack {
+            ForEach(window.filter { words.indices.contains($0) }, id: \.self) { index in
+                let distance = index - active
+                let scale = Self.scaleByDistance[min(abs(distance), Self.neighborCount)]
+                let offset = Self.stripOffset(distance: distance, slotLength: slotLength)
+                wordColumn(words[index], isActive: index == active, size: 56, glossSize: 22, glossLines: 2)
+                    .frame(width: slotWidth, height: slotHeight)
+                    .scaleEffect(scale)
+                    .frame(width: slotWidth * scale, height: slotHeight * scale)
+                    .contentShape(Rectangle())
+                    .onTapGesture { controller.seek(toMs: words[index].startMs) }
+                    .opacity(Self.opacityByDistance[min(abs(distance), Self.neighborCount)])
+                    .offset(x: isHorizontal ? offset : 0, y: isHorizontal ? 0 : offset)
                     .transition(.opacity)
-            } else {
+            }
+            if words.indices.contains(active) == false {
                 Text("♪")
                     .scaledFont(size: 40)
                     .foregroundStyle(.tertiary)
-                    .frame(maxWidth: .infinity)
             }
-            neighbor(at: active + 1, width: sideWidth, alignment: .leading)
         }
-        .padding(.horizontal, 12)
-        .animation(.easeInOut(duration: 0.18), value: active)
+        .animation(.easeInOut(duration: 0.25), value: active)
     }
 
-    // A dimmed neighbouring word (or blank space at either end of the song); tapping it jumps there.
+    // Where a word `distance` steps from the current one sits along the strip, from its centre: half
+    // of each slot between them, so neighbouring words touch without overlapping at any size.
+    private static func stripOffset(distance: Int, slotLength: CGFloat) -> CGFloat {
+        guard distance != 0 else { return 0 }
+        var total: CGFloat = 0
+        for step in 0..<abs(distance) {
+            let near = scaleByDistance[min(step, neighborCount)]
+            let far = scaleByDistance[min(step + 1, neighborCount)]
+            total += slotLength * (near + far) / 2
+        }
+        return distance < 0 ? -total : total
+    }
+
+    // One word as a column: furigana over its kanji, the spelling, and the meaning underneath. An
+    // interlude is its notes instead (InterludeNotes, as on the lyrics card), pulsing to the music
+    // while it's the stop playing.
     @ViewBuilder
-    private func neighbor(at index: Int, width: CGFloat, alignment: Alignment) -> some View {
-        if words.indices.contains(index) {
-            wordColumn(words[index], size: 30, glossSize: 12, glossLines: 3)
-                .opacity(0.3)
-                .frame(width: width, alignment: alignment)
-                .contentShape(Rectangle())
-                .onTapGesture { controller.seek(toMs: words[index].startMs) }
+    private func wordColumn(_ word: WordFocusWord, isActive: Bool, size: CGFloat, glossSize: CGFloat, glossLines: Int) -> some View {
+        if let durationMs = word.interludeDurationMs {
+            InterludeNotes(
+                controller: controller,
+                durationMs: durationMs,
+                isActive: isActive && controller.isPlaying,
+                fontSize: size * 0.8
+            )
         } else {
-            Color.clear.frame(width: width)
+            spelledWordColumn(word, size: size, glossSize: glossSize, glossLines: glossLines)
         }
     }
 
-    // One word as a column: furigana over its kanji, the spelling, and the meaning underneath.
-    private func wordColumn(_ word: WordFocusWord, size: CGFloat, glossSize: CGFloat, glossLines: Int) -> some View {
+    // A sung word's column: furigana over its kanji, the spelling, and the meaning underneath.
+    private func spelledWordColumn(_ word: WordFocusWord, size: CGFloat, glossSize: CGFloat, glossLines: Int) -> some View {
         VStack(spacing: size * 0.25) {
             // The first size that fits the width, so ruby and spelling shrink together.
             ViewThatFits(in: .horizontal) {
@@ -169,7 +229,7 @@ struct WordFocusView: View {
                     spellingRow(word, size: size * scale)
                 }
             }
-            Text(glosses[word.id] ?? "")
+            Text(showsMeanings ? glosses[word.id] ?? "" : "")
                 .font(.system(size: glossSize))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -184,7 +244,7 @@ struct WordFocusView: View {
                 VStack(spacing: 2) {
                     Text(piece.ruby ?? " ")
                         .font(Font(ReadingFont.body(size: size * 0.45)))
-                        .opacity(piece.ruby == nil ? 0 : 1)
+                        .opacity(piece.ruby == nil || showsFurigana == false ? 0 : 1)
                     Text(piece.base)
                         .font(Font(ReadingFont.body(size: size)))
                 }
@@ -192,6 +252,36 @@ struct WordFocusView: View {
         }
         .lineLimit(1)
         .fixedSize(horizontal: true, vertical: false)
+    }
+
+    // The gear's popover: the lyrics card's playback toggles, whether meanings show (with the menu of
+    // which kinds of word get one), and furigana. Every choice is shared with the lyrics card.
+    private var settingsPopup: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            LyricsPlaybackOptions()
+            Divider()
+            HStack {
+                Toggle("Meanings", isOn: $showsMeanings)
+                Menu {
+                    LyricWordFilterMenuItems()
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.title3)
+                }
+                .disabled(showsMeanings == false)
+            }
+            Text("Meanings follow the lyrics card's Bubbles; Particles, Katakana and Vocalizations also apply to the Breakdown.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle("Furigana", isOn: $showsFurigana)
+        }
+        .padding(16)
+        .frame(width: 270)
+    }
+
+    // The word filters as one value, so a change to any of them refreshes the meanings shown.
+    private var filterSignature: [Bool] {
+        [showsParticles, showsKatakana, showsVocalizations, showsLoanwords]
     }
 
     // A small round top-bar button.
@@ -228,17 +318,19 @@ struct WordFocusView: View {
         controller.seek(toMs: cues.last(where: { $0.startMs <= now })?.startMs ?? 0)
     }
 
-    // Builds the word list from the note and cues, and forgets glosses of the old one.
+    // Builds the word list from the note and cues, joined into the breakdown's words where it has
+    // them, and forgets glosses of the old one.
     private func rebuildWords() {
+        breakdownPlacement = noteID.flatMap { songBreakdownStore.placement(forNoteID: $0, noteText: noteText) }
         words = WordFocusWordBuilder.words(
             cues: cues,
             highlightRanges: highlightRanges,
             noteText: noteText,
             segmentationRanges: segmentationRanges,
             furiganaBySegmentLocation: furiganaBySegmentLocation,
-            furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation
+            furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
+            wordRanges: breakdownPlacement?.lines.flatMap { $0.words.map(\.range) } ?? []
         )
-        breakdownPlacement = noteID.flatMap { songBreakdownStore.placement(forNoteID: $0, noteText: noteText) }
         glosses = [:]
     }
 
@@ -254,7 +346,9 @@ struct WordFocusView: View {
             isParticle: isParticle,
             isLoanword: isLoanword
         )
-        for i in (index - 2)...(index + 2) where words.indices.contains(i) && glosses[words[i].id] == nil {
+        let reach = Self.neighborCount + 1
+        for i in (index - reach)...(index + reach)
+        where words.indices.contains(i) && words[i].interludeDurationMs == nil && glosses[words[i].id] == nil {
             let word = words[i]
             let wordRange = NSRange(location: word.id, length: (word.surface as NSString).length)
             let placed = breakdownPlacement?.words(overlapping: wordRange) ?? []

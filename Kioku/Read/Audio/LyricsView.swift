@@ -257,9 +257,6 @@ struct LyricsView: View {
     // furigana/segmentation AppStorage keys; see LyricsPopupSettings' doc comment for why sharing
     // them crashed the app.
     @State var isShowingSettingsPopup = false
-    @AppStorage(AudioSettings.backgroundPlaybackKey) var backgroundPlaybackEnabled: Bool = AudioSettings.defaultBackgroundPlayback
-    @AppStorage(AudioSettings.autoAdvanceToNextNoteKey) var autoAdvanceToNextNoteEnabled: Bool = AudioSettings.defaultAutoAdvanceToNextNote
-    @AppStorage(AudioSettings.lyricsOnNowPlayingKey) var lyricsOnNowPlayingEnabled: Bool = AudioSettings.defaultLyricsOnNowPlaying
     @AppStorage(LyricsPopupSettings.showTranslationKey) var isTranslationVisible: Bool = LyricsPopupSettings.defaultShowTranslation
     @AppStorage(LyricsPopupSettings.showBubblesKey) var showsBubbles: Bool = LyricsPopupSettings.defaultShowBubbles
     // The word filters shared with the Breakdown's Show options (BreakdownListenSettings).

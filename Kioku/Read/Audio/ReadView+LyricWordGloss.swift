@@ -28,10 +28,18 @@ extension ReadView {
     }
 
     // The entry a lyric word's bubble speaks for: the one the lookup sheet shows, else, where the
-    // sheet leaves the word unpicked, the likeliest of the words sharing its reading.
+    // sheet leaves the word unpicked, the spelling's common word among those sharing its reading —
+    // the dictionary's canonical entry for it (resolvedDictionaryEntry: function words first for
+    // kana, then frequency), so kana の is the particle and not 野 read の. The first candidate only
+    // when the canonical entry isn't one of them.
     private func lyricBubbleEntry(at location: Int, surface: String) -> DictionaryEntry? {
-        displayedDictionaryEntry(forSurface: surface, at: location)
-            ?? unpickedLyricCandidates(forSurface: surface, at: location).first
+        if let shown = displayedDictionaryEntry(forSurface: surface, at: location) { return shown }
+        let candidates = unpickedLyricCandidates(forSurface: surface, at: location)
+        if let canonical = resolvedDictionaryEntry(forSurface: surface),
+           let common = candidates.first(where: { $0.entryId == canonical.entryId }) {
+            return common
+        }
+        return candidates.first
     }
 
     // Whether a lyric word is a loanword in katakana (ベイビー, ドア, キスした), for the English Words
