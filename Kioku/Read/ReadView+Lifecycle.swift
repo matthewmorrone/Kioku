@@ -428,7 +428,8 @@ extension ReadView {
                         segmenterRevision: segmenterRevision,
                         focusNoteLocation: readSheets.breakdownFocusLocation,
                         autoplay: readSheets.breakdownAutoplay,
-                        onShuffle: { ReadNoteNavigation.shared.isRandomBreakdownRequested = true }
+                        onShuffle: { ReadNoteNavigation.shared.isRandomBreakdownRequested = true },
+                        onApplyFix: { fix, lineRange in applyBreakdownFix(fix, inLine: lineRange) }
                     )
                         // A shuffle swaps the note under the open sheet; rebuild so no line state
                         // (expansion, playback step, cues) carries over from the previous song.

@@ -34,6 +34,10 @@ final class SongLiveListenController: NSObject, ObservableObject {
     // by AVSpeechSynthesizer's live per-character callback. Nil outside a single-run sentence
     // step (a mixed-language sentence splits into multiple runs — rare — skips fine tracking).
     @Published private(set) var sentenceProgress: Double?
+    // While a line's sung clip plays, the UTF-16 offset in that line of the character being sung
+    // (SongSungCharacter, from the line's alignment checkpoints), polled from the clip player so
+    // the card can light each word as it's sung. Nil outside a line clip, or without checkpoints.
+    @Published private(set) var sungLineOffset: Int?
     // Set when this device is missing a required voice, or the audio session couldn't be
     // activated. Surfaced by the toolbar's listen button as a retry-able failure state.
     @Published private(set) var lastError: String?
@@ -54,6 +58,11 @@ final class SongLiveListenController: NSObject, ObservableObject {
     private var steps: [SongListenStep] = []
     private var sourceAudioURL: URL?
     private var originalByLineIndex: [Int: String] = [:]
+    // Each line's matched cue, for following its sung clip character by character.
+    private var lineCues: [Int: SubtitleCue] = [:]
+    // Polls the clip player while a line clip plays (sungLineOffset), for this line and its cue.
+    private var sungPositionTimer: Timer?
+    private var followedLine: (cue: SubtitleCue, text: String)?
     private var currentStepIndex = 0
     // Set by `playLine` so `advance` stops (without firing the natural-finish callback) once
     // it steps past this line's last step, instead of continuing into the next line.
@@ -107,7 +116,13 @@ final class SongLiveListenController: NSObject, ObservableObject {
     // not just when the user taps play) so the expensive one-time work below — opening the note's
     // source audio file and resolving TTS voices — happens well before the first tap instead of on
     // its critical path.
-    func configure(steps: [SongListenStep], sourceAudioURL: URL?, originalByLineIndex: [Int: String]) {
+    func configure(
+        steps: [SongListenStep],
+        sourceAudioURL: URL?,
+        originalByLineIndex: [Int: String],
+        lineCues: [Int: SubtitleCue] = [:]
+    ) {
+        self.lineCues = lineCues
         guard steps != self.steps || sourceAudioURL != self.sourceAudioURL else { return }
         let sourceChanged = sourceAudioURL != self.sourceAudioURL
         stop()
@@ -298,9 +313,12 @@ final class SongLiveListenController: NSObject, ObservableObject {
         switch steps[index] {
         case .speech(let segment):
             runSpeech(segment)
-        case .clip(_, let startMs, let endMs), .wordClip(_, _, let startMs, let endMs):
+        case .clip(let lineIndex, let startMs, let endMs):
             sentenceProgress = nil
-            runClip(startMs: startMs, endMs: endMs)
+            runClip(startMs: startMs, endMs: endMs, followingLine: lineIndex)
+        case .wordClip(_, _, let startMs, let endMs):
+            sentenceProgress = nil
+            runClip(startMs: startMs, endMs: endMs, followingLine: nil)
         }
     }
 
@@ -356,6 +374,35 @@ final class SongLiveListenController: NSObject, ObservableObject {
     private func cancelScheduledWork() {
         scheduledWork?.cancel()
         scheduledWork = nil
+        stopFollowingSungLine()
+    }
+
+    // Polls the clip player's position while line `lineIndex`'s clip plays, publishing the sung
+    // character (sungLineOffset). Does nothing when the line has no cue with checkpoints.
+    private func followSungLine(_ lineIndex: Int) {
+        stopFollowingSungLine()
+        guard let cue = lineCues[lineIndex], cue.checkpoints.isEmpty == false,
+              let line = originalByLineIndex[lineIndex] else { return }
+        followedLine = (cue, line)
+        updateSungLineOffset()
+        sungPositionTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateSungLineOffset() }
+        }
+    }
+
+    // Reads the clip player's position into sungLineOffset for the followed line.
+    private func updateSungLineOffset() {
+        guard let followedLine, let player = clipPlayer else { return }
+        let offset = SongSungCharacter.offset(atMs: Int(player.currentTime * 1000), in: followedLine.cue, line: followedLine.text)
+        if offset != sungLineOffset { sungLineOffset = offset }
+    }
+
+    // Stops polling the clip position and clears the sung character.
+    private func stopFollowingSungLine() {
+        sungPositionTimer?.invalidate()
+        sungPositionTimer = nil
+        followedLine = nil
+        if sungLineOffset != nil { sungLineOffset = nil }
     }
 
     // MARK: - Speech
@@ -417,7 +464,9 @@ final class SongLiveListenController: NSObject, ObservableObject {
     // case — by the time any line plays, the background load from `configure()` has long since
     // finished); the synchronous open here is only a rare fallback for a tap that lands before
     // that background load completes (matching `loadClipPlayer`'s own stem preference).
-    private func runClip(startMs: Int, endMs: Int) {
+    // `lineIndex` is set for a whole line's clip, whose sung character is followed (followSungLine);
+    // nil for a word snippet.
+    private func runClip(startMs: Int, endMs: Int, followingLine lineIndex: Int?) {
         guard let sourceAudioURL else {
             completeCurrentStep()
             return
@@ -445,8 +494,10 @@ final class SongLiveListenController: NSObject, ObservableObject {
         let durationMs = max(0, clampedEndMs - tightStartMs)
         player.currentTime = TimeInterval(tightStartMs) / 1000
         player.play()
+        if let lineIndex { followSungLine(lineIndex) }
         let item = DispatchWorkItem { [weak self] in
             self?.clipPlayer?.pause()
+            self?.stopFollowingSungLine()
             self?.completeCurrentStep()
         }
         scheduledWork = item

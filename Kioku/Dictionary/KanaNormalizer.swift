@@ -78,4 +78,13 @@ nonisolated enum KanaNormalizer {
     private static func phoneticKey(_ text: String) -> String {
         katakanaToHiragana(normalizeForFuriganaAlignment(text))
     }
+
+    // Drops each katakana reading whose hiragana spelling is also listed (風 ふり / フリ), keeping order:
+    // the two are one reading, so no reading list or arrow should offer it twice.
+    static func droppingKatakanaTwins(_ readings: [String]) -> [String] {
+        readings.filter { reading in
+            let hiragana = katakanaToHiragana(reading)
+            return hiragana == reading || readings.contains(hiragana) == false
+        }
+    }
 }

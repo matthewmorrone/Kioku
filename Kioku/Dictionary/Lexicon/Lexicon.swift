@@ -109,7 +109,7 @@ nonisolated public final class Lexicon {
             }
         }
 
-        return readingCandidates
+        return KanaNormalizer.droppingKatakanaTwins(readingCandidates)
     }
 
     // Returns the most deeply deinflected admitted candidates for one surface.
@@ -408,7 +408,7 @@ nonisolated public final class Lexicon {
             }
         }
 
-        return readings
+        return KanaNormalizer.droppingKatakanaTwins(readings)
     }
 
     // Resolves preferred reading for one lemma from the ordered reading candidates.

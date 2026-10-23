@@ -4,11 +4,12 @@ import UIKit
 // One line of a song breakdown rendered as a card inside the per-note vertical scroll.
 //
 // Layout (top → bottom):
-//   - header (line number)
+//   - header (line number, expand arrow, play button)
 //   - reference chip (only for repeated/parallel chorus lines)
 //   - Japanese original
 //   - gist + grammar note  ← falls through to referenced line for chorus repeats
-//   - "Show / Hide word explanations" toggle, followed by the word list when expanded
+//   - when expanded (header arrow or a tap on the Japanese line): the line split one segment per
+//     line with each word's gloss, then the segmentation and pattern notes
 //
 // Fall-through for `.sameAsLine` / `.parallelTo` lines: the prompt instructs the model to skip the
 // full breakdown on repeats and just emit "= line N". That leaves the SongLine's own
@@ -29,13 +30,6 @@ struct SongLineCard: View {
     // Lazily-populated cache; nil before the first expansion for this line. Owned by the
     // parent stepper so cache compute happens once per line per session.
     let furiganaCache: LineFuriganaCache?
-    // Furigana cache for word-list headwords, keyed by (line, surface) — not surface alone,
-    // since the same word can resolve to a different reading on different lines (see
-    // WordFuriganaKey). Same shape as furiganaCache (see LineFuriganaCache) so a headword
-    // renders through the same KiokuCoreTextRendererView the big Japanese row uses. Owned by
-    // the parent stepper (it has the segmenter/surfaceReadingData in scope) and built eagerly
-    // alongside furiganaCache so every word in the explanations list can show furigana.
-    let wordFurigana: [WordFuriganaKey: LineFuriganaCache]
     // Play-button state for this line's narration (sung clip when available, then the
     // sentence, gist, and words — see SongListenScript). Nil hides the button entirely.
     let playState: SongLineCardPlayState?
@@ -52,6 +46,9 @@ struct SongLineCard: View {
     // segmented words is being spoken right now, so `originalLine` can highlight just that word
     // instead of the whole line. Nil whenever there's no sentence actively playing for this line.
     let listenSentenceProgress: Double?
+    // While this line's sung clip plays, the UTF-16 offset of the character being sung (from the
+    // song's alignment); the segment holding it lights up. Nil otherwise.
+    let listenSungOffset: Int?
     let onToggleExpansion: () -> Void
     let onPlayLine: () -> Void
     // Opens the shared lookup sheet for a tapped vocabulary row. The parent owns the dictionary
@@ -87,29 +84,16 @@ struct SongLineCard: View {
     private var effectiveGrammarNote: String? {
         showsPatternNote ? effectiveValue(\.grammarNote) : nil
     }
-    // The line index whose words `words` is actually drawing from — this line's own, or (for a
-    // "= line N" chorus fall-through) the referenced line's. Mirrors SongListenScript's
-    // effectiveWords fallback so wordFurigana lookups use the same line identity the cache was
-    // built with.
-    private var wordsLineIndex: Int {
-        if line.words.isEmpty == false { return line.index }
-        if line.reference != nil, let referencedLine { return referencedLine.index }
-        return line.index
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
             originalLine
             gistSection
-            // Pattern note moved into the expanded explanations area below; gist stays
-            // up top as the headline. Toggle visibility tracks "anything to expand?" —
-            // words OR a pattern note qualifies.
-            if hasExpandableDetail {
-                expandableDetailToggle
-                if isExpanded {
-                    expandableDetailContent
-                }
+            // The header's arrow (or a tap on the Japanese line) expands the card: the line splits
+            // into its words with their glosses, and the segmentation and pattern notes show below.
+            // The gist stays up top as the headline.
+            if hasExpandableDetail, isExpanded {
+                expandableDetailContent
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -174,6 +158,9 @@ struct SongLineCard: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .fixedSize()
+            if hasExpandableDetail {
+                expandableDetailToggle
+            }
             if let reference = line.reference {
                 inlineReferenceLabel(reference)
             }
@@ -267,35 +254,77 @@ struct SongLineCard: View {
     private var originalLine: some View {
         if let cache = furiganaCache,
            cache.sourceText == line.original,
-           cache.furiganaBySegmentLocation.isEmpty == false {
-            furiganaRow(cache: cache)
+           cache.segmentationRanges.isEmpty == false {
+            segmentedLine(cache: cache)
                 .background(speakingBackground(isSpeaking(.sentence)))
                 .accessibilityLabel(line.original)
                 .accessibilityHint(explanationsAccessibilityHint)
         } else {
-            Text(line.original)
-                .font(.system(size: SongLineFitSize.size(
-                    for: line.original,
-                    baseSize: 28,
-                    availableWidth: originalLineWidth - 8,
-                    font: { UIFont.systemFont(ofSize: $0, weight: .medium) }
-                ), weight: .medium))
-                .lineSpacing(4)
-                .multilineTextAlignment(.leading)
-                // Matches the CoreText renderer's content inset (top/bottom 8, left/right 4)
-                // so this fallback lines up with the furigana-renderer branch above — otherwise
-                // lines alternate between the two branches depending on whether furiganaCache
-                // resolved any kanji, and the fallback sits ~4pt further left/higher than lines
-                // rendered via the renderer.
-                .padding(EdgeInsets(top: 8, leading: 4, bottom: 8, trailing: 4))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { originalLineWidth = $0 }
+            plainLine
                 .background(speakingBackground(isSpeaking(.sentence)))
-                .contentShape(Rectangle())
-                .onTapGesture { onToggleExpansion() }
                 .accessibilityLabel(line.original)
                 .accessibilityHint(explanationsAccessibilityHint)
         }
+    }
+
+    // The collapsed sentence: the furigana renderer when the line has readings, plain text otherwise.
+    @ViewBuilder
+    private func collapsedSentence(cache: LineFuriganaCache) -> some View {
+        if cache.furiganaBySegmentLocation.isEmpty == false {
+            furiganaRow(cache: cache)
+        } else {
+            plainLine
+        }
+    }
+
+    // The line as plain text, for lines without readings.
+    private var plainLine: some View {
+        Text(line.original)
+            .font(.system(size: SongLineFitSize.size(
+                for: line.original,
+                baseSize: 28,
+                availableWidth: originalLineWidth - 8,
+                font: { UIFont.systemFont(ofSize: $0, weight: .medium) }
+            ), weight: .medium))
+            .lineSpacing(4)
+            .multilineTextAlignment(.leading)
+            // Matches the CoreText renderer's content inset (top/bottom 8, left/right 4)
+            // so this fallback lines up with the furigana-renderer branch above — otherwise
+            // lines alternate between the two branches depending on whether furiganaCache
+            // resolved any kanji, and the fallback sits ~4pt further left/higher than lines
+            // rendered via the renderer.
+            .padding(EdgeInsets(top: 8, leading: 4, bottom: 8, trailing: 4))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { originalLineWidth = $0 }
+            .contentShape(Rectangle())
+            .onTapGesture { onToggleExpansion() }
+    }
+
+    // The sentence while collapsed; one segment per line, each with its words' glosses, while
+    // expanded (see SongLineSegmentsView), at the same fitted size either way so the segments
+    // don't change size as they split. A segment with no gloss to show drops out of the split.
+    private func segmentedLine(cache: LineFuriganaCache) -> some View {
+        let activeWordRange = spokenRange(cache: cache)
+        let pieces = cache.segmentPieces()
+        return SongLineSegmentsView(
+            isExpanded: isExpanded,
+            lineIndex: line.index,
+            pieces: pieces,
+            rows: SongLineSegmentWords.rows(words: words, in: line.original, pieces: pieces),
+            textSize: SongLineFitSize.size(
+                for: line.original,
+                baseSize: 28,
+                availableWidth: originalLineWidth - 8,
+                font: { ReadingFont.body(size: $0) },
+                segmentationRanges: cache.segmentationRanges,
+                furiganaBySegmentLocation: cache.furiganaBySegmentLocation
+            ),
+            furiganaGap: furiganaGap,
+            playbackHighlightRange: activeWordRange,
+            onTap: onToggleExpansion,
+            onWordTapped: onWordTapped,
+            sentence: { collapsedSentence(cache: cache) }
+        )
     }
 
     private var explanationsAccessibilityHint: String {
@@ -303,16 +332,31 @@ struct SongLineCard: View {
         return isExpanded ? "Tap to hide explanations" : "Tap to show explanations"
     }
 
+    // The part of the line Listen-along is reading right now: while the line's clip is sung, the
+    // segment being sung (from the alignment); while it reads the sentence, the segment its
+    // progress estimate lands on (estimatedActiveWordRange); while it reads one word or
+    // that word's meaning, the word itself, so a collapsed card follows the word list too.
+    private func spokenRange(cache: LineFuriganaCache) -> NSRange? {
+        if let offset = listenSungOffset {
+            return cache.segmentationRanges
+                .map { NSRange($0, in: line.original) }
+                .first { NSLocationInRange(offset, $0) }
+        }
+        if let progress = listenSentenceProgress {
+            return Self.estimatedActiveWordRange(progress: progress, segmentationRanges: cache.segmentationRanges, in: line.original)
+        }
+        guard let index = words.firstIndex(where: { isSpeaking($0) }) else { return nil }
+        return SongLineSegmentWords.ranges(of: words, in: line.original)[index]
+    }
+
     // Renders the line via the same CoreText renderer the Read tab uses, at the same 28pt
     // size as the plain Text branch. `isScrollEnabled` is false so the renderer's
     // `sizeThatFits` reports a real multi-line height to SwiftUI. Color alternation,
     // selection, and debug overlays are all off — this is a passive reveal, not interactive
-    // read mode — except `playbackHighlightRange`, which lights up the word Listen-along's
-    // estimate says is being spoken right now (see `estimatedActiveWordRange`).
+    // read mode — except `playbackHighlightRange`, which lights up the word Listen-along is
+    // reading right now (see `spokenRange`).
     private func furiganaRow(cache: LineFuriganaCache) -> some View {
-        let activeWordRange = listenSentenceProgress.flatMap {
-            Self.estimatedActiveWordRange(progress: $0, segmentationRanges: cache.segmentationRanges, in: line.original)
-        }
+        let activeWordRange = spokenRange(cache: cache)
         return KiokuCoreTextRendererView(
             text: line.original,
             segmentationRanges: cache.segmentationRanges,
@@ -397,39 +441,32 @@ struct SongLineCard: View {
     }
 
     // True when expanding this card would reveal anything — words to drill into or a
-    // pattern note. Lines with neither don't show the toggle at all.
+    // pattern note. Lines with neither show no arrow.
     private var hasExpandableDetail: Bool {
         words.isEmpty == false || (effectiveGrammarNote?.isEmpty == false) || line.segmentationNote != nil
     }
 
-    // Single per-line toggle for the drill-down detail (vocabulary + pattern note).
-    // Hidden by default so a long song reads as a clean list of lines.
+    // The header's expand/collapse arrow beside the line number, without a label: right when
+    // collapsed, down when expanded.
     private var expandableDetailToggle: some View {
         Button {
             onToggleExpansion()
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                Text(isExpanded ? "Hide explanations" : "Show explanations")
-                    .font(.footnote.weight(.semibold))
-                Spacer(minLength: 0)
-            }
-            .foregroundStyle(Color.accentColor)
-            .contentShape(Rectangle())
+            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(minWidth: 28, minHeight: 28)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(isExpanded ? "Hide explanations" : "Show explanations")
     }
 
-    // Words first, then the pattern note at the bottom (matching the user's preferred
-    // ordering — vocab is the primary detail, the pattern is supplementary commentary).
+    // The segmentation note, then the pattern note; the words' glosses sit beside the split
+    // Japanese line above (see SongLineSegmentsView).
     @ViewBuilder
     private var expandableDetailContent: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if words.isEmpty == false {
-                wordsList
-            }
             if let note = line.segmentationNote {
                 segmentationNote(note)
             }
@@ -440,83 +477,8 @@ struct SongLineCard: View {
         .padding(.top, 2)
     }
 
-    // Word entries as a two-column glossary table: headword (with furigana) on the left in a
-    // column sized to the widest headword, gloss on the right sharing one left edge down the
-    // list. Iterates `words` so chorus repeats display the referenced line's
-    // vocabulary. Identifies rows by positional offset because a single line can repeat the
-    // same word (chorus, refrain) and value-based identity would collide and break SwiftUI's
-    // diffing.
-    private var wordsList: some View {
-        let columnWidth = headwordColumnWidth
-        return VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(words.enumerated()), id: \.offset) { offset, word in
-                if offset > 0 {
-                    Divider()
-                }
-                wordEntryRow(word, headwordWidth: columnWidth)
-                    .id(wordRowScrollID(for: word, at: offset))
-            }
-        }
-    }
-
-    // Headword point size in the table — smaller than the old stacked layout's 20pt so the
-    // headword column stays narrow enough to leave the gloss most of the row.
-    private static let headwordSize: CGFloat = 18
-    // Upper bound on the headword column; longer headwords wrap inside it rather than
-    // squeezing the gloss column.
-    private static let maxHeadwordColumnWidth: CGFloat = 140
-
-    // Vertical geometry the furigana renderer gives a single line of headword text — the same
-    // RenderGeometry the renderer resolves, so the plain-Text headword and the gloss can be
-    // offset to sit on the renderer's baseline.
-    private var headwordGeometry: RenderGeometry {
-        RenderGeometry.resolve(
-            textSize: Double(Self.headwordSize),
-            userLineSpacing: 4,
-            furiganaGap: furiganaGap
-        )
-    }
-
-    // Width of the headword column: the widest headword's natural width, counting the extra
-    // room ruby wider than its kanji forces the renderer to open, plus the renderer's side
-    // insets. One width for the whole list keeps the gloss column aligned.
-    private var headwordColumnWidth: CGFloat {
-        let bodyFont = ReadingFont.body(size: Self.headwordSize)
-        let rubyFont = UIFont.systemFont(ofSize: Self.headwordSize * 0.5)
-        let widest = words.map { word -> CGFloat in
-            let surface = word.surface as NSString
-            var width = surface.size(withAttributes: [.font: bodyFont]).width
-            let key = WordFuriganaKey(lineIndex: wordsLineIndex, surface: word.surface)
-            if let cache = wordFurigana[key] {
-                for (location, reading) in cache.furiganaBySegmentLocation {
-                    let length = cache.furiganaLengthBySegmentLocation[location] ?? 0
-                    guard location + length <= surface.length else { continue }
-                    let baseWidth = surface.substring(with: NSRange(location: location, length: length))
-                        .size(withAttributes: [.font: bodyFont]).width
-                    let rubyWidth = (reading as NSString).size(withAttributes: [.font: rubyFont]).width
-                    width += max(0, rubyWidth - baseWidth)
-                }
-            }
-            return ceil(width)
-        }.max() ?? 0
-        return min(widest + 12, Self.maxHeadwordColumnWidth)
-    }
-
-    // The scroll id for one word row. A word's first occurrence in the line gets the id
-    // `wordRowID` names, so the mini player can scroll to it by surface; later repeats of the
-    // same surface get a positional id that can't collide with it.
-    private func wordRowScrollID(for word: SongWord, at offset: Int) -> String {
-        let surface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
-        let isFirstOccurrence = words.prefix(offset).contains {
-            $0.surface.trimmingCharacters(in: .whitespacesAndNewlines) == surface
-        } == false
-        return isFirstOccurrence
-            ? SongLineCard.wordRowID(lineIndex: line.index, surface: surface)
-            : "word-\(line.index)-#\(offset)"
-    }
-
-    // The scroll id of a word's row in a line's card — shared by the card that tags the row and
-    // the Breakdown view that scrolls to it.
+    // The scroll id of a word's gloss in a line's card — shared by SongLineSegmentsView, which
+    // tags the gloss, and the Breakdown view that scrolls to it.
     static func wordRowID(lineIndex: Int, surface: String) -> String {
         "word-\(lineIndex)-\(surface)"
     }
@@ -598,108 +560,5 @@ struct SongLineCard: View {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         }
         return trimmed
-    }
-
-    // Renders one table row: headword (with furigana when available) in the fixed-width left
-    // column, LLM gloss in the right column, its first line on the headword's baseline.
-    // Tapping the row opens the shared lookup sheet (via onWordTapped) so the breakdown's
-    // vocabulary is a jumping-off point into the dictionary, like tapping a segment in the
-    // read view.
-    private func wordEntryRow(_ word: SongWord, headwordWidth: CGFloat) -> some View {
-        let geometry = headwordGeometry
-        let headwordFont = ReadingFont.body(size: Self.headwordSize)
-        let glossFont = UIFont.preferredFont(forTextStyle: .callout)
-        return Button {
-            onWordTapped(word)
-        } label: {
-            HStack(alignment: .top, spacing: 8) {
-                wordHeadword(word, topInset: geometry.topInset)
-                    .frame(width: headwordWidth, alignment: .leading)
-                if word.definition.isEmpty == false {
-                    // Just the gloss — see SongDefinitionCleaner.
-                    Text(SongDefinitionCleaner.clean(word.definition))
-                        .font(.callout)
-                        .foregroundStyle(.primary.opacity(0.85))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        // Drops the gloss's first baseline onto the headword's.
-                        .padding(.top, geometry.topInset + headwordFont.ascender - glossFont.ascender)
-                        .padding(.bottom, 8)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 4)
-            .background(speakingBackground(isSpeaking(word)))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityHint("Look up \(word.surface)")
-    }
-
-    // A word-list headword: renders through the same CoreText renderer the Read tab and this
-    // card's own big Japanese row use (see furiganaRow) — furigana over kanji runs when the
-    // stepper resolved a reading for this surface, plain text otherwise (kana-only words, or a
-    // surface the resolver couldn't align). Don't give this its own single-word ruby renderer —
-    // a second, independent implementation of the same overhang/kerning logic will drift out of
-    // sync with this one and need its own separate bug fixes.
-    //
-    // The renderer intercepts its own touches (a UIViewRepresentable wrapping a UITextView, same
-    // as furiganaRow), so tapping the headword itself wouldn't reach wordEntryRow's surrounding
-    // Button — onSegmentTapped routes it to the same onWordTapped callback instead.
-    //
-    // `topInset` is the renderer's own space above the text (ruby reserve + margin); the
-    // plain-Text branch pads by the same amount so every headword in the table shares one
-    // baseline whether or not it has furigana.
-    @ViewBuilder
-    private func wordHeadword(_ word: SongWord, topInset: CGFloat) -> some View {
-        let key = WordFuriganaKey(lineIndex: wordsLineIndex, surface: word.surface)
-        if let cache = wordFurigana[key], cache.furiganaBySegmentLocation.isEmpty == false {
-            KiokuCoreTextRendererView(
-                text: word.surface,
-                segmentationRanges: cache.segmentationRanges,
-                furiganaBySegmentLocation: cache.furiganaBySegmentLocation,
-                furiganaLengthBySegmentLocation: cache.furiganaLengthBySegmentLocation,
-                isFuriganaVisible: true,
-                isVisualEnhancementsEnabled: true,
-                isColorAlternationEnabled: false,
-                textSize: .constant(Double(Self.headwordSize)),
-                lineSpacing: 4,
-                kerning: 0,
-                furiganaGap: furiganaGap,
-                evenSegmentColor: .label,
-                oddSegmentColor: .label,
-                isLineWrappingEnabled: true,
-                isRubySpacingEnabled: true,
-                selectedHighlightRange: nil,
-                playbackHighlightRange: nil,
-                selectionHighlightColor: .clear,
-                playbackHighlightColor: .clear,
-                unknownSegmentLocations: [],
-                isHighlightUnknownEnabled: false,
-                unknownSegmentColor: .label,
-                debugFlags: KiokuDebugOverlayView.Flags(),
-                illegalMergeLocation: nil,
-                onSegmentTapped: { _, _, _ in onWordTapped(word) },
-                isScrollEnabled: false
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
-            // RenderGeometry.resolve() bakes a fixed 4pt leftInset into every
-            // KiokuCoreTextRendererView instance. wordEntryRow's own HStack already adds
-            // .padding(.horizontal, 4) around the whole row (headword + gloss beside it),
-            // so without this the two 4pt insets stack: the headword sits 8pt from the row's
-            // edge while the "Show/Hide explanations" toggle above it sits at 4pt, reading as
-            // an unexplained extra indent before kanji-bearing headwords
-            // specifically (pure-kana words fall to the plain-Text branch below, which has no
-            // such built-in inset). Cancels the renderer's own inset so it lines up with its
-            // plain-Text siblings instead of compounding with the row's padding.
-            .padding(.leading, -4)
-        } else {
-            Text(word.surface)
-                .font(Font(ReadingFont.body(size: Self.headwordSize)))
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, topInset)
-                .padding(.bottom, 8)
-        }
     }
 }

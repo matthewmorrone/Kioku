@@ -38,9 +38,7 @@ extension ReadView {
         readSheets.isShowingTextConversion = proposals.isEmpty == false
     }
 
-    // Splices the accepted proposals into the note, last first so earlier ranges stay valid.
-    // Segments are reconciled one replacement at a time, so user splits, merges and readings
-    // survive everywhere except the replaced words themselves.
+    // Splices Cleanup's accepted proposals into the note and closes the review sheet.
     func applyTextConversion() {
         defer {
             readSheets.isShowingTextConversion = false
@@ -50,7 +48,15 @@ extension ReadView {
         guard document.text == readSheets.textConversionSourceText else { return }
         let accepted = readSheets.textConversionProposals
             .filter { $0.isAccepted && $0.replacement.isEmpty == false }
-            .sorted { $0.range.location > $1.range.location }
+        replaceNoteText(accepted)
+    }
+
+    // Writes replacements into the note text (Cleanup's proposals, a Breakdown typo fix), last first
+    // so earlier ranges stay valid. Segments are reconciled one replacement at a time, so user
+    // splits, merges and readings survive everywhere except the replaced words themselves, and the
+    // song's timed lyrics take the same edits.
+    func replaceNoteText(_ replacements: [TextConversion]) {
+        let accepted = replacements.sorted { $0.range.location > $1.range.location }
         guard accepted.isEmpty == false else { return }
 
         let updatedCues = convertedCues(for: accepted)

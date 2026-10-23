@@ -103,6 +103,7 @@ nonisolated final class SongBreakdownParser: Sendable {
         var grammarParts: [String] = []
         var reference: LineReference? = nil
         var segmentationNote: String? = nil
+        var fixes: [SongLineFix] = []
 
         for i in cursor..<rawLines.count {
             let raw = rawLines[i]
@@ -123,6 +124,11 @@ nonisolated final class SongBreakdownParser: Sendable {
             }
             if let extracted = parseGist(trimmed) {
                 gist = extracted
+                continue
+            }
+            if let markup = fixMarkup(trimmed) {
+                // A Fix line too malformed to apply is dropped, not shown as grammar text.
+                if let fix = SongLineFix(markup: markup), fixes.contains(fix) == false { fixes.append(fix) }
                 continue
             }
             if let extracted = parseSegmentationNote(trimmed) {
@@ -153,7 +159,8 @@ nonisolated final class SongBreakdownParser: Sendable {
             grammarNote: grammarNote,
             reference: reference,
             isVocalization: isVocalization ? true : nil,
-            segmentationNote: segmentationNote
+            segmentationNote: segmentationNote,
+            fixes: fixes.isEmpty ? nil : fixes
         )
     }
 
@@ -304,6 +311,14 @@ nonisolated final class SongBreakdownParser: Sendable {
     private func parseSegmentationNote(_ raw: String) -> String? {
         for marker in ["**Segmentation:**", "**Segmentation**:", "Segmentation:"] where raw.hasPrefix(marker) {
             return String(raw.dropFirst(marker.count)).trimmingCharacters(in: .whitespaces)
+        }
+        return nil
+    }
+
+    // The text after a `**Fix:**` marker (`<kind> <original> → <replacement>`); nil for any other line.
+    private func fixMarkup(_ raw: String) -> String? {
+        for marker in ["**Fix:**", "**Fix**:", "Fix:"] where raw.hasPrefix(marker) {
+            return String(raw.dropFirst(marker.count))
         }
         return nil
     }

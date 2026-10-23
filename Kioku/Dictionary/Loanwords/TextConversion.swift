@@ -12,12 +12,14 @@ struct TextConversion: Identifiable, Equatable {
     var isAccepted = true
 }
 
-// Where a proposal came from: a dictionary loanword, the English spelling rules, or width
-// normalization.
+// Where a proposal came from: a dictionary loanword, the English spelling rules, width
+// normalization, or a Breakdown typo fix.
 enum TextConversionSource: Equatable {
     case dictionary
     case rules
     case width
+    // A typo the song's Breakdown flagged (SongLineFix).
+    case breakdown
 }
 
 // A katakana-only dictionary form whose gloss is the English word being converted.

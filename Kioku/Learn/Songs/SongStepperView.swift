@@ -8,8 +8,8 @@ import SwiftUI
 //
 // There is no separate loading screen. The Generate button (or, on a regenerate, the toolbar
 // icon) spins while the call runs, and as the model streams each line's card appears in the
-// scroll with the one being written highlighted and auto-expanded. Listen-along is not a
-// separate screen either: the toolbar headphones button plays every line's narration live, in
+// scroll with the one being written highlighted, collapsed so it doesn't reflow as words arrive.
+// Listen-along is not a separate screen either: the toolbar headphones button plays every line's narration live, in
 // sequence, each card's play button plays just that line, and the line and row being spoken
 // are highlighted in place.
 //
@@ -58,16 +58,26 @@ struct SongStepperView: View {
     let autoplay: Bool
     // The toolbar's shuffle button: moves on to a random song's breakdown. Nil hides the button.
     let onShuffle: (() -> Void)?
+    // Applies a suggested fix in the note through the Read tab (ReadView.applyBreakdownFix), given the
+    // note range of the fix's line; returns the note text afterwards, nil when it couldn't. Nil where
+    // no Read tab is behind the sheet, and the fix list then offers only Ignore.
+    let onApplyFix: ((SongLineFix, NSRange) -> String?)?
+    // Whether the suggested-fix list is showing (SongStepperView+Fixes).
+    @State var isFixListPresented = false
     // Line index the scroll should bring to center; set once by the focus above.
     @State var focusScrollLineIndex: Int? = nil
     @State var hasAppliedFocus = false
-    @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
+    // Internal (not private): SongStepperView+Fixes saves resolved fixes through it.
+    @EnvironmentObject var songBreakdownStore: SongBreakdownStore
     // Drives the lookup sheet's save star for tapped words (globally injected at the app root).
     @EnvironmentObject var wordsStore: WordsStore
     // Per-line expansion state: whether a line's word/grammar explanations are visible.
     // Keyed by `line.index` (not array offset) so it survives regenerate / breakdown rebuilds.
-    // Lines are auto-expanded as they stream in; reset when a new generation starts.
+    // Collapsed when a new generation starts; lines stay collapsed while they stream in.
     @State var expandedByLineIndex: Set<Int> = []
+    // Whether each line Listen-along is reading was expanded before it got there, so the card goes
+    // back to that once Listen-along moves on (followListenSegmentExpansion).
+    @State private var expansionBeforeListen: [Int: Bool] = [:]
     @State var isRegenerateConfirmationPresented: Bool = false
     @State private var isCancelConfirmationPresented: Bool = false
     // Editable copy of the user's per-song LLM note (SongBreakdownUserNote), saved on generate.
@@ -116,12 +126,6 @@ struct SongStepperView: View {
     // Each displayed line's UTF-16 range within note.content, for cutting the line's readings
     // out of noteReadings. See SongBreakdownLineLocator.
     @State var lineNoteRangesByIndex: [Int: NSRange] = [:]
-    // Furigana cache for word-list headwords, keyed by (line, surface) — not surface alone,
-    // since the same word can appear on multiple lines with a different resolved reading.
-    // Same shape as furiganaCacheByLineIndex's per-line entries (see LineFuriganaCache) so a
-    // word headword renders through the same KiokuCoreTextRendererView the big Japanese row
-    // does. Built alongside furiganaCacheByLineIndex (see ensureFuriganaCaches).
-    @State var wordFuriganaCacheByKey: [WordFuriganaKey: LineFuriganaCache] = [:]
     // Convenience init for callers that don't (yet) supply the resolver deps — e.g. previews
     // or any future surface that doesn't have the segmenter in scope. Furigana becomes a
     // visual no-op in that mode.
@@ -136,7 +140,8 @@ struct SongStepperView: View {
          segmenterRevision: Int = 0,
          focusNoteLocation: Int? = nil,
          autoplay: Bool = false,
-         onShuffle: (() -> Void)? = nil) {
+         onShuffle: (() -> Void)? = nil,
+         onApplyFix: ((SongLineFix, NSRange) -> String?)? = nil) {
         self.note = note
         self.segmenter = segmenter
         self.surfaceReadingData = surfaceReadingData
@@ -149,6 +154,7 @@ struct SongStepperView: View {
         self.focusNoteLocation = focusNoteLocation
         self.autoplay = autoplay
         self.onShuffle = onShuffle
+        self.onApplyFix = onApplyFix
     }
 
     // MARK: - Derived state
@@ -204,7 +210,7 @@ struct SongStepperView: View {
         displayItems.first(where: { $0.phase == .playing })?.id
     }
 
-    // Identity of the card the model is currently writing, for auto-scroll + auto-expand.
+    // Identity of the card the model is currently writing, for auto-scroll.
     private var streamingItemID: String? {
         displayItems.first(where: { $0.phase == .streaming })?.id
     }
@@ -290,13 +296,19 @@ struct SongStepperView: View {
                 currentPlaybackStep = .intro
             } else {
                 configureLiveListen()
+                // A finished breakdown with suggestions opens the fix list.
+                if pendingFixItems.isEmpty == false { isFixListPresented = true }
             }
+        }
+        .sheet(isPresented: $isFixListPresented) {
+            fixListSheet
         }
         // The mini player follows whichever line the narration track is actively speaking;
         // when nothing is playing this simply doesn't fire, leaving the step wherever the user
         // (or intro/outro playback) last parked it.
-        .onChange(of: activeListenSegment) { _, segment in
+        .onChange(of: activeListenSegment) { previous, segment in
             updateListenWordFocus(segment)
+            followListenSegmentExpansion(from: previous, to: segment)
         }
         .onChange(of: activeListenSegment?.lineIndex) { _, newLineIndex in
             if let newLineIndex {
@@ -333,8 +345,7 @@ struct SongStepperView: View {
             if running { expandedByLineIndex = [] }
         }
         // Every change to the rows — a streamed line landing, a breakdown finishing, a
-        // regenerate replacing the old lines — refreshes furigana and offsets for the new rows
-        // and auto-expands the line the model is currently writing.
+        // regenerate replacing the old lines — refreshes furigana and offsets for the new rows.
         .onChange(of: displayItems) { _, items in
             refreshLineDerivedState(for: items)
         }
@@ -343,19 +354,17 @@ struct SongStepperView: View {
         // beforehand (e.g. this sheet opened moments after launch) has no other signal telling
         // it the data underneath just got better, and ensureFuriganaCaches' own guard only
         // rebuilds on a *text* change, so it would otherwise keep stale/fragmentary per-
-        // character readings forever. Clearing both caches forces every line and word-list
-        // headword to re-resolve against the now-complete segmenter. Mirrors ReadView+
+        // character readings forever. Clearing the cache forces every line to
+        // re-resolve against the now-complete segmenter. Mirrors ReadView+
         // Lifecycle's identical fix for the Read tab's own segmentation cache.
         .onChange(of: segmenterRevision) { _, _ in
             furiganaCacheByLineIndex = [:]
-            wordFuriganaCacheByKey = [:]
             refreshLineDerivedState(for: displayItems)
         }
         // The Read tab finished (or redid) its analysis of the note — e.g. the sheet opened
         // before segmentation landed — so every line re-cuts its readings from the new one.
         .onChange(of: noteReadings) { _, _ in
             furiganaCacheByLineIndex = [:]
-            wordFuriganaCacheByKey = [:]
             refreshLineDerivedState(for: displayItems)
         }
         // Covers first appearance with an already-cached breakdown — onChange above only fires
@@ -421,6 +430,9 @@ struct SongStepperView: View {
             } else if hasBreakdown, let breakdown = cachedBreakdown {
                 if isStale(breakdown) {
                     staleBanner
+                }
+                if pendingFixItems.isEmpty == false {
+                    fixesBanner
                 }
                 scrollList(items: displayItems)
             } else {
@@ -600,11 +612,11 @@ struct SongStepperView: View {
                             referencedLine: referencedLine(for: item.line),
                             isExpanded: expandedByLineIndex.contains(item.line.index),
                             furiganaCache: furiganaCacheByLineIndex[item.line.index],
-                            wordFurigana: wordFuriganaCacheByKey,
                             playState: cardPlayState(for: item.line),
                             phase: item.phase,
                             listenHighlight: activeListenSegment?.lineIndex == item.line.index ? activeListenSegment : nil,
                             listenSentenceProgress: activeListenSegment?.lineIndex == item.line.index ? listenSentenceProgress : nil,
+                            listenSungOffset: activeListenSegment?.lineIndex == item.line.index ? listenSungOffset : nil,
                             onToggleExpansion: { toggleExpansion(for: item.line) },
                             onPlayLine: {
                                 switch cardPlayState(for: item.line) {
@@ -644,11 +656,10 @@ struct SongStepperView: View {
             .onChange(of: listenScrollRequest) { _, _ in
                 scrollBackToListenPosition(proxy: proxy, items: items)
             }
-            // Listen-along follows the spoken line the same way, expanding it so the word
-            // rows it's about to read are visible.
+            // Listen-along follows the spoken line the same way; followListenSegmentExpansion opens
+            // and closes it as the reading moves from the line to its words.
             .onChange(of: playingItemID) { _, newID in
-                guard let newID, let item = items.first(where: { $0.id == newID }) else { return }
-                expandedByLineIndex.insert(item.line.index)
+                guard let newID else { return }
                 withAnimation(.easeInOut(duration: 0.3)) {
                     proxy.scrollTo(newID, anchor: .center)
                 }
@@ -656,19 +667,41 @@ struct SongStepperView: View {
         }
     }
 
+    // Listen-along's card follows what it reads: collapsed while it sings or speaks the whole line
+    // and its gist, expanded once it moves on to the words (and the pattern note), so the split rows
+    // it's reading are on screen. When it leaves a line (or stops), that card goes back to how it
+    // was before Listen-along reached it.
+    private func followListenSegmentExpansion(from previous: SongListenSegment?, to segment: SongListenSegment?) {
+        if let finished = previous?.lineIndex, finished != segment?.lineIndex,
+           let wasExpanded = expansionBeforeListen.removeValue(forKey: finished) {
+            if wasExpanded {
+                expandedByLineIndex.insert(finished)
+            } else {
+                expandedByLineIndex.remove(finished)
+            }
+        }
+        guard let segment else { return }
+        if expansionBeforeListen[segment.lineIndex] == nil {
+            expansionBeforeListen[segment.lineIndex] = expandedByLineIndex.contains(segment.lineIndex)
+        }
+        switch segment.kind {
+        case .sentence, .translation:
+            expandedByLineIndex.remove(segment.lineIndex)
+        case .wordSurface, .wordDefinition, .patternNote:
+            expandedByLineIndex.insert(segment.lineIndex)
+        }
+    }
+
     // MARK: - Row-derived state
 
     // Rebuilds everything keyed off the current rows: each line's place in the note (for cutting
-    // its readings from the Read tab's analysis), furigana caches for lines and headwords, and — while streaming — expansion
-    // of the line being written so its words appear as they arrive.
+    // its readings from the Read tab's analysis) and furigana caches. The line being written stays
+    // collapsed: expanded, its split segments and glosses would reflow with every streamed word.
     private func refreshLineDerivedState(for items: [SongLineDisplayItem]) {
         let lines = items.map(\.line)
         lineNoteRangesByIndex = SongBreakdownLineLocator.noteRanges(for: lines, in: note.content)
         ensureFuriganaCaches(for: lines)
         applyFocusIfNeeded()
-        if let streaming = items.first(where: { $0.phase == .streaming }) {
-            expandedByLineIndex.insert(streaming.line.index)
-        }
     }
 
     // MARK: - Expansion

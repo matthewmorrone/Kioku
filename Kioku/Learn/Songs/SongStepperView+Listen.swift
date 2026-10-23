@@ -39,6 +39,13 @@ extension SongStepperView {
         liveListen.sentenceProgress
     }
 
+    // While a line's sung clip plays, the UTF-16 offset in that line of the character being sung,
+    // from the line's alignment (SongLiveListenController.sungLineOffset) — what lets SongLineCard
+    // light each word as it's sung, not just as the synthesized voice reads it.
+    var listenSungOffset: Int? {
+        liveListen.sungLineOffset
+    }
+
     // Toolbar headphones: play the whole song in sequence — the song's own intro first when
     // starting from the top, then every line, then the outro — resuming from wherever it last
     // stopped.
@@ -121,7 +128,7 @@ extension SongStepperView {
         let originalByIndex = Dictionary(breakdown.lines.map { ($0.index, $0.original) }, uniquingKeysWith: { first, _ in first })
         liveListen.pauseAfterEachLine = pauseAfterEachLine
         liveListen.nowPlayingTitle = note.resolvedTitle
-        liveListen.configure(steps: steps, sourceAudioURL: listenSourceAudioURL, originalByLineIndex: originalByIndex)
+        liveListen.configure(steps: steps, sourceAudioURL: listenSourceAudioURL, originalByLineIndex: originalByIndex, lineCues: lineCues)
     }
 
     // The options menu's word/line visibility choices, as the one value both the cards and

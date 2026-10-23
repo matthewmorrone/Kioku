@@ -36,8 +36,9 @@ enum SongLineFitSize {
     }
 
     // The line's one-line width at the base size. Segments come from the furigana cache; when
-    // they don't cover the whole text, the plain string width is used instead.
-    private static func naturalWidth(
+    // they don't cover the whole text, the plain string width is used instead. SongLineSegmentsView
+    // also uses it to size each segment piece's footprint.
+    static func naturalWidth(
         of text: String,
         font: UIFont,
         rubyFont: UIFont,

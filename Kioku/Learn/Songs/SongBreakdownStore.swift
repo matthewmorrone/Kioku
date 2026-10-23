@@ -100,10 +100,12 @@ final class SongBreakdownStore: ObservableObject {
         return placement
     }
 
-    // Whether a breakdown exists for the note, without reading it off disk — cheap enough for a
-    // view body (the Read tab's breakdown button colours itself by it).
+    // Whether the note has a breakdown with at least one line, so a saved file with no lines counts
+    // as none, as the Breakdown sheet treats it. Reads the file at most once (breakdown(forNoteID:)
+    // memoizes it), so it stays cheap enough for a view body (the Read tab's breakdown button
+    // colours itself by it).
     func hasBreakdown(forNoteID id: UUID) -> Bool {
-        breakdownsByNoteID[id] != nil || diskMemoCache[id] != nil || knownNoteIDsOnDisk.contains(id)
+        breakdown(forNoteID: id)?.lines.isEmpty == false
     }
 
     // Returns true when a breakdown exists (in cache or on disk) and its sourceTextHash

@@ -94,10 +94,12 @@ extension DictionaryStore {
             var seenReadings = Set<String>()
 
             // Flushes the accumulated readings and frequency data for the current surface into the result map.
+            // A katakana spelling of a listed hiragana reading (風 ふり / フリ) is the same reading, so it's
+            // dropped here and no reading list shows it twice.
             func flushSurface() {
                 guard let surface = currentSurface else { return }
                 result[surface] = SurfaceReadingData(
-                    readings: currentReadings,
+                    readings: KanaNormalizer.droppingKatakanaTwins(currentReadings),
                     frequencyByReading: currentFrequency
                 )
             }
