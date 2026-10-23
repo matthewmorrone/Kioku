@@ -320,15 +320,21 @@ extension WordsView {
     // (the entry was returned via kanji/kana match, not gloss match).
     // Not private: called from WordsView.body / resultsList in the main file.
     func matchingGloss(for entry: DictionaryEntry, query: String) -> String? {
+        matchingSense(for: entry, query: query)?.gloss ?? entry.senses.first?.glosses.first
+    }
+
+    // The sense whose gloss the search matched, so saving a result keeps the meaning its row
+    // showed (どうも found by "hello" saves the "hello" sense, not "thank you"). Nil when the
+    // query is empty or no gloss contains it; the save then falls back to the default sense.
+    func matchingSense(for entry: DictionaryEntry, query: String) -> (senseID: Int64, gloss: String)? {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if needle.isEmpty == false {
-            for sense in entry.senses {
-                for gloss in sense.glosses where gloss.lowercased().contains(needle) {
-                    return gloss
-                }
+        guard needle.isEmpty == false else { return nil }
+        for sense in entry.senses {
+            for gloss in sense.glosses where gloss.lowercased().contains(needle) {
+                return (sense.senseID, gloss)
             }
         }
-        return entry.senses.first?.glosses.first
+        return nil
     }
 
     // Fan-out search: queries the dictionary in both Japanese and English modes,

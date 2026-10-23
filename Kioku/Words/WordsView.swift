@@ -542,11 +542,13 @@ struct WordsView: View {
                 // populates. With no controls active it returns the set unchanged, so the default
                 // experience is identical to rendering `searchResults` directly.
                 ForEach(filteredSearchResults, id: \.entryId) { entry in
+                    let matched = matchingSense(for: entry, query: searchText)
                     wordRow(
                         entryID: entry.entryId,
                         surface: entry.primarySearchSurface,
                         entry: entry,
-                        gloss: matchingGloss(for: entry, query: searchText),
+                        gloss: matched?.gloss ?? entry.senses.first?.glosses.first,
+                        matchedSenseID: matched?.senseID,
                         onTap: {
                             isSearchFieldFocused = false
                             openSearchResult(entry)

@@ -196,14 +196,17 @@ extension WordsView {
     // The one save/unsave used by every word row. Unsave is a full remove (save == saved == present
     // in WordsStore). On save we seed smart-default senses from the materialized entry when we have
     // it, else resolve once from the dictionary store — so a row whose DictionaryEntry hasn't been
-    // fetched yet (pending history/saved row) still saves with sensible senses.
-    func toggleSaveWord(entryID: Int64, surface: String, materialized: DictionaryEntry?) {
+    // fetched yet (pending history/saved row) still saves with sensible senses. A search row passes
+    // the sense its query matched, which wins over the default so the saved meaning is the one shown.
+    func toggleSaveWord(entryID: Int64, surface: String, materialized: DictionaryEntry?, matchedSenseID: Int64? = nil) {
         if isSavedByID(entryID) {
             wordsStore.remove(id: entryID)
             return
         }
         let senseIDs: [Int64]
-        if let materialized {
+        if let matchedSenseID {
+            senseIDs = [matchedSenseID]
+        } else if let materialized {
             senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: materialized)
         } else if let store = dictionaryStore,
                   let resolved = try? store.lookupEntry(entryID: entryID) {
@@ -243,9 +246,9 @@ extension WordsView {
     // already saved. Without the save step, `WordsStore.toggleListMembership` is a
     // no-op on unsaved words (it only mutates existing entries) — so adding an
     // unsaved search result to a list silently does nothing without this guard.
-    func addOrToggleListMembership(entryID: Int64, surface: String, materialized: DictionaryEntry?, listID: UUID) {
+    func addOrToggleListMembership(entryID: Int64, surface: String, materialized: DictionaryEntry?, matchedSenseID: Int64? = nil, listID: UUID) {
         if isSavedByID(entryID) == false {
-            toggleSaveWord(entryID: entryID, surface: surface, materialized: materialized)
+            toggleSaveWord(entryID: entryID, surface: surface, materialized: materialized, matchedSenseID: matchedSenseID)
         }
         wordsStore.toggleListMembership(wordID: entryID, listID: listID)
     }

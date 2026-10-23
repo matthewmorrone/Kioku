@@ -36,10 +36,14 @@ extension WordsView {
         surface: String,
         entry: DictionaryEntry?,
         gloss: String?,
+        matchedSenseID: Int64? = nil,
         chosenReading: String? = nil,
         onTap: @escaping () -> Void
     ) -> some View {
         let saved = isSavedByID(entryID)
+        // Senses a save from this row seeds: the one the search matched, else the smart default.
+        let seedSenseIDs = matchedSenseID.map { [$0] }
+            ?? entry.map { DefaultSenseSelection.defaultSelectedSenseIDs(for: $0) } ?? []
         let learnedState = wordsStore.learnedState(for: entryID)
         // Respect the form the word was saved/looked up as: a pure-kana surface (あなた, たとえ)
         // means the user used the kana word — showing the entry's first kanji form (貴方, 例え)
@@ -96,12 +100,12 @@ extension WordsView {
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
-                    wordRowMenu(entryID: entryID, surface: surface, entry: entry, onTap: onTap)
+                    wordRowMenu(entryID: entryID, surface: surface, entry: entry, matchedSenseID: matchedSenseID, onTap: onTap)
                 }
             }
             if editMode != .active {
                 Button {
-                    toggleSaveWord(entryID: entryID, surface: surface, materialized: entry)
+                    toggleSaveWord(entryID: entryID, surface: surface, materialized: entry, matchedSenseID: matchedSenseID)
                 } label: {
                     // The mark rides on the star slot: checkmark when learned, question mark when
                     // explicitly not-learned, plain star otherwise (the word stays saved either way).
@@ -117,7 +121,7 @@ extension WordsView {
                         entryID: entryID,
                         wordsStore: wordsStore,
                         surface: surface,
-                        defaultSenseIDs: entry.map { DefaultSenseSelection.defaultSelectedSenseIDs(for: $0) } ?? []
+                        defaultSenseIDs: seedSenseIDs
                     ))
                 }
             }
@@ -144,7 +148,7 @@ extension WordsView {
                     entryID: entryID,
                     wordsStore: wordsStore,
                     surface: surface,
-                    defaultSenseIDs: entry.map { DefaultSenseSelection.defaultSelectedSenseIDs(for: $0) } ?? []
+                    defaultSenseIDs: seedSenseIDs
                 ))
             } label: {
                 Label("Mark…", systemImage: "ellipsis.circle")
@@ -278,6 +282,7 @@ extension WordsView {
         entryID: Int64,
         surface: String,
         entry: DictionaryEntry?,
+        matchedSenseID: Int64? = nil,
         onTap: @escaping () -> Void
     ) -> some View {
         let saved = isSavedByID(entryID)
@@ -311,7 +316,7 @@ extension WordsView {
             Menu {
                 ForEach(wordListsStore.lists) { list in
                     Button {
-                        addOrToggleListMembership(entryID: entryID, surface: surface, materialized: entry, listID: list.id)
+                        addOrToggleListMembership(entryID: entryID, surface: surface, materialized: entry, matchedSenseID: matchedSenseID, listID: list.id)
                     } label: {
                         if memberLists.contains(list.id) {
                             Label(list.name, systemImage: "checkmark")
@@ -328,7 +333,7 @@ extension WordsView {
         Divider()
 
         Button(role: saved ? .destructive : nil) {
-            toggleSaveWord(entryID: entryID, surface: surface, materialized: entry)
+            toggleSaveWord(entryID: entryID, surface: surface, materialized: entry, matchedSenseID: matchedSenseID)
         } label: {
             Label(saved ? "Unsave" : "Save", systemImage: saved ? "star.slash" : "star")
         }
