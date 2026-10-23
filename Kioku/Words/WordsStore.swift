@@ -182,12 +182,23 @@ final class WordsStore: ObservableObject {
     // an answer for it with dictionary data in hand.
     func hasKanjiForm(for id: Int64) -> Bool? { stats[id]?.hasKanjiForm }
 
-    // The canonical mastery stage for a word — New/Learning/Learned/Mastered.
+    // The canonical mastery stage for a word, driven by its Learned / Not Learned flag so the
+    // categories always agree with the star and the Words filter: unmarked → New, Not Learned →
+    // Learning, Learned → Learned, and Learned plus the mastered review flag → Mastered. Review
+    // history alone never moves a word between stages; the flag is what auto-learn promotes.
     func masteryStage(for id: Int64) -> MasteryStage {
-        if mastered.contains(id) { return .mastered }
-        if learnedState(for: id) == .learned { return .learned }
-        if stats[id] != nil || learnedState(for: id) == .notLearned { return .learning }
-        return .new
+        guard let word = words.first(where: { $0.canonicalEntryID == id }) else { return .new }
+        return masteryStage(of: word)
+    }
+
+    // Same derivation straight off a card, for callers already iterating `words` (filters, counts)
+    // that would otherwise pay a linear lookup per word.
+    func masteryStage(of word: SavedWord) -> MasteryStage {
+        switch word.learnedMark {
+        case .unmarked:   return .new
+        case .notLearned: return .learning
+        case .learned:    return word.mastered ? .mastered : .learned
+        }
     }
 
     // True when the word is due — never reviewed (no stats) or its `dueDate` has elapsed.

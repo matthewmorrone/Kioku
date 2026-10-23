@@ -9,7 +9,7 @@ extension WordsView {
 
     // True when any filter is active across notes, lists, stat scope, or JLPT level.
     var isFilterActive: Bool {
-        !activeFilterNoteIDs.isEmpty || !activeFilterListIDs.isEmpty || statScope != .none || jlptLevel != nil
+        !activeFilterNoteIDs.isEmpty || !activeFilterListIDs.isEmpty || statScope != .none || markScope != .none || jlptLevel != nil
     }
 
     // Returns saved kanji filtered by the same note/list scope as visibleWords, sorted
@@ -48,12 +48,19 @@ extension WordsView {
             filtered = filtered.filter { wordsStore.isDueForReview(id: $0.canonicalEntryID) }
         case .neverReviewed:
             filtered = filtered.filter { wordsStore.stats[$0.canonicalEntryID] == nil }
+        case .mastered:
+            filtered = filtered.filter { wordsStore.masteryStage(of: $0) == .mastered }
+        }
+
+        switch markScope {
+        case .none:
+            break
         case .saved:
-            filtered = filtered.filter { wordsStore.learnedState(for: $0.canonicalEntryID) == .unmarked }
-        case .learned:
-            filtered = filtered.filter { wordsStore.isLearned(id: $0.canonicalEntryID) }
+            filtered = filtered.filter { $0.learnedMark == .unmarked }
         case .notLearned:
-            filtered = filtered.filter { wordsStore.isNotLearned(id: $0.canonicalEntryID) }
+            filtered = filtered.filter { $0.learnedMark == .notLearned }
+        case .learned:
+            filtered = filtered.filter { $0.learnedMark == .learned }
         }
 
         if let jlptLevel {

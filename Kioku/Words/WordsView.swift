@@ -34,9 +34,16 @@ enum WordsStatScope: String {
     case markedWrong
     case dueForReview
     case neverReviewed
+    case mastered
+}
+
+// The star's mark as a filter on the saved list: Saved (no mark), Not Learned, or Learned.
+// Independent of WordsStatScope, so a mark and a review-history filter combine.
+enum WordsMarkScope: String {
+    case none
     case saved
-    case learned
     case notLearned
+    case learned
 }
 
 // Cross-tab routing for the Words screen.
@@ -84,6 +91,7 @@ struct WordsView: View {
     @State var activeFilterNoteIDs: Set<UUID> = []
     @State var activeFilterListIDs: Set<UUID> = []
     @State var statScope: WordsStatScope = .none
+    @State var markScope: WordsMarkScope = .none
     // Active JLPT-level scope (the N-number, 5…1), or nil for no level filter. Single-value like
     // the other "Show" scopes — selecting a level clears note/list/stat. Levels come from the
     // dictionary's entry_jlpt_level map via dictionaryStore.jlptLevel(for:).
@@ -153,6 +161,7 @@ struct WordsView: View {
             activeFilterNoteIDs: $activeFilterNoteIDs,
             activeFilterListIDs: $activeFilterListIDs,
             statScope: $statScope,
+            markScope: $markScope,
             jlptLevel: $jlptLevel,
             showSavedWords: Binding(
                 get: { activeTab == .saved },

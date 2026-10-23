@@ -3,7 +3,7 @@ import SwiftUI
 // Filter sheet for the Words screen. History/Saved is the one mutually-exclusive "base
 // view" choice (a 2-way segmented control, since exactly one is always showing) — History
 // includes both word lookups and typed free-text searches together, newest first. Everything
-// else — Review Status, JLPT Level, Note, List, plus Sort and Kanji below — is an independent,
+// else — Mark, Review Status, JLPT Level, Note, List, plus Sort and Kanji below — is an independent,
 // composable narrowing filter with its own row/menu, mirroring how Sort and Kanji already
 // worked: picking a Review Status AND a Note AND a List all combine (see
 // WordsView+Actions.visibleWords, which already ANDs them together). Picking any of these
@@ -17,6 +17,7 @@ struct WordsFilterView: View {
     @Binding var activeFilterNoteIDs: Set<UUID>
     @Binding var activeFilterListIDs: Set<UUID>
     @Binding var statScope: WordsStatScope
+    @Binding var markScope: WordsMarkScope
     // Active JLPT-level scope (N-number 5…1) or nil. Single-value like the other narrowing filters.
     @Binding var jlptLevel: Int?
     // True when the screen shows the saved list rather than the lookup history.
@@ -40,6 +41,7 @@ struct WordsFilterView: View {
                     Text("History is every word you've looked up; Saved is the words you've starred.")
                 }
 
+                Section { markRow }
                 Section { reviewStatusRow }
                 Section {
                     jlptLevelRow
@@ -86,6 +88,23 @@ struct WordsFilterView: View {
 
     // MARK: - Narrowing filter rows
 
+    // The star's mark: Saved (no mark), Not Learned, Learned — the flag alone, no review history.
+    private var markRow: some View {
+        Menu {
+            Button { tapMarkScope(.saved) } label: {
+                Label(savedLabel, systemImage: markScope == .saved ? "checkmark" : "star")
+            }
+            Button { tapMarkScope(.notLearned) } label: {
+                Label(notLearnedLabel, systemImage: markScope == .notLearned ? "checkmark" : "questionmark.circle")
+            }
+            Button { tapMarkScope(.learned) } label: {
+                Label(learnedLabel, systemImage: markScope == .learned ? "checkmark" : "checkmark.circle")
+            }
+        } label: {
+            filterRowLabel(title: "Mark", value: markLabel)
+        }
+    }
+
     private var reviewStatusRow: some View {
         Menu {
             Button { tapStatScope(.markedWrong) } label: {
@@ -97,14 +116,8 @@ struct WordsFilterView: View {
             Button { tapStatScope(.neverReviewed) } label: {
                 Label(neverReviewedLabel, systemImage: statScope == .neverReviewed ? "checkmark" : "circle.dashed")
             }
-            Button { tapStatScope(.saved) } label: {
-                Label(savedLabel, systemImage: statScope == .saved ? "checkmark" : "star")
-            }
-            Button { tapStatScope(.learned) } label: {
-                Label(learnedLabel, systemImage: statScope == .learned ? "checkmark" : "checkmark.circle")
-            }
-            Button { tapStatScope(.notLearned) } label: {
-                Label(notLearnedLabel, systemImage: statScope == .notLearned ? "checkmark" : "questionmark.circle")
+            Button { tapStatScope(.mastered) } label: {
+                Label(masteredLabel, systemImage: statScope == .mastered ? "checkmark" : "checkmark.seal")
             }
         } label: {
             filterRowLabel(title: "Review Status", value: reviewStatusLabel)
@@ -175,9 +188,16 @@ struct WordsFilterView: View {
         case .markedWrong:   return "Marked Wrong"
         case .dueForReview:  return "Due for Review"
         case .neverReviewed: return "Never Reviewed"
-        case .saved:         return "Saved"
-        case .learned:       return "Learned"
-        case .notLearned:    return "Not Learned"
+        case .mastered:      return "Mastered"
+        }
+    }
+
+    private var markLabel: String {
+        switch markScope {
+        case .none:       return "Any"
+        case .saved:      return "Saved"
+        case .notLearned: return "Not Learned"
+        case .learned:    return "Learned"
         }
     }
 
@@ -214,23 +234,35 @@ struct WordsFilterView: View {
 
     // Saved words carrying neither mark — the third save type beside Learned and Not Learned.
     private var savedLabel: String {
-        let count = wordsStore.words.filter { wordsStore.learnedState(for: $0.canonicalEntryID) == .unmarked }.count
+        let count = wordsStore.words.filter { $0.learnedMark == .unmarked }.count
         return count > 0 ? "Saved (\(count))" : "Saved"
     }
 
     private var learnedLabel: String {
-        let count = wordsStore.words.filter { wordsStore.isLearned(id: $0.canonicalEntryID) }.count
+        let count = wordsStore.words.filter { $0.learnedMark == .learned }.count
         return count > 0 ? "Learned (\(count))" : "Learned"
     }
 
+    private var masteredLabel: String {
+        let count = wordsStore.words.filter { wordsStore.masteryStage(of: $0) == .mastered }.count
+        return count > 0 ? "Mastered (\(count))" : "Mastered"
+    }
+
     private var notLearnedLabel: String {
-        let count = wordsStore.words.filter { wordsStore.isNotLearned(id: $0.canonicalEntryID) }.count
+        let count = wordsStore.words.filter { $0.learnedMark == .notLearned }.count
         return count > 0 ? "Not Learned (\(count))" : "Not Learned"
     }
 
     // MARK: - Narrowing filter selection (each is independent; re-tapping the active choice clears
     // just that one filter — the others, and the base view, are untouched)
 
+    // Toggles the Mark filter (Saved / Not Learned / Learned); re-tapping the active choice clears it.
+    private func tapMarkScope(_ scope: WordsMarkScope) {
+        markScope = markScope == scope ? .none : scope
+        activateSaved()
+    }
+
+    // Toggles a Review Status filter (Marked Wrong / Due / Never Reviewed / Mastered); re-tapping clears it.
     private func tapStatScope(_ scope: WordsStatScope) {
         statScope = statScope == scope ? .none : scope
         activateSaved()

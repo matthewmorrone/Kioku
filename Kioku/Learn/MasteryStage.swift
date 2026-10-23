@@ -9,13 +9,14 @@ import Foundation
 // off the main actor can name these cases — StudyWordPool's learned exclusion is written against
 // this ladder and is unit-tested outside any actor.
 nonisolated enum MasteryStage: Hashable, CaseIterable {
-    // Never reviewed and not manually marked either way.
+    // Carries neither the Learned nor the Not Learned flag.
     case new
-    // Engaged — reviewed at least once, or explicitly marked "not learned" — but below the bar.
+    // Explicitly flagged Not Learned.
     case learning
-    // Every recognition (tier1) direction answered right at least once, or manually
-    // marked learned.
+    // Flagged Learned, whether by hand or by auto-learn once every recognition (tier1) direction
+    // has been answered right at least once.
     case learned
-    // Every direction — recognition AND production (tier1 + tier2) — answered right at least once.
+    // Flagged Learned and every direction — recognition AND production (tier1 + tier2) —
+    // answered right at least once.
     case mastered
 }

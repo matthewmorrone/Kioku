@@ -42,15 +42,15 @@ final class WordsStoreMasteryTests: XCTestCase {
         XCTAssertEqual(store.masteryStage(for: 1), .new)
     }
 
-    // A reviewed-but-not-yet-learned word is Learning (auto-learn is off by default so a
-    // single correct answer does not promote it).
-    func testLearningAfterReview() {
+    // Review history alone does not move an unmarked word: the stage follows the flag, so it stays
+    // New (auto-learn is off by default, so a single correct answer does not promote it).
+    func testReviewedButUnmarkedStaysNew() {
         let store = makeStore(saving: [1])
         store.recordCorrect(for: 1)
-        XCTAssertEqual(store.masteryStage(for: 1), .learning)
+        XCTAssertEqual(store.masteryStage(for: 1), .new)
     }
 
-    // Manually marking "not learned" with no review history still counts as engagement → Learning.
+    // The Not Learned flag is the Learning stage.
     func testLearningWhenManuallyNotLearned() {
         let store = makeStore(saving: [1])
         store.setLearnedState(.notLearned, for: 1)
@@ -64,16 +64,15 @@ final class WordsStoreMasteryTests: XCTestCase {
         XCTAssertEqual(store.masteryStage(for: 1), .learned)
     }
 
-    // A word in the mastered set is Mastered — the stage above Learned, reached via
-    // `AutoLearnPolicy.shouldMarkMastered` (exercised end-to-end via the legacy-backup restore here,
-    // mirroring how a restored backup seeds the set).
-    func testMasteredWhenInMasteredSet() {
-        let store = makeStore(saving: [1])
+    // Mastered refines Learned, so a mastered word without the Learned flag follows its flag.
+    func testMasteredWithoutLearnedFlagFollowsFlag() {
+        let store = makeStore(saving: [1, 2])
         store.applyLegacyReviewBackup(
-            stats: [:], markedWrong: [], learned: [], notLearned: [], mastered: [1],
+            stats: [:], markedWrong: [], learned: [], notLearned: [2], mastered: [1, 2],
             lifetimeCorrect: 0, lifetimeAgain: 0
         )
-        XCTAssertEqual(store.masteryStage(for: 1), .mastered)
+        XCTAssertEqual(store.masteryStage(for: 1), .new)
+        XCTAssertEqual(store.masteryStage(for: 2), .learning)
     }
 
     // Mastered wins over an explicit Learned mark — it's the stricter, higher stage.
