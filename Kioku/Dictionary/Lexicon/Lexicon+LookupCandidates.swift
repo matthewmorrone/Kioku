@@ -48,7 +48,7 @@ nonisolated extension Lexicon {
                 .sorted { lhs, rhs in
                     // A kana surface is first the words written in kana: the copula だ (no kanji
                     // form, and no frequency rank) before 打 and 駄, which are only read だ.
-                    let lhsKana = isWrittenInKana(lhs, surface: lemma), rhsKana = isWrittenInKana(rhs, surface: lemma)
+                    let lhsKana = Self.isWrittenInKana(lhs, surface: lemma), rhsKana = Self.isWrittenInKana(rhs, surface: lemma)
                     if lhsKana != rhsKana { return lhsKana }
                     return usageRank(lhs, surface: lemma) < usageRank(rhs, surface: lemma)
                 }
@@ -74,7 +74,8 @@ nonisolated extension Lexicon {
                     : entry.kanaForms.first?.text ?? lemma
                 let candidate = LookupCandidate(
                     lemma: lemma,
-                    headword: entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text ?? lemma,
+                    headword: entry.firstEverydayKanji?.text
+                        ?? entry.kanaForms.first?.text ?? lemma,
                     reading: shownReading,
                     entry: entry,
                     surfaceReadings: readings,
@@ -82,7 +83,7 @@ nonisolated extension Lexicon {
                 )
                 if index == 0 {
                     leaders.append(candidate)
-                } else if entry.frequencyRank != nil || isWrittenInKana(entry, surface: lemma)
+                } else if entry.frequencyRank != nil || Self.isWrittenInKana(entry, surface: lemma)
                             || isHomograph(entry, of: lemma) {
                     others.append(candidate)
                 }
@@ -136,7 +137,7 @@ nonisolated extension Lexicon {
     // none of the kanji forms is (the particle の, whose 乃 and 之 are rare, ahead of 野). Such
     // entries are what a kana surface most likely is, ranked or not; a kanji word that merely
     // reads the same is not.
-    private func isWrittenInKana(_ entry: DictionaryEntry, surface: String) -> Bool {
+    private static func isWrittenInKana(_ entry: DictionaryEntry, surface: String) -> Bool {
         guard ScriptClassifier.containsKanji(surface) == false else { return false }
         if entry.kanjiForms.isEmpty { return true }
         // "Usually kana" is about the entry's main reading: 黍 is きび in kana, but きみ is only a variant.
@@ -149,15 +150,15 @@ nonisolated extension Lexicon {
     // The candidate to show before the user picks, or nil when the form is genuinely ambiguous.
     // Only a word the dictionary marks as in common use can be preselected, and only when it is the
     // only such one: 消して → 消す over the literary 消する, while いった (言う, 行く, 要る) and きた
-    // (来る, 着る, 北) stay unpicked. Among several common words, a lone kana-only particle wins (の, not 野). Frequency
+    // (来る, 着る, 北) stay unpicked. Among several common words, a lone particle normally written in kana wins (の, not 野). Frequency
     // ratios don't decide it — 着た is an ordinary reading of きた even though 来る ranks far higher.
     static func preferredLookupCandidate(among candidates: [LookupCandidate]) -> LookupCandidate? {
         let common = candidates.filter { $0.entry.hasPriorityForm }
         if common.count == 1 { return common[0] }
         // Several common words share the kana (の: the particle and 野; で: the particle and 出): the
-        // particle is what kana text almost always means, when only one of them is a kana-only particle.
+        // particle is what kana text almost always means, when only one of them is a particle normally written in kana.
         let particles = common.filter { candidate in
-            candidate.entry.kanjiForms.isEmpty
+            Self.isWrittenInKana(candidate.entry, surface: candidate.lemma)
                 && candidate.entry.senses.contains { ($0.pos ?? "").split(separator: ",").contains("prt") }
         }
         return particles.count == 1 ? particles[0] : nil

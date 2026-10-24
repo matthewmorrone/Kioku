@@ -508,7 +508,11 @@ struct LyricsView: View {
                     await translateAllCues(session: session)
                 }
                 .onAppear {
+                    // Apple's translation service is device-only; starting it on a simulator
+                    // presents a blocking unsupported-feature sheet, even for a hidden lyrics view.
+                    #if !targetEnvironment(simulator)
                     translationTrigger = translationConfig
+                    #endif
                 }
 
                 ScrollView {

@@ -21,7 +21,8 @@ final class CoreLoopUITests: KiokuUITestCase {
         if star.label == "Unsave" { toggleStar(star, expecting: "Save") }
         toggleStar(star, expecting: "Unsave")
         record(app, "saved")
-        app.swipeDown()
+        // Lookup now starts as a popover; tap the blank header outside its passthrough reader.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.08)).tap()
         wait(for: star, toMatch: "exists == false", timeout: 10)
 
         selectTab(app, "Words")

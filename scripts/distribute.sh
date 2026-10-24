@@ -80,7 +80,7 @@ trap revert_bump EXIT
 echo "==> Archiving Release build…"
 mkdir -p "$OUT"
 rm -rf "$ARCHIVE"
-xcodebuild -scheme "$SCHEME" -configuration Release \
+taskpolicy -b xcodebuild -jobs 2 -scheme "$SCHEME" -configuration Release \
   -destination 'generic/platform=iOS' \
   -derivedDataPath "$DERIVED" \
   -archivePath "$ARCHIVE" \
@@ -111,7 +111,7 @@ rm -rf "$EXPORT_DIR"
 # The export copies the app with /usr/bin/rsync (Apple's openrsync), which launches its other half
 # as whatever `rsync` comes first on PATH. A Homebrew rsync there rejects openrsync's
 # --extended-attributes and the export fails with "Copy failed", so put /usr/bin first.
-PATH="/usr/bin:$PATH" xcodebuild -exportArchive \
+PATH="/usr/bin:$PATH" taskpolicy -b xcodebuild -exportArchive \
   -archivePath "$ARCHIVE" \
   -exportPath "$EXPORT_DIR" \
   -exportOptionsPlist "$PLIST" \

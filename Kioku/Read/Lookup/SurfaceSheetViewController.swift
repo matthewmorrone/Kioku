@@ -8,8 +8,8 @@ final class SurfaceSheetViewController: UIViewController {
 
     // MARK: - Delegate
 
-    // Back-reference to the coordinator that manages presentation and shared supplemental data.
-    weak var sheet: SegmentLookupSheet?
+    // Owns the coordinator while this controller is presented; its controller references are weak.
+    var sheet: SegmentLookupSheet?
 
     // MARK: - Segment state
 

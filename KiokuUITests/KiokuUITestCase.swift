@@ -152,7 +152,8 @@ class KiokuUITestCase: XCTestCase {
         openSampleNote(app)
         let star = openLookupForFirstWord(app)
         if star.label == "Save" { toggleStar(star, expecting: "Unsave") }
-        app.swipeDown()
+        // Lookup now starts as a popover; tap the blank header outside its passthrough reader.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.08)).tap()
         wait(for: star, toMatch: "exists == false", timeout: 10)
     }
 }

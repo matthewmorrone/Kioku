@@ -118,7 +118,13 @@ extension ReadView {
             sheetOpenWordDetail: { [weak nestedSheet] shownReading, shownEntry in
                 guard let entry = shownEntry ?? resolvedEntry() else { return }
                 let reading = shownReading ?? nestedSheet?.currentSheetUniqueReadings.first
-                presentWordDetail(entryID: entry.entryId, surface: lemma, reading: reading, sublatticePaths: [])
+                // The nested sheet has dismissed itself; remove the remaining lookup stack
+                // before asking Read's SwiftUI presenter to open the detail sheet.
+                SegmentLookupSheet.shared.dismissPopover(notifyDismissal: false) {
+                    DispatchQueue.main.async {
+                        presentWordDetail(entryID: entry.entryId, surface: lemma, reading: reading, sublatticePaths: [])
+                    }
+                }
             },
             sheetWordComponentsProvider: { nil },
             sheetCompoundComponentsProvider: { lexicon?.compoundVerbComponents(surface: lemma) },

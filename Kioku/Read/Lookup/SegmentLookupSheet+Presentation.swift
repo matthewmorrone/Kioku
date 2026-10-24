@@ -49,8 +49,7 @@ extension SegmentLookupSheet {
         let capturedOnReadingReset = self.onReadingReset
         let capturedOnWillDismiss = self.onWillDismiss
 
-        dismissPopover(notifyDismissal: false) { [weak self] in
-            guard let self else { return }
+        dismissPopover(notifyDismissal: false) { [self] in
 
             self.onDismiss = onDismiss
             self.onWillDismiss = capturedOnWillDismiss
@@ -89,8 +88,8 @@ extension SegmentLookupSheet {
             // dictionary lookup resolves, against final content — not presented empty/fitted-small
             // and resized once data streams in, which would jump the buttons under the user's
             // finger. The cost is a beat of latency before the sheet opens.
-            self.refreshSheetSupplementalDataAsync { [weak self] in
-                guard let self, let presenter = self.topPresentingController() else { return }
+            self.refreshSheetSupplementalDataAsync { [self] in
+                guard let presenter = self.topPresentingController() else { return }
 
                 let sheetVC = SurfaceSheetViewController(
                     surface: surface,
@@ -104,8 +103,8 @@ extension SegmentLookupSheet {
                 )
                 sheetVC.sheet = self
 
-                self.onSheetSelectNext = { [weak sheetVC] in
-                    guard let sheetVC, sheetVC.isSplitEditorVisible == false,
+                self.onSheetSelectNext = { [weak self, weak sheetVC] in
+                    guard let self, let sheetVC, sheetVC.isSplitEditorVisible == false,
                           let outcome = sheetVC.currentOnSelectNext?() else { return }
                     sheetVC.updateCurrentSurface(outcome)
                     self.refreshSheetSupplementalData()
@@ -117,8 +116,8 @@ extension SegmentLookupSheet {
                     sheetVC.reportAfterSwitchedContent()
                 }
 
-                self.onSheetSelectPrevious = { [weak sheetVC] in
-                    guard let sheetVC, sheetVC.isSplitEditorVisible == false,
+                self.onSheetSelectPrevious = { [weak self, weak sheetVC] in
+                    guard let self, let sheetVC, sheetVC.isSplitEditorVisible == false,
                           let outcome = sheetVC.currentOnSelectPrevious?() else { return }
                     sheetVC.updateCurrentSurface(outcome)
                     self.refreshSheetSupplementalData()
@@ -130,7 +129,7 @@ extension SegmentLookupSheet {
                     sheetVC.reportAfterSwitchedContent()
                 }
 
-                self.updatePresentedSheetSelection = { [weak sheetVC] (
+                self.updatePresentedSheetSelection = { [weak self, weak sheetVC] (
                     updatedSurface,
                     updatedLeftNeighborSurface,
                     updatedRightNeighborSurface,
@@ -146,7 +145,7 @@ extension SegmentLookupSheet {
                     updatedSheetFrequencyProvider,
                     updatedOnDismiss
                 ) in
-                    guard let sheetVC else { return }
+                    guard let self, let sheetVC else { return }
                     sheetVC.currentOnSelectPrevious = updatedOnSelectPrevious
                     sheetVC.currentOnSelectNext = updatedOnSelectNext
                     sheetVC.currentOnMergeLeft = updatedOnMergeLeft
