@@ -112,11 +112,15 @@ extension SegmentLookupSheet {
         return columns + [markColumn]
     }
 
+    // Size of, and gap to the headword for, the speaker and star flanking it.
+    static let headerSideButtonSize: CGFloat = 32
+    static let headerSideButtonGap: CGFloat = 4
+
     // Width the header row gets inside the sheet: the screen less the header container's 16 pt
-    // margins and the 36 pt reading chevrons (each with 8 pt of clearance) on either side. Must
-    // track the constraints in SurfaceSheetViewController+Build.
+    // margins, the 36 pt reading chevrons (each with 8 pt of clearance) and the speaker/star
+    // beside the headword on either side. Must track the constraints in SurfaceSheetViewController+Build.
     func sheetHeaderAvailableWidth() -> CGFloat {
-        activeScreenBounds().width - (16 * 2) - ((36 + 8) * 2)
+        activeScreenBounds().width - (16 * 2) - ((36 + 8) * 2) - ((Self.headerSideButtonSize + Self.headerSideButtonGap) * 2)
     }
 
     // Creates the header container used at the top of the lookup sheet.

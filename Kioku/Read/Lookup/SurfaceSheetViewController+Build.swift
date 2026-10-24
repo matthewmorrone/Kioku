@@ -27,9 +27,23 @@ extension SurfaceSheetViewController {
         nextReadingButton.tintColor = .tertiaryLabel
         nextReadingButton.accessibilityLabel = "Next Reading"
 
+        speakButton = UIButton(type: .system)
+        speakButton.translatesAutoresizingMaskIntoConstraints = false
+        speakButton.setImage(UIImage(systemName: "speaker.wave.2"), for: .normal)
+        speakButton.tintColor = .secondaryLabel
+        speakButton.accessibilityLabel = "Speak"
+
+        saveButton = UIButton(type: .system)
+        saveButton.translatesAutoresizingMaskIntoConstraints = false
+        // Icon/tint/accessibility come from the shared three-state refresh so initial render
+        // and post-toggle refreshes can't drift apart.
+        updateSaveButtonAppearance()
+
         headerContainer.addSubview(headerStack)
         headerContainer.addSubview(prevReadingButton)
         headerContainer.addSubview(nextReadingButton)
+        headerContainer.addSubview(speakButton)
+        headerContainer.addSubview(saveButton)
 
         let readingButtonSize: CGFloat = 36
         NSLayoutConstraint.activate([
@@ -48,7 +62,25 @@ extension SurfaceSheetViewController {
             nextReadingButton.widthAnchor.constraint(equalToConstant: readingButtonSize),
             nextReadingButton.heightAnchor.constraint(equalToConstant: readingButtonSize),
             nextReadingButton.centerYAnchor.constraint(equalTo: headerRow.bottomAnchor, constant: -18),
+
+            // Speaker left of the headword, star right of it, on the headword's line; the sheet's
+            // header width budget (sheetHeaderAvailableWidth) reserves their room.
+            speakButton.trailingAnchor.constraint(equalTo: headerRow.leadingAnchor, constant: -SegmentLookupSheet.headerSideButtonGap),
+            speakButton.leadingAnchor.constraint(greaterThanOrEqualTo: prevReadingButton.trailingAnchor, constant: 4),
+            speakButton.widthAnchor.constraint(equalToConstant: SegmentLookupSheet.headerSideButtonSize),
+            speakButton.heightAnchor.constraint(equalToConstant: SegmentLookupSheet.headerSideButtonSize),
+            speakButton.centerYAnchor.constraint(equalTo: headerRow.bottomAnchor, constant: -18),
+
+            saveButton.leadingAnchor.constraint(equalTo: headerRow.trailingAnchor, constant: SegmentLookupSheet.headerSideButtonGap),
+            saveButton.trailingAnchor.constraint(lessThanOrEqualTo: nextReadingButton.leadingAnchor, constant: -4),
+            saveButton.widthAnchor.constraint(equalToConstant: SegmentLookupSheet.headerSideButtonSize),
+            saveButton.heightAnchor.constraint(equalToConstant: SegmentLookupSheet.headerSideButtonSize),
+            saveButton.centerYAnchor.constraint(equalTo: headerRow.bottomAnchor, constant: -18),
         ])
+        speakButton.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            SpeechSynthesisHelper.shared.speakWord(self.currentSurface, reading: self.displayedReading(), languageCode: "ja-JP")
+        }, for: .touchUpInside)
 
         // Tapping the header row opens a custom reading alert.
         let headerTapHandler = ClosureTarget { [weak self] in
@@ -246,48 +278,12 @@ extension SurfaceSheetViewController {
         updateSplitCostLabel()
     }
 
-    // Constructs the word-actions row (speak, save, open) and segmentation-actions row (merge-left, split, merge-right).
+    // Constructs the segmentation-actions row (merge-left, split, merge-right).
     func buildActionMenu() {
         actionMenuContainer = UIView()
         actionMenuContainer.translatesAutoresizingMaskIntoConstraints = false
         actionMenuContainer.backgroundColor = .secondarySystemBackground
         actionMenuContainer.layer.cornerRadius = 10
-
-        // Top row: speak, save, open-detail.
-        wordActionsStack = UIStackView()
-        wordActionsStack.translatesAutoresizingMaskIntoConstraints = false
-        wordActionsStack.axis = .horizontal
-        wordActionsStack.spacing = 8
-        wordActionsStack.alignment = .fill
-        wordActionsStack.distribution = .fillEqually
-
-        let speakButton = UIButton(type: .system)
-        speakButton.translatesAutoresizingMaskIntoConstraints = false
-        speakButton.setImage(UIImage(systemName: "speaker.wave.2"), for: .normal)
-        speakButton.tintColor = .secondaryLabel
-        speakButton.backgroundColor = .tertiarySystemFill
-        speakButton.layer.cornerRadius = 8
-        speakButton.accessibilityLabel = "Speak"
-
-        saveButton = UIButton(type: .system)
-        saveButton.translatesAutoresizingMaskIntoConstraints = false
-        saveButton.backgroundColor = .tertiarySystemFill
-        saveButton.layer.cornerRadius = 8
-        // Icon/tint/accessibility come from the shared three-state refresh so initial render
-        // and post-toggle refreshes can't drift apart.
-        updateSaveButtonAppearance()
-
-        openDetailButton = UIButton(type: .system)
-        openDetailButton.translatesAutoresizingMaskIntoConstraints = false
-        openDetailButton.setImage(UIImage(systemName: "text.magnifyingglass"), for: .normal)
-        openDetailButton.tintColor = .secondaryLabel
-        openDetailButton.backgroundColor = .tertiarySystemFill
-        openDetailButton.layer.cornerRadius = 8
-        openDetailButton.accessibilityLabel = "Look Up in Words"
-
-        wordActionsStack.addArrangedSubview(speakButton)
-        wordActionsStack.addArrangedSubview(saveButton)
-        wordActionsStack.addArrangedSubview(openDetailButton)
 
         // Bottom row: merge-left, split, merge-right.
         let actionMenuStack = UIStackView()
@@ -322,7 +318,7 @@ extension SurfaceSheetViewController {
         actionMenuStack.addArrangedSubview(splitButton)
         actionMenuStack.addArrangedSubview(mergeRightButton)
 
-        let actionMenuOuterStack = UIStackView(arrangedSubviews: [wordActionsStack, actionMenuStack])
+        let actionMenuOuterStack = UIStackView(arrangedSubviews: [actionMenuStack])
         actionMenuOuterStack.translatesAutoresizingMaskIntoConstraints = false
         actionMenuOuterStack.axis = .vertical
         actionMenuOuterStack.spacing = 8
@@ -334,14 +330,9 @@ extension SurfaceSheetViewController {
             actionMenuOuterStack.leadingAnchor.constraint(equalTo: actionMenuContainer.leadingAnchor, constant: 6),
             actionMenuOuterStack.trailingAnchor.constraint(equalTo: actionMenuContainer.trailingAnchor, constant: -6),
             actionMenuOuterStack.bottomAnchor.constraint(equalTo: actionMenuContainer.bottomAnchor, constant: -6),
-            wordActionsStack.heightAnchor.constraint(equalToConstant: 44),
             actionMenuStack.heightAnchor.constraint(equalToConstant: 44),
         ])
 
-        speakButton.addAction(UIAction { [weak self] _ in
-            guard let self else { return }
-            SpeechSynthesisHelper.shared.speakWord(self.currentSurface, reading: self.displayedReading(), languageCode: "ja-JP")
-        }, for: .touchUpInside)
     }
 
     // Builds the vertical content stack between the header and the action menu,
@@ -351,6 +342,11 @@ extension SurfaceSheetViewController {
         middleContentContainer.translatesAutoresizingMaskIntoConstraints = false
         middleContentContainer.backgroundColor = .secondarySystemBackground
         middleContentContainer.layer.cornerRadius = 10
+        // The definitions are the link to the word's detail page; long-press offers the line's
+        // lyrics/breakdown jumps. Buttons inside (chips, candidates) take their own taps first.
+        middleContentTapRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleMiddleContentTap))
+        middleContentContainer.addGestureRecognizer(middleContentTapRecognizer)
+        middleContentContainer.addInteraction(UIContextMenuInteraction(delegate: self))
 
         middleContentStack = UIStackView()
         middleContentStack.translatesAutoresizingMaskIntoConstraints = false
@@ -400,16 +396,6 @@ extension SurfaceSheetViewController {
         saveButton.addAction(UIAction { [weak self] _ in
             self?.sheet?.sheetSaveToggle?()
             self?.updateSaveButtonAppearance()
-        }, for: .touchUpInside)
-
-        openDetailButton.addAction(UIAction { [weak self] _ in
-            let openWordDetail = self?.sheet?.sheetOpenWordDetail
-            // Captured before dismissal tears the header down.
-            let shownReading = self?.displayedReading()
-            let shownEntry = self?.sheet?.currentSheetDictionaryEntry
-            self?.sheet?.dismissPopover(notifyDismissal: false) {
-                DispatchQueue.main.async { openWordDetail?(shownReading, shownEntry) }
-            }
         }, for: .touchUpInside)
 
         prevReadingButton.addAction(UIAction { [weak self] _ in
@@ -560,5 +546,38 @@ extension SurfaceSheetViewController {
         let swipeRight = UISwipeGestureRecognizer(target: self, action: #selector(handleSheetSwipe(_:)))
         swipeRight.direction = .right
         view.addGestureRecognizer(swipeRight)
+    }
+}
+
+extension SurfaceSheetViewController: UIContextMenuInteractionDelegate {
+    // Opens the shown word's detail page when the definitions are tapped.
+    @objc func handleMiddleContentTap() {
+        openWordDetail()
+    }
+
+    // The definitions' long-press menu: jump to this line in the note's lyrics view or breakdown,
+    // whichever the note has. Built per press so the actions target the segment shown now.
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        configurationForMenuAtLocation location: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        let destinations = sheet?.sheetLineDestinationsProvider?() ?? []
+        guard destinations.isEmpty == false, let openLineIn = sheet?.sheetOpenLineIn else { return nil }
+        let actions: [UIAction] = destinations.compactMap { destination in
+            switch destination {
+            case .lyrics:
+                return UIAction(title: "Open Line in Lyrics", image: UIImage(systemName: "music.mic")) { _ in
+                    DispatchQueue.main.async { openLineIn(.lyrics) }
+                }
+            case .breakdown:
+                return UIAction(title: "Open Line in Breakdown", image: UIImage(systemName: "sparkles.rectangle.stack")) { _ in
+                    DispatchQueue.main.async { openLineIn(.breakdown) }
+                }
+            case .text:
+                return nil
+            }
+        }
+        guard actions.isEmpty == false else { return nil }
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in UIMenu(children: actions) }
     }
 }
