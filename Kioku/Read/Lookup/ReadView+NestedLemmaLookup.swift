@@ -118,7 +118,7 @@ extension ReadView {
             sheetOpenWordDetail: { [weak nestedSheet] shownReading, shownEntry in
                 guard let entry = shownEntry ?? resolvedEntry() else { return }
                 let reading = shownReading ?? nestedSheet?.currentSheetUniqueReadings.first
-                onOpenWordDetail?(entry.entryId, lemma, reading, [])
+                presentWordDetail(entryID: entry.entryId, surface: lemma, reading: reading, sublatticePaths: [])
             },
             sheetWordComponentsProvider: { nil },
             sheetCompoundComponentsProvider: { lexicon?.compoundVerbComponents(surface: lemma) },

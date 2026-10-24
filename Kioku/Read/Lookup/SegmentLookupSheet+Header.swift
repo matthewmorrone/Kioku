@@ -115,6 +115,9 @@ extension SegmentLookupSheet {
     // Size of, and gap to the headword for, the speaker and star flanking it.
     static let headerSideButtonSize: CGFloat = 32
     static let headerSideButtonGap: CGFloat = 4
+    // How far above the header row's bottom the buttons' centres sit: the middle of the headword's
+    // glyphs (34 pt bold: a ~8 pt descender, then the em box's centre ~13 pt above the baseline).
+    static let headerSideButtonCenterInset: CGFloat = 21
 
     // Width the header row gets inside the sheet: the screen less the header container's 16 pt
     // margins, the 36 pt reading chevrons (each with 8 pt of clearance) and the speaker/star

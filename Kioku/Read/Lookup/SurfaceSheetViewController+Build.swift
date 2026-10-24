@@ -69,13 +69,13 @@ extension SurfaceSheetViewController {
             speakButton.leadingAnchor.constraint(greaterThanOrEqualTo: prevReadingButton.trailingAnchor, constant: 4),
             speakButton.widthAnchor.constraint(equalToConstant: SegmentLookupSheet.headerSideButtonSize),
             speakButton.heightAnchor.constraint(equalToConstant: SegmentLookupSheet.headerSideButtonSize),
-            speakButton.centerYAnchor.constraint(equalTo: headerRow.bottomAnchor, constant: -18),
+            speakButton.centerYAnchor.constraint(equalTo: headerRow.bottomAnchor, constant: -SegmentLookupSheet.headerSideButtonCenterInset),
 
             saveButton.leadingAnchor.constraint(equalTo: headerRow.trailingAnchor, constant: SegmentLookupSheet.headerSideButtonGap),
             saveButton.trailingAnchor.constraint(lessThanOrEqualTo: nextReadingButton.leadingAnchor, constant: -4),
             saveButton.widthAnchor.constraint(equalToConstant: SegmentLookupSheet.headerSideButtonSize),
             saveButton.heightAnchor.constraint(equalToConstant: SegmentLookupSheet.headerSideButtonSize),
-            saveButton.centerYAnchor.constraint(equalTo: headerRow.bottomAnchor, constant: -18),
+            saveButton.centerYAnchor.constraint(equalTo: headerRow.bottomAnchor, constant: -SegmentLookupSheet.headerSideButtonCenterInset),
         ])
         speakButton.addAction(UIAction { [weak self] _ in
             guard let self else { return }
@@ -345,6 +345,7 @@ extension SurfaceSheetViewController {
         // The definitions are the link to the word's detail page; long-press offers the line's
         // lyrics/breakdown jumps. Buttons inside (chips, candidates) take their own taps first.
         middleContentTapRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleMiddleContentTap))
+        middleContentTapRecognizer.delegate = self
         middleContentContainer.addGestureRecognizer(middleContentTapRecognizer)
         middleContentContainer.addInteraction(UIContextMenuInteraction(delegate: self))
 
@@ -356,10 +357,10 @@ extension SurfaceSheetViewController {
 
         middleContentContainer.addSubview(middleContentStack)
         NSLayoutConstraint.activate([
-            middleContentStack.topAnchor.constraint(equalTo: middleContentContainer.topAnchor, constant: 6),
-            middleContentStack.leadingAnchor.constraint(equalTo: middleContentContainer.leadingAnchor, constant: 6),
-            middleContentStack.trailingAnchor.constraint(equalTo: middleContentContainer.trailingAnchor, constant: -6),
-            middleContentStack.bottomAnchor.constraint(equalTo: middleContentContainer.bottomAnchor, constant: -6),
+            middleContentStack.topAnchor.constraint(equalTo: middleContentContainer.topAnchor, constant: SegmentLookupSheet.middleContentInset.height),
+            middleContentStack.leadingAnchor.constraint(equalTo: middleContentContainer.leadingAnchor, constant: SegmentLookupSheet.middleContentInset.width),
+            middleContentStack.trailingAnchor.constraint(equalTo: middleContentContainer.trailingAnchor, constant: -SegmentLookupSheet.middleContentInset.width),
+            middleContentStack.bottomAnchor.constraint(equalTo: middleContentContainer.bottomAnchor, constant: -SegmentLookupSheet.middleContentInset.height),
         ])
     }
 
@@ -549,7 +550,18 @@ extension SurfaceSheetViewController {
     }
 }
 
-extension SurfaceSheetViewController: UIContextMenuInteractionDelegate {
+extension SurfaceSheetViewController: UIContextMenuInteractionDelegate, UIGestureRecognizerDelegate {
+    // Leaves taps on a word chip (which drills into that word) to the chip, so they don't also
+    // open the detail page.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        var view = touch.view
+        while let current = view, current !== middleContentContainer {
+            if current.gestureRecognizers?.contains(where: { $0 is ClosureTapGesture }) == true { return false }
+            view = current.superview
+        }
+        return true
+    }
+
     // Opens the shown word's detail page when the definitions are tapped.
     @objc func handleMiddleContentTap() {
         openWordDetail()

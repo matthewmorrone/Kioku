@@ -248,12 +248,12 @@ extension ReadView {
                     // A picked word opens as itself (言う / いう), not as the form it was tapped in.
                     let candidates = SegmentLookupSheet.shared.currentSheetLookupCandidates
                     if candidates.count > 1, let picked = candidates.first(where: { $0.entry.entryId == entry.entryId }) {
-                        onOpenWordDetail?(entry.entryId, picked.headword, picked.reading, [])
+                        presentWordDetail(entryID: entry.entryId, surface: picked.headword, reading: picked.reading, sublatticePaths: [])
                         return
                     }
                     let reading = shownReading ?? SegmentLookupSheet.shared.currentSheetUniqueReadings.first
                     let paths = LatticeEdge.validPaths(from: SegmentLookupSheet.shared.currentSheetSublatticeEdges)
-                    onOpenWordDetail?(entry.entryId, surface, reading, paths)
+                    presentWordDetail(entryID: entry.entryId, surface: surface, reading: reading, sublatticePaths: paths)
                 },
                 // The word-detail button's long-press: this line in the lyrics view (when the note
                 // has audio) or the breakdown (when it has one).

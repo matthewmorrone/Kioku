@@ -36,8 +36,6 @@ struct ReadView: View {
     let frequencyRankBySurface: FrequencyRankMap
     let segmenterRevision: Int
     let readResourcesReady: Bool
-    // (entryID, surface, reading, sublatticePaths) — carries pre-computed data from the lookup sheet.
-    var onOpenWordDetail: ((Int64, String, String?, [[String]]) -> Void)? = nil
     var onActiveNoteChanged: ((UUID) -> Void)? = nil
 
     // Opt-in Japanese theme; gates the warm-paper reading pane fill (see ReadView+Editor).
@@ -147,7 +145,6 @@ struct ReadView: View {
         frequencyRankBySurface: FrequencyRankMap = FrequencyRankMap(),
         segmenterRevision: Int,
         readResourcesReady: Bool,
-        onOpenWordDetail: ((Int64, String, String?, [[String]]) -> Void)? = nil,
         onActiveNoteChanged: ((UUID) -> Void)? = nil
     ) {
         _selectedNote = selectedNote
@@ -163,7 +160,6 @@ struct ReadView: View {
         self.frequencyRankBySurface = frequencyRankBySurface
         self.segmenterRevision = segmenterRevision
         self.readResourcesReady = readResourcesReady
-        self.onOpenWordDetail = onOpenWordDetail
         self.onActiveNoteChanged = onActiveNoteChanged
     }
 

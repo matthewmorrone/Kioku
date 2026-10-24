@@ -406,6 +406,20 @@ extension ReadView {
             )
             .presentationDetents([.medium, .large])
         }
+        .sheet(item: $readSheets.wordDetail) { target in
+            WordDetailView(
+                word: target.word,
+                reading: target.reading,
+                dictionaryStore: dictionaryStore,
+                segmenter: segmenter,
+                lexicon: lexicon,
+                initialSublatticePaths: target.sublatticePaths,
+                surfaceReadingData: surfaceReadingData,
+                kanjiReadingFallback: kanjiReadingFallback,
+                noteID: document.activeNoteID
+            )
+            .presentationDetents([.large])
+        }
         .sheet(isPresented: $readSheets.isShowingBreakdownSheet) {
             if let note = currentDisplayedNote {
                 NavigationStack {

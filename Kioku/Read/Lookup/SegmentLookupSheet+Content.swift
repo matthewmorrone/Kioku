@@ -11,6 +11,9 @@ private let maxGlossesPerSheetSense = 3
 private let spellingOnlyMiscTags: Set<String> = ["uk"]
 
 extension SegmentLookupSheet {
+    // Padding between the definitions box's edge and its content (horizontal, vertical).
+    static let middleContentInset = CGSize(width: 6, height: 6)
+
     // Builds one compact sense line: optional number, glosses (capped), and a dim part-of-speech
     // suffix. The primary sense renders at full size/color; later senses are smaller and dimmer
     // so the most common meaning stays visually dominant.
@@ -22,14 +25,15 @@ extension SegmentLookupSheet {
         maxLayoutWidth: CGFloat
     ) -> UILabel {
         let glossFont = UIFont.systemFont(ofSize: isPrimary ? 15 : 13)
-        let glossColor: UIColor = isPrimary ? .label : .secondaryLabel
-        let detailFont = UIFont.systemFont(ofSize: isPrimary ? 12 : 11)
+        // Every meaning in full-strength text: the lighter size alone ranks the later senses.
+        let glossColor: UIColor = .label
+        let detailFont = UIFont.systemFont(ofSize: 12)
 
         let line = NSMutableAttributedString()
         if let number {
             line.append(NSAttributedString(
                 string: "\(number). ",
-                attributes: [.font: glossFont, .foregroundColor: UIColor.tertiaryLabel]
+                attributes: [.font: glossFont, .foregroundColor: UIColor.label]
             ))
         }
 
@@ -42,27 +46,28 @@ extension SegmentLookupSheet {
             attributes: [.font: glossFont, .foregroundColor: glossColor]
         ))
 
+        // Part of speech and this sense's own register / domain / dialect labels (as JMdict tags
+        // them, so a derogatory or archaic sense says so on its own line) go on a line under the
+        // glosses, in a readable grey, rather than trailing the meaning.
+        var tagParts: [String] = []
         if showsPos, let pos = sense.pos, pos.isEmpty == false {
-            line.append(NSAttributedString(
-                string: "  ·  \(JMdictTagExpander.expandAll(pos))",
-                attributes: [.font: detailFont, .foregroundColor: UIColor.tertiaryLabel]
-            ))
+            tagParts.append(JMdictTagExpander.expandAll(pos))
         }
-
-        // This sense's own register / domain / dialect labels, exactly as JMdict tags it, so a
-        // derogatory or archaic sense says so on its own line rather than for the whole entry.
         let usageTags = sheetUsageTags(for: sense)
         if usageTags.isEmpty == false {
+            tagParts.append(usageTags.joined(separator: ", "))
+        }
+        if tagParts.isEmpty == false {
             line.append(NSAttributedString(
-                string: "  ·  \(usageTags.joined(separator: ", "))",
-                attributes: [.font: detailFont, .foregroundColor: UIColor.secondaryLabel]
+                string: "\n" + tagParts.joined(separator: "  ·  "),
+                attributes: [.font: detailFont, .foregroundColor: UIColor.label]
             ))
         }
         // s_inf usage notes ("esp. as 持ってる"), one per line under the glosses.
         for note in (sense.info ?? "").components(separatedBy: "\n") where note.isEmpty == false {
             line.append(NSAttributedString(
                 string: "\n\(note)",
-                attributes: [.font: detailFont, .foregroundColor: UIColor.tertiaryLabel]
+                attributes: [.font: detailFont, .foregroundColor: UIColor.label]
             ))
         }
 
@@ -90,7 +95,7 @@ extension SegmentLookupSheet {
     // lookup sheet is full-width; subtract container/stack padding to land on the label's actual
     // rendered width.
     func sheetContentWidth() -> CGFloat {
-        max(200, activeScreenBounds().width) - (16 * 2) - (6 * 2)
+        max(200, activeScreenBounds().width) - (16 * 2) - (Self.middleContentInset.width * 2)
     }
 
     // Fills the empty middle for a surface with no dictionary entry: the guessed gloss once known,
@@ -179,7 +184,7 @@ extension SegmentLookupSheet {
             UIImage(systemName: "info.circle", withConfiguration: UIImage.SymbolConfiguration(pointSize: 13)),
             for: .normal
         )
-        infoButton.tintColor = .tertiaryLabel
+        infoButton.tintColor = .label
         infoButton.accessibilityLabel = "Where this meaning comes from"
         infoButton.setContentHuggingPriority(.required, for: .horizontal)
         infoButton.addAction(UIAction { [weak parent] _ in
@@ -207,13 +212,13 @@ extension SegmentLookupSheet {
             let isPrimary = index == 0
             let line = NSMutableAttributedString(
                 string: name.reading,
-                attributes: [.font: UIFont.systemFont(ofSize: isPrimary ? 15 : 13), .foregroundColor: isPrimary ? UIColor.label : UIColor.secondaryLabel]
+                attributes: [.font: UIFont.systemFont(ofSize: isPrimary ? 15 : 13), .foregroundColor: isPrimary ? UIColor.label : UIColor.label]
             )
             let kinds = name.types.map(DictionaryStore.nameTypeLabel).joined(separator: ", ")
             let detail = [kinds, name.gloss].filter { $0.isEmpty == false }.joined(separator: " · ")
             line.append(NSAttributedString(
                 string: "  \(detail)",
-                attributes: [.font: UIFont.systemFont(ofSize: isPrimary ? 12 : 11), .foregroundColor: UIColor.tertiaryLabel]
+                attributes: [.font: UIFont.systemFont(ofSize: isPrimary ? 12 : 11), .foregroundColor: UIColor.label]
             ))
             let label = UILabel()
             label.attributedText = line
@@ -235,7 +240,7 @@ extension SegmentLookupSheet {
         let label = UILabel()
         label.text = "Also a name: \(text)"
         label.font = .systemFont(ofSize: 12)
-        label.textColor = .tertiaryLabel
+        label.textColor = .label
         label.numberOfLines = 0
         label.preferredMaxLayoutWidth = sheetContentWidth()
         return label
@@ -247,7 +252,7 @@ extension SegmentLookupSheet {
         label.text = text
         label.numberOfLines = 0
         label.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        label.textColor = .secondaryLabel
+        label.textColor = .label
         return label
     }
 
@@ -324,7 +329,7 @@ extension SegmentLookupSheet {
         let showsComponents = currentSheetCompoundComponents.count > 1
         let surfaceHasOwnEntry = surface.map { currentSheetDictionaryEntryDefines($0) } ?? false
         if showsComponents, surfaceHasOwnEntry == false {
-            middleContentStack.addArrangedSubview(makeComponentEquationRow(currentSheetCompoundComponents, parent: parent))
+            middleContentStack.addArrangedSubview(makeComponentSection(currentSheetCompoundComponents, parent: parent))
             middleContentStack.superview?.isHidden = false
             return
         }
@@ -356,7 +361,7 @@ extension SegmentLookupSheet {
             let moreLabel = UILabel()
             moreLabel.text = "+\(visibleSenses.count - maxVisibleSheetSenses) more"
             moreLabel.font = .systemFont(ofSize: 11, weight: .medium)
-            moreLabel.textColor = .tertiaryLabel
+            moreLabel.textColor = .label
             senseList.addArrangedSubview(moreLabel)
         }
         middleContentStack.addArrangedSubview(senseList)
@@ -365,7 +370,7 @@ extension SegmentLookupSheet {
             middleContentStack.addArrangedSubview(makeAlsoANameLabel(usualNames))
         }
         if showsComponents {
-            middleContentStack.addArrangedSubview(makeComponentEquationRow(currentSheetCompoundComponents, parent: parent))
+            middleContentStack.addArrangedSubview(makeComponentSection(currentSheetCompoundComponents, parent: parent))
         }
 
         middleContentStack.superview?.isHidden = false

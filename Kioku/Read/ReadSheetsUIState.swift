@@ -29,4 +29,6 @@ final class ReadSheetsUIState {
     // Learn Spelling form, opened from the lookup sheet for the word that has no entry.
     var isShowingLearnSpelling = false
     var learnSpellingSurface = ""
+    // The word detail page over the note, opened from the lookup sheet or the full-screen word view.
+    var wordDetail: ReadWordDetailTarget?
 }

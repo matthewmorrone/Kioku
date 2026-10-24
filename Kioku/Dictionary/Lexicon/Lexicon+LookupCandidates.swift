@@ -67,10 +67,15 @@ nonisolated extension Lexicon {
                 if ScriptClassifier.containsKanji(surface) == false {
                     readings = readings.filter { $0 == surface }
                 }
+                // A kana form names the reading it was looked up by (黍 is きび, but as きみ it is read
+                // きみ), not the entry's first kana.
+                let shownReading = lemma == surface && entry.kanaForms.contains { $0.text == lemma }
+                    ? lemma
+                    : entry.kanaForms.first?.text ?? lemma
                 let candidate = LookupCandidate(
                     lemma: lemma,
                     headword: entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text ?? lemma,
-                    reading: entry.kanaForms.first?.text ?? lemma,
+                    reading: shownReading,
                     entry: entry,
                     surfaceReadings: readings,
                     viaPotential: transitions?.contains { $0.label == "potential" } == true
@@ -134,7 +139,9 @@ nonisolated extension Lexicon {
     private func isWrittenInKana(_ entry: DictionaryEntry, surface: String) -> Bool {
         guard ScriptClassifier.containsKanji(surface) == false else { return false }
         if entry.kanjiForms.isEmpty { return true }
-        if entry.senses.contains(where: { ($0.misc ?? "").split(separator: ",").contains("uk") }) { return true }
+        // "Usually kana" is about the entry's main reading: 黍 is きび in kana, but きみ is only a variant.
+        if entry.senses.contains(where: { ($0.misc ?? "").split(separator: ",").contains("uk") }),
+           entry.kanaForms.first?.text == surface { return true }
         let kanaIsCommon = entry.kanaForms.contains { $0.text == surface && $0.priority?.isEmpty == false }
         return kanaIsCommon && entry.kanjiForms.allSatisfy { $0.priority?.isEmpty != false }
     }
@@ -142,11 +149,18 @@ nonisolated extension Lexicon {
     // The candidate to show before the user picks, or nil when the form is genuinely ambiguous.
     // Only a word the dictionary marks as in common use can be preselected, and only when it is the
     // only such one: 消して → 消す over the literary 消する, while いった (言う, 行く, 要る) and きた
-    // (来る, 着る, 北) stay unpicked. Frequency ratios don't decide it — 着た is an ordinary reading of
-    // きた even though 来る ranks far higher.
+    // (来る, 着る, 北) stay unpicked. Among several common words, a lone kana-only particle wins (の, not 野). Frequency
+    // ratios don't decide it — 着た is an ordinary reading of きた even though 来る ranks far higher.
     static func preferredLookupCandidate(among candidates: [LookupCandidate]) -> LookupCandidate? {
         let common = candidates.filter { $0.entry.hasPriorityForm }
-        return common.count == 1 ? common[0] : nil
+        if common.count == 1 { return common[0] }
+        // Several common words share the kana (の: the particle and 野; で: the particle and 出): the
+        // particle is what kana text almost always means, when only one of them is a kana-only particle.
+        let particles = common.filter { candidate in
+            candidate.entry.kanjiForms.isEmpty
+                && candidate.entry.senses.contains { ($0.pos ?? "").split(separator: ",").contains("prt") }
+        }
+        return particles.count == 1 ? particles[0] : nil
     }
 
     // The words a reading leaves undecided: the candidates read that way (怒り read いかり → the noun

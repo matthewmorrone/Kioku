@@ -31,6 +31,6 @@ extension ReadView {
             AppLog.info(.audioPlayback, "[ReadView] word detail requested from the word view for a word with no entry")
             return
         }
-        leaveWordFocus { onOpenWordDetail?(entry.entryId, surface, nil, []) }
+        leaveWordFocus { presentWordDetail(entryID: entry.entryId, surface: surface, reading: nil, sublatticePaths: []) }
     }
 }

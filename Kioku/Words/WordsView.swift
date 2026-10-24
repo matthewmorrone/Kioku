@@ -65,10 +65,6 @@ struct WordsView: View {
     var kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()
     // Receives cross-tab routing requests from ContentView.
     var pendingRoute: Binding<WordsRoute?> = .constant(nil)
-    // Fires when a word detail that was opened by a cross-tab route closes, so the caller can send
-    // the user back where they came from (the Read tab) instead of stranding them in Words. Only
-    // route-opened details report; details opened from a row or search result stay put.
-    var onRouteDetailDismissed: (() -> Void)? = nil
 
     @EnvironmentObject var wordsStore: WordsStore
     @EnvironmentObject var savedKanjiStore: SavedKanjiStore
@@ -84,10 +80,6 @@ struct WordsView: View {
     // the last route's reading would leak onto the next, unrelated word opened from a row.
     @State var selectedDetailReadingEntryID: Int64?
     @State var selectedDetailSublatticePaths: [[String]] = []
-    // True while the presented detail sheet is the one a cross-tab route opened; drives
-    // onRouteDetailDismissed. Set when the route lands and cleared when that sheet closes, so a
-    // later row-opened detail can't inherit it.
-    @State var isDetailOpenedFromRoute = false
     @State var activeFilterNoteIDs: Set<UUID> = []
     @State var activeFilterListIDs: Set<UUID> = []
     @State var statScope: WordsStatScope = .none
@@ -220,34 +212,7 @@ struct WordsView: View {
     func detailWord(entryID: Int64, surfaceHint: String?) -> SavedWord? {
         let inStore = wordsStore.words.contains(where: { $0.canonicalEntryID == entryID })
         WOTDDiag.log("detailWord entryID=\(entryID) hint=\(surfaceHint?.isEmpty == false) inStore=\(inStore) dictReady=\(dictionaryStore != nil)")
-        if let saved = wordsStore.words.first(where: { $0.canonicalEntryID == entryID }) {
-            // A saved card remembers whichever surface it was first saved under (e.g. plain
-            // 歩く), but this navigation may carry a different, more specific surface — a
-            // compound-verb occurrence (歩いてゆこう) or other inflected form the user just
-            // tapped. Keep the saved metadata (notes, list membership, sense picks) but show
-            // the surface actually being looked up, so derivation/forms/header reflect it
-            // instead of silently falling back to whatever surface was saved first.
-            if let surfaceHint, surfaceHint.isEmpty == false, surfaceHint != saved.surface {
-                return SavedWord(
-                    canonicalEntryID: saved.canonicalEntryID,
-                    surface: surfaceHint,
-                    sourceNoteIDs: saved.sourceNoteIDs,
-                    wordListIDs: saved.wordListIDs,
-                    personalNote: saved.personalNote,
-                    savedAt: saved.savedAt,
-                    selectedSenseIDs: saved.selectedSenseIDs,
-                    selectedGlosses: saved.selectedGlosses,
-                    encounteredSurfaces: saved.encounteredSurfaces,
-                    entSeq: saved.entSeq,
-                    hasBeenOrphaned: saved.hasBeenOrphaned
-                )
-            }
-            return saved
-        }
-
-        if let surfaceHint, surfaceHint.isEmpty == false {
-            return SavedWord(canonicalEntryID: entryID, surface: surfaceHint)
-        }
+        if let word = wordsStore.detailWord(entryID: entryID, surfaceHint: surfaceHint) { return word }
 
         guard let entry = try? dictionaryStore?.lookupEntry(entryID: entryID) else {
             return nil
@@ -287,10 +252,6 @@ struct WordsView: View {
         selectedDetailReading = nil
         selectedDetailReadingEntryID = nil
         selectedDetailSublatticePaths = []
-        if isDetailOpenedFromRoute {
-            isDetailOpenedFromRoute = false
-            onRouteDetailDismissed?()
-        }
     }
 
     // Applies a cross-tab route, either by opening a word detail or populating the search query.
@@ -307,7 +268,6 @@ struct WordsView: View {
                 selectedDetailReading = reading
                 selectedDetailReadingEntryID = word.canonicalEntryID
                 selectedDetailSublatticePaths = sublatticePaths
-                isDetailOpenedFromRoute = true
                 // Opening a word via a deep link (e.g. the Word of the Day notification) is a
                 // lookup like any other, so record it to history — the search-result and browse
                 // paths already do this alongside their own `selectedDetailWord =` assignments.

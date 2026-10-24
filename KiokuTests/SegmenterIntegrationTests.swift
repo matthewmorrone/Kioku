@@ -720,6 +720,11 @@ final class SegmenterIntegrationTests: XCTestCase {
         XCTAssertEqual(Lexicon.preferredLookupCandidate(among: keshite)?.headword, "消す")
         XCTAssertNil(Lexicon.preferredLookupCandidate(among: lexicon.lookupCandidates(surface: "いった")))
         XCTAssertNil(Lexicon.preferredLookupCandidate(among: lexicon.lookupCandidates(surface: "きた")))
+        // A particle written in kana is picked over the common kanji words that share its kana.
+        for particle in ["の", "で", "は"] {
+            let picked = Lexicon.preferredLookupCandidate(among: lexicon.lookupCandidates(surface: particle))
+            XCTAssertEqual(picked?.headword, particle, "\(particle) should preselect the particle")
+        }
     }
 
     // 出ずる is the 連体形 of the classical shimo-nidan 出ず (JMdict v2d-s): the generated nidan rule

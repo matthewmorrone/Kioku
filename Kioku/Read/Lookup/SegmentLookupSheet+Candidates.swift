@@ -143,14 +143,14 @@ extension SegmentLookupSheet {
             let readingLabel = UILabel()
             readingLabel.text = candidate.reading == candidate.headword ? "" : candidate.reading
             readingLabel.font = .systemFont(ofSize: 12)
-            readingLabel.textColor = .secondaryLabel
+            readingLabel.textColor = .label
             readingLabel.setContentHuggingPriority(.required, for: .horizontal)
             readingLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
             let glossLabel = UILabel()
             glossLabel.text = candidate.entry.senses.first?.glosses.first ?? ""
             glossLabel.font = .systemFont(ofSize: 14)
-            glossLabel.textColor = .secondaryLabel
+            glossLabel.textColor = .label
             glossLabel.numberOfLines = 1
             glossLabel.lineBreakMode = .byTruncatingTail
 
@@ -160,7 +160,7 @@ extension SegmentLookupSheet {
             if shownID != nil, candidate.entry.entryId == shownID {
                 let toggle = UILabel()
                 toggle.font = .systemFont(ofSize: 12, weight: .semibold)
-                toggle.textColor = .secondaryLabel
+                toggle.textColor = .label
                 toggle.text = isCollapsed ? "+\(allCandidates.count - 1) ⌄" : "✕"
                 toggle.setContentHuggingPriority(.required, for: .horizontal)
                 toggle.setContentCompressionResistancePriority(.required, for: .horizontal)
