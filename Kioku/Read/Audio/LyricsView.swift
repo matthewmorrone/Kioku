@@ -361,7 +361,9 @@ struct LyricsView: View {
                 // (Focus-card style adds 8pt each side; other styles 0pt — but inset 8pt of
                 // safety margin so glyph edges don't kiss the card.)
                 let activeCueAvailableWidth = panelWidth - 16
-                let activeCueScale = activeCueFontScale(text: cueInput.text, availableWidth: activeCueAvailableWidth)
+                let activeCueLayout = activeCueFit(text: cueInput.text, availableWidth: activeCueAvailableWidth)
+                let activeCueScale = activeCueLayout.scale
+                let activeRendererHeight = activeCueRendererHeight(lineCount: activeCueLayout.lineCount, scale: activeCueScale)
                 let scaledTextSize = TypographySettings.defaultTextSize * Double(activeCueScale)
                 let untimedLocations: Set<Int> = []
                 // Computed once and reused below (playback band, dim cutoff, accent range) instead
@@ -402,7 +404,7 @@ struct LyricsView: View {
                             // Single-line render: scaling above keeps text within the card;
                             // disabling wrapping prevents any residual long cue from breaking
                             // onto a second visible line (it would clip instead).
-                            isLineWrappingEnabled: false,
+                            isLineWrappingEnabled: activeCueLayout.lineCount > 1,
                             // Honor the Read-view ruby-spacing toggle so wide furigana doesn't
                             // crash into adjacent kanji in the active-cue card. Packed-layout
                             // requirements (word-level segments) are satisfied here because the
@@ -458,7 +460,7 @@ struct LyricsView: View {
                             onRangeRects: { wordBubbleRects = $0 }
                         )
                         .frame(maxWidth: .infinity)
-                        .frame(height: rendererHeight)
+                        .frame(height: activeRendererHeight)
                         .clipped()
                         // Word meanings over the line as it's sung, beside it or in rows above and
                         // below it (LyricsView+WordBubbles).
@@ -470,7 +472,8 @@ struct LyricsView: View {
                                         cueOriginInNote: cueOriginInNote,
                                         cueLength: cueInput.text.utf16.count
                                     ),
-                                    lineRect: wordBubbleLineRect(cueLength: cueInput.text.utf16.count)
+                                    lineRect: wordBubbleLineRect(cueLength: cueInput.text.utf16.count),
+                                    verticalRoom: max(LyricWordBubbleOverlay.rowOverflow, (panelHeight - activeRendererHeight) / 2 - 24)
                                 )
                                 .id(displayIndex)
                             }
@@ -486,6 +489,7 @@ struct LyricsView: View {
                             .foregroundStyle(.secondary)
                             .italic()
                             .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity)
                     }
                     if displayIndex < cues.count && hasMismatch(at: displayIndex) {

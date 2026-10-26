@@ -124,29 +124,37 @@ extension LyricsView {
         )
     }
 
-    // Returns a font-size scale factor that fits `text` on a single line within
-    // `availableWidth` at the given default font size. Clamped to [0.5, 1.0] so the cue
-    // never shrinks below half its default — beyond that, clipping is preferable.
-    func activeCueFontScale(text: String, availableWidth: CGFloat) -> CGFloat {
-        guard text.isEmpty == false, availableWidth > 0 else { return 1.0 }
+    // How the active cue is laid out: one line scaled down to fit (never below half size), or — when
+    // even half size would run past the card — a legible scale wrapped onto as many lines as it needs.
+    func activeCueFit(text: String, availableWidth: CGFloat) -> (scale: CGFloat, lineCount: Int) {
+        guard text.isEmpty == false, availableWidth > 0 else { return (1.0, 1) }
         let baseFont = ReadingFont.body(size: TypographySettings.defaultTextSize)
         let measured = (text as NSString).size(withAttributes: [.font: baseFont]).width
-        guard measured > availableWidth else { return 1.0 }
-        return max(0.5, min(1.0, availableWidth / measured))
+        guard measured > availableWidth else { return (1.0, 1) }
+        let fitted = availableWidth / measured
+        if fitted >= 0.5 { return (fitted, 1) }
+        // Furigana and word packing make real lines break earlier than the plain text width says.
+        let wrapScale: CGFloat = 0.7
+        let lines = Int(ceil(measured * wrapScale / (availableWidth * 0.9)))
+        return (wrapScale, max(2, lines))
     }
 
     // Height for the active-cue card — sized to fit one visual line (ruby reserve at top
     // + body line + small bottom margin). Since the renderer now receives only the active
     // cue's text, this height bounds the card; the renderer's contentInset (topInset =
     // rubyReserve + 4) reserves space for ruby above the body line.
-    var activeCueRendererHeight: CGFloat {
-        let textSize = TypographySettings.defaultTextSize
+    var activeCueRendererHeight: CGFloat { activeCueRendererHeight(lineCount: 1, scale: 1) }
+
+    // The same card height for a cue wrapped onto `lineCount` lines at font `scale`: each line
+    // carries its own ruby reserve.
+    func activeCueRendererHeight(lineCount: Int, scale: CGFloat) -> CGFloat {
+        let textSize = TypographySettings.defaultTextSize * Double(scale)
         let bodyHeight = UIFont.systemFont(ofSize: textSize).lineHeight
         let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
         let rubyReserve = furiganaFont.lineHeight + CGFloat(TypographySettings.defaultFuriganaGap)
-        // 4pt top inset + ruby reserve + body line + 4pt bottom margin matches the geometry
+        // 4pt top inset + per-line ruby reserve + body line + 4pt bottom margin matches the geometry
         // RenderGeometry produces with userLineSpacing=0.
-        return rubyReserve + 4 + bodyHeight + 4
+        return CGFloat(lineCount) * (rubyReserve + bodyHeight) + 8
     }
 
     // Compact height for inactive cue rows and ♪ separators. Drops the ruby reserve since

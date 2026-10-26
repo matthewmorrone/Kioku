@@ -13,6 +13,9 @@ struct LyricWordBubbleOverlay: View {
     let bubbles: [PlacedLyricWordBubble]
     // The whole line's rect, for the room beside it; nil before it's measured.
     let lineRect: CGRect?
+    // How far the rows above and below the line may run past the card: the lyrics panel's room
+    // above and below it, so bubbles are only hidden once they've used all of it.
+    var verticalRoom: CGFloat = LyricWordBubbleOverlay.rowOverflow
 
     static let glossFont = UIFont.systemFont(ofSize: 12, weight: .medium)
     static let horizontalPadding: CGFloat = 12
@@ -25,6 +28,8 @@ struct LyricWordBubbleOverlay: View {
     static let maxGlossWidth: CGFloat = 150
     // How far a side stack may run past the card's top or bottom.
     static let sideOverflow: CGFloat = 220
+    // How far the above/below rows may run past the card: about what the lyrics panel shows.
+    static let rowOverflow: CGFloat = 90
     // Least space between the line and a stacked side bubble, and between stacked bubbles.
     static let lineClearance: CGFloat = 4
     static let stackGap: CGFloat = 10
@@ -45,8 +50,9 @@ struct LyricWordBubbleOverlay: View {
             // is fixed before it appears.
             let side = Self.sideLayout(bubbles, lineRect: lineRect, size: proxy.size)
             let shownIDs = Set(bubbles.filter(\.isShown).map(\.id))
-            let slots = (side ?? Self.stackedLayout(bubbles, width: proxy.size.width))
-                .filter { shownIDs.contains($0.id) }
+            let slots = Self.withoutSuperseded(
+                (side ?? Self.stackedLayout(bubbles, size: proxy.size, room: verticalRoom)).filter { shownIDs.contains($0.id) }
+            )
             ZStack(alignment: .topLeading) {
                 ForEach(slots, id: \.id) { slot in
                     bubble(slot, in: proxy.size)
@@ -185,11 +191,20 @@ struct LyricWordBubbleOverlay: View {
         return slots
     }
 
+    // Drops a bubble a later word's bubble overlaps, so when a long line has run out of rows the
+    // least recent bubbles are the ones popped as the reading moves on.
+    static func withoutSuperseded(_ slots: [Slot]) -> [Slot] {
+        slots.filter { slot in
+            slots.contains { $0.id > slot.id && $0.frame.insetBy(dx: -gap / 2, dy: -gap / 2).intersects(slot.frame) } == false
+        }
+    }
+
     // The fallback for a line too wide to leave room beside it: meanings in rows above and below
     // the line, each centred on its word, its tail reaching the word. Words alternate which side
     // they try first, so the two sides stay even; a bubble takes the nearest row on either side
     // with room at its place, else opens a new row on the side with fewer, so bubbles never overlap.
-    static func stackedLayout(_ bubbles: [PlacedLyricWordBubble], width: CGFloat) -> [Slot] {
+    static func stackedLayout(_ bubbles: [PlacedLyricWordBubble], size cardSize: CGSize, room: CGFloat = rowOverflow) -> [Slot] {
+        let width = cardSize.width
         guard width > 0 else { return [] }
         let lineTop = bubbles.map(\.anchor.minY).min() ?? 0
         let lineBottom = bubbles.map(\.anchor.maxY).max() ?? 0
@@ -197,9 +212,16 @@ struct LyricWordBubbleOverlay: View {
         let rowStep = bubbles.compactMap(\.gloss)
             .map { size($0, maxWidth: min(width, maxGlossWidth)).height + 12 }
             .max() ?? rowHeight
+        // Rows that fit within sideOverflow of the card on each side; past them a bubble reuses a row
+        // and the earlier bubbles it covers are popped (withoutSuperseded).
+        let aboveCap = max(1, Int((lineTop + room - 10) / rowStep))
+        let belowCap = max(1, Int((cardSize.height + room - lineBottom - 10) / rowStep))
         // Each row's right end, nearest the line first.
         var aboveEnds: [CGFloat] = []
         var belowEnds: [CGFloat] = []
+        // Each row's bubbles, to tell which ones a reused row would cover.
+        var aboveOccupants: [[(id: Int, minX: CGFloat, maxX: CGFloat)]] = []
+        var belowOccupants: [[(id: Int, minX: CGFloat, maxX: CGFloat)]] = []
         var slots: [Slot] = []
         var placed = 0
         for bubble in bubbles.sorted(by: { $0.anchor.midX < $1.anchor.midX }) {
@@ -220,12 +242,36 @@ struct LyricWordBubbleOverlay: View {
                 }
             }
             if choice == nil {
-                let above = aboveEnds.count == belowEnds.count ? prefersAbove : aboveEnds.count < belowEnds.count
-                if above { aboveEnds.append(-gap) } else { belowEnds.append(-gap) }
-                choice = (above, above ? aboveEnds.count - 1 : belowEnds.count - 1)
+                let aboveOpen = aboveEnds.count < aboveCap
+                let belowOpen = belowEnds.count < belowCap
+                if aboveOpen || belowOpen {
+                    let above = aboveOpen && belowOpen
+                        ? (aboveEnds.count == belowEnds.count ? prefersAbove : aboveEnds.count < belowEnds.count)
+                        : aboveOpen
+                    if above { aboveEnds.append(-gap); aboveOccupants.append([]) } else { belowEnds.append(-gap); belowOccupants.append([]) }
+                    choice = (above, above ? aboveEnds.count - 1 : belowEnds.count - 1)
+                } else {
+                    // Every row is taken here: reuse the row whose bubbles this one would cover are the
+                    // oldest, so the least recent bubble is always the one to go.
+                    var best: (above: Bool, row: Int, newest: Int)?
+                    for above in [true, false] {
+                        let rows = above ? aboveOccupants : belowOccupants
+                        for (row, occupants) in rows.enumerated() {
+                            let newest = occupants.filter { $0.minX < x + size.width + gap && x < $0.maxX + gap }.map(\.id).max() ?? -1
+                            if best == nil || newest < best!.newest { best = (above, row, newest) }
+                        }
+                    }
+                    if let best { choice = (best.above, best.row) }
+                }
             }
             guard let (above, row) = choice else { continue }
-            if above { aboveEnds[row] = x + size.width } else { belowEnds[row] = x + size.width }
+            if above {
+                aboveEnds[row] = x + size.width
+                aboveOccupants[row].append((bubble.id, x, x + size.width))
+            } else {
+                belowEnds[row] = x + size.width
+                belowOccupants[row].append((bubble.id, x, x + size.width))
+            }
             let offset = 10 + CGFloat(row) * rowStep
             slots.append(Slot(
                 id: bubble.id,
