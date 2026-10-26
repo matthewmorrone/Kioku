@@ -125,7 +125,13 @@ final class SongLiveListenController: NSObject, ObservableObject {
         self.lineCues = lineCues
         guard steps != self.steps || sourceAudioURL != self.sourceAudioURL else { return }
         let sourceChanged = sourceAudioURL != self.sourceAudioURL
-        stop()
+        // An options change (repeat counts, visibility) rewrites the script but not the song: keep
+        // the listener on the same line instead of sending them back to the top.
+        let resumeLine = sourceChanged ? nil : currentLineIndex
+        let wasPlaying = isPlaying
+        // Keep the audio session through a resume: deactivating and immediately reactivating it can
+        // fail and leave the listener silent mid-song.
+        stop(releasingSession: resumeLine == nil || wasPlaying == false)
         self.steps = steps
         self.sourceAudioURL = sourceAudioURL
         self.originalByLineIndex = originalByLineIndex
@@ -135,6 +141,18 @@ final class SongLiveListenController: NSObject, ObservableObject {
         if japaneseVoice == nil || englishVoice == nil {
             resolveVoices()
         }
+        if let resumeLine, let index = steps.firstIndex(where: { stepLineIndex($0) >= resumeLine }) {
+            currentStepIndex = index
+            if wasPlaying { play() }
+        }
+    }
+
+    // The line the listener is on: the segment being spoken, else the line of the step they'd resume
+    // at. Nil before anything has played, so a fresh script still starts at the top.
+    private var currentLineIndex: Int? {
+        if let line = currentSegment?.lineIndex { return line }
+        guard currentStepIndex > 0, steps.indices.contains(currentStepIndex) else { return nil }
+        return stepLineIndex(steps[currentStepIndex])
     }
 
     // Opens the note's source audio once (off the main thread) and keeps it around for every
@@ -244,7 +262,7 @@ final class SongLiveListenController: NSObject, ObservableObject {
 
     // Full stop: rewinds to the top of the script and releases the audio session. Called when
     // the Listen sheet/screen goes away or the breakdown it was narrating is replaced.
-    func stop() {
+    func stop(releasingSession: Bool = true) {
         isPlaying = false
         stopAfterLineIndex = nil
         synthesizer.stopSpeaking(at: .immediate)
@@ -255,7 +273,7 @@ final class SongLiveListenController: NSObject, ObservableObject {
         currentSegment = nil
         sentenceProgress = nil
         currentStepIndex = 0
-        deactivateSession()
+        if releasingSession { deactivateSession() }
     }
 
     // MARK: - Stepping

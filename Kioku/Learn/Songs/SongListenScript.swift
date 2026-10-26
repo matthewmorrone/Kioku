@@ -34,7 +34,8 @@ nonisolated enum SongListenScript {
         lineCues: [Int: SubtitleCue] = [:],
         wordRepeatCount: Int = 1,
         repeatEarlierWords: Bool = true,
-        visibility: SongWordVisibility = .defaults
+        visibility: SongWordVisibility = .defaults,
+        outro: (startMs: Int, endMs: Int)? = nil
     ) -> [SongListenStep] {
         var steps: [SongListenStep] = []
         let linesByIndex = Dictionary(uniqueKeysWithValues: breakdown.lines.map { ($0.index, $0) })
@@ -117,6 +118,11 @@ nonisolated enum SongListenScript {
                 }
             }
         }
+        // The song's instrumental tail after the last sung line plays as a final clip, held on that
+        // line so its card stays current while the music runs out.
+        if let outro, let lastLine = steps.last.map({ stepLine($0) }) {
+            steps.append(.clip(lineIndex: lastLine, startMs: outro.startMs, endMs: outro.endMs))
+        }
         return steps
     }
 
@@ -193,6 +199,15 @@ nonisolated enum SongListenScript {
             words = []
         }
         return words.filter(visibility.shows)
+    }
+
+    // The line a step belongs to.
+    private static func stepLine(_ step: SongListenStep) -> Int {
+        switch step {
+        case .speech(let segment): return segment.lineIndex
+        case .clip(let lineIndex, _, _): return lineIndex
+        case .wordClip(let lineIndex, _, _, _): return lineIndex
+        }
     }
 
     // Resolves a `.sameAsLine` / `.parallelTo` reference to its target line, if present.

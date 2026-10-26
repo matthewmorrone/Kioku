@@ -123,12 +123,24 @@ extension SongStepperView {
             lineCues: lineCues,
             wordRepeatCount: wordRepeatCount,
             repeatEarlierWords: repeatEarlierWords,
-            visibility: wordVisibility
+            visibility: wordVisibility,
+            outro: ranges.isEmpty ? nil : trailingInstrumentalRange(after: ranges)
         )
         let originalByIndex = Dictionary(breakdown.lines.map { ($0.index, $0.original) }, uniquingKeysWith: { first, _ in first })
         liveListen.pauseAfterEachLine = pauseAfterEachLine
         liveListen.nowPlayingTitle = note.resolvedTitle
         liveListen.configure(steps: steps, sourceAudioURL: listenSourceAudioURL, originalByLineIndex: originalByIndex, lineCues: lineCues)
+    }
+
+    // The stretch of music after the last sung line: from where that line's clip ends to the end of
+    // the final cue, when every cue in between is an instrumental marker (♪). Nil when the song ends
+    // on its last line or something sung follows.
+    func trailingInstrumentalRange(after ranges: [Int: (startMs: Int, endMs: Int)]) -> (startMs: Int, endMs: Int)? {
+        guard let lastEnd = ranges.values.map(\.endMs).max() else { return nil }
+        let tail = noteCues.filter { $0.startMs >= lastEnd }
+        guard let start = tail.map(\.startMs).min(), let end = tail.map(\.endMs).max() else { return nil }
+        let isMusicOnly = tail.allSatisfy { $0.text.trimmingCharacters(in: CharacterSet(charactersIn: "♪♫ \n")).isEmpty }
+        return isMusicOnly ? (start, end) : nil
     }
 
     // The options menu's word/line visibility choices, as the one value both the cards and
