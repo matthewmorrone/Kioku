@@ -9,6 +9,7 @@ import Foundation
 //   segcli features < gold.jsonl                → per sentence: characters, gold gap labels, shipped cuts, lattice gap features (boundary model input)
 //   segcli run < sentences                         → the shipped path (bundled table, shipped weight)
 //   segcli helpers < surfaces                    → "surface<TAB>lemma + helper…": the words deinflection folds into each surface
+//   segcli parts < surfaces                      → "surface<TAB>piece(lemma) | piece(lemma)…": the smaller segments a segment is built from (Segmenter.constituentSegments)
 //   segcli compounds < surfaces                  → "surface<TAB>base + auxiliary" for each surface the lookup sheet names as a compound verb
 //   segcli furigana < sentences                  → per sentence, a JSON list of [utf16Location, utf16Length, reading]: the Read view's furigana for dictionary words
 //   segcli choose [margins…] < sentences|gold.jsonl → the neighbour-class chooser (ContextualClassChoice) over every ambiguous spelling in the shipped parse: how many it decides and how often the pick is the gold token's lemma, per margin (default 0 20 40 80 120 200); disagreements at the shipped margin follow on stderr
@@ -218,6 +219,27 @@ if mode == "compounds" {
         if let parts = CompoundVerbSplitter.parts(surface: line, edges: edges, segmenter: segmenter, senseTags: senseTags) {
             print("\(line)\t\(parts.base) + \(parts.auxiliary)")
         }
+    }
+    exit(0)
+}
+
+if mode == "parts" {
+    // stdin surfaces -> surface<TAB>margin<TAB>piece(lemma) + piece(lemma)… : what the surface is built from,
+    // split again wherever a piece is itself a compound; the margin is how much dearer the first split is
+    // than the whole word (MAX=<n> bounds it; default unbounded so the margins can be read).
+    let lexicon = Lexicon(
+        dictionaryStore: store,
+        segmenter: segmenter,
+        deinflector: deinflector,
+        surfaceReadingData: try store.fetchSurfaceReadingData()
+    )
+    let maxMargin = Int(ProcessInfo.processInfo.environment["MAX"] ?? "") ?? Int.max
+    while let line = readLine() {
+        guard let first = segmenter.constituentSegments(of: line) else { print("\(line)\t-"); continue }
+        guard let leaves = lexicon.constituentSurfaces(of: line, maxMargin: maxMargin) else { print("\(line)\t\(first.margin)\t(single word)"); continue }
+        let lemmas = lexicon.constituentLemmas(of: leaves)
+        let named = zip(leaves, lemmas).map { leaf, lemma in lemma == leaf ? leaf : "\(leaf)(\(lemma))" }
+        print("\(line)\t\(first.margin)\t\(named.joined(separator: " + "))")
     }
     exit(0)
 }

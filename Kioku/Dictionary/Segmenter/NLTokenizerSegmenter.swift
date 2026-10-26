@@ -68,6 +68,11 @@ nonisolated final class NLTokenizerSegmenter: TextSegmenting, @unchecked Sendabl
         candidates.map { _ in nil }
     }
 
+    // No cost model here, so no constituents.
+    func constituentSegments(of surface: String) -> (pieces: [LatticeEdge], margin: Int)? {
+        nil
+    }
+
     // Returns a debug summary for NLTokenizer's analysis of a surface.
     func debugResolutionSummary(for surface: String, lemma: String) -> String {
         let edges = longestMatchEdges(for: surface)

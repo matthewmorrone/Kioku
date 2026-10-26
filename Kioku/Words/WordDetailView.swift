@@ -85,6 +85,8 @@ struct WordDetailView: View {
     // Not private: written by wordDetailMetadataSections's Related Words / Synonyms sections.
     @State var presentedRelatedSavedWord: SavedWord? = nil
     @State var wordComponents: [(surface: String, gloss: String?)] = []
+    // One example from each word after the first of a multi-word form (続ける, ゆく of 歌い続けてゆく).
+    @State var componentSentences: [SentencePair] = []
     // Derivation result shown in place of the plain POS line when the saved word is a
     // recognized derived form. When the result carries `morphemes` (currently only ～がり屋)
     // the header renders a chip strip; otherwise it falls back to the single-sentence
@@ -94,10 +96,19 @@ struct WordDetailView: View {
     // happen"), the same CompositeGlossGuesser answer the lookup sheet shows. nil for a dictionary
     // form, while pending, or when the device can't make a guess.
     @State var compositeGloss: String? = nil
+    // The lemma line the AI guess was made for, named in its explanation alert.
+    @State var compositeGlossLemmaLine: String? = nil
+    // What a multi-word form conjugates as: its own dictionary form (歌い続けてゆく) and the entry of its
+    // last word (ゆく), whose class decides the paradigm. Set with the lemma line; nil for any other word.
+    @State var multiWordConjugation: (base: String, entry: DictionaryEntry)? = nil
+    // The surface a save is stored under, as the lookup sheet's star does: the word's lemma (歌う for
+    // 歌い続けてゆく), not the inflected form the page was opened on.
+    var savedSurfaceKey: String {
+        compositeGlossLemmaLine?.components(separatedBy: " + ").first.flatMap { $0.isEmpty ? nil : $0 } ?? word.surface
+    }
     @State var showingCompositeGlossInfo = false
     // Each word the lemma line names (起こる + そう) with its meaning and entry, shown on one line
     // under the whole-form meaning like the lookup sheet's. Empty for a single-word lemma line.
-    @State var lemmaComponents: [(lemma: String, gloss: String?, entry: DictionaryEntry?)] = []
     @State var kanjiInfos: [KanjiInfo] = []
     // JMnedict name readings of the surface (DictionaryStore.lookupNames), for the Names section.
     // Not private: read by wordDetailMetadataSections.
@@ -183,7 +194,8 @@ struct WordDetailView: View {
         let excludedTags: Set<String> = ["vt", "vi"]
         var seen = Set<String>()
         var labels: [String] = []
-        for sense in entry.senses {
+        // Only the senses the page lists (see wordDetailDefinitionSections), as the sheet tags only those.
+        for sense in entry.senses(forReading: headerReading(entry: entry), kanji: word.surface) {
             guard let pos = sense.pos, pos.isEmpty == false else { continue }
             for tag in pos.components(separatedBy: ",") where tag.isEmpty == false && excludedTags.contains(tag) == false {
                 let label = JMdictTagExpander.expand(tag)
@@ -239,7 +251,7 @@ struct WordDetailView: View {
     // Used to decide whether to show the Forms section. Non-private so loadDisplayData
     // (WordDetailView+Helpers.swift) can read it.
     var verbClass: VerbClass? {
-        guard let entry = savedDisplayData?.entry else { return nil }
+        guard let entry = conjugationEntry else { return nil }
         let posTags = entry.senses.compactMap(\.pos).flatMap { $0.components(separatedBy: ",") }
         return VerbConjugator.detectVerbClass(fromJMDictPosTags: posTags)
     }
@@ -248,7 +260,7 @@ struct WordDetailView: View {
     // affordances as verbs, using the adjective paradigm instead of the verb one. Non-private
     // so loadDisplayData (WordDetailView+Helpers.swift) can read it.
     var isIAdjective: Bool {
-        guard let entry = savedDisplayData?.entry else { return false }
+        guard let entry = conjugationEntry else { return false }
         let posTags = entry.senses.compactMap(\.pos).flatMap { $0.components(separatedBy: ",") }
         return VerbConjugator.isIAdjective(fromJMDictPosTags: posTags)
     }
@@ -266,7 +278,15 @@ struct WordDetailView: View {
     // conjugations" sheet can never disagree about which word they're conjugating.
     // Not private: read by wordDetailDefinitionSections's Forms section.
     var conjugationBase: String {
-        lexicon?.inflectionInfo(surface: word.surface)?.lemma ?? word.surface
+        if isMultiWordForm, let multiWordConjugation { return multiWordConjugation.base }
+        return lexicon?.inflectionInfo(surface: word.surface)?.lemma ?? word.surface
+    }
+
+    // The entry whose parts of speech decide how this page conjugates: the saved entry, or for a
+    // multi-word form the entry of its last word (歌い続けてゆく conjugates as ゆく).
+    var conjugationEntry: DictionaryEntry? {
+        if isMultiWordForm, let multiWordConjugation { return multiWordConjugation.entry }
+        return savedDisplayData?.entry
     }
 
     // All conjugation groups for the "All conjugations" sheet — verb or i-adjective paradigm,
@@ -337,17 +357,16 @@ struct WordDetailView: View {
             // script the user never wrote. When the surface contains kanji, prefer the first
             // everyday kanji form (skip rK/oK/iK/sK so we don't show 此処 etc).
             let lemma: String? = {
-                // Compound verbs (さがしつづける = さがし-stem + auxiliary つづける) resolve to just
-                // the base verb's entry (さがす), so the plain checks below would show only "さがす"
-                // and silently drop the auxiliary. Show both parts when derivation() found one.
-                if let parts = derivation?.compoundVerbParts {
-                    return "\(parts.base) + \(parts.auxiliary)"
-                }
                 // Helper words folded into the form (起こりそう → 起こる + そう), named like the
                 // lookup sheet names them, also for a word with its own entry (思い出す → 思う + 出す).
-                if let composed = lexicon?.lemmaWithHelpers(surface: word.surface) { return composed }
+                if let composed = lexicon?.lemmaLine(surface: word.surface) { return composed }
                 if surfaceIsBaseForm { return nil }
                 if ScriptClassifier.containsKanji(word.surface) == false {
+                    // The kana form the surface deinflects to (きみ's 黍 entry is きみ, not きび), as the sheet names it.
+                    if let found = lexicon?.inflectionInfo(surface: word.surface)?.lemma,
+                       entry?.kanaForms.contains(where: { $0.text == found }) == true {
+                        return found
+                    }
                     return entry?.kanaForms.first?.text
                 }
                 return entry?.firstEverydayKanji?.text
@@ -357,7 +376,7 @@ struct WordDetailView: View {
             // drives the Read-tab lookup header. Nil for base forms or chains with no displayable step.
             // Also nil when a compound-verb derivation is showing: describing 歩いてゆこう's raw
             // deinflection chain ("auxiliary · contraction · te-form") duplicates and reads far
-            // muddier than the word-by-word line (lemmaComponentsRow) rendered just below it.
+            // muddier than the lemma line under the headword.
             let formDescription: String? = {
                 guard derivation?.compoundVerbParts == nil,
                       let lexicon,
@@ -412,8 +431,8 @@ struct WordDetailView: View {
                     Button {
                         wordsStore.toggle(
                             canonicalEntryID: activeEntryID,
-                            storedSurface: word.surface,
-                            encounteredSurface: word.surface,
+                            storedSurface: savedSurfaceKey,
+                            encounteredSurface: savedSurfaceKey,
                             sourceNoteID: noteID,
                             defaultSenseIDs: entry.map { DefaultSenseSelection.defaultSelectedSenseIDs(for: $0) } ?? []
                         )
@@ -445,123 +464,55 @@ struct WordDetailView: View {
                 .overlay(alignment: .leading) { readingSwitcherChevron(.previous).offset(y: headwordShift) }
                 .overlay(alignment: .trailing) { readingSwitcherChevron(.next).offset(y: headwordShift) }
 
-                // The custom reading the text gave this word where it was looked up — kept off the
-                // header, which shows the word's dictionary reading. Same pencil as the lookup sheet's.
-                if let customOccurrenceReading {
-                    Label("read \(customOccurrenceReading) here", systemImage: "pencil")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-
-                // The whole form's meaning (言いたくない → to not want to say), with an ⓘ that
-                // explains it's an AI guess, like the lookup sheet's.
-                if let compositeGloss {
-                    HStack(spacing: 6) {
-                        Text(compositeGloss)
-                            .font(.subheadline)
-                        Button {
-                            showingCompositeGlossInfo = true
-                        } label: {
-                            Image(systemName: "info.circle")
-                                .font(.footnote)
-                                .foregroundStyle(.tertiary)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Where this meaning comes from")
-                    }
-                    .padding(.horizontal, 16)
-                    .alert("AI Guess", isPresented: $showingCompositeGlossInfo) {
-                        Button("OK", role: .cancel) {}
-                    } message: {
-                        Text(CompositeGlossGuesser.explanation(surface: word.surface, lemmaLine: lemma ?? word.surface))
-                    }
-                }
-
-                // Each word of the lemma line with its meaning, "+" between them; tapping one
-                // opens it.
-                if lemmaComponents.count > 1 {
-                    lemmaComponentsRow
-                        .padding(.horizontal, 16)
-                }
-
-                // POS summary + "View Conjugations" — a single row beneath the headword.
-                // (Speaker moved up beside the headword itself.)
-                HStack(spacing: 10) {
+                // Everything the word is, as one wrapping run of chips beneath the headword: each part
+                // of speech, the inflected form, the compound-verb badge, frequency tier and JLPT level.
+                FlowLayout(spacing: 6, centersVertically: true) {
                     // Derived forms (弱さ, お酒, 食べ始める …) describe their derivation in place
-                    // of the bare POS tag. ～がり屋 returns a structured morpheme list and
-                    // renders as a chip strip; compound verbs get their own gloss line below
-                    // instead (lemmaComponentsRow) rather than the summary sentence here.
+                    // of the bare POS tags. ～がり屋 returns a structured morpheme list and
+                    // renders as a chip strip; compound verbs show only their badge here.
                     if let morphemes = derivation?.morphemes {
                         derivationMorphemeChips(morphemes)
                     } else if derivation?.compoundVerbParts == nil, let posSummary = derivation?.summary ?? entryPOSSummary {
-                        Text(posSummary)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                        ForEach(posSummary.components(separatedBy: " · "), id: \.self) { part in
+                            metadataChip(part)
+                        }
                     }
 
-                    // Grammatical form of the inflected surface (e.g. "potential · negative") —
-                    // alongside POS/verb-type/frequency rather than its own line above, since it's
-                    // the same kind of at-a-glance metadata about the word. Styled to match the
-                    // compound-verb/frequency-tier badges beside it. Hidden for base forms.
+                    // Grammatical form of the inflected surface (e.g. "potential · negative"), hidden for base forms.
                     if let formDescription {
-                        Text(formDescription)
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1))
-                            .fixedSize()
+                        metadataChip(formDescription)
                     }
 
-                    // "Compound verb" category badge — styled to match the frequency-tier badge
-                    // below (outlined capsule) rather than the filled morpheme chips, since it's
-                    // a type label for the whole word, not a piece of the word itself.
+                    // "Compound verb" category badge: a type label for the whole word, not a piece of it.
                     if derivation?.compoundVerbParts != nil {
-                        Text("Compound verb")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1))
-                            .fixedSize()
+                        metadataChip("Compound verb")
                     }
 
-                    // Frequency tier for the word as a whole, in the left-aligned metadata row
-                    // beside the POS summary. Shown once here (not per sense card) because
+                    // Frequency tier for the word as a whole. Shown once here (not per sense card) because
                     // frequency is a surface-level statistic — see headerFrequencyLabel.
-                    if let freqLabel = headerFrequencyLabel {
-                        Text(freqLabel)
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1))
-                            .fixedSize()
+                    // A form built from several words (歌い続けてゆく) has no rank of its own: the base
+                    // word's would describe only a part of it, so it shows none.
+                    let isMultiWordForm = lemma?.contains(" + ") == true && surfaceIsBaseForm == false
+                    if isMultiWordForm == false, let freqLabel = headerFrequencyLabel {
+                        metadataChip(freqLabel)
                     }
 
                     // JLPT level of the word itself (the Kanji section only carries per-kanji levels).
                     // Frequency-estimated levels are guesses, so only list-sourced ones are shown.
-                    if dictionaryStore?.isJLPTLevelEstimated(for: activeEntryID) == false,
+                    if isMultiWordForm == false,
+                       dictionaryStore?.isJLPTLevelEstimated(for: activeEntryID) == false,
                        let jlpt = dictionaryStore?.jlptLevel(for: activeEntryID) {
-                        Text("JLPT \(DictionaryStore.jlptLabel(for: jlpt))")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1))
-                            .fixedSize()
+                        metadataChip("JLPT \(DictionaryStore.jlptLabel(for: jlpt))")
                     }
-
-                    Spacer(minLength: 8)
-
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
             }
             .padding(.top, 24)
             .padding(.bottom, 16)
             .task(id: "\(word.surface)|\(lemma ?? "")|\(entry?.entryId ?? 0)") {
-                lemmaComponents = lemma.flatMap { lexicon?.lemmaLineComponents($0) } ?? []
+                compositeGlossLemmaLine = lemma
+                multiWordConjugation = multiWordConjugationTarget()
                 compositeGloss = await guessCompositeGloss(lemmaLine: lemma, entry: entry)
             }
 
@@ -569,9 +520,15 @@ struct WordDetailView: View {
             List {
                 // Section content lives in WordDetailView+Sections.swift (definition/paths/forms,
                 // then everything else) to keep this file under the line-count guardrail.
-                sameSpellingSection
-                wordDetailDefinitionSections
-                wordDetailMetadataSections
+                if isMultiWordForm {
+                    wordPartsSection
+                    wordFormsSection
+                    wordExamplesSection
+                } else {
+                    sameSpellingSection
+                    wordDetailDefinitionSections
+                    wordDetailMetadataSections
+                }
             }
             .listStyle(.insetGrouped)
             .sheet(isPresented: $showingConjugations) {

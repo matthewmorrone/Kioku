@@ -84,4 +84,25 @@ nonisolated public struct DictionaryEntry: Equatable, Sendable {
         }
         return senses.filter(isUsuallyKana) + senses.filter { isUsuallyKana($0) == false }
     }
+
+    // The entry's kana forms offered as readings of its kanji spellings, in JMdict order: minus
+    // search-only forms (sk), katakana copies of a hiragana reading, and — unless `includeArchaic` —
+    // obsolete or irregular ones (ok, ik). `keeping` readings are never dropped, so a reading already
+    // shown or saved still appears. One definition for the lookup sheet's arrows and the word
+    // detail's reading switcher, so the two offer the same readings.
+    public func offeredReadings(includeArchaic: Bool, keeping: Set<String> = []) -> [String] {
+        let forms = kanaForms.filter { $0.nokanji == false }
+        let texts = Set(forms.map(\.text))
+        var readings: [String] = []
+        for form in forms {
+            let tags = (form.info ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            if tags.contains("sk") { continue }
+            let hiragana = KanaNormalizer.katakanaToHiragana(form.text)
+            if hiragana != form.text, texts.contains(hiragana) { continue }
+            let isObscure = tags.contains("ok") || tags.contains("ik")
+            if isObscure, includeArchaic == false, keeping.contains(form.text) == false { continue }
+            if readings.contains(form.text) == false { readings.append(form.text) }
+        }
+        return readings
+    }
 }

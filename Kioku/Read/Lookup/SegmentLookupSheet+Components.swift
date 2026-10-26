@@ -59,6 +59,21 @@ extension SegmentLookupSheet {
     // Inner padding of a word's chip (horizontal, vertical).
     private static let componentChipPadding = CGSize(width: 10, height: 6)
 
+    // The meaning a chip shows: the first of the word's glosses that says something, without the
+    // parenthetical asides JMdict adds ("time (three times, each time, etc.)" → "time"), and with a
+    // blank written as underscores ("to continue ___") shown as an ellipsis. A gloss that is only a
+    // blank ("___") says nothing, so the next one is used; the original text when none does.
+    static func chipGloss(_ gloss: String?) -> String {
+        let pieces = (gloss ?? "").components(separatedBy: ";").map { piece -> String in
+            piece
+                .replacingOccurrences(of: "\\s*\\([^)]*\\)", with: "", options: .regularExpression)
+                .replacingOccurrences(of: "_+", with: "…", options: .regularExpression)
+                .replacingOccurrences(of: " …", with: "…")
+                .trimmingCharacters(in: .whitespaces)
+        }
+        return pieces.first { $0.isEmpty == false && $0 != "…" } ?? pieces.first { $0.isEmpty == false } ?? ""
+    }
+
     // One word of the row: the word over its first gloss on a rounded chip, tappable.
     private func makeComponentColumn(_ component: (lemma: String, gloss: String?), maxWidth: CGFloat, parent: UIViewController?) -> UIView {
         let lemmaLabel = UILabel()
@@ -67,12 +82,11 @@ extension SegmentLookupSheet {
         lemmaLabel.textColor = .label
 
         let glossLabel = UILabel()
-        glossLabel.text = component.gloss?
-            .components(separatedBy: ";").first?
-            .trimmingCharacters(in: .whitespaces) ?? ""
+        glossLabel.text = Self.chipGloss(component.gloss)
         glossLabel.font = .systemFont(ofSize: 14)
         glossLabel.textColor = .label
-        glossLabel.numberOfLines = 0
+        glossLabel.numberOfLines = 1
+        glossLabel.lineBreakMode = .byTruncatingTail
         glossLabel.textAlignment = .center
         glossLabel.preferredMaxLayoutWidth = maxWidth
 

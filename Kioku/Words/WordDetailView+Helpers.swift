@@ -40,6 +40,18 @@ extension WordDetailView {
         .accessibilityLabel(morphemes.map { $0.role.isEmpty ? $0.form : "\($0.form) \($0.role)" }.joined(separator: ", "))
     }
 
+    // One outlined capsule of the header's metadata run (a part of speech, the frequency tier, the JLPT
+    // level …), so they all read as the same kind of thing.
+    func metadataChip(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1))
+            .fixedSize()
+    }
+
     // SF Symbol for the header's save/learned toggle: a plain checkmark when learned, a plain
     // question mark when explicitly not-learned, else the save star (filled when saved). Mirrors
     // the row's learnedIcon so the same mark reads identically in the list and the detail header.
@@ -267,6 +279,24 @@ extension WordDetailView {
                 wordComponents = components
             }
 
+            // A form the lookup sheet names as several words (歌う + 続ける + ゆく) lists every one here,
+            // not only the two the lattice's auxiliary split found, unless an affix breakdown applies.
+            var lineComponents: [String] = []
+            if affixBreakdown == nil,
+               let line = lexicon?.lemmaLine(surface: word.surface),
+               let parts = lexicon?.lemmaLineComponents(line), parts.count > 1 {
+                wordComponents = parts.map { (surface: $0.lemma, gloss: $0.gloss?.components(separatedBy: ";").first?.trimmingCharacters(in: .whitespaces)) }
+                lineComponents = parts.map(\.lemma)
+            }
+            // One example sentence from each of the other words of such a form, so the Examples are
+            // not only the first word's (歌う's, for 歌い続けてゆく).
+            componentSentences = await Task { @MainActor in
+                lineComponents.dropFirst().compactMap { lemma -> SentencePair? in
+                    guard let entry = (try? store.lookup(surface: lemma, mode: .kanjiAndKana))?.first else { return nil }
+                    return (try? store.fetchWordDisplayData(entryID: entry.entryId, surface: lemma))?.sentences.first
+                }
+            }.value
+
             // Use pre-computed paths from the lookup sheet; fall back to computing from the segmenter.
             let paths = initialSublatticePaths.isEmpty
                 ? LatticeEdge.validPaths(from: result.latticeEdges)
@@ -351,35 +381,22 @@ extension WordDetailView {
 
     }
 
-    // The lemma line's words side by side (起こる to occur + そう seeming that), each over its first
-    // gloss; tapping a word with an entry opens it as a nested detail screen.
-    var lemmaComponentsRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            ForEach(Array(lemmaComponents.enumerated()), id: \.offset) { index, component in
-                if index > 0 {
-                    Text("+")
-                        .font(.subheadline)
-                        .foregroundStyle(.tertiary)
-                }
-                Button {
-                    if let entry = component.entry {
-                        presentedRelatedSavedWord = ephemeralSavedWord(for: entry)
-                    }
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(component.lemma)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.primary)
-                        Text(component.gloss?.components(separatedBy: ";").first?.trimmingCharacters(in: .whitespaces) ?? "")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.leading)
-                    }
-                }
-                .buttonStyle(.plain)
-                .disabled(component.entry == nil)
-            }
+    // What a form made of several words conjugates as: the surface with its last word put in dictionary
+    // form (歌い続けた → 歌い続ける, 歌い続けてゆく as is), and that last word's entry, which decides the
+    // paradigm. Nil when the surface isn't made of several words or the last has no entry.
+    func multiWordConjugationTarget() -> (base: String, entry: DictionaryEntry)? {
+        guard let lexicon else { return nil }
+        // A plain inflection of a multi-word lemma (眠りについて) conjugates as that lemma (眠りにつく).
+        if let inflected = lexicon.constituentsOfInflectedLemma(of: word.surface),
+           let lastLemma = lexicon.constituentLemmas(of: inflected.pieces).last,
+           let entry = lexicon.lookupEntries(for: lastLemma).first {
+            return (inflected.lemma, entry)
         }
+        guard let pieces = lexicon.constituentSurfaces(of: word.surface, maxMargin: Lexicon.maxConstituentMargin),
+              pieces.count > 1,
+              let lastLemma = lexicon.constituentLemmas(of: pieces).last,
+              let entry = lexicon.lookupEntries(for: lastLemma).first else { return nil }
+        return (pieces.dropLast().joined() + lastLemma, entry)
     }
 
     // The whole-form meaning for the header (CompositeGlossGuesser), asked with the lemma line the
@@ -665,8 +682,8 @@ extension WordDetailView {
         if isActiveEntrySaved == false {
             wordsStore.toggle(
                 canonicalEntryID: activeEntryID,
-                storedSurface: word.surface,
-                encounteredSurface: word.surface,
+                storedSurface: savedSurfaceKey,
+                encounteredSurface: savedSurfaceKey,
                 sourceNoteID: noteID,
                 defaultSenseIDs: savedDisplayData.map { DefaultSenseSelection.defaultSelectedSenseIDs(for: $0.entry) } ?? []
             )

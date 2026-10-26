@@ -76,9 +76,16 @@ extension SegmentLookupSheet {
     // The readings the header arrows cycle: every reading of the surface plus every word's own
     // (抱く だく / いだく / うだく), in that order without repeats.
     var readingsForArrows: [String] {
+        // A kana form of one of the words that DictionaryEntry.offeredReadings leaves out (search-only,
+        // katakana copy, archaic unless enabled) is left out here too, as on the word detail page; the
+        // reading on screen always stays.
+        let entries = currentSheetLookupCandidates.map(\.entry) + [currentSheetDictionaryEntry].compactMap { $0 }
+        let keeping = Set([currentSheetDisplayedReading].compactMap { $0 })
+        let offered = Set(entries.flatMap { $0.offeredReadings(includeArchaic: DictionarySettings.includeArchaicReadings, keeping: keeping) })
+        let spelled = Set(entries.flatMap { $0.kanaForms.map(\.text) })
         var readings: [String] = []
         for reading in currentSheetUniqueReadings + currentSheetLookupCandidates.flatMap(\.surfaceReadings)
-        where readings.contains(reading) == false {
+        where readings.contains(reading) == false && (spelled.contains(reading) == false || offered.contains(reading) || keeping.contains(reading)) {
             readings.append(reading)
         }
         return readings

@@ -35,6 +35,7 @@ Dictionary/Segmenter/SegmentationDemotions.swift
 Dictionary/Segmenter/Segmenter+LemmaResolution.swift
 Dictionary/Segmenter/Segmenter+PotentialExpressions.swift
 Dictionary/Segmenter/Segmenter.swift
+Dictionary/Segmenter/Segmenter+Constituents.swift
 Dictionary/Segmenter/Segmenter+Viterbi.swift
 Dictionary/Segmenter/Segmenter+Names.swift
 Dictionary/Segmenter/Segmenter+KatakanaRuns.swift
@@ -97,6 +98,7 @@ Dictionary/DictionaryStore+UsageTables.swift
 Read/Furigana/RegisterClassifier.swift
 Read/Furigana/ReadingRegisters.swift
 Dictionary/Lexicon/Lexicon+CompoundVerb.swift
+Dictionary/Lexicon/Lexicon+Constituents.swift
 Dictionary/Lexicon/Lexicon+LemmaLineComponents.swift
 Dictionary/Lexicon/Lexicon+LexemeAccessors.swift
 Dictionary/Lexicon/Lexicon+LookupCandidates.swift

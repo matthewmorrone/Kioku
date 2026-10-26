@@ -59,4 +59,13 @@ extension SegmentLookupSheet {
         guard let entry = currentSheetDictionaryEntry else { return false }
         return entry.kanjiForms.contains { $0.text == surface } || entry.kanaForms.contains { $0.text == surface }
     }
+
+    // True when the shown form is a word with a dictionary entry to save and open: the entry spells it,
+    // or it is one word's plain inflection. A form built from several words that no entry spells
+    // (歌い続けてゆく) is only its parts; those are saved and opened from their own rows.
+    func shownFormHasOwnEntry(surface: String) -> Bool {
+        guard currentSheetDictionaryEntry != nil else { return false }
+        if currentSheetCompoundComponents.count <= 1 { return true }
+        return currentSheetDictionaryEntryDefines(surface)
+    }
 }

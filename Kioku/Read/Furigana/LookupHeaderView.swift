@@ -17,8 +17,16 @@ struct LookupHeaderView: UIViewRepresentable {
     // ride high. Positive moves them down. Mirrors updateUIView's stack spacing (2 pt).
     var headwordCenterShift: CGFloat {
         let rubyRow = buildSegmentColumns().isEmpty ? 0 : ceil(rubyFont.lineHeight) + 2
-        let lemmaRow = (lemma != nil && lemma != surface) ? ceil(UIFont.preferredFont(forTextStyle: .title3).lineHeight) + 2 : 0
+        let lemmaRow = lowerLine != nil ? ceil(UIFont.preferredFont(forTextStyle: .title3).lineHeight) + 2 : 0
         return (rubyRow - lemmaRow) / 2
+    }
+
+    // The line under the headword: the lemma when the form is inflected, else a katakana word's
+    // hiragana reading (ツン → つん), so a learner can read it in kana they know. Kanji furigana
+    // stays above the headword; nothing is ever put above a katakana word.
+    private var lowerLine: String? {
+        if let lemma, lemma != surface { return lemma }
+        return ScriptClassifier.katakanaWordReading(of: surface)
     }
 
     // Creates the UIStackView host for the header layout so UIKit constraints can control vertical alignment.
@@ -42,12 +50,12 @@ struct LookupHeaderView: UIViewRepresentable {
         let headerRow = buildHeaderRow()
         stack.addArrangedSubview(headerRow)
 
-        if let lemma, lemma != surface {
+        if let lowerLine {
             let lemmaLabel = UILabel()
             lemmaLabel.font = UIFont.preferredFont(forTextStyle: .title3)
             lemmaLabel.textColor = .secondaryLabel
             lemmaLabel.textAlignment = .center
-            lemmaLabel.text = lemma
+            lemmaLabel.text = lowerLine
             stack.addArrangedSubview(lemmaLabel)
         }
     }
@@ -108,26 +116,6 @@ struct LookupHeaderView: UIViewRepresentable {
         // buildHeaderRow falls back to a plain headword label. Otherwise each column reserves an
         // empty ruby row above the glyphs, which pushes the title down and lifts the vertically
         // centered leading/trailing speaker & star overlays above the actual characters.
-        // A katakana word (ツンと, セラヴィ) has no kanji run but still gets its hiragana reading above
-        // each katakana run (ツン → つん; the と needs none), so a learner can read it in kana they know.
-        if runs.isEmpty, surface.unicodeScalars.contains(where: ScriptClassifier.isKatakanaScalar) {
-            segments = []
-            var current = ""
-            var currentIsKatakana = false
-            // Closes the run being built into a segment.
-            func flush() {
-                guard current.isEmpty == false else { return }
-                segments.append(Segment(text: current, ruby: currentIsKatakana ? KanaNormalizer.katakanaToHiragana(current) : nil))
-                current = ""
-            }
-            for character in surface {
-                let isKatakana = character.unicodeScalars.allSatisfy(ScriptClassifier.isKatakanaScalar)
-                if isKatakana != currentIsKatakana { flush() }
-                currentIsKatakana = isKatakana
-                current.append(character)
-            }
-            flush()
-        }
         if segments.allSatisfy({ $0.ruby == nil }) { return [] }
 
         return segments.map { segment in

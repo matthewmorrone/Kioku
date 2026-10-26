@@ -34,6 +34,10 @@ nonisolated protocol TextSegmenting: Sendable {
     // cost model. The split editor shows these instead of scoring pieces itself. See Segmenter.splitCosts.
     func splitCosts(of range: Range<String.Index>, in text: String, candidates: [[String]]) -> [Int?]
 
+    // The smaller segments a surface is built from, and how much dearer that split is than keeping it
+    // whole; nil for a single word or a backend with no cost model. See Segmenter.constituentSegments.
+    func constituentSegments(of surface: String) -> (pieces: [LatticeEdge], margin: Int)?
+
     // The usual reading of a surface the lattice took as a JMnedict name (田中 → たなか), for furigana;
     // nil when the surface is not one of the segmenter's names. See Segmenter+Names.swift.
     func nameReading(for surface: String) -> String?

@@ -623,29 +623,11 @@ extension ReadView {
             return (lemma: ([compoundPrefix, "する"] + helpers).joined(separator: " + "), chain: inflected.chain)
         }
 
-        if let composed = lexicon.lemmaWithHelpers(surface: surface) {
+        if let composed = lexicon.lemmaLine(surface: surface) {
             return (lemma: composed, chain: inflected?.chain ?? [])
         }
 
-        if let parts = compoundVerbPartsForCurrentSelectedSegment(surface: surface) {
-            return (lemma: "\(parts.base) + \(parts.auxiliary)", chain: inflected?.chain ?? [])
-        }
-
         return inflected
-    }
-
-    // The selection's compound-verb parts, from its slice of the note's lattice. See CompoundVerbSplitter.
-    private func compoundVerbPartsForCurrentSelectedSegment(surface: String) -> DerivationAnalyzer.CompoundVerbParts? {
-        guard let dictionaryStore else { return nil }
-        return CompoundVerbSplitter.parts(
-            surface: surface,
-            edges: sublatticeEdgesForCurrentSelectedSegment(),
-            segmenter: segmenter,
-            senseTags: { candidate in
-                let entries = (try? dictionaryStore.lookup(surface: candidate, mode: .kanjiAndKana)) ?? []
-                return entries.flatMap { $0.senses.compactMap(\.pos) }.map { $0.components(separatedBy: ",") }
-            }
-        )
     }
 
     // Gates LatticeEdge.auxiliaryVerbSplit's head: an auxiliary only attaches to a verb, so a head

@@ -34,22 +34,8 @@ extension WordDetailView {
     // irregular ones — the active entry's current reading is always kept so a word saved on one
     // still shows it.
     func offeredReadings(of entry: DictionaryEntry) -> [String] {
-        let includeArchaic = DictionarySettings.includeArchaicReadings
-        let forms = entry.kanaForms.filter { $0.nokanji == false }
-        let texts = Set(forms.map(\.text))
-        var readings: [String] = []
-        for form in forms {
-            let tags = (form.info ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-            if tags.contains("sk") { continue }
-            let hiragana = KanaNormalizer.katakanaToHiragana(form.text)
-            if hiragana != form.text, texts.contains(hiragana) { continue }
-            let isObscure = tags.contains("ok") || tags.contains("ik")
-            let isCurrent = entry.entryId == activeEntryID
-                && (form.text == activeReading || form.text == savedChosenReading)
-            if isObscure, includeArchaic == false, isCurrent == false { continue }
-            if readings.contains(form.text) == false { readings.append(form.text) }
-        }
-        return readings
+        let keeping: Set<String> = entry.entryId == activeEntryID ? Set([activeReading, savedChosenReading].compactMap { $0 }) : []
+        return entry.offeredReadings(includeArchaic: DictionarySettings.includeArchaicReadings, keeping: keeping)
     }
 
     // Where the switcher stands: this entry's stop for the reading shown (or saved), else this
@@ -91,17 +77,6 @@ extension WordDetailView {
         reading.flatMap { isDictionaryReading($0) ? $0 : nil }
     }
 
-    // The custom reading of the occurrence this view was opened from (the lookup sheet's), shown
-    // as a note under the header — "read ほし here" — so the header's dictionary reading doesn't
-    // look like the custom one was lost. Nil once the switcher flips or the entry is re-pointed,
-    // and while the entries load (when no reading can be told custom yet).
-    var customOccurrenceReading: String? {
-        guard displayedReading == nil, activeEntryID == word.canonicalEntryID,
-              sameSpellingAllEntries.isEmpty == false,
-              let reading, isDictionaryReading(reading) == false else { return nil }
-        return reading
-    }
-
     // The reading of the text occurrence this view was opened from (the lookup sheet's header), when
     // it differs from the card's pinned reading. The Words list passes the pinned reading itself, so
     // a differing value can only come from an occurrence, and it wins so the header matches the sheet
@@ -121,6 +96,13 @@ extension WordDetailView {
     func headerReading(entry: DictionaryEntry?) -> String? {
         if let displayedReading { return displayedReading }
         if let occurrenceReading { return occurrenceReading }
+        // An inflected occurrence's reading (うたいつづけてゆく for 歌い続けてゆく) is no dictionary
+        // reading, but it is exactly what the sheet showed, so the page opens on it rather than on
+        // the base word's reading projected over only part of the surface.
+        if activeEntryID == word.canonicalEntryID, let reading, reading.isEmpty == false,
+           isDictionaryReading(reading) == false, reading != word.surface {
+            return reading
+        }
         if let chosen = savedChosenReading {
             let forms = switchableReadings.first { $0.reading == chosen }?.entry ?? entry
             guard let forms else { return chosen }

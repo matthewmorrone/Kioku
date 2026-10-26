@@ -226,12 +226,7 @@ final class SurfaceSheetViewController: UIViewController {
     // than force-unwrap a nil outlet into a crash for what's just a stale, ignorable completion.
     func rebuildHeaderRow(reading: String?) {
         guard let headerRow else { return }
-        sheet?.rebuildSheetHeaderRow(
-            headerRow,
-            surface: currentSurface,
-            reading: reading,
-            isCustomReading: reading != nil && reading == customReading
-        )
+        sheet?.rebuildSheetHeaderRow(headerRow, surface: currentSurface, reading: reading)
     }
 
     // Refreshes reading list, override state, and header display for the current segment.
@@ -318,8 +313,10 @@ final class SurfaceSheetViewController: UIViewController {
                 && sheet?.currentSheetDictionaryEntry?.kanjiForms.contains { $0.text == found.lemma } == true
         } ?? false
         let show = info != nil && info?.lemma != currentSurface && isSpellingOnly == false
-        lemmaLabel.attributedText = show ? info.map { NSAttributedString(string: $0.lemma) } : nil
-        lemmaLabel.isHidden = !show
+        // A katakana word with no lemma line to show gets its hiragana reading in that slot instead.
+        let katakanaReading = show ? nil : ScriptClassifier.katakanaWordReading(of: currentSurface)
+        lemmaLabel.attributedText = show ? info.map { NSAttributedString(string: $0.lemma) } : katakanaReading.map { NSAttributedString(string: $0) }
+        lemmaLabel.isHidden = !show && katakanaReading == nil
         syncFuriganaToCurrentIndex()
     }
 
@@ -635,11 +632,15 @@ final class SurfaceSheetViewController: UIViewController {
         // A form that is several words with none picked yet has no word to save: greyed out
         // until one of the possibilities is tapped.
         let isAwaitingPick = sheet?.isAwaitingLookupCandidatePick ?? false
-        saveButton.isEnabled = isAwaitingPick == false
-        saveButton.alpha = isAwaitingPick ? 0.45 : 1
+        // A form with no dictionary entry of its own (歌い続けてゆく) is not a word that can be saved:
+        // saves are keyed by entry, so its constituents' rows carry the stars instead.
+        let hasNoEntry = sheet?.shownFormHasOwnEntry(surface: currentSurface) != true
+        let isSaveUnavailable = isAwaitingPick || hasNoEntry
+        saveButton.isEnabled = isSaveUnavailable == false
+        saveButton.alpha = isSaveUnavailable ? 0.45 : 1
         // Rebuilt on every refresh so the menu's setState closure always targets the currently
         // shown word, mirroring SegmentLookupSheet's popover star (see its refresh comment).
-        if isAwaitingPick == false, let setLearnedState = sheet?.sheetSetLearnedState {
+        if isSaveUnavailable == false, let setLearnedState = sheet?.sheetSetLearnedState {
             // Deferred write + self-refresh for the same reason as the popover star: applying the
             // mark inline collides with the menu's teardown and the icon flips a beat late.
             saveButton.menu = learnedStateUIMenu(currentState: learnedState, isSaved: isSaved) { [weak self] state in
@@ -657,7 +658,7 @@ final class SurfaceSheetViewController: UIViewController {
     // Reflects whether the current surface resolved to a dictionary entry that can be opened: the
     // definitions area is the link to that entry's detail page, dimmed and inert without one.
     func updateOpenDetailButtonAppearance() {
-        let hasDictionaryEntry = sheet?.currentSheetDictionaryEntry != nil
+        let hasDictionaryEntry = sheet?.shownFormHasOwnEntry(surface: currentSurface) == true
         middleContentContainer.alpha = hasDictionaryEntry ? 1 : 0.45
         middleContentTapRecognizer.isEnabled = hasDictionaryEntry
     }

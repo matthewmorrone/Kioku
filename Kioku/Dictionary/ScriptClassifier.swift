@@ -186,6 +186,13 @@ nonisolated enum ScriptClassifier {
         text.unicodeScalars.contains(where: isJapaneseScalar)
     }
 
+    // The hiragana reading of a katakana word (ツン → つん, ツンと → つんと), shown under its headword in
+    // the lookup header; nil when the text has kanji or no katakana, where furigana or nothing applies.
+    static func katakanaWordReading(of text: String) -> String? {
+        guard containsKanji(text) == false, text.unicodeScalars.contains(where: isKatakanaScalar) else { return nil }
+        return KanaNormalizer.katakanaToHiragana(text)
+    }
+
     // Detects whether any scalar belongs to the supported kanji blocks.
     static func containsKanji(_ text: String) -> Bool {
         text.unicodeScalars.contains(where: isKanjiScalar)

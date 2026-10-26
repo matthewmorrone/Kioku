@@ -6,6 +6,108 @@ import SwiftUI
 // into two halves (definition-adjacent vs. everything else) rather than one per section so this
 // doesn't turn into a dozen tiny files for one screen.
 extension WordDetailView {
+    // The whole form's meaning (言いたくない → to not want to say), with an ⓘ that explains it's an
+    // AI guess, like the lookup sheet's. The first row of the Definition section.
+    @ViewBuilder
+    var compositeGlossRow: some View {
+        if let compositeGloss {
+            HStack(spacing: 6) {
+                Text(compositeGloss)
+                    .font(.subheadline)
+                Button {
+                    showingCompositeGlossInfo = true
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.footnote)
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Where this meaning comes from")
+                Spacer(minLength: 0)
+            }
+            .alert("AI Guess", isPresented: $showingCompositeGlossInfo) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(CompositeGlossGuesser.explanation(surface: word.surface, lemmaLine: compositeGlossLemmaLine ?? word.surface))
+            }
+        }
+    }
+
+    // True for a surface made of several dictionary words that is not a word of its own (歌い続けてゆく):
+    // its page links to those words instead of posing as the first one's.
+    var isMultiWordForm: Bool {
+        guard compositeGlossLemmaLine?.contains(" + ") == true, let entry = savedDisplayData?.entry else { return false }
+        return entry.kanjiForms.contains { $0.text == word.surface } == false
+            && entry.kanaForms.contains { $0.text == word.surface } == false
+    }
+
+    // The page body of a multi-word form: its meaning as a whole (the AI line), then a row for each
+    // dictionary entry it is made of, each opening that word's own page. No definition, forms or other
+    // sections of the first word, which would pass for the whole form's.
+    @ViewBuilder
+    var wordPartsSection: some View {
+        if let line = compositeGlossLemmaLine, let parts = lexicon?.lemmaLineComponents(line) {
+            Section("Components") {
+                compositeGlossRow
+                ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+                    if let entry = part.entry {
+                        Button {
+                            historyStore.record(canonicalEntryID: entry.entryId, surface: entry.primarySearchSurface)
+                            presentedRelatedSavedWord = ephemeralSavedWord(for: entry)
+                        } label: {
+                            relatedWordRow(entry)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Text(part.lemma)
+                    }
+                }
+            }
+        }
+    }
+
+    // The word's own example sentences (those not routed to a sense card), plus one from each further word
+    // of a multi-word form when the word has examples of its own.
+    @ViewBuilder
+    var wordExamplesSection: some View {
+        // Examples — only the sentences that didn't route to a specific sense.
+        // Per-sense examples render inside each sense card via senseCard(sentences:).
+        // The word's own first example, then one from each further word of a multi-word form, then the rest.
+        // A multi-word form has no sense cards to hold routed examples, so its sentences are all those that
+        // contain the form itself (not ones found by its first word's spellings).
+        let own = isMultiWordForm
+            ? (savedDisplayData?.sentences ?? []).filter { $0.japanese.contains(word.surface) }
+            : savedDisplayData?.unroutedSentences ?? []
+        // A word with none of its own shows no Examples: a sentence about only one of its parts would
+        // read as an example of the word.
+        let extras = own.isEmpty ? [] : componentSentences.filter { extra in own.contains { $0.japanese == extra.japanese } == false }
+        let unrouted = Array(own.prefix(1)) + extras + Array(own.dropFirst())
+        if unrouted.isEmpty == false {
+            let shown = sentencesExpanded ? unrouted : Array(unrouted.prefix(1 + extras.count))
+            Section("Examples") {
+                ForEach(shown, id: \.japanese) { pair in
+                    ExampleSentenceView(
+                        japanese: pair.japanese,
+                        english: pair.english,
+                        highlightSurfaces: exampleHighlightSurfaces,
+                        segmenter: segmenter,
+                        surfaceReadingData: surfaceReadingData,
+                        kanjiReadingFallback: kanjiReadingFallback,
+                        textSize: 17,
+                        onSpeak: { speak($0) }
+                    )
+                }
+                if unrouted.count > 1 + extras.count {
+                    Button(sentencesExpanded ? "Show fewer" : "Show \(unrouted.count - 1 - extras.count) more…") {
+                        sentencesExpanded.toggle()
+                    }
+                    .font(.caption)
+                    .foregroundStyle(Color.accentColor)
+                }
+            }
+        }
+    }
+
     // Definition, sublattice Paths, and Forms — the sections most directly about "what does this
     // word mean and how does it inflect," ahead of the more peripheral metadata in
     // wordDetailMetadataSections below.
@@ -41,6 +143,7 @@ extension WordDetailView {
         }
         if sortedData.isEmpty == false {
             Section("Definition") {
+                compositeGlossRow
                 // What this expression is built from, above its glosses — おとなになる reads as
                 // おとな + に + なる rather than as an opaque unit. Only ever populated for
                 // multi-word expressions (see DictionaryStore.fetchDecomposition), so a plain
@@ -96,7 +199,18 @@ extension WordDetailView {
                     // section off the initial screen.
                     let allRows = sortedData.flatMap { data -> [(entryID: Int64, isSavedEntry: Bool, idx: Int, sense: DictionaryEntrySense, refs: [SenseReference], sentences: [SentencePair])] in
                         let isSavedEntry = data.entry.entryId == activeEntryID
-                        return data.entry.senses.enumerated().map { idx, sense in
+                        // The senses the lookup sheet would list for this form: those whose reading and
+                        // spelling restrictions fit it (様 read よう is "appearance", not "Mr"), the
+                        // usually-kana senses first for a kana spelling. `idx` stays the sense's own
+                        // position in the entry, which the selection state and cross-references key on.
+                        let applicable = DictionaryEntry.sensesLeadingWithKanaUsage(
+                            data.entry.senses(forReading: headerReading(entry: savedDisplayData?.entry), kanji: word.surface),
+                            surface: word.surface
+                        ).map(\.senseID)
+                        let shownSenses = data.entry.senses.enumerated()
+                            .filter { applicable.contains($0.element.senseID) }
+                            .sorted { applicable.firstIndex(of: $0.element.senseID)! < applicable.firstIndex(of: $1.element.senseID)! }
+                        return shownSenses.map { idx, sense in
                             let senseRefs = isSavedEntry
                                 ? senseReferences.filter { $0.senseOrderIndex == idx }
                                 : []
@@ -157,6 +271,13 @@ extension WordDetailView {
         }
         #endif
 
+        wordFormsSection
+    }
+
+    // The key conjugations of a verb or i-adjective, with an "All conjugations" row; for a multi-word
+    // form, those of the form itself (see conjugationBase), not of its first word.
+    @ViewBuilder
+    var wordFormsSection: some View {
         // Forms section — shown for verbs and i-adjectives. Displays te-form / negative /
         // past inline, with an "All conjugations" row that opens ConjugationSheetView.
         if canConjugate {
@@ -235,32 +356,7 @@ extension WordDetailView {
             }
         }
 
-        // Examples — only the sentences that didn't route to a specific sense.
-        // Per-sense examples render inside each sense card via senseCard(sentences:).
-        if let unrouted = savedDisplayData?.unroutedSentences, unrouted.isEmpty == false {
-            let shown = sentencesExpanded ? unrouted : Array(unrouted.prefix(1))
-            Section("Examples") {
-                ForEach(shown, id: \.japanese) { pair in
-                    ExampleSentenceView(
-                        japanese: pair.japanese,
-                        english: pair.english,
-                        highlightSurfaces: exampleHighlightSurfaces,
-                        segmenter: segmenter,
-                        surfaceReadingData: surfaceReadingData,
-                        kanjiReadingFallback: kanjiReadingFallback,
-                        textSize: 17,
-                        onSpeak: { speak($0) }
-                    )
-                }
-                if unrouted.count > 1 {
-                    Button(sentencesExpanded ? "Show fewer" : "Show \(unrouted.count - 1) more…") {
-                        sentencesExpanded.toggle()
-                    }
-                    .font(.caption)
-                    .foregroundStyle(Color.accentColor)
-                }
-            }
-        }
+        wordExamplesSection
 
         // Components
         if wordComponents.isEmpty == false {
