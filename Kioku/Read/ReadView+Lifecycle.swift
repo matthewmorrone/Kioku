@@ -27,16 +27,16 @@ extension ReadView {
             } message: {
                 Text("We recommend finding the song's lyrics online.")
             }
-            // The reset button opens this; Reset here is what restores Kioku's own segmentation.
-            .alert("Changes from Default", isPresented: $readSheets.isShowingChangesFromDefault) {
-                if readSheets.changesFromDefault.isEmpty {
-                    Button("OK", role: .cancel) {}
-                } else {
-                    Button("Reset", role: .destructive) { resetSegmentationToComputed() }
-                    Button("Cancel", role: .cancel) {}
+            // The reset button opens this; Reset here is what restores Kioku's own segmentation. A card, not
+            // a system alert, so a tap outside it closes it.
+            .overlay {
+                if readSheets.isShowingChangesFromDefault {
+                    ChangesFromDefaultCard(
+                        changes: readSheets.changesFromDefault,
+                        onReset: { resetSegmentationToComputed() },
+                        onClose: { readSheets.isShowingChangesFromDefault = false }
+                    )
                 }
-            } message: {
-                Text(readSheets.changesFromDefault.isEmpty ? "None" : readSheets.changesFromDefault.joined(separator: "\n"))
             }
     }
 

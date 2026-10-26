@@ -202,11 +202,19 @@ enum WordOfTheDayScheduler {
         for entry in history where seen.insert(entry.fireDate).inserted { merged.append(entry) }
         for entry in entries where seen.insert(entry.fireDate).inserted { merged.append(entry) }
         merged.sort { $0.fireDate < $1.fireDate }
-        for index in merged.indices {
-            merged[index].rubyRuns = FuriganaAttributedString.rubyRuns(surface: merged[index].surface, reading: merged[index].kana)
-        }
-        WordOfTheDayMirror.write(merged)
+        WordOfTheDayMirror.write(withRubyRuns(merged))
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    // Fills each entry's per-kanji-run furigana so the widget puts the reading over the kanji alone
+    // (眩しい → まぶ over 眩) instead of one ruby across the whole word. Every mirror write goes
+    // through this, since rebuilt or enriched entries don't carry the runs along.
+    private static func withRubyRuns(_ entries: [WordOfTheDayMirrorEntry]) -> [WordOfTheDayMirrorEntry] {
+        var result = entries
+        for index in result.indices {
+            result[index].rubyRuns = FuriganaAttributedString.rubyRuns(surface: result[index].surface, reading: result[index].kana)
+        }
+        return result
     }
 
     // Like writeWidgetMirror, but also upgrades retained history entries that predate the rich
@@ -240,7 +248,7 @@ enum WordOfTheDayScheduler {
         for entry in enrichedHistory where seen.insert(entry.fireDate).inserted { merged.append(entry) }
         for entry in newEntries where seen.insert(entry.fireDate).inserted { merged.append(entry) }
         merged.sort { $0.fireDate < $1.fireDate }
-        WordOfTheDayMirror.write(merged)
+        WordOfTheDayMirror.write(withRubyRuns(merged))
         WidgetCenter.shared.reloadAllTimelines()
     }
 
