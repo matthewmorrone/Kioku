@@ -22,6 +22,7 @@ struct ReadView: View {
     @EnvironmentObject var notesStore: NotesStore
     @EnvironmentObject var historyStore: HistoryStore
     @EnvironmentObject var wordsStore: WordsStore
+    @EnvironmentObject var customWordStore: CustomWordStore
     // Powers the lookup popover/sheet star's long-press learned-state menu, mirroring the Words tab.
     // Read here (not just inside the breakdown sheet) so the title-row breakdown button can
     // show an activity indicator while a generation is running for the currently-open note.

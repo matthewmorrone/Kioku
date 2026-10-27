@@ -12,9 +12,7 @@ extension ReadView {
         guard let entry = lyricBubbleEntry(at: location, surface: surface),
               let lemmaGloss = entry.senses.first(where: { $0.glosses.isEmpty == false })?.glosses.first else { return nil }
         let gloss = inflectedLyricGloss(lemmaGloss, surface: surface, entry: entry)
-        // A parenthesized gloss is qualifying itself — too much for a bubble and usually the wrong
-        // sense (LyricsView.shortGloss drops it too).
-        return gloss.contains(where: { "()（）".contains($0) }) ? nil : gloss
+        return gloss
     }
 
     // Whether a lyric word's bubble would give a particle's meaning, for the Particle Meanings
@@ -47,11 +45,18 @@ extension ReadView {
     // katakana (キラキラ, ダメ, ウソ) has a hiragana or kanji spelling too and counts as Japanese. A
     // katakana stem the dictionary doesn't know in katakana or in hiragana is taken for a loanword —
     // lyrics write Japanese words in katakana for emphasis (ゼッタイ for 絶対) that the dictionary
-    // only spells ぜったい.
+    // only spells ぜったい. Never a word the user defined themselves (a Custom Word with its own
+    // meaning): they added it to see it, so the English Words option doesn't hide it.
     func isLyricLoanword(_ surface: String) -> Bool {
         guard ScriptClassifier.isKatakanaWord(surface),
               let stem = ScriptClassifier.leadingKatakanaPrefix(of: surface) else { return false }
-        guard let entry = resolvedDictionaryEntry(forSurface: stem) else { return true }
+        let isCustomWord = customWordStore.words.contains { word in
+            word.sameAsEntSeq == nil && (word.kana + word.kanji).contains { stem == $0 || surface == $0 }
+        }
+        if isCustomWord { return false }
+        // The lexicon also resolves a katakana spelling through its hiragana one (ゼッタイ → ぜったい),
+        // which the plain store lookup doesn't; without that, every emphasis spelling read as a loanword.
+        guard let entry = resolvedDictionaryEntry(forSurface: stem) ?? lexicon?.lookupCandidates(surface: stem).first?.entry else { return true }
         return entry.kanjiForms.isEmpty && entry.kanaForms.allSatisfy { ScriptClassifier.isPureKatakana($0.text) }
     }
 

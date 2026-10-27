@@ -20,7 +20,7 @@ extension LyricsView {
             Toggle("Translation", isOn: $isTranslationVisible)
             // The word bubbles, with a menu of what they cover; more options go in the menu.
             HStack {
-                Toggle("Bubbles", isOn: $showsBubbles)
+                Text("Bubbles")
                 Menu {
                     LyricWordFilterMenuItems()
                 } label: {
@@ -28,10 +28,10 @@ extension LyricsView {
                         .font(.title3)
                 }
                 .disabled(showsBubbles == false)
+                Spacer()
+                Toggle("Bubbles", isOn: $showsBubbles)
+                    .labelsHidden()
             }
-            Text("Particles, Katakana and Vocalizations also apply to the Breakdown.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
             Toggle("Segmentation", isOn: $isSegmentationVisible)
             Toggle("Furigana", isOn: $isFuriganaVisible)
         }

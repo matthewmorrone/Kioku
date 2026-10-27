@@ -261,7 +261,7 @@ struct WordFocusView: View {
             LyricsPlaybackOptions()
             Divider()
             HStack {
-                Toggle("Meanings", isOn: $showsMeanings)
+                Text("Meanings")
                 Menu {
                     LyricWordFilterMenuItems()
                 } label: {
@@ -269,10 +269,10 @@ struct WordFocusView: View {
                         .font(.title3)
                 }
                 .disabled(showsMeanings == false)
+                Spacer()
+                Toggle("Meanings", isOn: $showsMeanings)
+                    .labelsHidden()
             }
-            Text("Meanings follow the lyrics card's Bubbles; Particles, Katakana and Vocalizations also apply to the Breakdown.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
             Toggle("Furigana", isOn: $showsFurigana)
         }
         .padding(16)

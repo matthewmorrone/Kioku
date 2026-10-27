@@ -79,13 +79,17 @@ extension LyricsView {
     }
 
     // A meaning short enough for a bubble: its first sense, up to the first semicolon or comma —
-    // a breakdown's loanword definition runs on after it ("search, from English search"). Nil
-    // when it carries a parenthetical ("to become (a state)", "dear (term of address)"): a gloss
-    // that needs qualifying is too much for a bubble and usually the wrong sense for the line anyway.
+    // a breakdown's loanword definition runs on after it ("search, from English search") — with its
+    // parenthetical qualifiers left out ("caramel (confectionery)" says "caramel", "light (from
+    // French 'lumière')" says "light"). Nil when nothing is left.
     static func shortGloss(_ text: String) -> String? {
-        guard let gloss = nonEmpty(text.split(whereSeparator: { ";,".contains($0) }).first.map(String.init)),
-              gloss.contains(where: { "()（）".contains($0) }) == false else { return nil }
-        return gloss
+        guard let first = text.split(whereSeparator: { ";,".contains($0) }).first.map(String.init) else { return nil }
+        var gloss = ""
+        var depth = 0
+        for character in first {
+            if "(（".contains(character) { depth += 1 } else if ")）".contains(character) { depth = max(0, depth - 1) } else if depth == 0 { gloss.append(character) }
+        }
+        return nonEmpty(gloss)
     }
 
     // The text trimmed, or nil when nothing is left.

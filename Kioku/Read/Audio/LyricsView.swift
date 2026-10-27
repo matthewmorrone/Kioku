@@ -91,6 +91,8 @@ struct LyricsView: View {
     // The word bubbles of the line last built, and the measured rects of its words in the active
     // card (cue-local ranges → renderer coordinates, from KiokuScrollingTextView.reportRangeRects).
     @State var wordBubbleCache = LyricWordBubbleCache()
+    // Height of the clipped lyric area the bubbles may draw in (coordinate space "lyricClip").
+    @State var lyricClipHeight: CGFloat = 0
     @State var wordBubbleRects: [NSRange: CGRect] = [:]
     // The line the bubbles show on: set once the card has stayed on a line a moment, so dragging or
     // scrubbing through lines doesn't flash and spring bubbles on each one passed.
@@ -473,7 +475,7 @@ struct LyricsView: View {
                                         cueLength: cueInput.text.utf16.count
                                     ),
                                     lineRect: wordBubbleLineRect(cueLength: cueInput.text.utf16.count),
-                                    verticalRoom: max(LyricWordBubbleOverlay.rowOverflow, (panelHeight - activeRendererHeight) / 2 - 24)
+                                    clipHeight: lyricClipHeight
                                 )
                                 .id(displayIndex)
                             }
@@ -539,6 +541,14 @@ struct LyricsView: View {
                 }
             } // end lyric VStack
             .clipped()
+            .coordinateSpace(name: "lyricClip")
+            .background {
+                GeometryReader { geometry in
+                    Color.clear
+                        .onAppear { lyricClipHeight = geometry.size.height }
+                        .onChange(of: geometry.size.height) { _, height in lyricClipHeight = height }
+                }
+            }
             // No timing yet (alignment still running, or never run): show the note's lines
             // instead of an empty card.
             .overlay {
