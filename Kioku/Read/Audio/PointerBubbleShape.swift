@@ -23,29 +23,33 @@ nonisolated struct PointerBubbleShape: Shape {
         }
     }
 
+    // Where a tail from `body` to `tip` is rooted: its two base points, a little inside the body so
+    // the seam doesn't show, and `edge`, the middle of where it leaves the body's edge. Nil when the
+    // tip is inside the body. The layouts use it too, to keep tails from crossing.
+    static func tailRoot(body: CGRect, tip: CGPoint, cornerRadius: CGFloat = 14, baseHalfWidth: CGFloat = 10) -> (base1: CGPoint, base2: CGPoint, edge: CGPoint)? {
+        guard body.contains(tip) == false else { return nil }
+        // Wide enough to read as an arrow even on a one-line bubble: the base may overlap the rounded
+        // corners, since it starts a little inside the body.
+        let half = min(baseHalfWidth, max(3, min(body.width, body.height) / 2 - 3))
+        if tip.x > body.maxX || tip.x < body.minX, tip.y >= body.minY - 4, tip.y <= body.maxY + 4 {
+            let toRight = tip.x > body.maxX
+            let x = toRight ? body.maxX - 1 : body.minX + 1
+            let y = min(max(tip.y, body.minY + half + 2), max(body.minY + half + 2, body.maxY - half - 2))
+            return (CGPoint(x: x, y: y - half), CGPoint(x: x, y: y + half), CGPoint(x: toRight ? body.maxX : body.minX, y: y))
+        }
+        let below = tip.y > body.maxY
+        let y = below ? body.maxY - 1 : body.minY + 1
+        let x = min(max(tip.x, body.minX + half + 2), max(body.minX + half + 2, body.maxX - half - 2))
+        return (CGPoint(x: x - half, y: y), CGPoint(x: x + half, y: y), CGPoint(x: x, y: below ? body.maxY : body.minY))
+    }
+
     // The body plus the tail wedge, as one filled outline.
     func path(in rect: CGRect) -> Path {
         let radius = min(cornerRadius, body.height / 2, body.width / 2)
         var path = Path(roundedRect: body, cornerRadius: radius)
-        guard body.contains(tip) == false else { return path }
-        // Wide enough to read as an arrow even on a one-line bubble: the base may overlap the rounded
-        // corners, since it starts a little inside the body.
-        let half = min(baseHalfWidth, max(3, min(body.width, body.height) / 2 - 3))
-        // The tail's two base points on the edge facing the tip, a little inside the body so the
-        // seam doesn't show.
-        let base1: CGPoint
-        let base2: CGPoint
-        if tip.x > body.maxX || tip.x < body.minX, tip.y >= body.minY - 4, tip.y <= body.maxY + 4 {
-            let x = tip.x > body.maxX ? body.maxX - 1 : body.minX + 1
-            let y = min(max(tip.y, body.minY + half + 2), body.maxY - half - 2)
-            base1 = CGPoint(x: x, y: y - half)
-            base2 = CGPoint(x: x, y: y + half)
-        } else {
-            let y = tip.y > body.maxY ? body.maxY - 1 : body.minY + 1
-            let x = min(max(tip.x, body.minX + half + 2), body.maxX - half - 2)
-            base1 = CGPoint(x: x - half, y: y)
-            base2 = CGPoint(x: x + half, y: y)
-        }
+        guard let root = Self.tailRoot(body: body, tip: tip, cornerRadius: cornerRadius, baseHalfWidth: baseHalfWidth) else { return path }
+        let base1 = root.base1
+        let base2 = root.base2
         // Each side bows toward the other's base, tapering the tail.
         func bowed(from base: CGPoint, toward other: CGPoint) -> CGPoint {
             let mid = CGPoint(x: (base.x + tip.x) / 2, y: (base.y + tip.y) / 2)

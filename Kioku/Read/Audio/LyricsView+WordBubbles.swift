@@ -1,7 +1,7 @@
 import SwiftUI
 
 // Word bubbles on the lyrics card's active line, in place of a line translation: as each word is
-// sung, a speech bubble with its meaning pops up beside the line pointing at it. Meanings come from the breakdown
+// sung, a speech bubble with its meaning pops up above or below the line pointing at it. Meanings come from the breakdown
 // when it covers the line (its in-context definitions), else
 // from the dictionary through dictionaryGloss, which the Read view supplies so no lexical lookup
 // happens here. Drawn by LyricWordBubbleOverlay; shown while the Bubbles setting is on, and
@@ -119,18 +119,12 @@ extension LyricsView {
         return NSRange(location: clipped.location - cueSpan.location, length: clipped.length)
     }
 
-    // The cue-local ranges of the cue's words, plus the whole line (for the room beside it), for
-    // the renderer to measure.
+    // The cue-local ranges of the cue's words, for the renderer to measure.
     func wordBubbleRanges(forCueAt index: Int, cueOriginInNote: Int, cueLength: Int) -> [NSRange] {
         let cueSpan = NSRange(location: cueOriginInNote, length: cueLength)
         let words = wordBubbles(in: cueSpan).compactMap { cueLocalRange($0, cueSpan: cueSpan) }
         guard words.isEmpty == false else { return [] }
-        return words + [NSRange(location: 0, length: cueLength)]
-    }
-
-    // The measured rect of the whole active line, once the renderer has reported it.
-    func wordBubbleLineRect(cueLength: Int) -> CGRect? {
-        wordBubbleRects[NSRange(location: 0, length: cueLength)]
+        return words
     }
 
     // All the line's bubbles, each placed at its word's measured rect, so the overlay lays out the

@@ -464,7 +464,7 @@ struct LyricsView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: activeRendererHeight)
                         .clipped()
-                        // Word meanings over the line as it's sung, beside it or in rows above and
+                        // Word meanings over the line as it's sung, in rows above and
                         // below it (LyricsView+WordBubbles).
                         .overlay {
                             if showsBubbles, settledBubbleLine == displayIndex {
@@ -474,7 +474,6 @@ struct LyricsView: View {
                                         cueOriginInNote: cueOriginInNote,
                                         cueLength: cueInput.text.utf16.count
                                     ),
-                                    lineRect: wordBubbleLineRect(cueLength: cueInput.text.utf16.count),
                                     clipHeight: lyricClipHeight
                                 )
                                 .id(displayIndex)
