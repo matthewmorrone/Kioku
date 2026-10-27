@@ -253,7 +253,17 @@ extension ReadView {
                     }
                     let reading = shownReading ?? SegmentLookupSheet.shared.currentSheetUniqueReadings.first
                     let paths = LatticeEdge.validPaths(from: SegmentLookupSheet.shared.currentSheetSublatticeEdges)
-                    presentWordDetail(entryID: entry.entryId, surface: surface, reading: reading, sublatticePaths: paths)
+                    // A word with helpers folded in (起こりそう) opens as its content word (起こる): the
+                    // helpers are described in the sheet, not as part of the word's own page.
+                    let sheet = SegmentLookupSheet.shared
+                    // Only when the entry is that content word's own: an idiom's entry (眠りにつく, whose lemma
+                    // line reads 眠る + に + つく) keeps the tapped form.
+                    let headLemma = sheet.currentSheetCompoundComponents.first?.lemma
+                    let entryIsHead = headLemma.map { head in
+                        entry.kanjiForms.contains { $0.text == head } || entry.kanaForms.contains { $0.text == head }
+                    } ?? false
+                    let pageSurface = sheet.currentSheetIsHeadWithHelpers && entryIsHead ? (headLemma ?? surface) : surface
+                    presentWordDetail(entryID: entry.entryId, surface: pageSurface, reading: reading, sublatticePaths: paths)
                 },
                 // The word-detail button's long-press: this line in the lyrics view (when the note
                 // has audio) or the breakdown (when it has one).
@@ -274,6 +284,10 @@ extension ReadView {
                 sheetCompoundComponentsProvider: {
                     guard let line = lemmaInfoForCurrentSelectedSegment()?.lemma else { return nil }
                     return lexicon?.lemmaLineComponents(line)?.map { (lemma: $0.lemma, gloss: $0.gloss) }
+                },
+                sheetHeadWithHelpersProvider: {
+                    guard let line = lemmaInfoForCurrentSelectedSegment()?.lemma else { return false }
+                    return lexicon?.lemmaLineIsHeadWithHelpers(line) ?? false
                 },
                 sheetLookupCandidatesProvider: {
                     guard let surface = currentSelectedSurface(), let lexicon else { return (candidates: [], chosenEntryID: nil) }

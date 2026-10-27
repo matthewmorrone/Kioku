@@ -20,6 +20,18 @@ extension Lexicon {
         }
     }
 
+    // Whether a lemma line is one content word followed only by grammar (起こる + そう, 食べる + させる +
+    // られる): every word after the first has an auxiliary, suffix or particle sense. Such a form is
+    // one word's inflection, so it has a head to save and open. A line whose later words are full
+    // words (歌う + 続ける + ゆく where none is tagged, 本 + の + 虫) has no single head.
+    public func lemmaLineIsHeadWithHelpers(_ lemmaLine: String) -> Bool {
+        let parts = lemmaLine.components(separatedBy: " + ")
+        guard parts.count > 1 else { return false }
+        return parts.dropFirst().allSatisfy { part in
+            lookupEntries(for: part).contains { entry in entry.senses.contains { Self.isHelperPOS($0.pos) } }
+        }
+    }
+
     // Whether a sense's comma-joined JMdict pos tags mark it as grammar attached to another word:
     // an auxiliary (aux, aux-v, aux-adj), a suffix (suf, n-suf, v-suf) or a particle (prt).
     private static func isHelperPOS(_ pos: String?) -> Bool {

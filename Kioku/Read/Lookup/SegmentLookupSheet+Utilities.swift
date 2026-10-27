@@ -100,6 +100,7 @@ extension SegmentLookupSheet {
                 let lemmaInfoByReading = timed("lemmaInfoByReading") { self.sheetLemmaInfoByReadingProvider?() ?? [:] }
                 let dictionaryEntry = timed("dictionaryEntry") { self.sheetDictionaryEntryProvider?() }
                 let compoundComponents = timed("compoundComponents") { self.sheetCompoundComponentsProvider?() ?? [] }
+                let isHeadWithHelpers = self.sheetHeadWithHelpersProvider?() ?? false
                 let lookupCandidates = timed("lookupCandidates") { self.sheetLookupCandidatesProvider?() }
 
                 self.currentSheetUniqueReadings = readings
@@ -115,6 +116,7 @@ extension SegmentLookupSheet {
                 self.currentSheetLexiconDebugInfo = ""
                 self.currentSheetWordComponents = []
                 self.currentSheetCompoundComponents = compoundComponents
+                self.currentSheetIsHeadWithHelpers = isHeadWithHelpers
                 self.adoptLookupCandidates(lookupCandidates)
 
                 let totalMs = (CFAbsoluteTimeGetCurrent() - overallStart) * 1000
@@ -142,6 +144,7 @@ extension SegmentLookupSheet {
         currentSheetLexiconDebugInfo = ""
         currentSheetWordComponents = []
         currentSheetCompoundComponents = sheetCompoundComponentsProvider?() ?? []
+        currentSheetIsHeadWithHelpers = sheetHeadWithHelpersProvider?() ?? false
         adoptLookupCandidates(sheetLookupCandidatesProvider?())
     }
 

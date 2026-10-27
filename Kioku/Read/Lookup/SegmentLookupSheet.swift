@@ -150,6 +150,10 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     // Provides compound verb component lemmas: (lemma, first gloss) pairs.
     var sheetCompoundComponentsProvider: (() -> [(lemma: String, gloss: String?)]?)?
     var currentSheetCompoundComponents: [(lemma: String, gloss: String?)] = []
+    // Whether the shown form is one content word plus only grammar (Lexicon.lemmaLineIsHeadWithHelpers),
+    // so it is still one word to save and open. Meaningless for a single-word form.
+    var sheetHeadWithHelpersProvider: (() -> Bool)?
+    var currentSheetIsHeadWithHelpers = false
     // Called when the user taps a compound component row to drill into that lemma.
     // ReadView installs this to present a nested full-chrome lookup sheet.
     // Falls back to the legacy minimal popover when nil.
@@ -574,6 +578,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetOpenLineIn: ((ReadNoteDestination) -> Void)? = nil,
         sheetWordComponentsProvider: (() -> [(surface: String, gloss: String?)]?)? = nil,
         sheetCompoundComponentsProvider: (() -> [(lemma: String, gloss: String?)]?)? = nil,
+        sheetHeadWithHelpersProvider: (() -> Bool)? = nil,
         sheetLookupCandidatesProvider: (() -> (candidates: [LookupCandidate], chosenEntryID: Int64?))? = nil,
         onWillDismiss: ((@escaping () -> Void) -> Void)? = nil,
         onDismiss: (() -> Void)? = nil
@@ -603,6 +608,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         self.sheetOpenLineIn = sheetOpenLineIn
         self.sheetWordComponentsProvider = sheetWordComponentsProvider
         self.sheetCompoundComponentsProvider = sheetCompoundComponentsProvider
+        self.sheetHeadWithHelpersProvider = sheetHeadWithHelpersProvider
         self.sheetLookupCandidatesProvider = sheetLookupCandidatesProvider
         if let updatePresentedSheetSelection, hasActivePresentedSheetController {
             TapDiagnostics.mark("presentSheet: taking IN-PLACE update path")

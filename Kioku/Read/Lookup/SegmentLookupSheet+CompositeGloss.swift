@@ -65,7 +65,7 @@ extension SegmentLookupSheet {
     // (歌い続けてゆく) is only its parts; those are saved and opened from their own rows.
     func shownFormHasOwnEntry(surface: String) -> Bool {
         guard currentSheetDictionaryEntry != nil else { return false }
-        if currentSheetCompoundComponents.count <= 1 { return true }
+        if currentSheetCompoundComponents.count <= 1 || currentSheetIsHeadWithHelpers { return true }
         return currentSheetDictionaryEntryDefines(surface)
     }
 }

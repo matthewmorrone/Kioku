@@ -8,6 +8,7 @@ import Foundation
 //   segcli oracle < gold.jsonl                   → per cut-through: is the gold parse in the lattice, and by how much does it lose
 //   segcli features < gold.jsonl                → per sentence: characters, gold gap labels, shipped cuts, lattice gap features (boundary model input)
 //   segcli run < sentences                         → the shipped path (bundled table, shipped weight)
+//   segcli head < surfaces                       → "surface<TAB>lemma line<TAB>head+helpers=…<TAB>each part with its grammar tags": the lookup sheet's head test (Lexicon.lemmaLineIsHeadWithHelpers)
 //   segcli helpers < surfaces                    → "surface<TAB>lemma + helper…": the words deinflection folds into each surface
 //   segcli parts < surfaces                      → "surface<TAB>piece(lemma) | piece(lemma)…": the smaller segments a segment is built from (Segmenter.constituentSegments)
 //   segcli compounds < surfaces                  → "surface<TAB>base + auxiliary" for each surface the lookup sheet names as a compound verb
@@ -102,6 +103,24 @@ if mode == "lexicon" {
         let info = lexicon.inflectionInfo(surface: line).map { "\($0.lemma) [\($0.chain.joined(separator: ","))]" } ?? "-"
         let candidates = lexicon.lookupCandidates(surface: line).map { "\($0.lemma):\($0.headword)/\($0.reading)" }
         print("\(line)\tlemma=\(info)\tcandidates=\(candidates.joined(separator: " "))")
+    }
+    exit(0)
+}
+
+if mode == "head" {
+    let lexicon = Lexicon(
+        dictionaryStore: store,
+        segmenter: segmenter,
+        deinflector: deinflector,
+        surfaceReadingData: try store.fetchSurfaceReadingData()
+    )
+    while let line = readLine() {
+        guard let lemmaLine = lexicon.lemmaLine(surface: line) else { print("\(line)\t-\tsingle word"); continue }
+        let pos = lemmaLine.components(separatedBy: " + ").map { part -> String in
+            let tags = lexicon.lookupEntries(for: part).flatMap { $0.senses.compactMap(\.pos) }.flatMap { $0.components(separatedBy: ",") }
+            return "\(part)[\(Array(Set(tags)).sorted().filter { $0.hasPrefix("aux") || $0.hasSuffix("suf") || $0 == "prt" }.joined(separator: ","))]"
+        }
+        print("\(line)\t\(lemmaLine)\thead+helpers=\(lexicon.lemmaLineIsHeadWithHelpers(lemmaLine))\t\(pos.joined(separator: " "))")
     }
     exit(0)
 }

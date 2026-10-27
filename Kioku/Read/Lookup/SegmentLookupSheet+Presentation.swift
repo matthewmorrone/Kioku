@@ -44,6 +44,7 @@ extension SegmentLookupSheet {
         let capturedSheetOpenLineIn = self.sheetOpenLineIn
         let capturedSheetWordComponentsProvider = self.sheetWordComponentsProvider
         let capturedSheetCompoundComponentsProvider = self.sheetCompoundComponentsProvider
+        let capturedSheetHeadWithHelpersProvider = self.sheetHeadWithHelpersProvider
         let capturedSheetLookupCandidatesProvider = self.sheetLookupCandidatesProvider
         let capturedActiveReadingOverrideProvider = self.activeReadingOverrideProvider
         let capturedOnReadingReset = self.onReadingReset
@@ -73,6 +74,7 @@ extension SegmentLookupSheet {
             self.sheetOpenLineIn = capturedSheetOpenLineIn
             self.sheetWordComponentsProvider = capturedSheetWordComponentsProvider
             self.sheetCompoundComponentsProvider = capturedSheetCompoundComponentsProvider
+            self.sheetHeadWithHelpersProvider = capturedSheetHeadWithHelpersProvider
             self.sheetLookupCandidatesProvider = capturedSheetLookupCandidatesProvider
             self.activeReadingOverrideProvider = capturedActiveReadingOverrideProvider
             self.onSheetSelectPrevious = nil
@@ -243,6 +245,8 @@ extension SegmentLookupSheet {
         sheetOpenLineIn = nil
         sheetWordComponentsProvider = nil
         sheetCompoundComponentsProvider = nil
+        sheetHeadWithHelpersProvider = nil
+        currentSheetIsHeadWithHelpers = false
         currentSheetCompoundComponents = []
         sheetLookupCandidatesProvider = nil
         currentSheetLookupCandidates = []
