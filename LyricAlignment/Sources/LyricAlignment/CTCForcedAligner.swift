@@ -133,7 +133,7 @@ public struct CTCForcedAligner {
         Self.debugDump(Data(input.romanization.map { $0.map(\.romaji).joined(separator: "|") }.joined(separator: "\n").utf8),
                        name: "\(VocalStemCache.identityKey(for: input.audioURL)).romaji.txt")
         #endif
-        let (lines, lineTokens) = try CTCAlignmentCore.align(
+        let (lines, lineTokens, mismatches, sungOrder) = try CTCAlignmentCore.align(
             stem: matrix, mix: mixMatrix, vocalMono: vocalMono,
             lines: input.lines, romanization: input.romanization,
             log: { Self.breadcrumb($0) }
@@ -141,7 +141,7 @@ public struct CTCForcedAligner {
         onProgress?(0.95)
         onSegment?(lines)
         onProgress?(1.0)
-        return AlignmentResult(lines: lines, lineTokens: lineTokens)
+        return AlignmentResult(lines: lines, lineTokens: lineTokens, mismatches: mismatches, sungOrder: sungOrder)
     }
 
     // Isolated vocal stem (mono, 44.1 kHz) for `url` — from the shared on-disk cache when

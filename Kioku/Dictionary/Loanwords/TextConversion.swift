@@ -13,13 +13,18 @@ struct TextConversion: Identifiable, Equatable {
 }
 
 // Where a proposal came from: a dictionary loanword, the English spelling rules, width
-// normalization, or a Breakdown typo fix.
+// normalization, a Breakdown typo fix, lyrics transcribed for an alignment issue, or the lyrics
+// rearranged into the order they're sung.
 enum TextConversionSource: Equatable {
     case dictionary
     case rules
     case width
     // A typo the song's Breakdown flagged (SongLineFix).
     case breakdown
+    // Lyrics transcribed from a stretch of the song the note had none for (LyricAlignmentIssue).
+    case transcription
+    // The song's lyrics rearranged into the order they're sung (the sung-order preview).
+    case sungOrder
 }
 
 // A katakana-only dictionary form whose gloss is the English word being converted.

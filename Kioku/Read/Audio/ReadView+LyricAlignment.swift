@@ -53,7 +53,7 @@ extension ReadView {
 
         do {
             lyricAlignment.progressMessage = "Aligning..."
-            let cues = try await WholeSongAlignment.cues(
+            let (cues, issues, sungOrder) = try await WholeSongAlignment.cues(
                 audioURL: sourceURL,
                 lyrics: trimmedLyrics,
                 romanize: lyricRomanizer.spans(for:),
@@ -69,6 +69,7 @@ extension ReadView {
                 originalAudioFilename: originalAudioFilename,
                 noteID: noteID
             )
+            presentAlignmentIssues(issues, sungOrder: sungOrder, attachmentID: notesStore.note(withID: noteID)?.audioAttachmentID)
         } catch is CancellationError {
             // User cancelled from the bar's chip; nothing to surface.
         } catch {
@@ -145,7 +146,7 @@ extension ReadView {
 
         do {
             let durationMs = audioPlayback.audioController.duration > 0 ? Int(audioPlayback.audioController.duration * 1000) : nil
-            let cuesWithMarkers = try await WholeSongAlignment.cues(
+            let (cuesWithMarkers, issues, sungOrder) = try await WholeSongAlignment.cues(
                 audioURL: audioURL,
                 lyrics: lyrics,
                 romanize: lyricRomanizer.spans(for:),
@@ -173,6 +174,7 @@ extension ReadView {
             // position).
             audioPlayback.audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: cuesWithMarkers, in: document.text)
             audioPlayback.audioController.updateCues(cuesWithMarkers)
+            presentAlignmentIssues(issues, sungOrder: sungOrder, attachmentID: attachmentID)
         } catch is CancellationError {
             // User navigated away / cancelled mid-run; nothing to surface.
         } catch {
@@ -236,40 +238,34 @@ extension ReadView {
         }
     }
 
-    // Drops a duplicated title line from the alignment payload when the note starts with the title.
-    // This keeps alignment tolerant of notes shaped like "Title\n\nlyrics...".
+    // The lyrics the aligner reads: the note's lyric range, with line endings normalized.
     private var lyricsForAlignment: String {
-        let normalizedText = document.text
+        guard let range = lyricsRangeForAlignment else { return "" }
+        return (document.text as NSString).substring(with: range)
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard normalizedText.isEmpty == false else {
-            return ""
-        }
+    }
+
+    // Where the lyrics sit in the note text (UTF-16): the text without surrounding whitespace, and
+    // without a first line that just repeats the title ("Title\n\nlyrics..."), unless that line is
+    // all there is. Nil when the note is blank. Both alignment and the sung-order preview's Apply
+    // read it, so Apply replaces exactly what was aligned.
+    var lyricsRangeForAlignment: NSRange? {
+        let text = document.text as NSString
+        let content = CharacterSet.whitespacesAndNewlines.inverted
+        let first = text.rangeOfCharacter(from: content)
+        guard first.location != NSNotFound else { return nil }
+        let last = text.rangeOfCharacter(from: content, options: .backwards)
+        let whole = NSRange(location: first.location, length: NSMaxRange(last) - first.location)
 
         let trimmedTitle = resolvedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmedTitle.isEmpty == false else {
-            return normalizedText
-        }
-
-        let lines = normalizedText.components(separatedBy: "\n")
-        guard let firstNonEmptyLineIndex = lines.firstIndex(where: {
-            $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-        }) else {
-            return normalizedText
-        }
-
-        let firstLine = lines[firstNonEmptyLineIndex].trimmingCharacters(in: .whitespacesAndNewlines)
-        guard firstLine == trimmedTitle else {
-            return normalizedText
-        }
-
-        let remainingLines = Array(lines.dropFirst(firstNonEmptyLineIndex + 1))
-        let remainingText = remainingLines
-            .joined(separator: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        return remainingText.isEmpty ? normalizedText : remainingText
+        guard trimmedTitle.isEmpty == false else { return whole }
+        let firstLine = text.lineRange(for: NSRange(location: whole.location, length: 0))
+        guard text.substring(with: firstLine).trimmingCharacters(in: .whitespacesAndNewlines) == trimmedTitle,
+              NSMaxRange(firstLine) < NSMaxRange(whole) else { return whole }
+        let rest = text.rangeOfCharacter(from: content, range: NSRange(location: NSMaxRange(firstLine), length: NSMaxRange(whole) - NSMaxRange(firstLine)))
+        guard rest.location != NSNotFound else { return whole }
+        return NSRange(location: rest.location, length: NSMaxRange(whole) - rest.location)
     }
 
     // Copies the selected audio file to a temporary location so security-scoped access can be released.

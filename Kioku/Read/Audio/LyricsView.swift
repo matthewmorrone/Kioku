@@ -71,6 +71,10 @@ struct LyricsView: View {
     var onOpenBreakdown: () -> Void = {}
     // The top bar's full-screen button: opens the word-by-word view.
     var onOpenWordFocus: () -> Void = {}
+    // How many places the last alignment found the lyrics and the singing disagree, and the
+    // banner's Review action (LyricsView+AlignmentIssues.swift).
+    var alignmentIssueCount: Int = 0
+    var onReviewAlignmentIssues: () -> Void = {}
     // Romanizes one lyric line for Sing mode's phoneme targets (ReadView's LyricRomanizer). Nil
     // hides the Sing button (previews).
     var singRomanize: (@Sendable (String) -> [RomanizedSpan])? = nil
@@ -310,6 +314,7 @@ struct LyricsView: View {
         let belowUpper = max(belowLower, cues.count)
         return VStack(spacing: 0) {
             reAlignBar()
+            alignmentIssuesBanner()
             singRow
             VStack(spacing: 0) {
                 ScrollView {

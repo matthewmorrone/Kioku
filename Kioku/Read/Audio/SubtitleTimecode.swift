@@ -43,4 +43,10 @@ nonisolated enum SubtitleTimecode {
         let millis = ms % 1_000
         return String(format: "%02d:%02d:%02d,%03d", hours, minutes, seconds, millis)
     }
+
+    // Formats a millisecond offset as the M:SS clock the player and lyric screens show.
+    static func clock(ms: Int) -> String {
+        let s = max(0, ms) / 1000
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
 }

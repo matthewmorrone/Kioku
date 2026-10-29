@@ -312,6 +312,8 @@ extension ReadView {
                     onSetAudioSource: { setLyricAudioSource($0) },
                     onOpenBreakdown: { openNoteDestination(.breakdown, atNoteLocation: activeLyricNoteLocation()) },
                     onOpenWordFocus: { audioPlayback.isShowingWordFocus = true },
+                    alignmentIssueCount: currentAlignmentIssues.count,
+                    onReviewAlignmentIssues: { lyricAlignment.isShowingIssues = true },
                     singRomanize: lyricRomanizer.spans(for:),
                     singSession: singSession,
                     dictionaryGloss: { location, surface in lyricWordGloss(at: location, surface: surface) },
@@ -342,6 +344,9 @@ extension ReadView {
                 onOpenWordDetail: { openWordDetailFromWordFocus(atNoteLocation: $0, surface: $1) },
                 onDismiss: { audioPlayback.isShowingWordFocus = false }
             )
+        }
+        .sheet(isPresented: alignmentIssuesPresented) {
+            alignmentIssueListSheet
         }
         .sheet(isPresented: $readSheets.isShowingSegmentList) {
             // Spellings that are several words get the one the note's context names (see ReadView+ContextLemmas).

@@ -121,12 +121,11 @@ struct LyricsScrubber: View {
 
     // Formats a millisecond timestamp as M:SS for the scrubber time label.
     private func formatted(ms: Int) -> String {
-        let s = ms / 1000
-        return String(format: "%d:%02d", s / 60, s % 60)
+        SubtitleTimecode.clock(ms: ms)
     }
 
+    // The song's length as M:SS for the scrubber's right label.
     private var formattedDuration: String {
-        let s = Int(controller.duration)
-        return String(format: "%d:%02d", s / 60, s % 60)
+        SubtitleTimecode.clock(ms: Int(controller.duration * 1000))
     }
 }

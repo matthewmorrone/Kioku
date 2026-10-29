@@ -51,7 +51,8 @@ extension ReadView {
         replaceNoteText(accepted)
     }
 
-    // Writes replacements into the note text (Cleanup's proposals, a Breakdown typo fix), last first
+    // Writes replacements into the note text (Cleanup's proposals, a Breakdown typo fix, an inserted
+    // line of transcribed lyrics), last first
     // so earlier ranges stay valid. Segments are reconciled one replacement at a time, so user
     // splits, merges and readings survive everywhere except the replaced words themselves, and the
     // song's timed lyrics take the same edits.
@@ -112,6 +113,9 @@ extension ReadView {
         guard cues.isEmpty == false else { return nil }
         var changed = false
         for proposal in proposals {
+            // A pure insertion is a new line of its own (lyrics added for an alignment issue), not
+            // part of any cue; it is timed by the next re-align.
+            guard proposal.original.isEmpty == false else { continue }
             guard let i = ranges.firstIndex(where: { $0.map { NSLocationInRange(proposal.range.location, $0) } == true }),
                   i < cues.count, let lineRange = ranges[i] else { continue }
             let cueText = cues[i].text as NSString

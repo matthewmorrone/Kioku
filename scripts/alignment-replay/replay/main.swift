@@ -46,7 +46,7 @@ if let arg = args.first(where: { $0.hasPrefix("--deaf=") }) {
     if v.count == 2 { EmissionDropoutFill.deafThreshold = Float(v[0]); EmissionDropoutFill.deafMinRunSec = v[1] }
 }
 
-let out: (lines: [AlignedLine], lineTokens: [[AlignedToken]])
+let out: (lines: [AlignedLine], lineTokens: [[AlignedToken]], mismatches: [AlignmentMismatch], sungOrder: [SungOrderEntry]?)
 do {
     out = try CTCAlignmentCore.align(stem: matrix("\(dir)/\(key).emissions.f32"), mix: matrix("\(dir)/\(key).mix-emissions.f32"),
                                      vocalMono: floats("\(dir)/\(key).stem44.f32"), lines: lines, romanization: spans,

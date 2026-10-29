@@ -27,12 +27,14 @@ enum CTCAlignmentCore {
 
     // Aligns the romanized lyric to the emissions. `stem` and `mix` are the aligner's log-probabilities
     // for the vocal stem and the raw mix; `vocalMono` is the 44.1 kHz stem the sung regions are
-    // read from. `log` receives the same breadcrumbs the device writes.
+    // read from. `log` receives the same breadcrumbs the device writes. `mismatches` are the places
+    // the lyric and the singing disagree (AlignmentMismatchDetector); when there are any,
+    // `sungOrder` is the order the lines seem to be sung in instead (SungOrderDecoder).
     static func align(
         stem: CTCEmissions.Matrix, mix: CTCEmissions.Matrix, vocalMono: [Float],
         lines: [String], romanization: [[RomanizedSpan]],
         log: ((String) -> Void)? = nil
-    ) throws -> (lines: [AlignedLine], lineTokens: [[AlignedToken]]) {
+    ) throws -> (lines: [AlignedLine], lineTokens: [[AlignedToken]], mismatches: [AlignmentMismatch], sungOrder: [SungOrderEntry]?) {
         var matrix = stem
         let filled = EmissionDropoutFill.fill(stem: &matrix, mix: mix)
         log?("mix filled \(filled.frames) stem-quiet frames in \(filled.runs) run(s)")
@@ -106,7 +108,17 @@ enum CTCAlignmentCore {
         let spread = RepeatedLineSpreader.spread(lines: timed.lines, lineTokens: timed.lineTokens, regions: regions, durationSec: durationSec)
         let moved = zip(timed.lines, spread.lines).filter { $0.start != $1.start }.count
         if moved > 0 { log?("repeated lines: re-spread \(moved) stacked copy(ies)") }
-        return spread
+        let mismatches = AlignmentMismatchDetector.detect(lines: spread.lines, lineTokens: spread.lineTokens, romanization: romanization,
+                                                          regions: regions, stem: stem, durationSec: durationSec)
+        if mismatches.isEmpty == false {
+            log?("mismatches: " + mismatches.map { String(format: "%@ %.1f-%.1f", $0.kind.rawValue, $0.start, $0.end) }.joined(separator: ", "))
+        }
+        let sungOrder = mismatches.isEmpty ? nil : SungOrderDecoder.decode(
+            matrix: stem, romanization: romanization, regions: regions, stem: stem, durationSec: durationSec)
+        if let sungOrder {
+            log?("sung order: " + sungOrder.map { e in e.lineIndex.map { "\($0 + 1)" } ?? String(format: "?%.0f-%.0f", e.start, e.end) }.joined(separator: " "))
+        }
+        return (spread.lines, spread.lineTokens, mismatches, sungOrder)
     }
 
     // A letter probability this high on some frame, in the stem or the raw mix, means the model

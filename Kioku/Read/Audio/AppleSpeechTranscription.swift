@@ -38,4 +38,31 @@ enum AppleSpeechTranscription {
         }
         return try await collector.value
     }
+
+    // The words heard in [startSec, endSec) of `url`, as one string: the stretch is copied to a
+    // temporary file and transcribed. Backs the alignment issue list's Transcribe, which drafts
+    // lyrics the note is missing. Empty when nothing was recognized.
+    static func transcribeClip(of url: URL, startSec: Double, endSec: Double) async throws -> String {
+        let source = try AVAudioFile(forReading: url)
+        let rate = source.processingFormat.sampleRate
+        let first = AVAudioFramePosition(max(0, startSec) * rate)
+        let count = AVAudioFrameCount(max(0, min(Double(source.length), endSec * rate) - Double(first)))
+        guard count > 0, let buffer = AVAudioPCMBuffer(pcmFormat: source.processingFormat, frameCapacity: count) else {
+            return ""
+        }
+        source.framePosition = first
+        try source.read(into: buffer, frameCount: count)
+        let clipURL = FileManager.default.temporaryDirectory.appendingPathComponent("issue-\(UUID().uuidString).caf")
+        defer {
+            do { try FileManager.default.removeItem(at: clipURL) } catch {
+                AppLog.error(.audioAlignment, "couldn't remove transcription clip: \(error)")
+            }
+        }
+        // The file is closed when `clip` goes out of scope, so the transcriber reads it complete.
+        do {
+            let clip = try AVAudioFile(forWriting: clipURL, settings: source.processingFormat.settings)
+            try clip.write(from: buffer)
+        }
+        return try await transcribe(url: clipURL, onStatus: nil).map(\.text).joined(separator: " ")
+    }
 }
