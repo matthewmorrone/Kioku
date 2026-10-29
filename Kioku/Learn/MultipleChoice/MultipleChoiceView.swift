@@ -528,7 +528,11 @@ struct MultipleChoiceView: View {
         for item in items {
             // One direction per word, picked from the ticked set it's eligible for and stable per
             // entry id so the question doesn't reshape between re-renders.
-            guard let direction = selection.resolved(seed: item.id, hasKanjiForm: item.hasKanjiForm) else { continue }
+            guard let direction = selection.resolved(
+                seed: item.id,
+                hasKanjiForm: item.hasKanjiForm,
+                directionStats: wordsStore.stats[item.id]?.directionStats ?? [:]
+            ) else { continue }
             let fields = direction.fields
             let prompt = item.value(for: fields.prompt)
             let correct = item.value(for: fields.answer)
