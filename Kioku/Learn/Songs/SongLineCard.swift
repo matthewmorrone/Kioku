@@ -21,6 +21,8 @@ import UIKit
 // The card has no scroll view of its own — the parent SongStepperView scrolls the whole song, and
 // nested same-axis ScrollViews fight each other.
 struct SongLineCard: View {
+    // How many back-to-back identical lines this card stands for (SongLineRepeats); shown as "×N".
+    var repeatCount = 1
     let line: SongLine
     let referencedLine: SongLine?
     // Per-line "expanded" flag controlling the word/grammar explanations below the Japanese
@@ -158,6 +160,12 @@ struct SongLineCard: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .fixedSize()
+            if repeatCount > 1 {
+                Text("×\(repeatCount)")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+            }
             if hasExpandableDetail {
                 expandableDetailToggle
             }
