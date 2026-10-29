@@ -17,8 +17,10 @@ extension ReadView {
 
     // Whether a lyric word's bubble would give a particle's meaning, for the Particle Meanings
     // setting: judged by the sense the bubble shows (lyricBubbleEntry), so は given as 歯 "tooth"
-    // keeps its bubble while the topic marker は loses it.
+    // keeps its bubble while the topic marker は loses it. Surfaces in KanaData.nonParticleWords
+    // (まで, ほど) are never particles here, whatever the dictionary tags them.
     func isLyricParticle(at location: Int, surface: String) -> Bool {
+        if KanaData.nonParticleWords.contains(surface) { return false }
         guard let sense = lyricBubbleEntry(at: location, surface: surface)?.senses.first(where: { $0.glosses.isEmpty == false }) else {
             return false
         }
