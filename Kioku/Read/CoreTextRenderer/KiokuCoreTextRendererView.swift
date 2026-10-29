@@ -83,6 +83,9 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     // winning over every other foreground-color pass. Used by ExampleSentenceView to
     // highlight the entry's headword inside a dictionary example sentence. Defaulted so
     // the read/lyrics/song call sites that don't need it need not pass it.
+    // Note ranges drawn with a red squiggly underline where the aligner struggled to hear the lyric
+    // (AlignmentStruggleSpans); empty draws nothing.
+    var strugglingRanges: [NSRange] = []
     var accentTextRange: NSRange? = nil
     var accentTextColor: UIColor = .label
     // Dev-only debug overlay toggles. The overlay view stays mounted always but only
@@ -538,6 +541,7 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
             bands.append(.init(range: range, color: playbackHighlightColor))
         }
         uiView.contentView.highlightBands = bands
+        uiView.contentView.squiggleRanges = strugglingRanges
 
         // Restore the editor's scroll position when edit mode just exited. Edge-triggered only:
         // applying on routine updates would snap the view back to a stale offset on every body

@@ -14,6 +14,11 @@ extension ReadView {
             } message: {
                 Text(subtitleImport.audioTranscriptionErrorMessage)
             }
+            .alert("Alignment Is Struggling Here", isPresented: $audioPlayback.isShowingStruggleNotice) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("The forced aligner couldn't match this text to the audio. The lyric here may differ from what is sung, or the vocals may be unclear.")
+            }
             .alert("Alignment Failed", isPresented: alignmentErrorPresented) {
                 Button("OK", role: .cancel) {
                     lyricAlignment.errorMessage = ""

@@ -355,6 +355,7 @@ extension ReadView {
                         savedLearnedHighlightColor: isShowingSingResults ? LyricsView.singHeardColor : colors.savedLearned,
                         savedNotLearnedSegmentLocations: isShowingSingResults ? singColoredLocations.missed : savedNotLearnedSegmentLocations,
                         savedNotLearnedHighlightColor: isShowingSingResults ? LyricsView.singMissedColor : colors.savedNotLearned,
+                        strugglingRanges: audioPlayback.strugglingRanges,
                         debugFlags: KiokuDebugOverlayView.Flags(
                             headwordRects: debugHeadwordRects,
                             furiganaRects: debugFuriganaRects,
@@ -375,6 +376,12 @@ extension ReadView {
                             // overscroll, contentOffset adjust) can run against the same scroll
                             // view that owns the rendered text. UIScrollView is a superclass of
                             // UITextView, so handleReadModeSegmentTap accepts either path.
+                            // A squiggled word is one the aligner couldn't match to the audio: say so
+                            // instead of opening its lookup.
+                            if let location, audioPlayback.strugglingRanges.contains(where: { NSLocationInRange(location, $0) }) {
+                                audioPlayback.isShowingStruggleNotice = true
+                                return
+                            }
                             handleReadModeSegmentTap(location, tappedSegmentRect: rect, sourceView: scrollView)
                         },
                         // Hidden in edit mode — gate updates so per-keystroke typing doesn't

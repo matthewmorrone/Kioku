@@ -11,6 +11,12 @@ final class AudioPlaybackUIState {
     // timings state to keep in sync.
     var audioAttachmentCues: [SubtitleCue] = []
     var audioAttachmentHighlightRanges: [NSRange?] = []
+    // Set when a tap lands on a squiggled (low-confidence) range; shows the "aligner is struggling" notice.
+    var isShowingStruggleNotice = false
+    // Note ranges the aligner struggled to hear, squiggled in the Read tab (AlignmentStruggleSpans).
+    var strugglingRanges: [NSRange] {
+        AlignmentStruggleSpans.ranges(cues: audioAttachmentCues, highlightRanges: audioAttachmentHighlightRanges)
+    }
     var playbackHighlightRangeOverride: NSRange?
     // Clears jumpToPendingScrollSurfaceIfReady's playbackHighlightRangeOverride borrow a few
     // seconds after landing, so a "jump to this word" highlight fades rather than sitting
