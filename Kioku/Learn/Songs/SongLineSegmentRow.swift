@@ -7,10 +7,6 @@ struct SongLineSegmentRow: Equatable {
     // Locations of the row's segment pieces, in line order.
     let pieceLocations: [Int]
     let words: [SongWord]
-    // How many identical rows this one stands for; shown as "×N" beside the glosses when above 1.
-    var count = 1
-    // Segment locations of the folded repeats, so Listen-along still lights this row when it reads one.
-    var repeatedLocations: [Int] = []
 }
 
 // Where a split-layout child goes (SongLineSplitLayout): its row, and what it is in that row.

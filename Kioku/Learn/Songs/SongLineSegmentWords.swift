@@ -28,32 +28,9 @@ enum SongLineSegmentWords {
             for index in overlapping.reversed() { groups.remove(at: index) }
             groups.append(merged)
         }
-        let ordered = groups
+        return groups
             .map { SongLineSegmentRow(pieceLocations: $0.locations.sorted(), words: $0.words) }
             .sorted { ($0.pieceLocations.first ?? 0) < ($1.pieceLocations.first ?? 0) }
-        return foldingRepeats(ordered, pieces: pieces)
-    }
-
-    // Folds rows that show the same segments with the same glosses (a line singing ありがとう three
-    // times) into the first of them, which then carries the count and the folded rows' locations.
-    // Why: identical rows repeated down the card are noise; "×3" says the same in one row.
-    private static func foldingRepeats(_ rows: [SongLineSegmentRow], pieces: [SongLineSegmentPiece]) -> [SongLineSegmentRow] {
-        let textByLocation = Dictionary(pieces.map { ($0.location, $0.cache.sourceText) }, uniquingKeysWith: { first, _ in first })
-        var folded: [SongLineSegmentRow] = []
-        var indexByKey: [String: Int] = [:]
-        for row in rows {
-            let segments = row.pieceLocations.map { textByLocation[$0] ?? "" }.joined(separator: "|")
-            let glosses = row.words.map { "\($0.surface)=\($0.definition)" }.joined(separator: "|")
-            let key = segments + "\u{1}" + glosses
-            if let index = indexByKey[key] {
-                folded[index].count += 1
-                folded[index].repeatedLocations.append(contentsOf: row.pieceLocations)
-            } else {
-                indexByKey[key] = folded.count
-                folded.append(row)
-            }
-        }
-        return folded
     }
 
     // Where each word sits in the line (UTF-16), found in order so a repeated word takes its next
