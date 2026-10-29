@@ -22,6 +22,10 @@ nonisolated enum BreakdownListenSettings {
     static let showVocalizationsKey = "breakdown.showVocalizations"
     static let showPatternsKey = "breakdown.showPatterns"
 
+    // Whether listen-along iterates through each line's split view (BreakdownWordWalk raw value).
+    static let wordWalkKey = "breakdown.listen.wordWalk"
+
+    static let defaultWordWalk = BreakdownWordWalk.yes
     static let defaultPauseAfterLine = false
     static let defaultWordRepeatCount = 1
     static let defaultRepeatEarlierWords = true

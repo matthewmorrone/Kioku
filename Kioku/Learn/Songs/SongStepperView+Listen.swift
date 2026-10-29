@@ -124,6 +124,12 @@ extension SongStepperView {
             wordRepeatCount: wordRepeatCount,
             repeatEarlierWords: repeatEarlierWords,
             visibility: wordVisibility,
+            walksWords: { lineIndex in
+                // Listen-along opens cards itself, so a line it already expanded counts by how
+                // it stood before it got there.
+                let wasExpanded = self.expansionBeforeListen[lineIndex] ?? self.expandedByLineIndex.contains(lineIndex)
+                return self.wordWalk.walksWords(lineIsExpanded: wasExpanded)
+            },
             outro: ranges.isEmpty ? nil : trailingInstrumentalRange(after: ranges)
         )
         let originalByIndex = Dictionary(breakdown.lines.map { ($0.index, $0.original) }, uniquingKeysWith: { first, _ in first })

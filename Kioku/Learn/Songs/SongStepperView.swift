@@ -77,7 +77,7 @@ struct SongStepperView: View {
     @State var expandedByLineIndex: Set<Int> = []
     // Whether each line Listen-along is reading was expanded before it got there, so the card goes
     // back to that once Listen-along moves on (followListenSegmentExpansion).
-    @State private var expansionBeforeListen: [Int: Bool] = [:]
+    @State var expansionBeforeListen: [Int: Bool] = [:]
     @State var isRegenerateConfirmationPresented: Bool = false
     @State private var isCancelConfirmationPresented: Bool = false
     // Editable copy of the user's per-song LLM note (SongBreakdownUserNote), saved on generate.
@@ -92,6 +92,7 @@ struct SongStepperView: View {
     @State var listenScrollRequest = 0
     // Listen-along options from the toolbar's options menu (see BreakdownListenSettings).
     @AppStorage(BreakdownListenSettings.pauseAfterLineKey) var pauseAfterEachLine = BreakdownListenSettings.defaultPauseAfterLine
+    @AppStorage(BreakdownListenSettings.wordWalkKey) var wordWalk = BreakdownListenSettings.defaultWordWalk
     @AppStorage(BreakdownListenSettings.wordRepeatCountKey) var wordRepeatCount = BreakdownListenSettings.defaultWordRepeatCount
     @AppStorage(BreakdownListenSettings.repeatEarlierWordsKey) var repeatEarlierWords = BreakdownListenSettings.defaultRepeatEarlierWords
     @AppStorage(BreakdownListenSettings.showParticlesKey) var showParticles = BreakdownListenSettings.defaultShowParticles

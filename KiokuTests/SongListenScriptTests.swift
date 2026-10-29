@@ -129,6 +129,14 @@ final class SongListenScriptTests: XCTestCase {
         XCTAssertEqual(wordStepKinds(SongListenScript.build(from: bd)), ["say:夕凪", "def:evening calm"])
     }
 
+    // A line the Walk Through Words option skips keeps its sentence and gist but loses its words.
+    func testLineNotWalkedHasNoWordSteps() {
+        let bd = breakdown(lines: [line(words: [
+            SongWord(surface: "夕凪", sungRomaji: "", definition: "evening calm"),
+        ])])
+        XCTAssertEqual(wordStepKinds(SongListenScript.build(from: bd, walksWords: { _ in false })), [])
+    }
+
     // Without a snippet, the repeat option repeats the reading.
     func testWordRepeatCountRepeatsTheLeadingUtterance() {
         let bd = breakdown(lines: [line(words: [

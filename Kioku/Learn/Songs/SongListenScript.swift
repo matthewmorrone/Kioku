@@ -27,7 +27,8 @@ nonisolated enum SongListenScript {
     // `wordRepeatCount` is how many times each word is heard before its definition;
     // `repeatEarlierWords` false skips words already covered earlier in the song (SongCoveredWords)
     // while still playing every line; `visibility` drops the words and lines the options menu
-    // hides (SongWordVisibility), so narration never says what the cards don't show.
+    // hides (SongWordVisibility), so narration never says what the cards don't show;
+    // `walksWords` says per line index whether its words are stepped through at all.
     static func build(
         from breakdown: SongBreakdown,
         lineRanges: [Int: (startMs: Int, endMs: Int)] = [:],
@@ -35,6 +36,7 @@ nonisolated enum SongListenScript {
         wordRepeatCount: Int = 1,
         repeatEarlierWords: Bool = true,
         visibility: SongWordVisibility = .defaults,
+        walksWords: (Int) -> Bool = { _ in true },
         outro: (startMs: Int, endMs: Int)? = nil
     ) -> [SongListenStep] {
         var steps: [SongListenStep] = []
@@ -73,8 +75,13 @@ nonisolated enum SongListenScript {
             // synthesized Japanese reading, then the English definition. `wordRepeatCount` repeats
             // the snippet, or the reading when there's no snippet. `searchFrom` walks the cue text
             // forward so a word sung twice maps in order.
+            // `walksWords` is the Walk Through Words option (BreakdownWordWalk): false for a line
+            // leaves its split view unread.
             var searchFrom = 0
-            for word in uncovered?[line.index] ?? effectiveWords(for: line, linesByIndex: linesByIndex, visibility: visibility) {
+            let lineWords = walksWords(line.index)
+                ? uncovered?[line.index] ?? effectiveWords(for: line, linesByIndex: linesByIndex, visibility: visibility)
+                : []
+            for word in lineWords {
                 let surface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard surface.isEmpty == false else { continue }
                 let spoken = SongListenSegment(

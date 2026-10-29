@@ -13,6 +13,14 @@ extension SongStepperView {
             Toggle(isOn: $pauseAfterEachLine) {
                 Label("Pause After Each Line", systemImage: "pause.circle")
             }
+            Picker(selection: $wordWalk) {
+                ForEach(BreakdownWordWalk.allCases, id: \.self) { choice in
+                    Text(choice.title).tag(choice)
+                }
+            } label: {
+                Label("Walk Through Words", systemImage: "list.bullet.indent")
+            }
+            .pickerStyle(.menu)
             Picker(selection: $wordRepeatCount) {
                 ForEach(BreakdownListenSettings.wordRepeatChoices, id: \.self) { count in
                     Text("\(count)×").tag(count)
@@ -57,6 +65,7 @@ extension SongStepperView {
         .accessibilityLabel("Options")
         .onChange(of: wordRepeatCount) { _, _ in configureLiveListen() }
         .onChange(of: repeatEarlierWords) { _, _ in configureLiveListen() }
+        .onChange(of: wordWalk) { _, _ in configureLiveListen() }
         .onChange(of: wordVisibility) { _, _ in configureLiveListen() }
         .onChange(of: pauseAfterEachLine) { _, pause in liveListen.pauseAfterEachLine = pause }
     }
