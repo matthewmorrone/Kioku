@@ -24,11 +24,10 @@ extension ReadView {
             let noteReading = reconstructedReading(for: segmentSurface, at: tappedSegmentLocation)
             recordLookupHistory(surface: segmentSurface, reading: noteReading.isEmpty ? nil : noteReading)
 
-            // Drilling into a compound component row spawns a stacked, full-chrome lookup sheet
-            // for the tapped lemma. Installed here so the closure captures the current ReadView
-            // value (its dictionaryStore/lexicon/wordsStore references are already there).
-            SegmentLookupSheet.shared.onCompoundComponentTapped = { lemma, gloss in
-                presentNestedLemmaLookup(lemma: lemma, gloss: gloss)
+            // Tapping a component chip opens that word's detail view. Installed here so the closure
+            // captures the current ReadView value (its dictionaryStore/segmenter references are already there).
+            SegmentLookupSheet.shared.onCompoundComponentTapped = { lemma, _ in
+                openWordDetailForComponent(lemma: lemma)
             }
             // Picking one of an ambiguous form's words (いった → 言う) saves the pick with the segment.
             SegmentLookupSheet.shared.onLookupCandidateChosen = { entryID in
