@@ -122,7 +122,7 @@ struct SongLineSegmentsView<Sentence: View>: View {
             }
             if isSplit {
                 ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                    glosses(row.words, ids: glossIDs[index])
+                    glosses(row.words, ids: glossIDs[index], count: row.count)
                         .layoutValue(key: SongLineSplitSlotKey.self, value: SongLineSplitSlot(row: index, role: .gloss))
                         .transition(.opacity)
                 }
@@ -144,7 +144,7 @@ struct SongLineSegmentsView<Sentence: View>: View {
     private func isSpoken(_ row: SongLineSegmentRow) -> Bool {
         guard let range = playbackHighlightRange else { return false }
         return pieces.contains { piece in
-            row.pieceLocations.contains(piece.location)
+            (row.pieceLocations.contains(piece.location) || row.repeatedLocations.contains(piece.location))
                 && NSIntersectionRange(range, NSRange(location: piece.location, length: (piece.cache.sourceText as NSString).length)).length > 0
         }
     }
@@ -202,8 +202,8 @@ struct SongLineSegmentsView<Sentence: View>: View {
     }
 
     // The glosses for one row's words, the first on the segments' baseline, each tagged with
-    // its scroll id. Tapping one opens that word's lookup.
-    private func glosses(_ words: [SongWord], ids: [String]) -> some View {
+    // its scroll id. Tapping one opens that word's lookup. A row standing for repeats ends in "×N".
+    private func glosses(_ words: [SongWord], ids: [String], count: Int) -> some View {
         let geometry = RenderGeometry.resolve(textSize: Double(textSize), userLineSpacing: 4, furiganaGap: furiganaGap)
         let glossFont = UIFont.preferredFont(forTextStyle: .callout)
         let baselineOffset = geometry.topInset + ReadingFont.body(size: textSize).ascender - glossFont.ascender
@@ -223,6 +223,12 @@ struct SongLineSegmentsView<Sentence: View>: View {
                 .buttonStyle(.plain)
                 .id(offset < ids.count ? ids[offset] : "word-\(lineIndex)-\(word.surface)-\(offset)")
                 .accessibilityHint("Look up \(word.surface)")
+            }
+            if count > 1 {
+                Text("×\(count)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
             }
         }
         .padding(.top, max(0, baselineOffset))
