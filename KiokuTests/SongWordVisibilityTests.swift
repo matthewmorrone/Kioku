@@ -31,6 +31,14 @@ final class SongWordVisibilityTests: XCTestCase {
         XCTAssertTrue(hideAll.shows(noun))
     }
 
+    // Words on KanaData.nonParticleWords (まで, ほど) stay visible even when a breakdown tags them [particle].
+    func testListedNonParticlesStayVisible() {
+        for surface in ["まで", "ほど"] {
+            let word = SongWord(surface: surface, sungRomaji: "", definition: "until / extent", grammarTag: "particle")
+            XCTAssertTrue(hideAll.shows(word), surface)
+        }
+    }
+
     // An English surface is never shown, whatever the options.
     func testEnglishBulletAlwaysHidden() {
         XCTAssertFalse(showAll.shows(SongWord(surface: "baby", sungRomaji: "", definition: "baby")))
