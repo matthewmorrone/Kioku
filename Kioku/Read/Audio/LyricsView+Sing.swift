@@ -50,9 +50,9 @@ extension LyricsView {
             toggleSing()
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: singSession.isActive ? "mic.fill" : "mic")
+                Image(systemName: singSession.isActive ? "stop.fill" : "mic")
                     .scaledFont(size: 12, weight: .semibold)
-                Text(singSession.isActive ? "Singing" : "Sing")
+                Text(singSession.isActive ? "Stop" : "Sing")
                     .scaledFont(size: 12, weight: .semibold)
                     .lineLimit(1)
             }
@@ -72,8 +72,12 @@ extension LyricsView {
             startPendingSingPlayback()
         }
         .onChange(of: audioSource) { _, source in
-            guard source == .instrumental else { return }
+            guard source == (singSession.scope == .guided ? .mix : .instrumental) else { return }
             startPendingSingPlayback()
+        }
+
+        if singSession.isActive == false {
+            guidedSingButton
         }
 
         Button {
@@ -120,7 +124,7 @@ extension LyricsView {
             .accessibilityLabel("Clear Sing results")
         }
 
-        if singSession.isActive {
+        if singSession.isActive, singSession.scope != .guided {
             Button {
                 singSession.scope = singSession.scope == .song ? .line : .song
             } label: {
@@ -138,7 +142,8 @@ extension LyricsView {
     }
 
     // The row under the top bar: Sing's capsules, then a start-up problem or, for a few seconds,
-    // the headphones advice. Hidden for notes without timing (nothing to grade against).
+    // the headphones advice; in Guided mode the line controls sit under it. Hidden for notes
+    // without timing (nothing to grade against).
     @ViewBuilder
     var singRow: some View {
         if singRomanize != nil, cues.isEmpty == false, isReAligning == false {
@@ -156,13 +161,18 @@ extension LyricsView {
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 6)
+            if singSession.isActive, singSession.guidedPhase != nil {
+                guidedSingBar
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 6)
+            }
         }
     }
 
     // Starts or stops listening. Starting switches playback to the instrumental and plays the song
     // (once the instrumental is in, when it has to be switched to); stopping pauses and puts back
     // whatever was playing before.
-    private func toggleSing() {
+    func toggleSing(guided: Bool = false) {
         if singSession.isActive {
             isSingPlaybackPending = false
             if let previous = singSession.restoreAudioSource { onSetAudioSource(previous) }
@@ -185,11 +195,20 @@ extension LyricsView {
                 furigana: furiganaBySegmentLocation,
                 furiganaLengths: furiganaLengthBySegmentLocation,
                 strictness: SingStrictness(rawValue: singStrictnessRaw) ?? .normal,
+                guided: guided,
                 romanize: singRomanize
             )
             guard singSession.isActive else { return }
             singSession.restoreAudioSource = previous
-            if previous == .instrumental {
+            if guided {
+                // Guided plays each line with its vocals for the singer to copy.
+                if previous == .instrumental {
+                    isSingPlaybackPending = true
+                    onSetAudioSource(.mix)
+                } else {
+                    singSession.guidedPlayLine()
+                }
+            } else if previous == .instrumental {
                 if controller.isPlaying == false { controller.play() }
             } else {
                 isSingPlaybackPending = true
@@ -198,11 +217,17 @@ extension LyricsView {
         }
     }
 
-    // Plays the song for a Sing start that was waiting on the instrumental, once.
+    // Plays the song for a Sing start that was waiting on its audio source switch, once: the
+    // first line in Guided mode, the song otherwise.
     private func startPendingSingPlayback() {
         guard isSingPlaybackPending else { return }
         isSingPlaybackPending = false
-        if singSession.isActive, controller.isPlaying == false { controller.play() }
+        guard singSession.isActive else { return }
+        if singSession.guidedPhase != nil {
+            singSession.guidedPlayLine()
+        } else if controller.isPlaying == false {
+            controller.play()
+        }
     }
 
     // The Stop summary: heard / graded counts and each missed word once, in song order.

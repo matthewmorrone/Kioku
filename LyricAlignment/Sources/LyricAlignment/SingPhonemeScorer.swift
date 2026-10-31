@@ -46,8 +46,39 @@ public enum SingPhonemeScorer {
     // there — what the diagnostics log prints to show where in the window each sound was found.
     public static func scoreDetails(tokens: [Int], logProbs: [Float], classes: Int, firstFrame: Int, lastFrame: Int)
         -> (score: Double, placements: [(frame: Int, probability: Float)]) {
+        guard let placements = bestPlacements(tokens: tokens, logProbs: logProbs, classes: classes,
+                                              firstFrame: firstFrame, lastFrame: lastFrame) else { return (0, []) }
+        return (share(tokens: tokens, probabilities: placements.map(\.probability)), placements)
+    }
+
+    // Guided Sing's grade for a line repeated with no song clock to time it: each word's score
+    // (0…1) when all the words' sounds are placed in order across frames [first, last], so a word
+    // is found wherever the singer put it, with the absolute frame its last sound was placed on
+    // (where the next word's search can start once this one counts as heard). Scored per word with
+    // the same vowel / consonant rule as score(…). All zeros, with no frames, when the window is
+    // shorter than the words.
+    public static func wordScores(words: [[Int]], logProbs: [Float], classes: Int, firstFrame: Int, lastFrame: Int)
+        -> [(score: Double, lastFrame: Int?)] {
+        let joined = words.flatMap { $0 }
+        guard let placements = bestPlacements(tokens: joined, logProbs: logProbs, classes: classes,
+                                              firstFrame: firstFrame, lastFrame: lastFrame) else {
+            return words.map { _ in (0, nil) }
+        }
+        var offset = 0
+        return words.map { word in
+            defer { offset += word.count }
+            let placed = placements[offset..<(offset + word.count)]
+            return (share(tokens: word, probabilities: placed.map(\.probability)), placed.last?.frame)
+        }
+    }
+
+    // Per token in order, the absolute frame of its best in-order placement (frames strictly
+    // increasing, best summed log-probability) and its probability there; nil when the window
+    // is shorter than the tokens.
+    private static func bestPlacements(tokens: [Int], logProbs: [Float], classes: Int, firstFrame: Int, lastFrame: Int)
+        -> [(frame: Int, probability: Float)]? {
         let k = tokens.count, t = lastFrame - firstFrame + 1
-        guard k > 0, t >= k, firstFrame >= 0 else { return (0, []) }
+        guard k > 0, t >= k, firstFrame >= 0 else { return nil }
         @inline(__always) func lp(_ f: Int, _ token: Int) -> Float { logProbs[(firstFrame + f) * classes + token] }
 
         // best[i][f]: best summed log-prob placing tokens 0…i with token i on frame f (frames strictly increasing).
@@ -65,22 +96,29 @@ public enum SingPhonemeScorer {
             }
         }
         var f = (k - 1..<t).max { best[(k - 1) * t + $0] < best[(k - 1) * t + $1] } ?? (t - 1)
-        // Heard / total per group: [0] vowels and ん, [1] consonants.
-        var heard = [0.0, 0.0], total = [0.0, 0.0]
         var placements = [(frame: Int, probability: Float)](repeating: (0, 0), count: k)
         for i in stride(from: k - 1, through: 0, by: -1) {
-            let probability = exp(lp(f, tokens[i]))
-            placements[i] = (firstFrame + f, probability)
+            placements[i] = (firstFrame + f, exp(lp(f, tokens[i])))
+            if i > 0 { f = from[i * t + f] }
+        }
+        return placements
+    }
+
+    // A word's score from its tokens' placement probabilities: the lower of its heard-vowel and
+    // heard-consonant shares, a lengthening vowel counting only when heard.
+    private static func share(tokens: [Int], probabilities: [Float]) -> Double {
+        // Heard / total per group: [0] vowels and ん, [1] consonants.
+        var heard = [0.0, 0.0], total = [0.0, 0.0]
+        for (i, probability) in probabilities.enumerated() {
             let isHeard = probability >= passProbability
             if isHeard || isLengthener(at: i, in: tokens) == false {
                 let group = isVowelLike(tokens[i]) ? 0 : 1
                 total[group] += 1
                 if isHeard { heard[group] += 1 }
             }
-            if i > 0 { f = from[i * t + f] }
         }
         let shares = (0..<2).compactMap { total[$0] > 0 ? heard[$0] / total[$0] : nil }
-        return (shares.min() ?? 0, placements)
+        return shares.min() ?? 0
     }
 
     // The phoneme label for a token, for logs.

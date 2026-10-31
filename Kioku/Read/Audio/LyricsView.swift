@@ -297,8 +297,9 @@ struct LyricsView: View {
         // The cue shown on the active card (and the scroller split point). ♪/♫ instrumental-gap
         // cues are first-class rows — during an intro/gap the active card simply shows the ♪ cue,
         // and the scroller shows the ♪ rows approaching and receding like any other line.
-        // Otherwise it tracks the live drag, then the playing line.
-        let displayIndex = dragDisplayIndex ?? activeIndex
+        // Otherwise it tracks the live drag, then Guided Sing's line (so a line starting playback
+        // doesn't flick to the ♪ row above while the output latency catches up), then the playing line.
+        let displayIndex = dragDisplayIndex ?? (singSession.isActive ? singSession.guidedCueIndex : nil) ?? activeIndex
 
         // Clamp range upper bounds against lower bounds — `ForEach(a..<b)` traps when `b < a`, and
         // that can happen here when an audio note has zero cues (transcription returned nothing,
@@ -395,8 +396,8 @@ struct LyricsView: View {
                             furiganaLengthBySegmentLocation: cueInput.furiganaLengthBySegmentLocation,
                             isFuriganaVisible: isFuriganaVisible,
                             isVisualEnhancementsEnabled: true,
-                            // Sing results drop the alternating word colours so only verdicts colour words.
-                            isColorAlternationEnabled: isSegmentationVisible && isShowingSingResults == false,
+                            // Sing verdicts are drawn through Saved Highlight, which wins over alternation.
+                            isColorAlternationEnabled: isSegmentationVisible,
                             textSize: Binding(get: { scaledTextSize }, set: { _ in }),
                             lineSpacing: 0,
                             kerning: 0,

@@ -8,15 +8,16 @@ import LyricAlignment
 // middle into a song-time timeline (SingEmissionTimeline), and grades each lyric word whose time
 // window the timeline now fully covers. Verdicts are
 // keyed by the word's UTF-16 start in the note, so the lyrics card can colour them. In Line
-// mode it loops the current line, clearing that line's verdicts on every pass.
+// mode it loops the current line, clearing that line's verdicts on every pass. In Guided mode
+// (SingSession+Guided) it plays one line at a time and grades the singer repeating it.
 @MainActor
 final class SingSession: ObservableObject {
     @Published private(set) var isActive = false
-    @Published private(set) var verdicts: [Int: Bool] = [:]
+    @Published var verdicts: [Int: Bool] = [:]
     // What the model heard in each graded word's own time slot, in kana, keyed like `verdicts`.
-    @Published private(set) var heard: [Int: String] = [:]
+    @Published var heard: [Int: String] = [:]
     // The most recently graded word, so the lyrics card can show the heard line it belongs to.
-    @Published private(set) var lastGradedID: Int?
+    @Published var lastGradedID: Int?
     @Published private(set) var statusMessage: String?
     @Published var scope: SingScope = .song
     // Note locations of the words this session listens for, so the lyrics can hide them.
@@ -31,21 +32,41 @@ final class SingSession: ObservableObject {
     @Published private(set) var resultsNoteText: String?
     // The source that was playing before Sing switched to the instrumental; put back on stop.
     var restoreAudioSource: LyricsAudioSource?
+    // Guided mode's step within the current line, and that line's cue; nil outside Guided.
+    @Published var guidedPhase: SingGuidedPhase?
+    @Published var guidedCueIndex: Int?
+    // Guided: the current line's words still being listened for this turn, by note location.
+    var guidedPending: Set<Int> = []
+    // Guided: the words this turn walks through in line order, how many of them have been heard
+    // in order so far, and the turn time the last of those ended at, where the next one's search
+    // starts (nil until the first is heard).
+    var guidedTurnWords: [SingWordTarget] = []
+    var guidedTurnHeardCount = 0
+    var guidedTurnAnchorSec: Double?
+    // Guided: cue index → the words Sing listens for in that line, in line order.
+    var guidedLineTargets: [Int: [SingWordTarget]] = [:]
+    // Guided: host time the singer's turn opened (the zero of the turn's timeline), and whether
+    // the line's playback has been seen running, so its stop marks the end of the line.
+    var guidedTurnStartHost: Double = 0
+    var guidedSawPlayback = false
+    // Guided: what the model heard over the current turn so far, in kana.
+    @Published var guidedHeard = ""
 
     private static let tickSec = 0.5
 
-    private let mic = SingMicCapture()
-    private var model: SingPhonemeModel?
-    private var targets: [SingWordTarget] = []
+    // Shared with SingSession+Guided, which runs its own turns on the same mic, model and timeline.
+    let mic = SingMicCapture()
+    var model: SingPhonemeModel?
+    var targets: [SingWordTarget] = []
     private var loop: Task<Void, Never>?
-    private var isScoring = false
-    private let timeline = SingEmissionTimeline()
+    var isScoring = false
+    let timeline = SingEmissionTimeline()
     // Bumped on every jump, so a model run that started before it can't stitch old audio in.
-    private var generation = 0
+    var generation = 0
     private var lastSongSec: Double?
     private var loopCueIndex: Int?
-    private weak var controller: AudioPlaybackController?
-    private var cues: [SubtitleCue] = []
+    weak var controller: AudioPlaybackController?
+    var cues: [SubtitleCue] = []
 
     // Starts listening: mic permission, the play-and-record session, model load and word plan.
     // Leaves `statusMessage` set (and stays off) when any of them fails.
@@ -58,6 +79,7 @@ final class SingSession: ObservableObject {
         furigana: [Int: String],
         furiganaLengths: [Int: Int],
         strictness: SingStrictness,
+        guided: Bool = false,
         romanize: @escaping @Sendable (String) -> [RomanizedSpan]
     ) async {
         guard isActive == false else { return }
@@ -102,7 +124,15 @@ final class SingSession: ObservableObject {
         lastSongSec = nil
         loopCueIndex = controller.activeCueIndex
         isActive = true
-        isShowingHeadphonesNotice = true
+        if guided {
+            // Guided pauses the song while the singer repeats each line, so the speaker never
+            // leaks into the mic and no headphones advice is needed.
+            scope = .guided
+            prepareGuided(noteText: noteText, highlightRanges: highlightRanges)
+        } else {
+            if scope == .guided { scope = .song }
+            isShowingHeadphonesNotice = true
+        }
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(4))
             self?.isShowingHeadphonesNotice = false
@@ -125,6 +155,9 @@ final class SingSession: ObservableObject {
         statusMessage = nil
         isShowingHeadphonesNotice = false
         restoreAudioSource = nil
+        guidedPhase = nil
+        guidedCueIndex = nil
+        guidedPending = []
     }
 
     // Drops the last session's verdicts, returning the lyrics to their normal colours.
@@ -143,6 +176,7 @@ final class SingSession: ObservableObject {
     // One pass of the loop: follow pauses and seeks, loop the line in Line mode, and grade
     // whatever words the newest audio now covers.
     private func tick() {
+        if guidedPhase != nil { guidedTick(); return }
         guard let controller, let model else { return }
         mic.setAccepting(controller.isPlaying)
         guard controller.isPlaying else { lastSongSec = nil; return }

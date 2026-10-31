@@ -29,16 +29,10 @@ nonisolated enum SingWordPlanner {
         var targets: [SingWordTarget] = []
         for (i, cue) in cues.enumerated() {
             if SubtitleParser.isNonSpeechCue(cue.text.trimmingCharacters(in: .whitespacesAndNewlines)) { continue }
-            let resolved: NSRange? = (i < highlightRanges.count ? highlightRanges[i] : nil) ?? {
-                let probe = noteNS.range(of: cue.text)
-                return probe.location == NSNotFound || cue.text.isEmpty ? nil : probe
-            }()
-            guard let cueRange = resolved, NSMaxRange(cueRange) <= noteNS.length else { continue }
-            // Single sung line, as the active card shows it.
-            var line = noteNS.substring(with: cueRange)
-            if let cut = line.firstIndex(where: { $0 == "\n" || $0 == "\r" }) { line = String(line[..<cut]) }
-            let cueStart = cueRange.location
-            let cueEnd = cueStart + line.utf16.count
+            guard let lineRange = lineRange(ofCueAt: i, cues: cues, noteNS: noteNS, highlightRanges: highlightRanges) else { continue }
+            let line = noteNS.substring(with: lineRange)
+            let cueStart = lineRange.location
+            let cueEnd = NSMaxRange(lineRange)
             let spans = romanize(line)
 
             // The cue's words, as cue-local [start, end) UTF-16 ranges.
@@ -70,6 +64,21 @@ nonisolated enum SingWordPlanner {
             }
         }
         return targets
+    }
+
+    // Cue `index`'s sung line in the note, as the active card shows it: its first line only.
+    // `highlightRanges[index]` places it; nil there → found by substring search, as the lyrics
+    // card does. Nil when it can't be placed.
+    static func lineRange(ofCueAt index: Int, cues: [SubtitleCue], noteNS: NSString, highlightRanges: [NSRange?]) -> NSRange? {
+        let cue = cues[index]
+        let resolved: NSRange? = (index < highlightRanges.count ? highlightRanges[index] : nil) ?? {
+            let probe = noteNS.range(of: cue.text)
+            return probe.location == NSNotFound || cue.text.isEmpty ? nil : probe
+        }()
+        guard let cueRange = resolved, NSMaxRange(cueRange) <= noteNS.length else { return nil }
+        let text = noteNS.substring(with: cueRange)
+        let cut = text.firstIndex(where: { $0 == "\n" || $0 == "\r" }) ?? text.endIndex
+        return NSRange(location: cueRange.location, length: text[..<cut].utf16.count)
     }
 
     // The word's reading in kana from the note's furigana (kanji runs replaced by their readings,
