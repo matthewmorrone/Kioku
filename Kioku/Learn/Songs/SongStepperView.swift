@@ -607,8 +607,10 @@ struct SongStepperView: View {
             ScrollView(.vertical, showsIndicators: true) {
                 LazyVStack(spacing: 14) {
                     let visibleWords = visibleWordsByLine(for: currentLines)
-                    ForEach(items) { item in
+                    ForEach(SongLineRepeats.collapse(items), id: \.item.id) { entry in
+                        let item = entry.item
                         SongLineCard(
+                            repeatCount: entry.count,
                             line: item.line,
                             referencedLine: referencedLine(for: item.line),
                             isExpanded: expandedByLineIndex.contains(item.line.index),
