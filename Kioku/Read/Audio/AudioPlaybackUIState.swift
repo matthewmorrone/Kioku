@@ -22,6 +22,8 @@ final class AudioPlaybackUIState {
     // The "not confident in this alignment" popup (AlignmentConfidence) and the percent it shows.
     var isShowingLowConfidenceNotice = false
     var lowConfidencePercent = 0
+    // The popup's "don't show again for this song" checkbox, reset each time the popup opens.
+    var dontShowLowConfidenceAgain = false
     // The full-screen word-by-word view (WordFocusView), opened from the lyrics card's top bar.
     var isShowingWordFocus = false
     // Mirrors "playing, or paused mid-track" from the controller. ReadView can't observe the

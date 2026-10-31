@@ -14,11 +14,15 @@ extension ReadView {
             } message: {
                 Text(subtitleImport.audioTranscriptionErrorMessage)
             }
-            .alert("Alignment May Be Off", isPresented: $audioPlayback.isShowingLowConfidenceNotice) {
-                Button("OK", role: .cancel) {}
-                Button("Don't Show Again for This Song") { AlignmentConfidence.dismiss(noteID: document.activeNoteID) }
-            } message: {
-                Text("The aligner is only \(audioPlayback.lowConfidencePercent)% confident in this alignment. The lyrics may differ from what is sung, or the vocals may be unclear.")
+            .sheet(isPresented: $audioPlayback.isShowingLowConfidenceNotice, onDismiss: {
+                // Swipe-down counts as OK: the checkbox is honoured however the sheet closes.
+                if audioPlayback.dontShowLowConfidenceAgain { AlignmentConfidence.dismiss(noteID: document.activeNoteID) }
+            }) {
+                LowConfidenceNoticeView(
+                    percent: audioPlayback.lowConfidencePercent,
+                    dontShowAgain: $audioPlayback.dontShowLowConfidenceAgain,
+                    onOK: { audioPlayback.isShowingLowConfidenceNotice = false }
+                )
             }
             .alert("Alignment Failed", isPresented: alignmentErrorPresented) {
                 Button("OK", role: .cancel) {

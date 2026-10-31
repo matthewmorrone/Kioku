@@ -177,6 +177,7 @@ extension ReadView {
             if let percent = AlignmentConfidence.warningPercent(for: cuesWithMarkers),
                AlignmentConfidence.isDismissed(noteID: document.activeNoteID) == false {
                 audioPlayback.lowConfidencePercent = percent
+                audioPlayback.dontShowLowConfidenceAgain = false
                 audioPlayback.isShowingLowConfidenceNotice = true
             }
         } catch is CancellationError {
