@@ -41,7 +41,9 @@ nonisolated struct SongWordVisibility: Equatable, Sendable {
         guard surface.isEmpty == false else { return false }
         guard ScriptClassifier.containsJapanese(surface) else { return false }
         let tag = word.grammarTag?.lowercased()
-        if showsParticles == false, tag == Self.particleTag || KanaData.particleSet.contains(surface) {
+        let isListedNonParticle = KanaData.nonParticleWords.contains(surface)
+        if showsParticles == false, isListedNonParticle == false,
+           tag == Self.particleTag || KanaData.particleSet.contains(surface) {
             return false
         }
         if showsKatakana == false, ScriptClassifier.isPureKatakana(surface) { return false }

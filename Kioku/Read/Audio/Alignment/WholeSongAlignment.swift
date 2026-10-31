@@ -58,7 +58,8 @@ enum WholeSongAlignment {
                     CueCharTiming(
                         timeMs: max(0, Int((token.start * 1000).rounded())),
                         charOffsetInCue: token.charOffsetUTF16,
-                        charLength: token.charLengthUTF16
+                        charLength: token.charLengthUTF16,
+                        confidence: token.confidence
                     )
                 }
                 .sorted { $0.timeMs < $1.timeMs }
