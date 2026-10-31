@@ -65,7 +65,6 @@ extension SongStepperView {
         .accessibilityLabel("Options")
         .onChange(of: wordRepeatCount) { _, _ in configureLiveListen() }
         .onChange(of: repeatEarlierWords) { _, _ in configureLiveListen() }
-        .onChange(of: wordWalk) { _, _ in configureLiveListen() }
         .onChange(of: wordVisibility) { _, _ in configureLiveListen() }
         .onChange(of: pauseAfterEachLine) { _, pause in liveListen.pauseAfterEachLine = pause }
     }

@@ -70,6 +70,10 @@ final class SongLiveListenController: NSObject, ObservableObject {
     // The Breakdown options menu's "Pause After Each Line": continuous playback parks at the
     // start of the next line instead of running into it, and the next play resumes there.
     var pauseAfterEachLine = false
+    // The Breakdown options menu's "Walk Through Words": asked live, as each step is about to run,
+    // whether a line's word steps should play. False skips them, so the option (and a card
+    // expanded or collapsed mid-song, under "If Expanded") takes effect on the very next word.
+    var walksWordsOfLine: (Int) -> Bool = { _ in true }
 
     private let synthesizer = AVSpeechSynthesizer()
     private var clipPlayer: AVAudioPlayer?
@@ -287,6 +291,16 @@ final class SongLiveListenController: NSObject, ObservableObject {
         }
     }
 
+    // Whether a step belongs to a word in the line's split view (its snippet, reading or
+    // definition) rather than to the line itself, its gist or the pattern note.
+    private func isWordStep(_ step: SongListenStep) -> Bool {
+        switch step {
+        case .wordClip: return true
+        case .clip: return false
+        case .speech(let segment): return segment.kind == .wordSurface || segment.kind == .wordDefinition
+        }
+    }
+
     // The segment to publish as `currentSegment` for a step. A clip has no speech segment of its
     // own, so it gets a synthetic one carrying what it plays — the line's text for a line clip
     // (the Japanese row highlights), the word's surface for a word clip (that word's row
@@ -323,6 +337,12 @@ final class SongLiveListenController: NSObject, ObservableObject {
                 parkAtLineStart(index)
                 return
             }
+        }
+
+        if isWordStep(steps[index]), walksWordsOfLine(stepLineIndex(steps[index])) == false {
+            // Skip the whole word (snippet repeats, reading, definition) with no gap between.
+            advance(startingAt: index + 1, continuing: continuing)
+            return
         }
 
         currentStepIndex = index
