@@ -11,22 +11,6 @@ final class AudioPlaybackUIState {
     // timings state to keep in sync.
     var audioAttachmentCues: [SubtitleCue] = []
     var audioAttachmentHighlightRanges: [NSRange?] = []
-    // The correction pass after an alignment (ReadView+Corrections): the offer alert and how many
-    // spots it counts, whether the Read tab is in correction mode (squiggles open the editor, not
-    // the lookup), the squiggle being edited and its text field, and the session Cancel restores.
-    var isShowingCorrectionOffer = false
-    var correctionOfferCount = 0
-    var isCorrecting = false
-    var correctionTarget: StruggleTarget?
-    var correctionText = ""
-    var isShowingCorrectionEditor = false
-    var correctionSession: AlignmentCorrectionSession?
-    // Note ranges the aligner struggled to hear, squiggled in the Read tab (AlignmentStruggleSpans)
-    // only during a correction pass; the saved confidences stay on the cues but draw nothing otherwise.
-    var strugglingRanges: [NSRange] {
-        guard isCorrecting else { return [] }
-        return AlignmentStruggleSpans.ranges(cues: audioAttachmentCues, highlightRanges: audioAttachmentHighlightRanges)
-    }
     var playbackHighlightRangeOverride: NSRange?
     // Clears jumpToPendingScrollSurfaceIfReady's playbackHighlightRangeOverride borrow a few
     // seconds after landing, so a "jump to this word" highlight fades rather than sitting
@@ -35,6 +19,9 @@ final class AudioPlaybackUIState {
     var activePlaybackCueIndex: Int? = nil
     var activeAudioAttachmentID: UUID? = nil
     var isShowingLyricsView = false
+    // The "not confident in this alignment" popup (AlignmentConfidence) and the percent it shows.
+    var isShowingLowConfidenceNotice = false
+    var lowConfidencePercent = 0
     // The full-screen word-by-word view (WordFocusView), opened from the lyrics card's top bar.
     var isShowingWordFocus = false
     // Mirrors "playing, or paused mid-track" from the controller. ReadView can't observe the

@@ -60,12 +60,6 @@ final class KiokuCoreTextView: UIView {
         didSet { setNeedsDisplay() }
     }
 
-    // Ranges (UTF-16) drawn with a red squiggly underline: text the forced aligner couldn't match to
-    // the audio (AlignmentStruggleSpans). Drawn over the highlight bands, under the glyphs.
-    var squiggleRanges: [NSRange] = [] {
-        didSet { setNeedsDisplay() }
-    }
-
     // Per-kanji-run ruby (furigana) to draw above the base text. Each entry is the kanji
     // range in UTF-16 and the reading string to render centered above that range. The view
     // draws ruby manually in `draw(_:)` — CoreText's CTRubyAnnotation is intentionally not
@@ -198,7 +192,6 @@ final class KiokuCoreTextView: UIView {
         // Draw highlight bands BEFORE flipping into CT coordinates — bands live in UIKit
         // top-down space, which lets us use the engine's rects directly.
         drawHighlightBands(in: context, dirtyRect: rect)
-        drawSquiggles(in: context, dirtyRect: rect)
 
         // Flip into CoreText's bottom-up coordinate space once at the view boundary so all
         // layout math elsewhere can stay in UIKit's top-down convention.
@@ -465,34 +458,6 @@ final class KiokuCoreTextView: UIView {
                 context.fillPath()
             }
         }
-    }
-
-    // MARK: - Squiggles
-
-    // Draws a red zigzag along the bottom of each squiggle range's line rects, in UIKit coordinates
-    // from the engine's rects like the bands, so it follows wrapping and furigana spacing.
-    private func drawSquiggles(in context: CGContext, dirtyRect: CGRect) {
-        guard squiggleRanges.isEmpty == false else { return }
-        let step: CGFloat = 3, amplitude: CGFloat = 1.5
-        context.saveGState()
-        context.setStrokeColor(UIColor.systemRed.cgColor)
-        context.setLineWidth(1)
-        for range in squiggleRanges where range.location != NSNotFound && range.length > 0 {
-            for rect in layoutEngine.boundingRects(forCharacterRange: range) where rect.intersects(dirtyRect) {
-                let baseY = rect.maxY - amplitude
-                let path = UIBezierPath()
-                path.move(to: CGPoint(x: rect.minX, y: baseY))
-                var x = rect.minX, up = true
-                while x < rect.maxX {
-                    x = min(x + step, rect.maxX)
-                    path.addLine(to: CGPoint(x: x, y: baseY + (up ? -amplitude : amplitude)))
-                    up.toggle()
-                }
-                context.addPath(path.cgPath)
-                context.strokePath()
-            }
-        }
-        context.restoreGState()
     }
 
     // MARK: - Tap handling

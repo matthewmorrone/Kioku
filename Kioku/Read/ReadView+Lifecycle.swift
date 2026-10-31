@@ -14,20 +14,12 @@ extension ReadView {
             } message: {
                 Text(subtitleImport.audioTranscriptionErrorMessage)
             }
-            .alert("Make Corrections?", isPresented: $audioPlayback.isShowingCorrectionOffer) {
-                Button("Make Corrections") { beginCorrections() }
-                Button("Not Now", role: .cancel) {}
+            .alert("Alignment May Be Off", isPresented: $audioPlayback.isShowingLowConfidenceNotice) {
+                Button("OK", role: .cancel) {}
+                Button("Don't Show Again for This Song") { AlignmentConfidence.dismiss(noteID: document.activeNoteID) }
             } message: {
-                Text("The aligner struggled with \(audioPlayback.correctionOfferCount) spot(s). Fix the lyrics there and re-align?")
+                Text("The aligner is only \(audioPlayback.lowConfidencePercent)% confident in this alignment. The lyrics may differ from what is sung, or the vocals may be unclear.")
             }
-            .alert("Correct This Word", isPresented: $audioPlayback.isShowingCorrectionEditor) {
-                TextField("What is sung", text: $audioPlayback.correctionText)
-                Button("Apply") { applyCorrection() }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text(audioPlayback.correctionTarget?.detail ?? "")
-            }
-            .safeAreaInset(edge: .bottom) { correctionBar }
             .alert("Alignment Failed", isPresented: alignmentErrorPresented) {
                 Button("OK", role: .cancel) {
                     lyricAlignment.errorMessage = ""

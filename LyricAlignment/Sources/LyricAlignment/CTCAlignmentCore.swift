@@ -102,8 +102,7 @@ enum CTCAlignmentCore {
             lines: lines, romanization: romanization, spanTokenRanges: spanTokenRanges,
             tokenSpans: spans, onsetOf: { onsets[$0] }, frameSec: matrix.frameSec, durationSec: durationSec,
             regions: regions,
-            confidenceOf: { confidence(of: $0, tokens: tokens, spans: spans, matrix: matrix) },
-            evidenceOf: { evidence(of: $0, tokens: tokens, spans: spans, matrix: matrix) }
+            confidenceOf: { confidence(of: $0, tokens: tokens, spans: spans, matrix: matrix) }
         )
         let spread = RepeatedLineSpreader.spread(lines: timed.lines, lineTokens: timed.lineTokens, regions: regions, durationSec: durationSec)
         let moved = zip(timed.lines, spread.lines).filter { $0.start != $1.start }.count
@@ -127,27 +126,6 @@ enum CTCAlignmentCore {
             total += peak
         }
         return total / Float(range.count)
-    }
-
-    // What a span asked for and what the model heard there, for the squiggle popup: the span's
-    // phoneme string, and the model's best class on each frame from just before its first token to
-    // just after its last, repeats collapsed and blanks dropped (a greedy CTC decode of that window).
-    // Compared side by side they show which sounds the audio didn't back. Nil for a span with no tokens.
-    static func evidence(of range: Range<Int>, tokens: [Int], spans: [(start: Int, end: Int)], matrix: CTCEmissions.Matrix) -> (expected: String, heard: String)? {
-        guard let first = range.first, let last = range.last else { return nil }
-        let margin = 3
-        let f0 = max(0, spans[first].start - margin)
-        let f1 = min(matrix.frames, spans[last].end + margin)
-        let C = CTCEmissions.classes
-        var heard = ""
-        var previous = CTCEmissions.blank
-        for f in f0..<max(f0, f1) {
-            var best = 0
-            for c in 1..<C where matrix.values[f * C + c] > matrix.values[f * C + best] { best = c }
-            if best != previous && best != CTCEmissions.blank { heard.append(CTCEmissions.labels[best]) }
-            previous = best
-        }
-        return (String(range.map { CTCEmissions.labels[tokens[$0]] }), heard)
     }
 
     // A letter probability this high on some frame, in the stem or the raw mix, means the model
@@ -227,8 +205,7 @@ enum CTCAlignmentCore {
     private static func lineTimings(
         lines: [String], romanization: [[RomanizedSpan]], spanTokenRanges: [[Range<Int>]],
         tokenSpans: [(start: Int, end: Int)], onsetOf: (Int) -> Int, frameSec: Double, durationSec: Double,
-        regions: [(start: Double, end: Double)], confidenceOf: (Range<Int>) -> Float?,
-        evidenceOf: (Range<Int>) -> (expected: String, heard: String)?
+        regions: [(start: Double, end: Double)], confidenceOf: (Range<Int>) -> Float?
     ) -> (lines: [AlignedLine], lineTokens: [[AlignedToken]]) {
         let sustainedVowelGap = 4.0
         let bridgeMargin = 0.05
@@ -276,8 +253,7 @@ enum CTCAlignmentCore {
                 if t < lastStart + 0.1 { t = min(lastStart + 0.1, end) }
                 lastStart = t
                 tokens.append(AlignedToken(start: t, charOffsetUTF16: span.charOffsetUTF16, charLengthUTF16: span.charLengthUTF16,
-                                          confidence: confidenceOf(range),
-                                          expected: evidenceOf(range)?.expected, heard: evidenceOf(range)?.heard))
+                                          confidence: confidenceOf(range)))
             }
             lineTokens.append(tokens)
         }
