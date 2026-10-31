@@ -2,6 +2,7 @@ import XCTest
 @testable import Kioku
 
 // Pins the whole-song score (mean of scored checkpoints), the warning gate, and the per-song dismissal.
+@MainActor
 final class AlignmentConfidenceTests: XCTestCase {
     private func cue(_ confidences: [Float?]) -> SubtitleCue {
         let checkpoints = confidences.enumerated().map {
