@@ -379,6 +379,10 @@ extension ReadView {
                             // A squiggled word is one the aligner couldn't match to the audio: say so
                             // instead of opening its lookup.
                             if let location, audioPlayback.strugglingRanges.contains(where: { NSLocationInRange(location, $0) }) {
+                                audioPlayback.struggleNoticeDetail = AlignmentStruggleSpans.evidence(
+                                    at: location, cues: audioPlayback.audioAttachmentCues,
+                                    highlightRanges: audioPlayback.audioAttachmentHighlightRanges
+                                ).joined(separator: "\n\n")
                                 audioPlayback.isShowingStruggleNotice = true
                                 return
                             }

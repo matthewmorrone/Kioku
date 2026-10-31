@@ -59,11 +59,18 @@ public struct AlignedToken {
     /// the token's letters of the highest probability the model gave that letter on its frames.
     /// Nil when the token was not scored (spread copies of repeated lines keep their source's).
     public let confidence: Float?
-    public init(start: Double, charOffsetUTF16: Int, charLengthUTF16: Int, confidence: Float? = nil) {
+    /// Debugging evidence behind `confidence`: the phoneme string the lyric asked for on this token's
+    /// frames and the one the model's per-frame best guess actually spelled there. Nil when not scored.
+    public let expected: String?
+    public let heard: String?
+    public init(start: Double, charOffsetUTF16: Int, charLengthUTF16: Int, confidence: Float? = nil,
+                expected: String? = nil, heard: String? = nil) {
         self.start = start
         self.charOffsetUTF16 = charOffsetUTF16
         self.charLengthUTF16 = charLengthUTF16
         self.confidence = confidence
+        self.expected = expected
+        self.heard = heard
     }
 }
 

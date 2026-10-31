@@ -11,6 +11,10 @@ nonisolated struct CueCharTiming: Codable, Equatable {
     // (AlignedToken.confidence); nil for cues from SRT import or transcription, and for notes
     // aligned before it was kept. Low values draw a squiggle under the text (AlignmentStruggleSpans).
     var confidence: Float? = nil
+    // Debugging evidence behind `confidence` (AlignedToken.expected / .heard): the phonemes the lyric
+    // asked for here and what the model's best guess per frame spelled instead. Shown in the squiggle popup.
+    var expected: String? = nil
+    var heard: String? = nil
 }
 
 // Transient index-keyed binder output: all checkpoints for an attachment keyed by SubtitleCue.index

@@ -13,6 +13,8 @@ final class AudioPlaybackUIState {
     var audioAttachmentHighlightRanges: [NSRange?] = []
     // Set when a tap lands on a squiggled (low-confidence) range; shows the "aligner is struggling" notice.
     var isShowingStruggleNotice = false
+    // What the aligner heard at the tapped squiggle (AlignmentStruggleSpans.evidence), shown in the notice.
+    var struggleNoticeDetail = ""
     // Note ranges the aligner struggled to hear, squiggled in the Read tab (AlignmentStruggleSpans).
     var strugglingRanges: [NSRange] {
         AlignmentStruggleSpans.ranges(cues: audioAttachmentCues, highlightRanges: audioAttachmentHighlightRanges)

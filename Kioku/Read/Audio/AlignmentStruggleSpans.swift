@@ -9,6 +9,25 @@ enum AlignmentStruggleSpans {
     // point to tune on real songs.
     static let threshold: Float = 0.25
 
+    // What the aligner made of the flagged checkpoint(s) under `location`, for the squiggle popup while
+    // debugging: confidence, the phonemes the lyric asked for, and the ones the model's best guess
+    // per frame spelled there. One line per checkpoint; empty when nothing flagged covers the point.
+    static func evidence(at location: Int, cues: [SubtitleCue], highlightRanges: [NSRange?], threshold: Float = threshold) -> [String] {
+        var lines: [String] = []
+        for (index, cue) in cues.enumerated() {
+            guard index < highlightRanges.count, let cueRange = highlightRanges[index] else { continue }
+            for checkpoint in cue.checkpoints {
+                guard let confidence = checkpoint.confidence, confidence < threshold else { continue }
+                let start = cueRange.location + checkpoint.charOffsetInCue
+                let end = min(start + checkpoint.charLength, NSMaxRange(cueRange))
+                guard location >= start, location < end else { continue }
+                let text = (cue.text as NSString).substring(with: NSRange(location: checkpoint.charOffsetInCue, length: min(checkpoint.charLength, (cue.text as NSString).length - checkpoint.charOffsetInCue)))
+                lines.append("\(text)  conf \(String(format: "%.2f", confidence))\nexpected: \(checkpoint.expected ?? "?")\nheard: \(checkpoint.heard?.isEmpty == false ? checkpoint.heard! : "(nothing)")")
+            }
+        }
+        return lines
+    }
+
     // Note ranges (UTF-16) of low-confidence checkpoints, in note order with touching ranges merged.
     // `highlightRanges[i]` is cue i's range in the note (nil when the cue wasn't found there); a
     // checkpoint's offset is relative to its cue's text, so it lands at the cue's start plus that
