@@ -410,6 +410,7 @@ struct SettingsView: View {
         historyStore.replaceAll(with: [])
         customWordStore.resetToDefaults()
         notesStore.replaceAll(with: [])
+        notesStore.replaceFolders(with: [])
         songBreakdownStore.clearAll()
         NotesAudioStore.shared.deleteAllStoredFiles()
         CrashLogger.shared.clearCrashFiles()

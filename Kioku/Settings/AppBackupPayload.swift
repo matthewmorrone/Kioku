@@ -28,6 +28,9 @@ nonisolated struct AppBackupPayload: Codable {
     // Breakdowns, saved kanji, sing history, caches and settings (added in v5). nil in older
     // backups, which leave those areas as they are on restore.
     var extras: AppBackupExtras?
+    // Note folders; each note's `folderID` points at one. nil in backups made before folders
+    // existed, which leave the folder list as it is on restore.
+    var noteFolders: [NoteFolder]?
 
     // Creates a full backup payload from the current in-memory stores.
     init(
@@ -46,7 +49,8 @@ nonisolated struct AppBackupPayload: Codable {
         lifetimeAgain: Int,
         audioAttachments: [AudioAttachmentBackup] = [],
         customWords: CustomWordStoreState? = nil,
-        extras: AppBackupExtras? = nil
+        extras: AppBackupExtras? = nil,
+        noteFolders: [NoteFolder]? = nil
     ) {
         self.version = version
         self.exportedAt = exportedAt
@@ -64,12 +68,13 @@ nonisolated struct AppBackupPayload: Codable {
         self.audioAttachments = audioAttachments
         self.customWords = customWords
         self.extras = extras
+        self.noteFolders = noteFolders
     }
 
     private enum CodingKeys: String, CodingKey {
         case version, exportedAt, notes, words, wordLists, history
         case reviewStats, markedWrong, learned, notLearned, mastered, lifetimeCorrect, lifetimeAgain
-        case audioAttachments, customWords, extras
+        case audioAttachments, customWords, extras, noteFolders
     }
 
     // Custom decoder so version-1 backups (no audioAttachments key) decode cleanly.
@@ -91,5 +96,6 @@ nonisolated struct AppBackupPayload: Codable {
         audioAttachments = try c.decodeIfPresent([AudioAttachmentBackup].self, forKey: .audioAttachments) ?? []
         customWords = try c.decodeIfPresent(CustomWordStoreState.self, forKey: .customWords)
         extras = try c.decodeIfPresent(AppBackupExtras.self, forKey: .extras)
+        noteFolders = try c.decodeIfPresent([NoteFolder].self, forKey: .noteFolders)
     }
 }
