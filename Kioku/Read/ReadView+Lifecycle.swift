@@ -14,16 +14,6 @@ extension ReadView {
             } message: {
                 Text(subtitleImport.audioTranscriptionErrorMessage)
             }
-            .sheet(isPresented: $audioPlayback.isShowingLowConfidenceNotice, onDismiss: {
-                // Swipe-down counts as OK: the checkbox is honoured however the sheet closes.
-                if audioPlayback.dontShowLowConfidenceAgain { AlignmentConfidence.dismiss(noteID: document.activeNoteID) }
-            }) {
-                LowConfidenceNoticeView(
-                    percent: audioPlayback.lowConfidencePercent,
-                    dontShowAgain: $audioPlayback.dontShowLowConfidenceAgain,
-                    onOK: { audioPlayback.isShowingLowConfidenceNotice = false }
-                )
-            }
             .alert("Alignment Failed", isPresented: alignmentErrorPresented) {
                 Button("OK", role: .cancel) {
                     lyricAlignment.errorMessage = ""

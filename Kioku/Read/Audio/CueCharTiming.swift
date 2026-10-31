@@ -7,10 +7,6 @@ nonisolated struct CueCharTiming: Codable, Equatable {
     var timeMs: Int
     var charOffsetInCue: Int
     var charLength: Int
-    // The aligner's 0...1 confidence that the audio sounds like this checkpoint's text
-    // (AlignedToken.confidence); nil for cues from SRT import or transcription, and for notes
-    // aligned before it was kept. Their mean drives the low-confidence popup (AlignmentConfidence).
-    var confidence: Float? = nil
 }
 
 // Transient index-keyed binder output: all checkpoints for an attachment keyed by SubtitleCue.index
