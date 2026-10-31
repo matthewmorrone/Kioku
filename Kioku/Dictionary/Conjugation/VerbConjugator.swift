@@ -98,7 +98,7 @@ private extension VerbConjugator {
     static func volitionalGroup(volitional: String, negative: String) -> ConjugationGroup {
         ConjugationGroup(name: "Volitional", rows: [
             ConjugationRow(label: "Volitional",     surface: volitional),
-            ConjugationRow(label: "Negative (まい)", surface: negative),
+            ConjugationRow(label: "Negative (まい)", surface: negative, isObscure: true),
         ])
     }
 
@@ -110,8 +110,8 @@ private extension VerbConjugator {
             ConjugationRow(label: "Negative",                 surface: negative + "だろう"),
             ConjugationRow(label: "Past",                     surface: past + "だろう"),
             ConjugationRow(label: "Negative past",            surface: negativePast + "だろう"),
-            ConjugationRow(label: "Past (literary)",          surface: past + "ろう"),
-            ConjugationRow(label: "Negative past (literary)", surface: negativePast + "ろう"),
+            ConjugationRow(label: "Past (literary)",          surface: past + "ろう", isObscure: true),
+            ConjugationRow(label: "Negative past (literary)", surface: negativePast + "ろう", isObscure: true),
         ])
     }
 
@@ -139,11 +139,11 @@ private extension VerbConjugator {
     // ぬ, and the contracted ん. ある has no ん row (あらん reads as the classical volitional あらむ).
     static func otherNegativesGroup(negativeStem: String, hasContraction: Bool = true) -> ConjugationGroup {
         var rows = [
-            ConjugationRow(label: "Literary (ず)", surface: negativeStem + "ず"),
-            ConjugationRow(label: "Literary (ぬ)", surface: negativeStem + "ぬ"),
+            ConjugationRow(label: "Literary (ず)", surface: negativeStem + "ず", isObscure: true),
+            ConjugationRow(label: "Literary (ぬ)", surface: negativeStem + "ぬ", isObscure: true),
         ]
         if hasContraction {
-            rows.append(ConjugationRow(label: "Contracted (ん)", surface: negativeStem + "ん"))
+            rows.append(ConjugationRow(label: "Contracted (ん)", surface: negativeStem + "ん", isObscure: true))
         }
         return ConjugationGroup(name: "Other negatives", rows: rows)
     }

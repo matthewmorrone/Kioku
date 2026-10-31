@@ -7,6 +7,8 @@ struct ConjugationRow: Hashable, Sendable {
     let label: String
     // The conjugated Japanese surface form.
     let surface: String
+    // Literary or archaic forms (ず, ぬ, ん, まい, たろう) that the sheet hides until asked for.
+    var isObscure: Bool = false
 }
 
 // One paradigm card shown in ConjugationSheetView — e.g. "Plain" with rows for
