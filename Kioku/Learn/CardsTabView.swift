@@ -219,8 +219,7 @@ private struct LearnPageDotsOverlay: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(.thinMaterial, in: Capsule())
-        .overlay(Capsule().stroke(Color(.separator), lineWidth: 1))
+        .floatingGlass(in: Capsule(), hairline: 1)
         .opacity(0.9)
     }
 }
