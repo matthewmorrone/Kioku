@@ -50,6 +50,7 @@ struct FlashcardCard: View {
     let onAgain: () -> Void
 
     @EnvironmentObject private var notesStore: NotesStore
+    @EnvironmentObject private var wordsStore: WordsStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     // Opt-in Japanese theme: when off, every styled element below falls back to its original look.
     @AppStorage(Theme.storageKey) private var japaneseTheme = false
@@ -304,7 +305,27 @@ struct FlashcardCard: View {
     }
 
     private var frontFace: some View { faceView(faces.front) }
-    private var backFace: some View { faceView(faces.back) }
+    private var backFace: some View {
+        VStack(spacing: 8) {
+            faceView(faces.back)
+            personalNoteLine
+        }
+    }
+
+    // The user's own note for this word (mnemonic, context), shown under the answer. Read from the
+    // live store, not the session's copy of the word, so an edit made from the detail sheet
+    // mid-session shows on the next flip.
+    @ViewBuilder
+    private var personalNoteLine: some View {
+        let note = wordsStore.words.first { $0.canonicalEntryID == word.canonicalEntryID }?.personalNote ?? word.personalNote
+        if let note, note.isEmpty == false {
+            Label(note, systemImage: "note.text")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(4)
+        }
+    }
 
     // The Japanese string for one script, falling back to the encountered surface when the
     // dictionary kanji headword / reading isn't available. `.meaning` never reaches here — `face`
