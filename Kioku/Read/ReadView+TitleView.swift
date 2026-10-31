@@ -57,13 +57,16 @@ extension ReadView {
             .animation(.spring(response: 0.4, dampingFraction: 0.95), value: isShowingLyricsMiniPlayer)
         }
         .padding(.vertical, 8)
-        .alert("Edit Title", isPresented: $titleEdit.isShowingTitleAlert) {
-            TextField("Title", text: $titleEdit.titleDraft)
-            Button("Cancel", role: .cancel) {}
-            Button("Save") {
-                titleEdit.customTitle = titleEdit.titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                flushPendingNotePersistenceIfNeeded()
-            }
+        .sheet(isPresented: $titleEdit.isShowingTitleAlert) {
+            NoteTitleEditSheet(
+                title: $titleEdit.titleDraft,
+                onSave: {
+                    titleEdit.customTitle = titleEdit.titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    flushPendingNotePersistenceIfNeeded()
+                    titleEdit.isShowingTitleAlert = false
+                },
+                onCancel: { titleEdit.isShowingTitleAlert = false }
+            )
         }
     }
 }
