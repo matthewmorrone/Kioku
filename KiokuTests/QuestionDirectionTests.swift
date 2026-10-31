@@ -4,6 +4,7 @@ import XCTest
 // Characterizes QuestionDirection: the StudyField prompt/answer mapping every activity builds its
 // questions from, the tier split that defines the Learned and Mastered bars, and the kanji
 // applicability rule that keeps a kana-only word from being held to directions it can't be asked.
+@MainActor
 final class QuestionDirectionTests: XCTestCase {
 
     // MARK: - init(prompt:answer:)
