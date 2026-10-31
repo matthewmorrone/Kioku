@@ -3,7 +3,7 @@ import SwiftUI
 // Live dictionary content for one flashcard, fetched asynchronously from DictionaryStore.
 // `meanings` carries one entry per selected sense so the back face can render them stacked;
 // it falls back to the entry's first sense when the saved word has no explicit selection.
-private struct FlashcardLiveContent {
+private struct FlashcardLiveContent: Equatable {
     let surface: String
     let kanji: String?
     let kana: String?
@@ -54,6 +54,9 @@ struct FlashcardCard: View {
     // Opt-in Japanese theme: when off, every styled element below falls back to its original look.
     @AppStorage(Theme.storageKey) private var japaneseTheme = false
 
+    // Speak each card as its Japanese comes into view (toggled in the session header).
+    @AppStorage(FlashcardSpeaker.autoPlayKey) private var autoSpeak = false
+    @State private var lastAutoSpoken: String?
     @State private var liveContent: FlashcardLiveContent?
     @State private var gestureMode: FlashcardGestureMode = .undecided
     @State private var flipAngleDegrees: Double = 0
@@ -80,6 +83,9 @@ struct FlashcardCard: View {
                 y: isTop ? (4 + 10 * dragProgress) : 4
             )
             .overlay(actionOverlays)
+            .overlay(alignment: .bottomTrailing) {
+                if isTop { speakButton }
+            }
             .zIndex(isTop ? 10 : 0)
             .allowsHitTesting(isTop)
             // simultaneousGesture, not gesture: an exclusive DragGesture here can hold an
@@ -103,6 +109,54 @@ struct FlashcardCard: View {
             .task(id: liveContentTaskID) {
                 liveContent = await resolveLiveContent()
             }
+            .onChange(of: autoSpeakTrigger) { _, _ in autoSpeakIfNeeded() }
+    }
+
+    // Changes whenever the card's speak-worthiness might have: it reached the top, flipped, or its
+    // content finished loading.
+    private var autoSpeakTrigger: String {
+        "\(isTop)-\(showBack)-\(liveContent != nil)"
+    }
+
+    // What the speak button and auto-play read aloud for this card.
+    private var speechText: String {
+        FlashcardSpeaker.speechText(kanji: liveContent?.kanji, kana: liveContent?.kana, surface: word.surface)
+    }
+
+    // The speaker button in the card's corner; speaks the word whichever face is showing.
+    private var speakButton: some View {
+        Button {
+            FlashcardSpeaker.shared.speak(speechText)
+        } label: {
+            Image(systemName: "speaker.wave.2.fill")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .padding(14)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Speak word")
+    }
+
+    // Speaks the word on its own when auto-play is on and the Japanese has just come into view,
+    // once per card face so a reload of the content doesn't repeat it.
+    private func autoSpeakIfNeeded() {
+        guard autoSpeak else { return }
+        let frontHasJapanese: Bool
+        if case .english = faces.front { frontHasJapanese = false } else { frontHasJapanese = true }
+        let backHasJapanese: Bool
+        if case .english = faces.back { backHasJapanese = false } else { backHasJapanese = true }
+        guard FlashcardSpeaker.shouldAutoSpeak(
+            isTop: isTop,
+            hasContent: liveContent != nil,
+            showBack: showBack,
+            frontHasJapanese: frontHasJapanese,
+            backHasJapanese: backHasJapanese
+        ) else { return }
+        let key = "\(word.canonicalEntryID)-\(showBack)"
+        guard lastAutoSpoken != key else { return }
+        lastAutoSpoken = key
+        FlashcardSpeaker.shared.speak(speechText)
     }
 
     // Stable identity for the task that resolves liveContent — entry id followed by every
