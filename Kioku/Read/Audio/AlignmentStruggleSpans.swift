@@ -22,7 +22,12 @@ enum AlignmentStruggleSpans {
                 let end = min(start + checkpoint.charLength, NSMaxRange(cueRange))
                 guard location >= start, location < end else { continue }
                 let text = (cue.text as NSString).substring(with: NSRange(location: checkpoint.charOffsetInCue, length: min(checkpoint.charLength, (cue.text as NSString).length - checkpoint.charOffsetInCue)))
-                lines.append("\(text)  conf \(String(format: "%.2f", confidence))\nexpected: \(checkpoint.expected ?? "?")\nheard: \(checkpoint.heard?.isEmpty == false ? checkpoint.heard! : "(nothing)")")
+                let header = "\(text)  conf \(String(format: "%.2f", confidence))"
+                guard let expected = checkpoint.expected, let heard = checkpoint.heard else {
+                    lines.append("\(header)\n(no evidence saved: re-align this song)")
+                    continue
+                }
+                lines.append("\(header)\nexpected: \(expected)\nheard: \(heard.isEmpty ? "(nothing)" : heard)")
             }
         }
         return lines
