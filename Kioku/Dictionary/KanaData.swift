@@ -13,6 +13,11 @@ nonisolated enum KanaData {
     // Set form of `defaultParticles` for membership checks.
     static let particleSet: Set<String> = Set(defaultParticles)
 
+    // Words the dictionary tags as particles (JMdict "prt") or a breakdown tags `[particle]`, but
+    // that carry real meaning, so the Particles filter must not hide them. Add a surface here to
+    // keep it visible: まで "until", ほど "extent".
+    static let nonParticleWords: Set<String> = ["まで", "ほど"]
+
     // Kana variants normalized during furigana alignment so equivalent spellings match.
     // Maps archaic/alternate forms to their modern equivalents (e.g. づ→ず, ヴ→ブ).
     //
