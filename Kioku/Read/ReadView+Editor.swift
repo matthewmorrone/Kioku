@@ -377,13 +377,12 @@ extension ReadView {
                             // view that owns the rendered text. UIScrollView is a superclass of
                             // UITextView, so handleReadModeSegmentTap accepts either path.
                             // A squiggled word is one the aligner couldn't match to the audio: say so
-                            // instead of opening its lookup.
-                            if let location, audioPlayback.strugglingRanges.contains(where: { NSLocationInRange(location, $0) }) {
-                                audioPlayback.struggleNoticeDetail = AlignmentStruggleSpans.evidence(
-                                    at: location, cues: audioPlayback.audioAttachmentCues,
-                                    highlightRanges: audioPlayback.audioAttachmentHighlightRanges
-                                ).joined(separator: "\n\n")
-                                audioPlayback.isShowingStruggleNotice = true
+                            // (or, in a correction pass, offer to retype it) instead of opening its lookup.
+                            if let location, let target = AlignmentStruggleSpans.target(
+                                at: location, cues: audioPlayback.audioAttachmentCues,
+                                highlightRanges: audioPlayback.audioAttachmentHighlightRanges
+                            ) {
+                                openStruggleTarget(target)
                                 return
                             }
                             handleReadModeSegmentTap(location, tappedSegmentRect: rect, sourceView: scrollView)

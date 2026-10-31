@@ -9,28 +9,29 @@ enum AlignmentStruggleSpans {
     // point to tune on real songs.
     static let threshold: Float = 0.25
 
-    // What the aligner made of the flagged checkpoint(s) under `location`, for the squiggle popup while
-    // debugging: confidence, the phonemes the lyric asked for, and the ones the model's best guess
-    // per frame spelled there. One line per checkpoint; empty when nothing flagged covers the point.
-    static func evidence(at location: Int, cues: [SubtitleCue], highlightRanges: [NSRange?], threshold: Float = threshold) -> [String] {
-        var lines: [String] = []
+    // The flagged checkpoint under `location`, for the squiggle popup and the correction editor: its
+    // note range and text, plus confidence, the phonemes the lyric asked for and the ones the model's
+    // best guess per frame spelled there. Nil when no flagged checkpoint covers the point.
+    static func target(at location: Int, cues: [SubtitleCue], highlightRanges: [NSRange?], threshold: Float = threshold) -> StruggleTarget? {
         for (index, cue) in cues.enumerated() {
             guard index < highlightRanges.count, let cueRange = highlightRanges[index] else { continue }
+            let cueText = cue.text as NSString
             for checkpoint in cue.checkpoints {
                 guard let confidence = checkpoint.confidence, confidence < threshold else { continue }
                 let start = cueRange.location + checkpoint.charOffsetInCue
                 let end = min(start + checkpoint.charLength, NSMaxRange(cueRange))
-                guard location >= start, location < end else { continue }
-                let text = (cue.text as NSString).substring(with: NSRange(location: checkpoint.charOffsetInCue, length: min(checkpoint.charLength, (cue.text as NSString).length - checkpoint.charOffsetInCue)))
+                guard location >= start, location < end, checkpoint.charOffsetInCue + (end - start) <= cueText.length else { continue }
+                let text = cueText.substring(with: NSRange(location: checkpoint.charOffsetInCue, length: end - start))
                 let header = "\(text)  conf \(String(format: "%.2f", confidence))"
                 guard let expected = checkpoint.expected, let heard = checkpoint.heard else {
-                    lines.append("\(header)\n(no evidence saved: re-align this song)")
-                    continue
+                    return StruggleTarget(range: NSRange(location: start, length: end - start), text: text,
+                                          detail: "\(header)\n(no evidence saved: re-align this song)")
                 }
-                lines.append("\(header)\nexpected: \(expected)\nheard: \(heard.isEmpty ? "(nothing)" : heard)")
+                return StruggleTarget(range: NSRange(location: start, length: end - start), text: text,
+                                      detail: "\(header)\nexpected: \(expected)\nheard: \(heard.isEmpty ? "(nothing)" : heard)")
             }
         }
-        return lines
+        return nil
     }
 
     // Note ranges (UTF-16) of low-confidence checkpoints, in note order with touching ranges merged.

@@ -15,6 +15,16 @@ final class AudioPlaybackUIState {
     var isShowingStruggleNotice = false
     // What the aligner heard at the tapped squiggle (AlignmentStruggleSpans.evidence), shown in the notice.
     var struggleNoticeDetail = ""
+    // The correction pass after an alignment (ReadView+Corrections): the offer alert and how many
+    // spots it counts, whether the Read tab is in correction mode (squiggles open the editor, not
+    // the lookup), the squiggle being edited and its text field, and the session Cancel restores.
+    var isShowingCorrectionOffer = false
+    var correctionOfferCount = 0
+    var isCorrecting = false
+    var correctionTarget: StruggleTarget?
+    var correctionText = ""
+    var isShowingCorrectionEditor = false
+    var correctionSession: AlignmentCorrectionSession?
     // Note ranges the aligner struggled to hear, squiggled in the Read tab (AlignmentStruggleSpans).
     var strugglingRanges: [NSRange] {
         AlignmentStruggleSpans.ranges(cues: audioAttachmentCues, highlightRanges: audioAttachmentHighlightRanges)

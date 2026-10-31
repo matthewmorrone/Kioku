@@ -19,6 +19,20 @@ extension ReadView {
             } message: {
                 Text("The forced aligner couldn't match this text to the audio. The lyric here may differ from what is sung, or the vocals may be unclear.\n\n\(audioPlayback.struggleNoticeDetail)")
             }
+            .alert("Make Corrections?", isPresented: $audioPlayback.isShowingCorrectionOffer) {
+                Button("Make Corrections") { beginCorrections() }
+                Button("Not Now", role: .cancel) {}
+            } message: {
+                Text("The aligner struggled with \(audioPlayback.correctionOfferCount) spot(s). Fix the lyrics there and re-align?")
+            }
+            .alert("Correct This Word", isPresented: $audioPlayback.isShowingCorrectionEditor) {
+                TextField("What is sung", text: $audioPlayback.correctionText)
+                Button("Apply") { applyCorrection() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(audioPlayback.correctionTarget?.detail ?? "")
+            }
+            .safeAreaInset(edge: .bottom) { correctionBar }
             .alert("Alignment Failed", isPresented: alignmentErrorPresented) {
                 Button("OK", role: .cancel) {
                     lyricAlignment.errorMessage = ""

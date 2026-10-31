@@ -173,6 +173,7 @@ extension ReadView {
             // position).
             audioPlayback.audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: cuesWithMarkers, in: document.text)
             audioPlayback.audioController.updateCues(cuesWithMarkers)
+            offerCorrectionsIfNeeded()
         } catch is CancellationError {
             // User navigated away / cancelled mid-run; nothing to surface.
         } catch {

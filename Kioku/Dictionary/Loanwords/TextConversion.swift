@@ -20,6 +20,8 @@ enum TextConversionSource: Equatable {
     case width
     // A typo the song's Breakdown flagged (SongLineFix).
     case breakdown
+    // A word the aligner struggled with, retyped by the user in the correction pass.
+    case alignment
 }
 
 // A katakana-only dictionary form whose gloss is the English word being converted.
