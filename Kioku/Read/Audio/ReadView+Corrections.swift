@@ -8,7 +8,9 @@ extension ReadView {
     // Offers the correction pass when the fresh alignment left squiggles.
     @MainActor
     func offerCorrectionsIfNeeded() {
-        let count = audioPlayback.strugglingRanges.count
+        let count = AlignmentStruggleSpans.ranges(
+            cues: audioPlayback.audioAttachmentCues, highlightRanges: audioPlayback.audioAttachmentHighlightRanges
+        ).count
         guard count > 0, audioPlayback.isCorrecting == false else { return }
         audioPlayback.correctionOfferCount = count
         audioPlayback.isShowingCorrectionOffer = true
@@ -22,17 +24,12 @@ extension ReadView {
         audioPlayback.isShowingLyricsView = false
     }
 
-    // A tap on a squiggle: the correction editor during a correction pass, the info popup otherwise.
+    // A tap on a squiggle during a correction pass opens the editor for that word.
     @MainActor
     func openStruggleTarget(_ target: StruggleTarget) {
-        if audioPlayback.isCorrecting {
-            audioPlayback.correctionTarget = target
-            audioPlayback.correctionText = target.text
-            audioPlayback.isShowingCorrectionEditor = true
-        } else {
-            audioPlayback.struggleNoticeDetail = target.detail
-            audioPlayback.isShowingStruggleNotice = true
-        }
+        audioPlayback.correctionTarget = target
+        audioPlayback.correctionText = target.text
+        audioPlayback.isShowingCorrectionEditor = true
     }
 
     // Writes the retyped word into the note (and the timed lyrics) and remembers how to undo it.

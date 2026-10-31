@@ -11,10 +11,6 @@ final class AudioPlaybackUIState {
     // timings state to keep in sync.
     var audioAttachmentCues: [SubtitleCue] = []
     var audioAttachmentHighlightRanges: [NSRange?] = []
-    // Set when a tap lands on a squiggled (low-confidence) range; shows the "aligner is struggling" notice.
-    var isShowingStruggleNotice = false
-    // What the aligner heard at the tapped squiggle (AlignmentStruggleSpans.evidence), shown in the notice.
-    var struggleNoticeDetail = ""
     // The correction pass after an alignment (ReadView+Corrections): the offer alert and how many
     // spots it counts, whether the Read tab is in correction mode (squiggles open the editor, not
     // the lookup), the squiggle being edited and its text field, and the session Cancel restores.
@@ -25,9 +21,11 @@ final class AudioPlaybackUIState {
     var correctionText = ""
     var isShowingCorrectionEditor = false
     var correctionSession: AlignmentCorrectionSession?
-    // Note ranges the aligner struggled to hear, squiggled in the Read tab (AlignmentStruggleSpans).
+    // Note ranges the aligner struggled to hear, squiggled in the Read tab (AlignmentStruggleSpans)
+    // only during a correction pass; the saved confidences stay on the cues but draw nothing otherwise.
     var strugglingRanges: [NSRange] {
-        AlignmentStruggleSpans.ranges(cues: audioAttachmentCues, highlightRanges: audioAttachmentHighlightRanges)
+        guard isCorrecting else { return [] }
+        return AlignmentStruggleSpans.ranges(cues: audioAttachmentCues, highlightRanges: audioAttachmentHighlightRanges)
     }
     var playbackHighlightRangeOverride: NSRange?
     // Clears jumpToPendingScrollSurfaceIfReady's playbackHighlightRangeOverride borrow a few

@@ -377,8 +377,8 @@ extension ReadView {
                             // view that owns the rendered text. UIScrollView is a superclass of
                             // UITextView, so handleReadModeSegmentTap accepts either path.
                             // A squiggled word is one the aligner couldn't match to the audio: say so
-                            // (or, in a correction pass, offer to retype it) instead of opening its lookup.
-                            if let location, let target = AlignmentStruggleSpans.target(
+                            // (a correction pass only: offer to retype it) instead of opening its lookup.
+                            if let location, audioPlayback.isCorrecting, let target = AlignmentStruggleSpans.target(
                                 at: location, cues: audioPlayback.audioAttachmentCues,
                                 highlightRanges: audioPlayback.audioAttachmentHighlightRanges
                             ) {
