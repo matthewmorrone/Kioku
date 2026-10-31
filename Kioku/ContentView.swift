@@ -93,6 +93,7 @@ struct ContentView: View {
                 onCreateNote: handleNewNoteRequested,
                 onUpdateSelectedNote: handleNoteUpdated,
                 onOCRImportedNote: handleOCRImported,
+                onOCRImportedNotes: handleOCRBatchImported,
                 onAudioImported: handleAudioImported
             )
             .tag(ContentTab.notes)
@@ -425,6 +426,12 @@ struct ContentView: View {
         selectedReadNote = recognizedNote
         lastActiveNoteID = recognizedNote.id.uuidString
         selectedTab = .read
+    }
+
+    // Notes tab's multi-photo import: adds every recognized note (first photo ends up on top) and
+    // stays on the Notes tab, where the new notes are listed.
+    private func handleOCRBatchImported(_ notes: [Note]) {
+        for note in notes.reversed() { notesStore.addNote(note) }
     }
 
     // Notes tab's Import Audio: switch to Read, which transcribes the file into a new note there.

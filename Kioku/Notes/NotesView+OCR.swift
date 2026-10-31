@@ -67,6 +67,39 @@ extension NotesView {
         }
     }
 
+    // Multi-photo import: loads each picked photo, reads them one by one, and makes a note per photo
+    // that had text. The alert afterwards reports each photo's result. Shares the single-photo
+    // guard so two imports can't run at once.
+    func importTextFromSelectedOCRImages(_ items: [PhotosPickerItem]) {
+        guard isPerformingOCRImport == false, items.isEmpty == false else { return }
+        isPerformingOCRImport = true
+        Task {
+            defer {
+                isPerformingOCRImport = false
+                selectedBulkPhotoItems = []
+            }
+            var inputs: [BulkOCRInput] = []
+            for item in items {
+                do {
+                    if let data = try await item.loadTransferable(type: Data.self) {
+                        inputs.append(.image(data))
+                    } else {
+                        inputs.append(.unreadable("the photo had no loadable image data."))
+                    }
+                } catch {
+                    AppLog.error(.notesImport, "OCR: bulk loadTransferable failed — \(error.localizedDescription)")
+                    inputs.append(.unreadable(error.localizedDescription))
+                }
+            }
+            let outcomes = await Task.detached(priority: .userInitiated) {
+                BulkOCRRunner.run(inputs: inputs, recognize: OCRTextRecognizer.recognizeText(in:))
+            }.value
+            let notes = BulkOCRRunner.notes(from: outcomes)
+            if notes.isEmpty == false { onOCRImportedNotes?(notes) }
+            bulkOCRSummary = BulkOCRRunner.summary(of: outcomes)
+        }
+    }
+
     // Presents the camera-capture flow when the device supports it; surfaces a clear error
     // (rather than silently failing) on simulators / iPads without a back camera.
     func presentCameraOCRIfAvailable() {

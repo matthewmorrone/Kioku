@@ -14,6 +14,8 @@ struct NotesView: View {
     var onCreateNote: (() -> Void)? = nil
     var onUpdateSelectedNote: ((Note?) -> Void)? = nil
     var onOCRImportedNote: ((Note) -> Void)? = nil
+    // Several notes from one multi-photo import; the Notes tab stays put so the batch is visible.
+    var onOCRImportedNotes: (([Note]) -> Void)? = nil
     // Import Audio's picked file, handed to ContentView to transcribe into a new note on Read.
     var onAudioImported: ((URL) -> Void)? = nil
 
@@ -39,6 +41,9 @@ struct NotesView: View {
     // toolbar button view go in NotesView+OCR.swift.
     @State var isShowingPhotoLibraryPicker = false
     @State var isShowingCameraPicker = false
+    @State var isShowingMultiPhotoPicker = false
+    @State var selectedBulkPhotoItems: [PhotosPickerItem] = []
+    @State var bulkOCRSummary = ""
     @State var selectedOCRImageItem: PhotosPickerItem?
     @State var isPerformingOCRImport = false
     @State var ocrImportErrorMessage = ""
@@ -250,6 +255,12 @@ struct NotesView: View {
                     await importTextFromSelectedOCRImage(newItem)
                 }
             }
+            .modifier(BulkPhotoPickerModifier(
+                isPickerPresented: $isShowingMultiPhotoPicker,
+                selection: $selectedBulkPhotoItems,
+                summary: $bulkOCRSummary,
+                onPicked: importTextFromSelectedOCRImages
+            ))
             .environment(\.editMode, $editMode)
         }
         .toolbar(.visible, for: .tabBar)
