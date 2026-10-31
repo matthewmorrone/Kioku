@@ -234,6 +234,8 @@ struct ContentView: View {
             }
             scheduleWotdRefresh(reason: "startup validation", delayNanoseconds: 2_000_000_000, forceRefresh: false)
         }
+        // Shortcuts / Siri requests (new note, review, lookups); see IntentHooks.
+        .modifier(IntentHooks(perform: performIntentRequest))
         // Spotlight follows the library and routes tapped results (see SpotlightHooks).
         .modifier(SpotlightHooks(
             notes: notesStore.notes,
@@ -303,6 +305,24 @@ struct ContentView: View {
         guard !dictionaryDownloadManager.isInstalled || dictionaryDownloadManager.updateAvailable else { return }
         if await dictionaryDownloadManager.downloadIfNeeded() {
             rebuildReadResources()
+        }
+    }
+
+    // Performs a request an App Intent left on IntentRouter. Review requests move Learn's pager
+    // (its stored page index) to the activity and show the tab; the Start button there begins it.
+    private func performIntentRequest(_ request: IntentRequest) {
+        switch request {
+        case .createNote(let title, let text):
+            let note = Note(title: title, content: text)
+            notesStore.addNote(note)
+            selectedReadNote = note
+            lastActiveNoteID = note.id.uuidString
+            selectedTab = .read
+        case .startReview(let page):
+            UserDefaults.standard.set(page.rawValue, forKey: LearnPagerView.storedPageIndexKey)
+            selectedTab = .learn
+        case .lookUp(let text):
+            routeToWords(.search(text))
         }
     }
 

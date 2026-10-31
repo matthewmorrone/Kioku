@@ -49,7 +49,8 @@ struct LearnPagerView: View {
     // writes don't reliably animate inside a withAnimation transaction, which made the page snap a
     // full width instead of gliding. The visual index lives in `pageIndex` (@State) and is synced
     // here whenever it settles.
-    @AppStorage("learn.pageIndex") private var storedPageIndex: Int = 0
+    static let storedPageIndexKey = "learn.pageIndex"
+    @AppStorage(LearnPagerView.storedPageIndexKey) private var storedPageIndex: Int = 0
 
     // Visual/animated source of truth for the page offset. A plain @State animates under
     // withAnimation where the @AppStorage value did not. Seeded from storage in `.onAppear`.
@@ -184,6 +185,12 @@ struct LearnPagerView: View {
         // the swipe glide smoothly.
         .onAppear { pageIndex = clampedIndex(storedPageIndex) }
         .onChange(of: pageIndex) { _, newValue in storedPageIndex = newValue }
+        // An outside write (the "Start Review" Shortcut) moves the pager to that page.
+        .onChange(of: storedPageIndex) { _, newValue in
+            let target = clampedIndex(newValue)
+            guard target != pageIndex else { return }
+            withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.86)) { pageIndex = target }
+        }
         .overlay(alignment: .bottom) {
             // dotsHidden/sessionActive above are keyed to `currentPage`, so a session left active
             // on a page the user has since swiped away from can't hide dots or lock swipe here.

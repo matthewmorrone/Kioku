@@ -1,7 +1,6 @@
 import PhotosUI
 import SwiftUI
 import UIKit
-import Vision
 
 // OCR import flow for the Notes tab (entry points in the Import menu, NotesView+ImportMenu.swift) through Vision
 // recognition; on success forwards the recognized Note up to ContentView via
@@ -49,7 +48,7 @@ extension NotesView {
         AppLog.debug(.notesImport, "OCR: starting recognition on \(imageData.count) bytes of image data")
         do {
             let recognizedText = try await Task.detached(priority: .userInitiated) {
-                try NotesView.recognizeText(in: imageData)
+                try OCRTextRecognizer.recognizeText(in: imageData)
             }.value
             let trimmedText = recognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -76,24 +75,5 @@ extension NotesView {
             return
         }
         isShowingCameraPicker = true
-    }
-
-    // Vision request: accurate level, JA + EN, language correction on. Lines joined by \n
-    // so the resulting note preserves the source line breaks.
-    nonisolated static func recognizeText(in imageData: Data) throws -> String {
-        let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = true
-        request.recognitionLanguages = ["ja-JP", "en-US"]
-
-        let handler = VNImageRequestHandler(data: imageData, options: [:])
-        try handler.perform([request])
-
-        let recognizedLines = (request.results ?? []).compactMap { observation in
-            observation.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        .filter { $0.isEmpty == false }
-
-        return recognizedLines.joined(separator: "\n")
     }
 }
