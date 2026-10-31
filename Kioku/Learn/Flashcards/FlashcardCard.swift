@@ -124,56 +124,12 @@ struct FlashcardCard: View {
     // selected and one of its glosses pinned doesn't render the same phrase twice.
     private func resolveLiveContent() async -> FlashcardLiveContent? {
         guard let store = dictionaryStore else { return nil }
-        let entryID = word.canonicalEntryID
-        let surface = word.surface
-        let selectedSenseIDs = word.selectedSenseIDs
-        let selectedGlosses = word.selectedGlosses
-        let chosenReading = word.selectedReading
+        let word = self.word
         return await Task.detached(priority: .utility) {
-            guard let data = try? store.fetchWordDisplayData(entryID: entryID, surface: surface) else {
-                return nil
-            }
-            // Kanji headword and the reading that fits the user's selected senses — JMdict stagr
-            // restricts some senses to specific kana forms (e.g. 黄昏's "dusk;twilight" sense is
-            // restricted to たそがれ even though the alphabetically-first kana form is こうこん).
-            let forms = WordFormResolver.kanjiAndKana(
-                entry: data.entry, store: store, entryID: entryID,
-                selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses,
-                chosenReading: chosenReading
+            guard let content = WordCardContentResolver.resolve(word: word, store: store) else { return nil }
+            return FlashcardLiveContent(
+                surface: content.surface, kanji: content.kanji, kana: content.kana, meanings: content.meanings
             )
-            let kana = forms.kana
-            let kanji = forms.kanji
-
-            var sensesByID: [Int64: DictionaryEntrySense] = [:]
-            for sense in data.entry.senses { sensesByID[sense.senseID] = sense }
-
-            var meanings: [String] = []
-            var seen: Set<String> = []
-
-            // Adds a meaning to the running list after trimming and de-duplicating.
-            func append(_ raw: String) {
-                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard trimmed.isEmpty == false, seen.insert(trimmed).inserted else { return }
-                meanings.append(trimmed)
-            }
-
-            for senseID in selectedSenseIDs {
-                if let first = sensesByID[senseID]?.glosses.first { append(first) }
-            }
-            for ref in selectedGlosses {
-                if let sense = sensesByID[ref.senseID],
-                   ref.glossIndex >= 0, ref.glossIndex < sense.glosses.count {
-                    append(sense.glosses[ref.glossIndex])
-                }
-            }
-
-            // Fallback: nothing selected (or selections didn't survive a dictionary rebuild)
-            // — show the entry's first sense's first gloss, matching the original behavior.
-            if meanings.isEmpty, let first = data.entry.senses.first?.glosses.first {
-                append(first)
-            }
-
-            return FlashcardLiveContent(surface: surface, kanji: kanji, kana: kana, meanings: meanings)
         }.value
     }
 
