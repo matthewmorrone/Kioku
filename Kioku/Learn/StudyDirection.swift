@@ -142,9 +142,17 @@ struct DirectionSelection: RawRepresentable, Equatable {
 
     // Picks one of the word's askable directions deterministically, so a question doesn't change
     // shape between re-renders. `seed` is the word's entry id. Nil when the word can't be asked
-    // anything in this session.
-    func resolved(seed: Int64, hasKanjiForm: Bool) -> QuestionDirection? {
-        let options = askable(hasKanjiForm: hasKanjiForm)
+    // anything in this session. Directions already answered correctly (per `directionStats`) are
+    // skipped so a word rotates to a fresh direction instead of repeating one it has cleared; once
+    // every askable direction has been cleared, all of them are fair game again.
+    func resolved(
+        seed: Int64,
+        hasKanjiForm: Bool,
+        directionStats: [String: DirectionStats] = [:]
+    ) -> QuestionDirection? {
+        let askableNow = askable(hasKanjiForm: hasKanjiForm)
+        let unCleared = askableNow.filter { (directionStats[$0.rawValue]?.correct ?? 0) == 0 }
+        let options = unCleared.isEmpty ? askableNow : unCleared
         guard options.isEmpty == false else { return nil }
         let index = Int(seed % Int64(options.count) + Int64(options.count)) % options.count
         return options[index]

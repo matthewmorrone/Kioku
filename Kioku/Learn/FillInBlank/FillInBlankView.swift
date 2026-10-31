@@ -351,7 +351,11 @@ struct FillInBlankView: View {
     private func buildQuestions(from items: [StudyItem], selection: DirectionSelection) -> [FillInBlankQuestion] {
         var result: [FillInBlankQuestion] = []
         for item in items {
-            guard let direction = selection.resolved(seed: item.id, hasKanjiForm: item.hasKanjiForm) else { continue }
+            guard let direction = selection.resolved(
+                seed: item.id,
+                hasKanjiForm: item.hasKanjiForm,
+                directionStats: wordsStore.stats[item.id]?.directionStats ?? [:]
+            ) else { continue }
             let fields = direction.fields
             let prompt = item.value(for: fields.prompt)
             let correct = item.value(for: fields.answer)

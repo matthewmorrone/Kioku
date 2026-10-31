@@ -66,6 +66,23 @@ final class QuestionDirectionTests: XCTestCase {
         XCTAssertFalse(QuestionDirection.meaningToKana.requiresKanji)
     }
 
+    // A direction answered correctly once is never chosen again while another remains uncleared.
+    func testResolvedSkipsDirectionsAlreadyAnsweredCorrectly() {
+        let selection = DirectionSelection.all
+        var stats: [String: DirectionStats] = [:]
+        var seen: Set<QuestionDirection> = []
+        for _ in QuestionDirection.allCases {
+            let picked = selection.resolved(seed: 7, hasKanjiForm: true, directionStats: stats)
+            XCTAssertNotNil(picked)
+            XCTAssertFalse(seen.contains(picked!))
+            seen.insert(picked!)
+            stats[picked!.rawValue] = DirectionStats(correct: 1)
+        }
+        XCTAssertEqual(seen, Set(QuestionDirection.allCases))
+        // Everything cleared: falls back to the full set rather than returning nil.
+        XCTAssertNotNil(selection.resolved(seed: 7, hasKanjiForm: true, directionStats: stats))
+    }
+
     // Only the two English-answer directions need gloss-set grading.
     func testAnswerIsMeaningIdentifiesEnglishAnswers() {
         XCTAssertEqual(
