@@ -43,6 +43,8 @@ extension WordsView {
                     Label("Import", systemImage: "square.and.arrow.down.on.square")
                 }
 
+                ankiExportLink
+
                 // Kanji/vocab-discovery entry points. These destination views + their
                 // presentation flags survived the Words rebuild but were orphaned when the
                 // toolbar that triggered them was deleted (nothing set the flags to `true`).

@@ -18,6 +18,12 @@ nonisolated enum WordCardContentResolver {
             AppLog.error(.dictionary, "[WordCardContentResolver] lookup failed for entry \(word.canonicalEntryID): \(error)")
             return nil
         }
+        return resolve(word: word, entry: entry, store: store)
+    }
+
+    // The same content from an entry the caller already fetched — the Anki export fetches entries in
+    // batches rather than one query per word.
+    static func resolve(word: SavedWord, entry: DictionaryEntry, store: DictionaryStore) -> WordCardContent {
         let forms = WordFormResolver.kanjiAndKana(
             entry: entry, store: store, entryID: word.canonicalEntryID,
             selectedSenseIDs: word.selectedSenseIDs, selectedGlosses: word.selectedGlosses,
