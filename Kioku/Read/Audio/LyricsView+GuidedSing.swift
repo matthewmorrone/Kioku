@@ -3,7 +3,7 @@ import SwiftUI
 // Guided Sing's controls in the lyrics popup: the Guided capsule beside Sing that starts it, and
 // the line bar under the Sing row while it runs — an instruction saying what to do now (listen,
 // sing the line, say the named words, or which words were missed), then previous line, the
-// step's action (Done / Hear it again / Try missed), next line, and what the mic heard under it.
+// step's action (Done / Hear it again), next line, and what the mic heard under it.
 // The words themselves turn green and red on the lyrics card as they're graded.
 extension LyricsView {
     @ViewBuilder
@@ -31,7 +31,6 @@ extension LyricsView {
     @ViewBuilder
     var guidedSingBar: some View {
         let phase = singSession.guidedPhase
-        let missed = singSession.guidedCueIndex.map { singSession.guidedMissed(in: $0) } ?? []
         VStack(spacing: 6) {
             Text(guidedInstruction)
                 .scaledFont(size: 14, weight: .semibold)
@@ -50,9 +49,6 @@ extension LyricsView {
                     guidedTextButton("Done", systemName: "checkmark") { singSession.guidedFinishTurn() }
                 case .review:
                     guidedTextButton("Hear it again", systemName: "speaker.wave.2") { singSession.guidedReplay() }
-                    if missed.isEmpty == false {
-                        guidedTextButton("Try missed", systemName: "mic") { singSession.guidedRetryMissed() }
-                    }
                 case .listening, nil:
                     EmptyView()
                 }
@@ -73,7 +69,7 @@ extension LyricsView {
     }
 
     // One sentence telling the singer what to do now: listen, sing the line (or just the words
-    // being retried, named), or what was missed and how to try those again.
+    // being retried, named), or what was missed before the mic listens for those again.
     private var guidedInstruction: String {
         let heard = singSession.guidedLineHeardCount, total = singSession.guidedLineWordCount
         switch singSession.guidedPhase {
@@ -90,7 +86,7 @@ extension LyricsView {
             if missed.isEmpty {
                 return heard == total && total > 0 ? "All heard!" : "Tap Hear it again to start this line"
             }
-            return "Missed: " + guidedSurfaces(of: missed).joined(separator: " ") + ". Tap Try missed to say them again."
+            return "Missed: " + guidedSurfaces(of: missed).joined(separator: " ")
         case nil:
             return ""
         }

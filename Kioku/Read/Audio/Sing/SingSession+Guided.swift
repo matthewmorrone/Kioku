@@ -7,12 +7,9 @@ import LyricAlignment
 // the turn opens, and the line's words are placed in order wherever they were sung
 // (SingPhonemeScorer.wordScores). The words are heard in sequence: a word turns green only once
 // every word before it in the turn is green and it was sung after them; at the end of the turn
-// the rest turn red, and a retry is sung from the first red word on.
+// the rest turn red, and the turn reopens by itself for a retry sung from the first red word on.
 extension SingSession {
-    // How long a turn listens beyond the line's own length, for a slow start and a slower pace.
-    private static let guidedTurnSlackSec = 2.5
-    private static let guidedTurnStretch = 1.3
-    // Pause before moving on from a line sung all correct, so the green has a moment to show.
+    // Pause before moving on or listening again, so the line's green and red have a moment to show.
     private static let guidedAdvanceDelaySec = 1.2
 
     // Groups the planned words by line and picks the line to start on: the one playing, else
@@ -47,14 +44,6 @@ extension SingSession {
         guard let index = guidedCueIndex else { return }
         let missed = guidedMissed(in: index)
         if missed.isEmpty { guidedPlayLine() } else { startListening(to: index, then: missed) }
-    }
-
-    // Opens a turn straight away for the current line's missed words; the green ones stay.
-    func guidedRetryMissed() {
-        guard let index = guidedCueIndex else { return }
-        let missed = guidedMissed(in: index)
-        guard missed.isEmpty == false else { return }
-        openTurn(for: missed)
     }
 
     // Moves to the next (or previous) sung line and plays it.
@@ -92,7 +81,8 @@ extension SingSession {
     }
 
     // Guided's half-second step: notices the line's playback ending, and during a turn feeds the
-    // newest mic audio to the model and grades it, ending the turn on time or once all are heard.
+    // newest mic audio to the model and grades it. A turn has no time limit: it ends once every
+    // word is heard, or when the singer taps Done.
     func guidedTick() {
         guard let controller, let index = guidedCueIndex, index < cues.count else { return }
         switch guidedPhase {
@@ -105,13 +95,6 @@ extension SingSession {
                 openTurn(for: guidedPending)
             }
         case .yourTurn:
-            let cue = cues[index]
-            let limit = Double(cue.endMs - cue.startMs) / 1000 * Self.guidedTurnStretch + Self.guidedTurnSlackSec
-            let elapsed = AVAudioTime.seconds(forHostTime: mach_absolute_time()) - guidedTurnStartHost
-            if elapsed >= limit {
-                guidedFinishTurn()
-                return
-            }
             scoreTurn()
         case .review, nil:
             return
@@ -154,17 +137,22 @@ extension SingSession {
         guidedPhase = .yourTurn
     }
 
-    // Stops listening and shows the line's results; a line sung all correct moves on by itself.
+    // Stops listening and shows the line's results for a moment, then carries on by itself: a
+    // line sung all correct moves to the next line, and a line with misses listens again for
+    // just the missed words. Any tap in the meantime (replay, step) bumps the generation and
+    // cancels it.
     private func closeTurn() {
         generation += 1
         mic.setAccepting(false)
         guidedPhase = .review
-        guard let index = guidedCueIndex, guidedMissed(in: index).isEmpty, guidedHasNext else { return }
+        guard let index = guidedCueIndex else { return }
+        let missed = guidedMissed(in: index)
+        guard missed.isEmpty == false || guidedHasNext else { return }
         let turnGeneration = generation
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.guidedAdvanceDelaySec))
             guard let self, self.isActive, self.generation == turnGeneration, self.guidedPhase == .review else { return }
-            self.guidedStep(by: 1)
+            if missed.isEmpty { self.guidedStep(by: 1) } else { self.openTurn(for: missed) }
         }
     }
 
