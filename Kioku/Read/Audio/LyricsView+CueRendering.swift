@@ -220,11 +220,11 @@ extension LyricsView {
         return Double(maxEnd) >= Double(cueLength) * 0.9
     }
 
-    // Returns `text` truncated at the first newline scalar (\n or \r), or the original
-    // string when no newline is present. Used by the active-cue card to enforce a
+    // Returns `text` truncated at the first line break (\n, \r, U+2028, U+2029), or the
+    // original string when there is none. Used by the active-cue card to enforce a
     // single-song-line contract regardless of multi-line cue text or resolver overshoot.
     func clipAtFirstNewline(_ text: String) -> String {
-        if let idx = text.firstIndex(where: { $0 == "\n" || $0 == "\r" }) {
+        if let idx = text.firstIndex(where: { $0.isNewline }) {
             return String(text[text.startIndex..<idx])
         }
         return text

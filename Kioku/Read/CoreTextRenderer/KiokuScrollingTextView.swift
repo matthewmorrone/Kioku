@@ -22,6 +22,9 @@ final class KiokuScrollingTextView: UIScrollView, UIScrollViewDelegate {
     // view's coordinates). See reportRangeRects.
     var reportedRanges: [NSRange] = []
     var onRangeRects: (([NSRange: CGRect]) -> Void)?
+    // Where to send the content height after each layout, and the last one sent. See reportContentHeight.
+    var onContentHeight: ((CGFloat) -> Void)?
+    private var lastReportedContentHeight: CGFloat = 0
     // The last rects sent, so an unchanged layout doesn't re-send and re-render the host.
     private var lastReportedRangeRects: [NSRange: CGRect] = [:]
 
@@ -220,12 +223,31 @@ final class KiokuScrollingTextView: UIScrollView, UIScrollViewDelegate {
         // `setLineOriginShifts` is a no-op when the dict is unchanged, so when bounds
         // were already correct in updateUIView this costs nothing.
         applyCenteringShiftsIfNeeded()
+        // A non-scrolling view that grew to fit its text keeps any offset scrollRangeIntoView set
+        // while it was shorter (UIScrollView only clamps on user scrolling), hiding its top lines.
+        let maxOffsetY = max(0, contentSize.height - bounds.height)
+        if isScrollEnabled == false, contentOffset.y > maxOffsetY {
+            contentOffset.y = maxOffsetY
+        }
         reportRangeRects()
+        reportContentHeight()
         // Recompute debug geometry from the engine's now-current layout state. Without
         // this, a view whose first `updateUIView` ran with width=0 (e.g. a representable
         // inside a Form Section) would keep an empty `segmentGeometry` even after layout
         // populated valid placements.
         recomputeDebugGeometry()
+    }
+
+    // Sends the height of the layout just made to the host when it changed. SwiftUI asks a
+    // representable's size before updateUIView has laid out new text, so a host that grows with
+    // wrapped lines needs the real height back from the layout itself. Next main-queue turn, as
+    // with reportRangeRects.
+    func reportContentHeight() {
+        guard let onContentHeight else { return }
+        let height = ceil(contentView.layoutEngine.contentSize.height)
+        guard height > 0, height != lastReportedContentHeight else { return }
+        lastReportedContentHeight = height
+        DispatchQueue.main.async { onContentHeight(height) }
     }
 
     // Measures each requested range against the layout just made (after centering shifts, so the

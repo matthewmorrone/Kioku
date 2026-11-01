@@ -94,6 +94,8 @@ struct LyricsView: View {
     // Height of the clipped lyric area the bubbles may draw in (coordinate space "lyricClip").
     @State var lyricClipHeight: CGFloat = 0
     @State var wordBubbleRects: [NSRange: CGRect] = [:]
+    // The active line's laid-out height from the renderer, so a wrapped line gets its full card.
+    @State var activeCueContentHeight: CGFloat = 0
     // The line the bubbles show on: set once the card has stayed on a line a moment, so dragging or
     // scrubbing through lines doesn't flash and spring bubbles on each one passed.
     @State var settledBubbleLine: Int?
@@ -404,10 +406,10 @@ struct LyricsView: View {
                             furiganaGap: CGFloat(TypographySettings.defaultFuriganaGap),
                             evenSegmentColor: readingColors.evenSegment,
                             oddSegmentColor: readingColors.oddSegment,
-                            // Single-line render: scaling above keeps text within the card;
-                            // disabling wrapping prevents any residual long cue from breaking
-                            // onto a second visible line (it would clip instead).
-                            isLineWrappingEnabled: activeCueLayout.lineCount > 1,
+                            // Always on: the fit above measures plain text, but ruby spacing makes
+                            // real lines wider, so a line it judged to fit can still overflow — it
+                            // wraps instead of running off the card.
+                            isLineWrappingEnabled: true,
                             // Honor the Read-view ruby-spacing toggle so wide furigana doesn't
                             // crash into adjacent kanji in the active-cue card. Packed-layout
                             // requirements (word-level segments) are satisfied here because the
@@ -460,10 +462,13 @@ struct LyricsView: View {
                             reportedRanges: showsBubbles
                                 ? wordBubbleRanges(forCueAt: displayIndex, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count)
                                 : [],
-                            onRangeRects: { wordBubbleRects = $0 }
+                            onRangeRects: { wordBubbleRects = $0 },
+                            onContentHeight: { activeCueContentHeight = $0 }
                         )
                         .frame(maxWidth: .infinity)
-                        .frame(height: activeRendererHeight)
+                        // The renderer reports its real wrapped height; the estimate is only a
+                        // floor so short lines keep a steady card.
+                        .frame(height: max(activeRendererHeight, activeCueContentHeight))
                         .clipped()
                         // Word meanings over the line as it's sung, in rows above and
                         // below it (LyricsView+WordBubbles).

@@ -94,7 +94,8 @@ enum SongBreakdownPrompt {
         var sections: [String] = []
         let note = userNote.trimmingCharacters(in: .whitespacesAndNewlines)
         if note.isEmpty == false { sections.append("## Instructions for this song\n\n" + note) }
-        sections.append("## Lyrics\n\n" + lyrics)
+        // Every line break as "\n", so a verse joined by U+2028 is numbered line by line.
+        sections.append("## Lyrics\n\n" + LyricLineBreaks.normalized(lyrics))
         let words = segmentation.trimmingCharacters(in: .whitespacesAndNewlines)
         if words.isEmpty == false { sections.append("## Segmentation\n\n" + words) }
         return sections.joined(separator: "\n\n")

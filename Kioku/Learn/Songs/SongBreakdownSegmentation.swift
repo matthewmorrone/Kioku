@@ -15,7 +15,9 @@ enum SongBreakdownSegmentation {
         var rows: [String] = []
         var lineNumber = 0
         var lineStart = 0
-        for line in snapshot.text.components(separatedBy: "\n") {
+        // Any newline character ends a line (U+2028 included), matching the lyrics the prompt
+        // sends (LyricLineBreaks); each is one UTF-16 unit, so lineStart stays exact.
+        for line in snapshot.text.components(separatedBy: .newlines) {
             let lineRange = NSRange(location: lineStart, length: line.utf16.count)
             lineStart += line.utf16.count + 1
             guard line.trimmingCharacters(in: .whitespaces).isEmpty == false else { continue }

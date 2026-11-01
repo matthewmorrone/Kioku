@@ -160,6 +160,9 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     // Empty asks for none.
     var reportedRanges: [NSRange] = []
     var onRangeRects: (([NSRange: CGRect]) -> Void)? = nil
+    // The laid-out content height after each layout, for a host that sizes its frame to the
+    // wrapped text (the lyrics card's active line). Nil asks for none.
+    var onContentHeight: ((CGFloat) -> Void)? = nil
 
     // Coordinator holds the textSize captured at the start of a pinch so each .changed
     // delta computes against the original, not the live (already-mutated) value. Also
@@ -219,6 +222,7 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         uiView.onScrollOffsetYChanged = onScrollOffsetYChanged
         // A new set of ranges needs a layout pass to measure (KiokuScrollingTextView.reportRangeRects).
         uiView.onRangeRects = onRangeRects
+        uiView.onContentHeight = onContentHeight
         if uiView.reportedRanges != reportedRanges {
             uiView.reportedRanges = reportedRanges
             uiView.setNeedsLayout()
