@@ -65,8 +65,7 @@ extension SongStepperView {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.thinMaterial, in: Capsule())
-        .overlay(Capsule().stroke(Color(.separator), lineWidth: 0.5))
+        .floatingGlass(in: Capsule(), hairline: 0.5)
         .padding(.horizontal, 18)
         .padding(.bottom, 8)
         .accessibilityElement(children: .contain)

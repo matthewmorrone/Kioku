@@ -14,15 +14,21 @@ struct NotesView: View {
     var onCreateNote: (() -> Void)? = nil
     var onUpdateSelectedNote: ((Note?) -> Void)? = nil
     var onOCRImportedNote: ((Note) -> Void)? = nil
+    // Several notes from one multi-photo import; the Notes tab stays put so the batch is visible.
+    var onOCRImportedNotes: (([Note]) -> Void)? = nil
     // Import Audio's picked file, handed to ContentView to transcribe into a new note on Read.
     var onAudioImported: ((URL) -> Void)? = nil
 
-    @EnvironmentObject private var store: NotesStore
+    @EnvironmentObject var store: NotesStore
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var savedKanjiStore: SavedKanjiStore
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
     @State private var editMode: EditMode = .inactive
-    @State private var selectedNoteIDs = Set<UUID>()
+    @State var selectedNoteIDs = Set<UUID>()
+    // The folder being browsed (nil = top level), and the pending create/rename alert for folders.
+    @State var openFolderID: UUID?
+    @State var folderEditor: NoteFolderEditor?
+    @State var folderNameDraft = ""
     @State private var notePendingRename: Note?
     // Notes awaiting delete confirmation (single, swipe, or bulk). `title` is set only for a
     // single-note delete so the dialog can name it; nil for a multi-note delete.
@@ -39,6 +45,9 @@ struct NotesView: View {
     // toolbar button view go in NotesView+OCR.swift.
     @State var isShowingPhotoLibraryPicker = false
     @State var isShowingCameraPicker = false
+    @State var isShowingMultiPhotoPicker = false
+    @State var selectedBulkPhotoItems: [PhotosPickerItem] = []
+    @State var bulkOCRSummary = ""
     @State var selectedOCRImageItem: PhotosPickerItem?
     @State var isPerformingOCRImport = false
     @State var ocrImportErrorMessage = ""
@@ -49,6 +58,7 @@ struct NotesView: View {
         NavigationStack {
             // Displays the selectable/reorderable list of notes.
             List(selection: $selectedNoteIDs) {
+                folderHeaderRows
                 ForEach(displayedNotes) { note in
                     // Renders a single note row with title and content preview.
                     HStack(alignment: .center, spacing: 12) {
@@ -90,7 +100,9 @@ struct NotesView: View {
                     // under any derived sort a move would be discarded on the next render.
                     .moveDisabled(isManuallyOrdered == false)
                 }
-                .onMove(perform: store.moveNotes)
+                .onMove { source, destination in
+                    store.moveNotes(inFolder: openFolderID, from: source, to: destination)
+                }
                 .onDelete { offsets in
                     // Route swipe-to-delete through the same confirmation so the associated-word
                     // offer applies here too. Deferred assignment matches the context-menu path so
@@ -111,14 +123,17 @@ struct NotesView: View {
                     selectedNoteIDs.removeAll()
                 }
             }
-            .alert("Rename Note", isPresented: renameAlertPresented) {
-                TextField("Title", text: $renameDraft)
-                Button("Cancel", role: .cancel) {
-                    notePendingRename = nil
-                }
-                Button("Save") {
-                    commitRename()
-                }
+            .onChange(of: store.folders) { _, _ in
+                // A folder deleted while open sends the list back to the top level.
+                if openFolderID != nil, store.hasFolder(openFolderID) == false { openFolderID = nil }
+            }
+            .modifier(NoteFolderNameAlert(editor: $folderEditor, draft: $folderNameDraft, onCommit: commitFolderEdit))
+            .sheet(isPresented: renameAlertPresented) {
+                NoteTitleEditSheet(
+                    title: $renameDraft,
+                    onSave: { commitRename() },
+                    onCancel: { notePendingRename = nil }
+                )
             }
             // Single source-of-truth confirmation for both single-note and multi-note deletes. An
             // .alert, not a .confirmationDialog: a dialog needs a popover anchor, and a per-row or
@@ -166,6 +181,23 @@ struct NotesView: View {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     sortMenu
                         .tourTarget(.notesSort)
+
+                    // New folder (top level) or, while selecting, move the selection into a folder.
+                    if editMode == .active {
+                        moveToFolderMenu(for: selectedNoteIDs)
+                            .labelStyle(.iconOnly)
+                            .disabled(selectedNoteIDs.isEmpty)
+                    } else if openFolderID == nil {
+                        Button {
+                            folderNameDraft = ""
+                            folderEditor = .create(moveNoteIDs: [])
+                        } label: {
+                            Image(systemName: "folder.badge.plus")
+                                .scaledFont(size: 16)
+                                .frame(width: 32, height: 32)
+                        }
+                        .accessibilityLabel("New Folder")
+                    }
 
                     // Shows bulk-delete action while edit mode is active.
                     if editMode == .active {
@@ -250,6 +282,12 @@ struct NotesView: View {
                     await importTextFromSelectedOCRImage(newItem)
                 }
             }
+            .modifier(BulkPhotoPickerModifier(
+                isPickerPresented: $isShowingMultiPhotoPicker,
+                selection: $selectedBulkPhotoItems,
+                summary: $bulkOCRSummary,
+                onPicked: importTextFromSelectedOCRImages
+            ))
             .environment(\.editMode, $editMode)
         }
         .toolbar(.visible, for: .tabBar)
@@ -272,8 +310,9 @@ struct NotesView: View {
     // The notes as shown, with the active sort applied. Words-left-to-learn is resolved through a
     // single pass over the saved words (built once per render) instead of re-filtering the whole
     // word list for every comparison the sort performs.
-    private var displayedNotes: [Note] {
-        guard isManuallyOrdered == false else { return store.notes }
+    var displayedNotes: [Note] {
+        let scoped = store.notes(inFolder: openFolderID)
+        guard isManuallyOrdered == false else { return scoped }
 
         var remaining: [UUID: Int] = [:]
         if sortField == .wordsToLearn {
@@ -290,7 +329,7 @@ struct NotesView: View {
         }
 
         return NotesSorter.sorted(
-            store.notes,
+            scoped,
             field: sortField,
             ascending: sortAscending,
             metrics: NoteSortMetrics(wordsToLearn: { remaining[$0.id] ?? 0 })
@@ -485,6 +524,8 @@ struct NotesView: View {
         } label: {
             Label("Duplicate", systemImage: "plus.square.on.square")
         }
+
+        moveToFolderMenu(for: [note.id])
 
         ShareLink(
             item: shareText(for: note),

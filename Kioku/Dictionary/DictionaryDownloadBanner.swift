@@ -62,7 +62,6 @@ struct DictionaryDownloadBanner: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .shadow(color: .black.opacity(0.12), radius: 14, x: 0, y: 4)
+        .floatingGlass(in: RoundedRectangle(cornerRadius: 14, style: .continuous), shadowOpacity: 0.12)
     }
 }

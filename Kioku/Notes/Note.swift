@@ -21,6 +21,9 @@ struct Note: Identifiable, Codable, Equatable, Hashable {
     // Non-nil when the note was created from a subtitle import with audio; references
     // files managed by NotesAudioStore.
     var audioAttachmentID: UUID?
+    // The folder this note is filed in; nil (or an id with no matching folder) means the top level.
+    // Optional so notes and backups written before folders existed decode unchanged.
+    var folderID: UUID?
 
     // Whether the persisted segmentation/readings are a user customization (nil legacy = no).
     var hasUserEditedSegments: Bool {
@@ -43,7 +46,8 @@ struct Note: Identifiable, Codable, Equatable, Hashable {
         segmentsAreUserEdited: Bool? = nil,
         createdAt: Date = Date(),
         modifiedAt: Date = Date(),
-        audioAttachmentID: UUID? = nil
+        audioAttachmentID: UUID? = nil,
+        folderID: UUID? = nil
     ) {
         self.id = id
         self.title = title
@@ -53,5 +57,6 @@ struct Note: Identifiable, Codable, Equatable, Hashable {
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
         self.audioAttachmentID = audioAttachmentID
+        self.folderID = folderID
     }
 }

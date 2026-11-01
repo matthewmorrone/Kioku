@@ -33,6 +33,11 @@ extension NotesView {
                     Label("Photo Library", systemImage: "photo.on.rectangle")
                 }
                 Button {
+                    isShowingMultiPhotoPicker = true
+                } label: {
+                    Label("Several Photos…", systemImage: "photo.stack")
+                }
+                Button {
                     isShowingURLImportSheet = true
                 } label: {
                     Label("From URL", systemImage: "link")

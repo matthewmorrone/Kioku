@@ -20,14 +20,16 @@ final class NotesStore: ObservableObject {
             save()
         }
     }
-    @Published private(set) var persistenceError: String?
+    // Note folders, persisted in `_folders.json`. Mutated only through NotesStore+Folders.swift.
+    @Published var folders: [NoteFolder] = []
+    @Published var persistenceError: String?
 
     // Per-note JSON files live here; `_index.json` records ordering.
-    private let directoryURL: URL
+    let directoryURL: URL
     private let indexURL: URL
-    private let fileManager: FileManager
+    let fileManager: FileManager
     private let attachmentStore: any NotesAttachmentDeleting
-    private let fileWriter: any NotesFileWriting
+    let fileWriter: any NotesFileWriting
 
     // Mirrors what is currently on disk so save() can diff and only write changed files.
     // Without this every keystroke would rewrite every note file.
@@ -62,6 +64,7 @@ final class NotesStore: ObservableObject {
 
         notes = fromFiles
         diskSnapshotByID = Dictionary(uniqueKeysWithValues: fromFiles.map { ($0.id, $0) })
+        folders = NoteFolderFile.load(directory: directoryURL, fileManager: fileManager)
     }
 
     // Reloads notes from storage to reflect external updates. Flushes any pending in-memory
@@ -78,6 +81,7 @@ final class NotesStore: ObservableObject {
         )
         notes = fromFiles
         diskSnapshotByID = Dictionary(uniqueKeysWithValues: fromFiles.map { ($0.id, $0) })
+        folders = NoteFolderFile.load(directory: directoryURL, fileManager: fileManager)
         suppressSave = false
     }
 
@@ -155,7 +159,8 @@ final class NotesStore: ObservableObject {
         let duplicatedNote = Note(
             title: sourceNote.title,
             content: sourceNote.content,
-            segments: sourceNote.segments
+            segments: sourceNote.segments,
+            folderID: sourceNote.folderID
         )
         notes.insert(duplicatedNote, at: 0)
         return duplicatedNote

@@ -93,6 +93,7 @@ struct ContentView: View {
                 onCreateNote: handleNewNoteRequested,
                 onUpdateSelectedNote: handleNoteUpdated,
                 onOCRImportedNote: handleOCRImported,
+                onOCRImportedNotes: handleOCRBatchImported,
                 onAudioImported: handleAudioImported
             )
             .tag(ContentTab.notes)
@@ -169,6 +170,7 @@ struct ContentView: View {
                 lastActiveNoteID = firstSample.id.uuidString
             }
             restoreLastActiveNote()
+            syncSpotlight()
             TourCoordinator.shared.startIfUnseen(selectedTab)
             // A Siri launch can raise the request before this view exists to observe the change.
             playRandomAudioNoteIfRequested()
@@ -233,6 +235,16 @@ struct ContentView: View {
             }
             scheduleWotdRefresh(reason: "startup validation", delayNanoseconds: 2_000_000_000, forceRefresh: false)
         }
+        // Shortcuts / Siri requests (new note, review, lookups); see IntentHooks.
+        .modifier(IntentHooks(perform: performIntentRequest))
+        // Spotlight follows the library and routes tapped results (see SpotlightHooks).
+        .modifier(SpotlightHooks(
+            notes: notesStore.notes,
+            words: wordsStore.words,
+            dictionaryReady: readResources.ready,
+            sync: syncSpotlight,
+            open: openSpotlightResult
+        ))
         // Refresh WOTD when the underlying saved-word set changes.
         .onChange(of: wordsStore.words) { _, _ in
             guard readResources.ready else { return }
@@ -294,6 +306,48 @@ struct ContentView: View {
         guard !dictionaryDownloadManager.isInstalled || dictionaryDownloadManager.updateAvailable else { return }
         if await dictionaryDownloadManager.downloadIfNeeded() {
             rebuildReadResources()
+        }
+    }
+
+    // Performs a request an App Intent left on IntentRouter. Review requests move Learn's pager
+    // (its stored page index) to the activity and show the tab; the Start button there begins it.
+    private func performIntentRequest(_ request: IntentRequest) {
+        switch request {
+        case .createNote(let title, let text):
+            let note = Note(title: title, content: text)
+            notesStore.addNote(note)
+            selectedReadNote = note
+            lastActiveNoteID = note.id.uuidString
+            selectedTab = .read
+        case .startReview(let page):
+            UserDefaults.standard.set(page.rawValue, forKey: LearnPagerView.storedPageIndexKey)
+            selectedTab = .learn
+        case .lookUp(let text):
+            routeToWords(.search(text))
+        }
+    }
+
+    // Asks the Spotlight indexer to reconcile with the current notes and words. Words wait for the
+    // dictionary so their results carry readings and meanings.
+    private func syncSpotlight() {
+        SpotlightIndexer.shared.scheduleSync(
+            notes: notesStore.notes,
+            words: wordsStore.words,
+            store: readResources.ready ? readResources.dictionaryStore : nil
+        )
+    }
+
+    // Opens the note or word behind a tapped Spotlight result. A word that has since been
+    // unsaved still opens its dictionary detail; a note that was deleted is ignored.
+    private func openSpotlightResult(_ rawIdentifier: String) {
+        switch SpotlightIdentifier(rawValue: rawIdentifier) {
+        case .word(let entryID):
+            routeToWords(.detail(entryID: entryID, surface: wordsStore.words.first { $0.canonicalEntryID == entryID }?.surface))
+        case .note(let id):
+            guard notesStore.note(withID: id) != nil else { return }
+            readNoteNavigation.pendingTarget = ReadNoteTarget(noteID: id, surface: "")
+        case nil:
+            AppLog.error(.storage, "[ContentView] unrecognised Spotlight identifier \(rawIdentifier)")
         }
     }
 
@@ -372,6 +426,12 @@ struct ContentView: View {
         selectedReadNote = recognizedNote
         lastActiveNoteID = recognizedNote.id.uuidString
         selectedTab = .read
+    }
+
+    // Notes tab's multi-photo import: adds every recognized note (first photo ends up on top) and
+    // stays on the Notes tab, where the new notes are listed.
+    private func handleOCRBatchImported(_ notes: [Note]) {
+        for note in notes.reversed() { notesStore.addNote(note) }
     }
 
     // Notes tab's Import Audio: switch to Read, which transcribes the file into a new note there.

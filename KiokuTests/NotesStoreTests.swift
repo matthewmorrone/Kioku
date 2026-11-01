@@ -399,3 +399,90 @@ private final class ControllableNotesFileWriter: NotesFileWriting {
         try FileManager.default.removeItem(at: url)
     }
 }
+
+// Folder behaviour: grouping, the never-delete-a-note guarantee, scoped reordering, persistence,
+// and backward-compatible decoding.
+@MainActor
+final class NotesStoreFolderTests: XCTestCase {
+    private var testRoot: URL!
+    private var fileManager: TestFileManager!
+
+    override func setUp() async throws {
+        try await super.setUp()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kioku-folder-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        testRoot = root
+        fileManager = TestFileManager(testRoot: root)
+    }
+
+    override func tearDown() async throws {
+        try? FileManager.default.removeItem(at: testRoot)
+        try await super.tearDown()
+    }
+
+    // Moving notes into a folder scopes them out of the top level; stale folder ids fall back to it.
+    func testMoveScopesNotesAndStaleFolderFallsBackToTopLevel() {
+        let store = NotesStore(fileManager: fileManager)
+        let a = Note(title: "a"), b = Note(title: "b")
+        store.replaceAll(with: [a, b])
+        let folder = store.createFolder(name: " Songs ")!
+        XCTAssertEqual(folder.name, "Songs")
+        store.moveNotes(ids: [a.id], toFolder: folder.id)
+        XCTAssertEqual(store.notes(inFolder: folder.id).map(\.id), [a.id])
+        XCTAssertEqual(store.notes(inFolder: nil).map(\.id), [b.id])
+        XCTAssertEqual(store.noteCount(inFolder: folder.id), 1)
+
+        store.replaceAll(with: [Note(title: "x", folderID: UUID())])
+        XCTAssertEqual(store.notes(inFolder: nil).count, 1)
+    }
+
+    // Deleting a folder files its notes back at the top level and never deletes them.
+    func testDeleteFolderKeepsItsNotes() {
+        let store = NotesStore(fileManager: fileManager)
+        let note = Note(title: "keep")
+        store.replaceAll(with: [note])
+        let folder = store.createFolder(name: "F")!
+        store.moveNotes(ids: [note.id], toFolder: folder.id)
+        store.deleteFolder(id: folder.id)
+        XCTAssertEqual(store.notes.map(\.id), [note.id])
+        XCTAssertNil(store.notes[0].folderID)
+        XCTAssertTrue(store.folders.isEmpty)
+    }
+
+    // Reordering inside a folder leaves notes outside it in place.
+    func testScopedReorderKeepsOtherNotesInPlace() {
+        let store = NotesStore(fileManager: fileManager)
+        let folder = store.createFolder(name: "F")!
+        let a = Note(title: "a", folderID: folder.id)
+        let x = Note(title: "x")
+        let b = Note(title: "b", folderID: folder.id)
+        store.replaceAll(with: [a, x, b])
+        store.moveNotes(inFolder: folder.id, from: IndexSet(integer: 1), to: 0)
+        XCTAssertEqual(store.notes.map(\.title), ["b", "x", "a"])
+    }
+
+    // Folders and each note's folder survive a relaunch; blank names are refused.
+    func testFoldersPersistAcrossReload() {
+        let store = NotesStore(fileManager: fileManager)
+        XCTAssertNil(store.createFolder(name: "   "))
+        let note = Note(title: "n")
+        store.replaceAll(with: [note])
+        let folder = store.createFolder(name: "Lyrics")!
+        store.moveNotes(ids: [note.id], toFolder: folder.id)
+        store.flushPendingSave()
+
+        let reopened = NotesStore(fileManager: fileManager)
+        XCTAssertEqual(reopened.folders.map(\.name), ["Lyrics"])
+        XCTAssertEqual(reopened.notes.first?.folderID, folder.id)
+    }
+
+    // A note JSON written before folders existed decodes with no folder.
+    func testLegacyNoteDecodesWithoutFolder() throws {
+        let note = Note(title: "old")
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(note)) as? [String: Any])
+        object["folderID"] = nil
+        let data = try JSONSerialization.data(withJSONObject: object)
+        XCTAssertNil(try JSONDecoder().decode(Note.self, from: data).folderID)
+    }
+}

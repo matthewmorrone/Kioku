@@ -1,7 +1,6 @@
 import PhotosUI
 import SwiftUI
 import UIKit
-import Vision
 
 // OCR import flow for the Notes tab (entry points in the Import menu, NotesView+ImportMenu.swift) through Vision
 // recognition; on success forwards the recognized Note up to ContentView via
@@ -49,7 +48,7 @@ extension NotesView {
         AppLog.debug(.notesImport, "OCR: starting recognition on \(imageData.count) bytes of image data")
         do {
             let recognizedText = try await Task.detached(priority: .userInitiated) {
-                try NotesView.recognizeText(in: imageData)
+                try OCRTextRecognizer.recognizeText(in: imageData)
             }.value
             let trimmedText = recognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -68,6 +67,39 @@ extension NotesView {
         }
     }
 
+    // Multi-photo import: loads each picked photo, reads them one by one, and makes a note per photo
+    // that had text. The alert afterwards reports each photo's result. Shares the single-photo
+    // guard so two imports can't run at once.
+    func importTextFromSelectedOCRImages(_ items: [PhotosPickerItem]) {
+        guard isPerformingOCRImport == false, items.isEmpty == false else { return }
+        isPerformingOCRImport = true
+        Task {
+            defer {
+                isPerformingOCRImport = false
+                selectedBulkPhotoItems = []
+            }
+            var inputs: [BulkOCRInput] = []
+            for item in items {
+                do {
+                    if let data = try await item.loadTransferable(type: Data.self) {
+                        inputs.append(.image(data))
+                    } else {
+                        inputs.append(.unreadable("the photo had no loadable image data."))
+                    }
+                } catch {
+                    AppLog.error(.notesImport, "OCR: bulk loadTransferable failed — \(error.localizedDescription)")
+                    inputs.append(.unreadable(error.localizedDescription))
+                }
+            }
+            let outcomes = await Task.detached(priority: .userInitiated) {
+                BulkOCRRunner.run(inputs: inputs, recognize: OCRTextRecognizer.recognizeText(in:))
+            }.value
+            let notes = BulkOCRRunner.notes(from: outcomes)
+            if notes.isEmpty == false { onOCRImportedNotes?(notes) }
+            bulkOCRSummary = BulkOCRRunner.summary(of: outcomes)
+        }
+    }
+
     // Presents the camera-capture flow when the device supports it; surfaces a clear error
     // (rather than silently failing) on simulators / iPads without a back camera.
     func presentCameraOCRIfAvailable() {
@@ -76,24 +108,5 @@ extension NotesView {
             return
         }
         isShowingCameraPicker = true
-    }
-
-    // Vision request: accurate level, JA + EN, language correction on. Lines joined by \n
-    // so the resulting note preserves the source line breaks.
-    nonisolated static func recognizeText(in imageData: Data) throws -> String {
-        let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = true
-        request.recognitionLanguages = ["ja-JP", "en-US"]
-
-        let handler = VNImageRequestHandler(data: imageData, options: [:])
-        try handler.perform([request])
-
-        let recognizedLines = (request.results ?? []).compactMap { observation in
-            observation.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        .filter { $0.isEmpty == false }
-
-        return recognizedLines.joined(separator: "\n")
     }
 }

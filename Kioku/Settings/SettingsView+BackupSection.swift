@@ -49,7 +49,8 @@ extension SettingsView {
             lifetimeAgain: wordsStore.lifetimeAgain,
             audioAttachments: audioAttachments,
             customWords: customWordStore.state,
-            extras: extras
+            extras: extras,
+            noteFolders: notesStore.folders
         )
         AppLog.debug(
             .backup,
@@ -176,6 +177,9 @@ extension SettingsView {
         // Notes are the one store here that can genuinely fail to persist — bail before
         // touching any other store instead of silently reporting success over stale notes.
         notesStore.replaceAll(with: payload.notes)
+        if let noteFolders = payload.noteFolders {
+            notesStore.replaceFolders(with: noteFolders)
+        }
         if let notesError = notesStore.persistenceError {
             rollbackStagedAttachments(stagedAttachmentIDs, excluding: liveAttachmentIDs, using: audioStore)
             AppLog.error(

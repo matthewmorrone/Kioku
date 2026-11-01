@@ -3,7 +3,7 @@ import SwiftUI
 // Live dictionary content for one flashcard, fetched asynchronously from DictionaryStore.
 // `meanings` carries one entry per selected sense so the back face can render them stacked;
 // it falls back to the entry's first sense when the saved word has no explicit selection.
-private struct FlashcardLiveContent {
+private struct FlashcardLiveContent: Equatable {
     let surface: String
     let kanji: String?
     let kana: String?
@@ -50,10 +50,14 @@ struct FlashcardCard: View {
     let onAgain: () -> Void
 
     @EnvironmentObject private var notesStore: NotesStore
+    @EnvironmentObject private var wordsStore: WordsStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     // Opt-in Japanese theme: when off, every styled element below falls back to its original look.
     @AppStorage(Theme.storageKey) private var japaneseTheme = false
 
+    // Speak each card as its Japanese comes into view (toggled in the session header).
+    @AppStorage(FlashcardSpeaker.autoPlayKey) private var autoSpeak = false
+    @State private var lastAutoSpoken: String?
     @State private var liveContent: FlashcardLiveContent?
     @State private var gestureMode: FlashcardGestureMode = .undecided
     @State private var flipAngleDegrees: Double = 0
@@ -80,6 +84,9 @@ struct FlashcardCard: View {
                 y: isTop ? (4 + 10 * dragProgress) : 4
             )
             .overlay(actionOverlays)
+            .overlay(alignment: .bottomTrailing) {
+                if isTop { speakButton }
+            }
             .zIndex(isTop ? 10 : 0)
             .allowsHitTesting(isTop)
             // simultaneousGesture, not gesture: an exclusive DragGesture here can hold an
@@ -103,6 +110,54 @@ struct FlashcardCard: View {
             .task(id: liveContentTaskID) {
                 liveContent = await resolveLiveContent()
             }
+            .onChange(of: autoSpeakTrigger) { _, _ in autoSpeakIfNeeded() }
+    }
+
+    // Changes whenever the card's speak-worthiness might have: it reached the top, flipped, or its
+    // content finished loading.
+    private var autoSpeakTrigger: String {
+        "\(isTop)-\(showBack)-\(liveContent != nil)"
+    }
+
+    // What the speak button and auto-play read aloud for this card.
+    private var speechText: String {
+        FlashcardSpeaker.speechText(kanji: liveContent?.kanji, kana: liveContent?.kana, surface: word.surface)
+    }
+
+    // The speaker button in the card's corner; speaks the word whichever face is showing.
+    private var speakButton: some View {
+        Button {
+            FlashcardSpeaker.shared.speak(speechText)
+        } label: {
+            Image(systemName: "speaker.wave.2.fill")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .padding(14)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Speak word")
+    }
+
+    // Speaks the word on its own when auto-play is on and the Japanese has just come into view,
+    // once per card face so a reload of the content doesn't repeat it.
+    private func autoSpeakIfNeeded() {
+        guard autoSpeak else { return }
+        let frontHasJapanese: Bool
+        if case .english = faces.front { frontHasJapanese = false } else { frontHasJapanese = true }
+        let backHasJapanese: Bool
+        if case .english = faces.back { backHasJapanese = false } else { backHasJapanese = true }
+        guard FlashcardSpeaker.shouldAutoSpeak(
+            isTop: isTop,
+            hasContent: liveContent != nil,
+            showBack: showBack,
+            frontHasJapanese: frontHasJapanese,
+            backHasJapanese: backHasJapanese
+        ) else { return }
+        let key = "\(word.canonicalEntryID)-\(showBack)"
+        guard lastAutoSpoken != key else { return }
+        lastAutoSpoken = key
+        FlashcardSpeaker.shared.speak(speechText)
     }
 
     // Stable identity for the task that resolves liveContent — entry id followed by every
@@ -124,56 +179,12 @@ struct FlashcardCard: View {
     // selected and one of its glosses pinned doesn't render the same phrase twice.
     private func resolveLiveContent() async -> FlashcardLiveContent? {
         guard let store = dictionaryStore else { return nil }
-        let entryID = word.canonicalEntryID
-        let surface = word.surface
-        let selectedSenseIDs = word.selectedSenseIDs
-        let selectedGlosses = word.selectedGlosses
-        let chosenReading = word.selectedReading
+        let word = self.word
         return await Task.detached(priority: .utility) {
-            guard let data = try? store.fetchWordDisplayData(entryID: entryID, surface: surface) else {
-                return nil
-            }
-            // Kanji headword and the reading that fits the user's selected senses — JMdict stagr
-            // restricts some senses to specific kana forms (e.g. 黄昏's "dusk;twilight" sense is
-            // restricted to たそがれ even though the alphabetically-first kana form is こうこん).
-            let forms = WordFormResolver.kanjiAndKana(
-                entry: data.entry, store: store, entryID: entryID,
-                selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses,
-                chosenReading: chosenReading
+            guard let content = WordCardContentResolver.resolve(word: word, store: store) else { return nil }
+            return FlashcardLiveContent(
+                surface: content.surface, kanji: content.kanji, kana: content.kana, meanings: content.meanings
             )
-            let kana = forms.kana
-            let kanji = forms.kanji
-
-            var sensesByID: [Int64: DictionaryEntrySense] = [:]
-            for sense in data.entry.senses { sensesByID[sense.senseID] = sense }
-
-            var meanings: [String] = []
-            var seen: Set<String> = []
-
-            // Adds a meaning to the running list after trimming and de-duplicating.
-            func append(_ raw: String) {
-                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard trimmed.isEmpty == false, seen.insert(trimmed).inserted else { return }
-                meanings.append(trimmed)
-            }
-
-            for senseID in selectedSenseIDs {
-                if let first = sensesByID[senseID]?.glosses.first { append(first) }
-            }
-            for ref in selectedGlosses {
-                if let sense = sensesByID[ref.senseID],
-                   ref.glossIndex >= 0, ref.glossIndex < sense.glosses.count {
-                    append(sense.glosses[ref.glossIndex])
-                }
-            }
-
-            // Fallback: nothing selected (or selections didn't survive a dictionary rebuild)
-            // — show the entry's first sense's first gloss, matching the original behavior.
-            if meanings.isEmpty, let first = data.entry.senses.first?.glosses.first {
-                append(first)
-            }
-
-            return FlashcardLiveContent(surface: surface, kanji: kanji, kana: kana, meanings: meanings)
         }.value
     }
 
@@ -294,7 +305,27 @@ struct FlashcardCard: View {
     }
 
     private var frontFace: some View { faceView(faces.front) }
-    private var backFace: some View { faceView(faces.back) }
+    private var backFace: some View {
+        VStack(spacing: 8) {
+            faceView(faces.back)
+            personalNoteLine
+        }
+    }
+
+    // The user's own note for this word (mnemonic, context), shown under the answer. Read from the
+    // live store, not the session's copy of the word, so an edit made from the detail sheet
+    // mid-session shows on the next flip.
+    @ViewBuilder
+    private var personalNoteLine: some View {
+        let note = wordsStore.words.first { $0.canonicalEntryID == word.canonicalEntryID }?.personalNote ?? word.personalNote
+        if let note, note.isEmpty == false {
+            Label(note, systemImage: "note.text")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(4)
+        }
+    }
 
     // The Japanese string for one script, falling back to the encountered surface when the
     // dictionary kanji headword / reading isn't available. `.meaning` never reaches here — `face`

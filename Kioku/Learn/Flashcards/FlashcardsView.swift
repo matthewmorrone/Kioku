@@ -52,6 +52,8 @@ struct FlashcardsView: View {
     @AppStorage(LearnedSettings.excludeLearnedKey) private var excludeLearned = LearnedSettings.defaultExcludeLearned
     // Opt-in Japanese theme; switches the grading labels to Mincho また / わかった when on.
     @AppStorage(Theme.storageKey) private var japaneseTheme = false
+    // Speak each card's Japanese automatically; the per-card speaker button works either way.
+    @AppStorage(FlashcardSpeaker.autoPlayKey) private var autoSpeak = false
 
     var body: some View {
         NavigationStack {
@@ -152,6 +154,13 @@ struct FlashcardsView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Spacer()
+            Button { autoSpeak.toggle() } label: {
+                Image(systemName: autoSpeak ? "speaker.wave.2.fill" : "speaker.slash")
+                    .font(.footnote)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(autoSpeak ? Color.accentColor : Color.secondary)
+            .accessibilityLabel(autoSpeak ? "Auto-play on" : "Auto-play off")
             HStack(spacing: 12) {
                 Label("\(sessionAgain)", systemImage: "arrow.uturn.left.circle")
                     .font(.footnote)
