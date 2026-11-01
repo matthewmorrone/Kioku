@@ -61,10 +61,10 @@ enum RepeatedLineSpreader {
                 if moved.contains(line) {
                     let step = (end - lines[line].start) / Double(max(1, tokens[line].count))
                     tokens[line] = tokens[line].enumerated().map { n, t in
-                        AlignedToken(start: lines[line].start + Double(n) * step, charOffsetUTF16: t.charOffsetUTF16, charLengthUTF16: t.charLengthUTF16)
+                        AlignedToken(start: lines[line].start + Double(n) * step, charOffsetUTF16: t.charOffsetUTF16, charLengthUTF16: t.charLengthUTF16, confidence: t.confidence)
                     }
                 } else {
-                    tokens[line] = tokens[line].map { AlignedToken(start: min($0.start, end), charOffsetUTF16: $0.charOffsetUTF16, charLengthUTF16: $0.charLengthUTF16) }
+                    tokens[line] = tokens[line].map { AlignedToken(start: min($0.start, end), charOffsetUTF16: $0.charOffsetUTF16, charLengthUTF16: $0.charLengthUTF16, confidence: $0.confidence) }
                 }
             }
         }

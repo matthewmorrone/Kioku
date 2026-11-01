@@ -173,6 +173,13 @@ extension ReadView {
             // position).
             audioPlayback.audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: cuesWithMarkers, in: document.text)
             audioPlayback.audioController.updateCues(cuesWithMarkers)
+            // A shaky alignment gets a heads-up with its score, unless the user turned it off for this song.
+            if let percent = AlignmentConfidence.warningPercent(for: cuesWithMarkers),
+               AlignmentConfidence.isDismissed(noteID: document.activeNoteID) == false {
+                audioPlayback.lowConfidencePercent = percent
+                audioPlayback.dontShowLowConfidenceAgain = false
+                audioPlayback.isShowingLowConfidenceNotice = true
+            }
         } catch is CancellationError {
             // User navigated away / cancelled mid-run; nothing to surface.
         } catch {
@@ -239,9 +246,7 @@ extension ReadView {
     // Drops a duplicated title line from the alignment payload when the note starts with the title.
     // This keeps alignment tolerant of notes shaped like "Title\n\nlyrics...".
     private var lyricsForAlignment: String {
-        let normalizedText = document.text
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
+        let normalizedText = LyricLineBreaks.normalized(document.text)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard normalizedText.isEmpty == false else {
             return ""
