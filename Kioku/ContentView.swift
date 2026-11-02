@@ -256,6 +256,7 @@ struct ContentView: View {
             StartupTimer.mark("scenePhase → \(newPhase)")
             guard newPhase == .active else { return }
             clipboardCoordinator.checkClipboard()
+            importSharedItems()
         }
         .overlay(alignment: .bottom) {
             if clipboardCoordinator.hasPendingClipboard {
@@ -440,6 +441,11 @@ struct ContentView: View {
             filed.folderID = folder?.id
             notesStore.addNote(filed)
         }
+    }
+
+    // Turns anything sent from the share extension into notes whenever the app comes forward.
+    private func importSharedItems() {
+        Task { await SharedInboxImporter.importPending(into: notesStore) }
     }
 
     // Notes tab's Import Audio: switch to Read, which transcribes the file into a new note there.

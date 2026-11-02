@@ -1,6 +1,8 @@
-// Debug builds only: the Paths diagram is a segmentation-debugging view, and keeping it out of
-// Release keeps SwiftDagre's code out of the shipped app.
-#if DEBUG
+// Switched off: the Paths diagram is a segmentation-debugging view that needs the SwiftDagre
+// package (https://github.com/lukilabs/dagre-swift, from 0.1.0), which is no longer a dependency.
+// To bring it back, add that package to the Kioku target and add SUBLATTICE_DIAGRAM to the Debug
+// build's Active Compilation Conditions.
+#if DEBUG && SUBLATTICE_DIAGRAM
 import SwiftUI
 import UIKit
 import SwiftDagre

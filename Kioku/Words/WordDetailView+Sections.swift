@@ -262,8 +262,8 @@ extension WordDetailView {
         // diagram. Skipped when the compound-verb header (base + auxiliary, with glosses)
         // already answers the same "how does this decompose" question more clearly — showing
         // both duplicated the same insight in two places, one clean (header) and one raw (this).
-        // Debug builds only (see WordDetailView+SublatticeDiagram.swift).
-        #if DEBUG
+        // Switched off (see WordDetailView+SublatticeDiagram.swift for how to re-enable).
+        #if DEBUG && SUBLATTICE_DIAGRAM
         if sublatticePaths.count > 1, derivation?.compoundVerbParts == nil {
             Section("Paths") {
                 sublatticeDiagram
