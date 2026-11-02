@@ -276,6 +276,7 @@ struct SettingsView: View {
                         Spacer()
                         InfoButton(text: "Replace everything with the contents of an exported file. You're asked to confirm first.")
                     }
+                    ankiExportRow
                     HStack {
                         Button(role: .destructive) {
                             isShowingResetConfirmation = true

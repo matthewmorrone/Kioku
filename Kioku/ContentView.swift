@@ -431,7 +431,15 @@ struct ContentView: View {
     // Notes tab's multi-photo import: adds every recognized note (first photo ends up on top) and
     // stays on the Notes tab, where the new notes are listed.
     private func handleOCRBatchImported(_ notes: [Note]) {
-        for note in notes.reversed() { notesStore.addNote(note) }
+        guard notes.isEmpty == false else { return }
+        // A multi-photo import lands together in its own folder, named for the day it was made.
+        let day = Date().formatted(date: .abbreviated, time: .omitted)
+        let folder = notesStore.createFolder(name: "Photos \(day)")
+        for note in notes.reversed() {
+            var filed = note
+            filed.folderID = folder?.id
+            notesStore.addNote(filed)
+        }
     }
 
     // Notes tab's Import Audio: switch to Read, which transcribes the file into a new note there.
