@@ -102,31 +102,19 @@ enum CTCAlignmentCore {
         let timed = lineTimings(
             lines: lines, romanization: romanization, spanTokenRanges: spanTokenRanges,
             tokenSpans: spans, onsetOf: { onsets[$0] }, frameSec: matrix.frameSec, durationSec: durationSec,
-            regions: regions,
-            confidenceOf: { confidence(of: $0, tokens: tokens, spans: spans, matrix: matrix) }
+            regions: regions
         )
         let spread = RepeatedLineSpreader.spread(lines: timed.lines, lineTokens: timed.lineTokens, regions: regions, durationSec: durationSec)
         let moved = zip(timed.lines, spread.lines).filter { $0.start != $1.start }.count
         if moved > 0 { log?("repeated lines: re-spread \(moved) stacked copy(ies)") }
-        return spread
-    }
-
-    // How well the audio backs a span's letters: for each token in `range`, the highest probability the
-    // model gave its letter on the frames the Viterbi path placed it on, averaged. A token the path had
-    // to force onto frames that don't sound like it peaks low, so a low mean marks text the aligner is
-    // struggling with. Nil for a span with no tokens.
-    static func confidence(of range: Range<Int>, tokens: [Int], spans: [(start: Int, end: Int)], matrix: CTCEmissions.Matrix) -> Float? {
-        guard range.isEmpty == false else { return nil }
-        let C = CTCEmissions.classes
-        var total: Float = 0
-        for k in range {
-            var peak: Float = 0
-            for f in spans[k].start..<min(spans[k].end, matrix.frames) {
-                peak = max(peak, exp(matrix.values[f * C + tokens[k]]))
-            }
-            total += peak
+        // Scored on the final spans, so a re-spread copy is judged where it now sits.
+        let fits = AlignmentFit.margins(lines: spread.lines, romanization: romanization, stem: stem, mix: mix)
+        let scored = zip(spread.lineTokens, fits).map { tokens, fit in
+            tokens.map { AlignedToken(start: $0.start, charOffsetUTF16: $0.charOffsetUTF16, charLengthUTF16: $0.charLengthUTF16, confidence: fit) }
         }
-        return total / Float(range.count)
+        let known = fits.compactMap { $0 }
+        if known.isEmpty == false { log?(String(format: "alignment fit %.2f over %d lines", known.reduce(0, +) / Float(known.count), known.count)) }
+        return (spread.lines, scored)
     }
 
     // A letter probability this high on some frame, in the stem or the raw mix, means the model
@@ -206,7 +194,7 @@ enum CTCAlignmentCore {
     private static func lineTimings(
         lines: [String], romanization: [[RomanizedSpan]], spanTokenRanges: [[Range<Int>]],
         tokenSpans: [(start: Int, end: Int)], onsetOf: (Int) -> Int, frameSec: Double, durationSec: Double,
-        regions: [(start: Double, end: Double)], confidenceOf: (Range<Int>) -> Float?
+        regions: [(start: Double, end: Double)]
     ) -> (lines: [AlignedLine], lineTokens: [[AlignedToken]]) {
         let sustainedVowelGap = 4.0
         let bridgeMargin = 0.05
@@ -253,8 +241,7 @@ enum CTCAlignmentCore {
                 // Keep checkpoints distinct and forward-only, clamped to the line end.
                 if t < lastStart + 0.1 { t = min(lastStart + 0.1, end) }
                 lastStart = t
-                tokens.append(AlignedToken(start: t, charOffsetUTF16: span.charOffsetUTF16, charLengthUTF16: span.charLengthUTF16,
-                                          confidence: confidenceOf(range)))
+                tokens.append(AlignedToken(start: t, charOffsetUTF16: span.charOffsetUTF16, charLengthUTF16: span.charLengthUTF16))
             }
             lineTokens.append(tokens)
         }

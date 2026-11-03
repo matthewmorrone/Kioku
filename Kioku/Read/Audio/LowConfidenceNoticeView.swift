@@ -1,10 +1,11 @@
 import SwiftUI
 
-// The sheet shown after an alignment the aligner isn't confident in (AlignmentConfidence): the
-// percent, a plain OK, and a small "don't show again for this song" checkbox underneath. Layout:
+// The sheet shown after an alignment whose lines don't sound like their lyrics (AlignmentConfidence): how
+// many lines, a plain OK, and a small "don't show again for this song" checkbox underneath. Layout:
 // title, message, OK button, checkbox row. Presented from ReadView's lifecycle modifiers.
 struct LowConfidenceNoticeView: View {
-    let percent: Int
+    let weakLines: Int
+    let scoredLines: Int
     @Binding var dontShowAgain: Bool
     let onOK: () -> Void
 
@@ -12,7 +13,7 @@ struct LowConfidenceNoticeView: View {
         VStack(spacing: 14) {
             Text("Alignment May Be Off")
                 .font(.headline)
-            Text("The aligner is only \(percent)% confident in this alignment. The lyrics may differ from what is sung, or the vocals may be unclear.")
+            Text("\(weakLines) of \(scoredLines) lines don't sound like their lyrics where they are placed. The lyrics may differ from what is sung, or the timing may be off.")
                 .font(.subheadline)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)

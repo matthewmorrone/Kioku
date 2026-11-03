@@ -59,9 +59,9 @@ public struct AlignedToken {
     public let start: Double
     public let charOffsetUTF16: Int
     public let charLengthUTF16: Int
-    /// How sure the aligner is that the audio sounds like this token's romaji, 0...1: the mean over
-    /// the token's letters of the highest probability the model gave that letter on its frames.
-    /// Nil when the token was not scored (spread copies of repeated lines keep their source's).
+    /// How well the audio at this token's line matches the line's text, 0...1 (AlignmentFit): how
+    /// much closer the line's phonemes sit to what the model hears in its own span than in other
+    /// lines' spans. Every token of a line carries the line's value; nil when the line was not scored.
     public let confidence: Float?
     public init(start: Double, charOffsetUTF16: Int, charLengthUTF16: Int, confidence: Float? = nil) {
         self.start = start

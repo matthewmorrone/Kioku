@@ -1,7 +1,7 @@
 import XCTest
 @testable import Kioku
 
-// Pins the whole-song score (mean of scored checkpoints), the warning gate, and the per-song dismissal.
+// Pins the whole-song score (mean of the cues' fits), the warning gate, and the per-song dismissal.
 @MainActor
 final class AlignmentConfidenceTests: XCTestCase {
     private func cue(_ confidences: [Float?]) -> SubtitleCue {
@@ -11,19 +11,21 @@ final class AlignmentConfidenceTests: XCTestCase {
         return SubtitleCue(index: 1, startMs: 0, endMs: 1000, text: "abc", checkpoints: checkpoints)
     }
 
-    func testScoreIsMeanOfScoredCheckpointsAcrossCues() {
+    func testScoreIsMeanOfCueFits() {
         let score = AlignmentConfidence.score(of: [cue([0.2, nil]), cue([0.4])])
         XCTAssertEqual(score ?? -1, 0.3, accuracy: 0.0001)
     }
 
     func testUnscoredCuesHaveNoScoreAndNoWarning() {
         XCTAssertNil(AlignmentConfidence.score(of: [cue([nil, nil])]))
-        XCTAssertNil(AlignmentConfidence.warningPercent(for: [cue([nil])]))
+        XCTAssertNil(AlignmentConfidence.warning(for: [cue([nil])]))
     }
 
-    func testWarnsOnlyBelowThresholdWithWholePercent() {
-        XCTAssertEqual(AlignmentConfidence.warningPercent(for: [cue([0.30, 0.31])]), 31)
-        XCTAssertNil(AlignmentConfidence.warningPercent(for: [cue([0.9])]))
+    func testWarnsBelowThresholdWithWeakLineCount() {
+        let warning = AlignmentConfidence.warning(for: [cue([0.05]), cue([0.2]), cue([0.05])])
+        XCTAssertEqual(warning?.weakLines, 2)
+        XCTAssertEqual(warning?.scoredLines, 3)
+        XCTAssertNil(AlignmentConfidence.warning(for: [cue([0.5]), cue([0.4])]))
     }
 
     func testDismissalIsPerNote() {

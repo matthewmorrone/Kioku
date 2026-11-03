@@ -175,10 +175,11 @@ extension ReadView {
             // position).
             audioPlayback.audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: cuesWithMarkers, in: document.text)
             audioPlayback.audioController.updateCues(cuesWithMarkers)
-            // A shaky alignment gets a heads-up with its score, unless the user turned it off for this song.
-            if let percent = AlignmentConfidence.warningPercent(for: cuesWithMarkers),
+            // An alignment whose lines don't sound like their lyrics gets a heads-up with how many, unless the user turned it off for this song.
+            if let warning = AlignmentConfidence.warning(for: cuesWithMarkers),
                AlignmentConfidence.isDismissed(noteID: document.activeNoteID) == false {
-                audioPlayback.lowConfidencePercent = percent
+                audioPlayback.lowConfidenceWeakLines = warning.weakLines
+                audioPlayback.lowConfidenceScoredLines = warning.scoredLines
                 audioPlayback.dontShowLowConfidenceAgain = false
                 audioPlayback.isShowingLowConfidenceNotice = true
             }

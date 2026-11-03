@@ -19,7 +19,8 @@ extension ReadView {
                 if audioPlayback.dontShowLowConfidenceAgain { AlignmentConfidence.dismiss(noteID: document.activeNoteID) }
             }) {
                 LowConfidenceNoticeView(
-                    percent: audioPlayback.lowConfidencePercent,
+                    weakLines: audioPlayback.lowConfidenceWeakLines,
+                    scoredLines: audioPlayback.lowConfidenceScoredLines,
                     dontShowAgain: $audioPlayback.dontShowLowConfidenceAgain,
                     onOK: { audioPlayback.isShowingLowConfidenceNotice = false }
                 )
