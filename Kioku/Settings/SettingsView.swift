@@ -51,6 +51,7 @@ struct SettingsView: View {
     @AppStorage(WordOfTheDayScheduler.minuteKey) private var wotdMinute: Int = 0
 
     // Auto-mark-as-learned: one right answer in every kind of question → learned (see AutoLearnPolicy).
+    @AppStorage(PlaybackControlSize.storageKey) private var playbackControlSizeRaw = PlaybackControlSize.small.rawValue
     @AppStorage(LearnedSettings.enabledKey) private var autoLearnEnabled: Bool = false
     // Whether the Learn tab's study modes skip Learned/Mastered words. Read by each mode through
     // StudyWordPool; this is the single place it's set.
@@ -204,6 +205,16 @@ struct SettingsView: View {
                     }
                 } header: {
                     Text("Learning")
+                }
+
+                // MARK: Playback — size of the karaoke and breakdown transport buttons.
+                Section {
+                    Picker("Control Size", selection: $playbackControlSizeRaw) {
+                        ForEach(PlaybackControlSize.allCases) { Text($0.title).tag($0.rawValue) }
+                    }
+                    .pickerStyle(.segmented)
+                } header: {
+                    Text("Playback")
                 }
 
                 // MARK: Word of the Day — daily notification time and permission.

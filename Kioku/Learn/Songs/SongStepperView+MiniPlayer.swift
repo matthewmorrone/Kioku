@@ -15,12 +15,21 @@ import SwiftUI
 extension SongStepperView {
 
     var miniPlayerBar: some View {
-        HStack(spacing: 14) {
+        PlaybackControlSizeReader { size in
+            miniPlayerBar(size)
+        }
+    }
+
+    // The bar laid out for one control size (see PlaybackControlSize).
+    private func miniPlayerBar(_ size: PlaybackControlSize) -> some View {
+        HStack(spacing: size == .large ? 22 : 14) {
             Button {
                 previousMiniPlayerStep()
             } label: {
                 Image(systemName: "backward.end.fill")
-                    .scaledFont(size: 15, weight: .semibold)
+                    .scaledFont(size: size.sideIconSize + 1, weight: .semibold)
+                    .frame(width: size.sideDiameter, height: size.sideDiameter)
+                    .contentShape(Rectangle())
                     .foregroundStyle(canStepPrevious ? Color.primary : Color.secondary.opacity(0.4))
             }
             .buttonStyle(.plain)
@@ -32,10 +41,10 @@ extension SongStepperView {
             } label: {
                 Circle()
                     .fill(Color(.systemOrange).opacity(0.2))
-                    .frame(width: 40, height: 40)
+                    .frame(width: size.playDiameter, height: size.playDiameter)
                     .overlay(
                         Image(systemName: isMiniPlayerPlaying ? "pause.fill" : "play.fill")
-                            .scaledFont(size: 16, weight: .semibold)
+                            .scaledFont(size: size.playIconSize, weight: .semibold)
                             .foregroundStyle(Color(.systemOrange))
                     )
             }
@@ -46,7 +55,9 @@ extension SongStepperView {
                 nextMiniPlayerStep()
             } label: {
                 Image(systemName: "forward.end.fill")
-                    .scaledFont(size: 15, weight: .semibold)
+                    .scaledFont(size: size.sideIconSize + 1, weight: .semibold)
+                    .frame(width: size.sideDiameter, height: size.sideDiameter)
+                    .contentShape(Rectangle())
                     .foregroundStyle(canStepNext ? Color.primary : Color.secondary.opacity(0.4))
             }
             .buttonStyle(.plain)

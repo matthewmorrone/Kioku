@@ -7,8 +7,15 @@ import SwiftUI
 // with no dependency on the rest of the file's layout/gesture code.
 extension LyricsView {
     var controls: some View {
+        PlaybackControlSizeReader { size in
+            transportBar(size)
+        }
+    }
+
+    // The bar laid out for one control size (see PlaybackControlSize).
+    private func transportBar(_ size: PlaybackControlSize) -> some View {
         VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 10) {
+            HStack(alignment: .center, spacing: size.spacing) {
                 Button {
                     if controller.isPlaying {
                         controller.pause()
@@ -20,10 +27,10 @@ extension LyricsView {
                 } label: {
                     Circle()
                         .fill(Color(.systemOrange).opacity(0.2))
-                        .frame(width: 36, height: 36)
+                        .frame(width: size.playDiameter, height: size.playDiameter)
                         .overlay(
                             Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
-                                .scaledFont(size: 14, weight: .semibold)
+                                .scaledFont(size: size.playIconSize, weight: .semibold)
                                 .foregroundStyle(Color(.systemOrange))
                         )
                 }
@@ -37,10 +44,10 @@ extension LyricsView {
 
                 Circle()
                     .fill(Color(.systemFill))
-                    .frame(width: 36, height: 36)
+                    .frame(width: size.sideDiameter, height: size.sideDiameter)
                     .overlay(
                         Image(systemName: "backward.end.fill")
-                            .scaledFont(size: 14, weight: .semibold)
+                            .scaledFont(size: size.sideIconSize, weight: .semibold)
                             .foregroundStyle(Color.secondary)
                     )
                     .onTapGesture {
@@ -55,7 +62,7 @@ extension LyricsView {
             .padding(.horizontal, 14)
             .padding(.bottom, 12)
             .padding(.top, 6)
-            .frame(height: 56)
+            .frame(height: size.barHeight)
         }
     }
 }
@@ -65,6 +72,8 @@ extension LyricsView {
 struct LyricsScrubber: View {
     @ObservedObject var controller: AudioPlaybackController
     @Binding var isScrubbing: Bool
+    // False in the Large mini player, where the capsule is too narrow for the time labels and a track.
+    var showsTimes = true
 
     @State private var scrubPositionSeconds: Double = 0
 
@@ -82,11 +91,13 @@ struct LyricsScrubber: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Text(formatted(ms: displayTimeMs))
-                .scaledFont(size: 10, design: .monospaced)
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 30, alignment: .trailing)
-                .animation(.none, value: displayTimeMs)
+            if showsTimes {
+                Text(formatted(ms: displayTimeMs))
+                    .scaledFont(size: 10, design: .monospaced)
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 30, alignment: .trailing)
+                    .animation(.none, value: displayTimeMs)
+            }
 
             Slider(
                 value: Binding(
@@ -108,10 +119,12 @@ struct LyricsScrubber: View {
             )
             .tint(Color(.systemOrange))
 
-            Text(formattedDuration)
-                .scaledFont(size: 10, design: .monospaced)
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 30, alignment: .leading)
+            if showsTimes {
+                Text(formattedDuration)
+                    .scaledFont(size: 10, design: .monospaced)
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 30, alignment: .leading)
+            }
         }
         .onChange(of: controller.currentTimeMs) { _, newTimeMs in
             guard isScrubbing == false else { return }

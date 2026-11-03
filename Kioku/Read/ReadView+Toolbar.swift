@@ -52,11 +52,11 @@ extension ReadView {
                         .controlSize(.small)
                 } else {
                     Image(systemName: "arrow.counterclockwise")
-                        .scaledFont(size: 16, weight: .semibold)
+                        .scaledFont(size: titleButtonIconSize, weight: .semibold)
                         .foregroundStyle(ReadToggleAppearance.foreground(isOn: isEnabled))
                 }
             }
-            .frame(width: 36, height: 36)
+            .frame(width: titleButtonSide, height: titleButtonSide)
             .background(Circle().fill(ReadToggleAppearance.background))
         }
         .buttonStyle(PlainButtonStyle())
@@ -266,11 +266,25 @@ extension ReadView {
         readSheets.isShowingBreakdownSheet = true
     }
 
-    // Tap opens a random other note; press and hold offers Random Karaoke (a random song playing in
-    // the lyrics view) or Random Breakdown (a random breakdown playing from the top). ContentView picks the note for all three, as for the
-    // lyrics view's shuffle and the Play Random Song shortcut.
+    // Tap opens a menu: Random Karaoke (a random song playing in the lyrics view), Random Breakdown
+    // (a random breakdown playing from the top) or Random Note. ContentView picks the note for all
+    // three, as for the lyrics view's shuffle and the Play Random Song shortcut.
     var titleShuffleButton: some View {
+        // Type-erased: the title row's combined view type is already near SwiftUI's limit, and a
+        // larger shuffle button type overflowed the stack while drawing it.
+        AnyView(shuffleMenu)
+    }
+
+    // The shuffle button's menu (see titleShuffleButton).
+    private var shuffleMenu: some View {
+        // A tap opens the menu (no press-and-hold), so the common "play something" choices are two
+        // taps, which matters one-handed on the move.
         Menu {
+            Button {
+                ReadNoteNavigation.shared.isRandomNoteRequested = true
+            } label: {
+                Label("Random Note", systemImage: "shuffle")
+            }
             Button {
                 ReadNoteNavigation.shared.isRandomPlaybackRequested = true
             } label: {
@@ -283,12 +297,10 @@ extension ReadView {
             }
         } label: {
             titleActionLabel(systemImage: "shuffle", foreground: .accentColor)
-        } primaryAction: {
-            ReadNoteNavigation.shared.isRandomNoteRequested = true
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Open a Random Note")
-        .accessibilityHint("Press and hold for random karaoke or a random breakdown")
+        .accessibilityLabel("Shuffle")
+        .accessibilityHint("Choose random karaoke, a random breakdown or a random note")
     }
 
     // Shared visual treatment for the three title-row action buttons. Sized to match the bottom
@@ -301,16 +313,27 @@ extension ReadView {
     func titleActionLabel(systemImage: String, foreground: Color) -> some View {
         titleActionLabel {
             Image(systemName: systemImage)
-                .scaledFont(size: 16, weight: .semibold)
+                .scaledFont(size: titleButtonIconSize, weight: .semibold)
                 .foregroundStyle(foreground)
         }
     }
+
+    // The title-row button size for the saved Playback → Control Size setting.
+    var titleControlSize: PlaybackControlSize {
+        PlaybackControlSize(rawValue: playbackControlSizeRaw) ?? .small
+    }
+
+    // Edge of a title-row button: 36 as before, 64 when controls are Large.
+    var titleButtonSide: CGFloat { titleControlSize == .large ? 64 : 36 }
+
+    // Icon size inside a title-row button: 16 as before, 28 when controls are Large.
+    var titleButtonIconSize: CGFloat { titleControlSize == .large ? 28 : 16 }
 
     // Same frame/background/hit-area as above, around arbitrary content — lets a busy state
     // (e.g. titleLyricsButton's spinner while a song aligns) share the box without duplicating it.
     func titleActionLabel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
-            .frame(width: 36, height: 36)
+            .frame(width: titleButtonSide, height: titleButtonSide)
             .background(Capsule().fill(ReadToggleAppearance.background))
             .contentShape(Rectangle())
     }
@@ -576,9 +599,9 @@ extension ReadView {
     // to attach taps and long-presses to without nesting them inside a Button.
     private var editModeButtonLabel: some View {
         Image(systemName: "character.cursor.ibeam.ja")
-            .scaledFont(size: 16, weight: .semibold)
+            .scaledFont(size: titleButtonIconSize, weight: .semibold)
             .foregroundStyle(ReadToggleAppearance.foreground(isOn: editModeScroll.isEditMode))
-            .frame(width: 36, height: 36)
+            .frame(width: titleButtonSide, height: titleButtonSide)
             .background(Circle().fill(ReadToggleAppearance.background))
     }
 }

@@ -6,6 +6,9 @@ import UIKit
 
 // Provides the primary reading and editing surface for an active note.
 struct ReadView: View {
+    // Size of the title-row buttons (lyrics, breakdown, shuffle) and the mini player; Large is
+    // for one-handed use while moving. Set in Settings → Playback.
+    @AppStorage(PlaybackControlSize.storageKey) var playbackControlSizeRaw = PlaybackControlSize.small.rawValue
     @Binding var selectedNote: Note?
     @Binding var shouldActivateEditModeOnLoad: Bool
     // Set (via ReadNoteNavigation, by ContentView) when a tap on a Word Detail source note should

@@ -37,9 +37,9 @@ extension ReadView {
                 }
             } label: {
                 Image(systemName: audioPlayback.audioController.isPlaying ? "pause.fill" : "play.fill")
-                    .scaledFont(size: 14, weight: .semibold)
+                    .scaledFont(size: titleButtonIconSize - 2, weight: .semibold)
                     .foregroundStyle(Color.accentColor)
-                    .frame(width: 20, height: 36)
+                    .frame(width: titleControlSize == .large ? 36 : 20, height: titleButtonSide)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -51,7 +51,8 @@ extension ReadView {
             // target rather than the whole scrubber.
             LyricsScrubber(
                 controller: audioPlayback.audioController,
-                isScrubbing: $isMiniPlayerScrubbing
+                isScrubbing: $isMiniPlayerScrubbing,
+                showsTimes: titleControlSize == .small
             )
 
             // Same glyph as titleLyricsButton (music.note) rather than a chevron — this is still
@@ -61,9 +62,9 @@ extension ReadView {
                 audioPlayback.isShowingLyricsView = true
             } label: {
                 Image(systemName: "music.note")
-                    .scaledFont(size: 14, weight: .semibold)
+                    .scaledFont(size: titleButtonIconSize - 2, weight: .semibold)
                     .foregroundStyle(Color.accentColor)
-                    .frame(width: 20, height: 36)
+                    .frame(width: titleControlSize == .large ? 36 : 20, height: titleButtonSide)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -71,7 +72,7 @@ extension ReadView {
             .contextMenu { lyricsMiniPlayerStopMenu }
         }
         .padding(.horizontal, 10)
-        .frame(height: 36)
+        .frame(height: titleButtonSide)
         .background(Capsule().fill(ReadToggleAppearance.background))
     }
 }
