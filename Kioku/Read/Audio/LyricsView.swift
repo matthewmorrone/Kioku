@@ -114,6 +114,8 @@ struct LyricsView: View {
     // Sing options, kept across sessions (LyricsView+Sing.swift).
     @AppStorage(SingReveal.storageKey) var singRevealRaw = SingReveal.show.rawValue
     @AppStorage(SingStrictness.storageKey) var singStrictnessRaw = SingStrictness.normal.rawValue
+    // Sing's Guided mode (hear each line, then repeat it), chosen in the Sing options.
+    @AppStorage("lyricsSingGuided") var singGuided = false
 
     // Horizontal fine-scrub sensitivity. 5 ms per point means a full ~300 pt swipe across the
     // card covers ~1.5 s — coarse enough to travel, fine enough to settle on a boundary.

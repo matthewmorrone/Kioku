@@ -1,33 +1,11 @@
 import SwiftUI
 
-// Guided Sing's controls in the lyrics popup: the Guided capsule beside Sing that starts it, and
-// the line bar under the Sing row while it runs — an instruction saying what to do now (listen,
+// Guided Sing's controls in the lyrics popup (Guided is an option in the Sing options, started by
+// the Sing capsule): the line bar under the Sing row while it runs — an instruction saying what to do now (listen,
 // sing the line, say the named words, or which words were missed), then previous line, the
 // step's action (Done / Hear it again), next line, and what the mic heard under it.
 // The words themselves turn green and red on the lyrics card as they're graded.
 extension LyricsView {
-    @ViewBuilder
-    var guidedSingButton: some View {
-        Button {
-            toggleSing(guided: true)
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "person.wave.2")
-                    .scaledFont(size: 12, weight: .semibold)
-                Text("Guided")
-                    .scaledFont(size: 12, weight: .semibold)
-                    .lineLimit(1)
-            }
-            .foregroundStyle(Color.secondary)
-            .padding(.horizontal, 12)
-            .frame(height: 28)
-            .background(Color.secondary.opacity(0.16))
-            .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Guided sing: hear each line, then repeat it")
-    }
-
     @ViewBuilder
     var guidedSingBar: some View {
         let phase = singSession.guidedPhase

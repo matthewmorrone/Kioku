@@ -1,8 +1,8 @@
 import SwiftUI
 import UIKit
 
-// Sing mode's row just under the lyrics popup's top bar: the Sing capsule, the options gear, the
-// Line / Song capsule while listening, and a short notice beside them (headphones advice, or why
+// Sing mode's row just under the lyrics popup's top bar: the Sing capsule, the options button, the
+// loop toggle while listening, and a short notice beside them (headphones advice, or why
 // Sing couldn't start). The verdict colours themselves are drawn by the active-cue card
 // (LyricsView.swift) through its Saved Highlight slots; hidden words are masked here.
 extension LyricsView {
@@ -76,20 +76,10 @@ extension LyricsView {
             startPendingSingPlayback()
         }
 
-        if singSession.isActive == false {
-            guidedSingButton
-        }
-
         Button {
             isShowingSingOptions = true
         } label: {
-            Image(systemName: "slider.horizontal.3")
-                .scaledFont(size: 12, weight: .semibold)
-                .foregroundStyle(Color.secondary)
-                .padding(.horizontal, 12)
-                .frame(height: 28)
-                .background(Color.secondary.opacity(0.16))
-                .clipShape(Capsule())
+            barIcon("slider.horizontal.3")
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Sing options")
@@ -98,13 +88,7 @@ extension LyricsView {
             Button {
                 isShowingSingSummary = true
             } label: {
-                Image(systemName: "list.bullet")
-                    .scaledFont(size: 12, weight: .semibold)
-                    .foregroundStyle(Color.secondary)
-                    .padding(.horizontal, 12)
-                    .frame(height: 28)
-                    .background(Color.secondary.opacity(0.16))
-                    .clipShape(Capsule())
+                barIcon("list.bullet")
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Show Sing results")
@@ -112,13 +96,7 @@ extension LyricsView {
             Button {
                 singSession.clearResults()
             } label: {
-                Image(systemName: "xmark")
-                    .scaledFont(size: 12, weight: .semibold)
-                    .foregroundStyle(Color.secondary)
-                    .padding(.horizontal, 12)
-                    .frame(height: 28)
-                    .background(Color.secondary.opacity(0.16))
-                    .clipShape(Capsule())
+                barIcon("xmark")
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Clear Sing results")
@@ -128,13 +106,7 @@ extension LyricsView {
             Button {
                 singSession.scope = singSession.scope == .song ? .line : .song
             } label: {
-                Image(systemName: singSession.scope == .line ? "repeat.1" : "repeat")
-                    .scaledFont(size: 12, weight: .semibold)
-                    .foregroundStyle(singSession.scope == .line ? Color.accentColor : Color.secondary)
-                    .padding(.horizontal, 12)
-                    .frame(height: 28)
-                    .background((singSession.scope == .line ? Color.accentColor : Color.secondary).opacity(0.16))
-                    .clipShape(Capsule())
+                barIcon(singSession.scope == .line ? "repeat.1" : "repeat", tint: singSession.scope == .line ? .accentColor : .secondary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(singSession.scope == .line ? "Looping this line. Tap to sing the whole song." : "Singing the whole song. Tap to loop this line.")
@@ -170,9 +142,11 @@ extension LyricsView {
     }
 
     // Starts or stops listening. Starting switches playback to the instrumental and plays the song
-    // (once the instrumental is in, when it has to be switched to); stopping pauses and puts back
-    // whatever was playing before.
-    func toggleSing(guided: Bool = false) {
+    // (once the instrumental is in, when it has to be switched to); with the Guided option it plays
+    // each line for the singer to copy instead; stopping pauses and puts back whatever was playing
+    // before.
+    func toggleSing() {
+        let guided = singGuided
         if singSession.isActive {
             isSingPlaybackPending = false
             if let previous = singSession.restoreAudioSource { onSetAudioSource(previous) }
@@ -373,6 +347,7 @@ extension LyricsView {
     // a session runs so its words are all graded the same way.
     var singOptionsSheet: some View {
         SingOptionsView(
+            isGuided: $singGuided,
             reveal: Binding(get: { SingReveal(rawValue: singRevealRaw) ?? .show }, set: { singRevealRaw = $0.rawValue }),
             strictness: Binding(get: { SingStrictness(rawValue: singStrictnessRaw) ?? .normal }, set: { singStrictnessRaw = $0.rawValue }),
             isStrictnessLocked: singSession.isActive,

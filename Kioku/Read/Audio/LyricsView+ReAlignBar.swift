@@ -4,7 +4,7 @@ import LyricAlignment
 // Top action bar for the karaoke view: Re-align (one forced-alignment pass over the whole song;
 // press and hold for Re-align from Scratch, which isolates the vocals again first, or Re-align without
 // Vocal Stem, which listens to the raw mix instead), the
-// Mix / Vocals / Instrumental source toggle, the audio menu (Replace / Remove), the open-in-breakdown button, and the settings-popup gear (LyricsView+SettingsPopup.swift). Not private: called from panel(geo:) in
+// Mix / Vocals / Instrumental source toggle, the overflow menu (breakdown, word by word, Replace / Remove audio), and the settings-popup gear (LyricsView+SettingsPopup.swift). Not private: called from panel(geo:) in
 // LyricsView.swift.
 extension LyricsView {
     // The attached song's audio file, which keys its cached vocal stem.
@@ -106,71 +106,33 @@ extension LyricsView {
                 .accessibilityLabel("Playing \(audioSource.label). Tap to switch to \(audioSource.next.label).")
             }
 
-            // Audio menu: Replace Audio picks a different song file (optionally with srt / TextGrid);
-            // Remove Audio deletes the audio and its cues after a confirmation. Hidden mid-run so
-            // neither can race the alignment in flight.
-            if isReAligning == false {
-                Menu {
-                    Button("Replace Audio…", systemImage: "waveform") { onReplaceAudio() }
+            // One overflow menu for everything that isn't a mid-listen toggle: the breakdown and
+            // word-by-word views, and Replace / Remove Audio (Replace picks a different song file,
+            // optionally with srt / TextGrid; Remove deletes the audio and its cues after a
+            // confirmation). The audio entries are hidden mid-run so neither can race the
+            // alignment in flight.
+            Menu {
+                Button("Open Line in Breakdown", systemImage: "text.book.closed") { onOpenBreakdown() }
+                Button("Word by Word", systemImage: "arrow.up.left.and.arrow.down.right") { onOpenWordFocus() }
+                if isReAligning == false {
+                    Divider()
+                    Button("Replace Audio…", systemImage: "arrow.triangle.2.circlepath") { onReplaceAudio() }
                     Button("Remove Audio", systemImage: "trash", role: .destructive) {
                         isShowingRemoveAudioConfirm = true
                     }
-                } label: {
-                    Image(systemName: "waveform")
-                        .scaledFont(size: 12, weight: .semibold)
-                        .foregroundStyle(Color.secondary)
-                        .padding(.horizontal, 12)
-                        .frame(height: 28)
-                        .background(Color.secondary.opacity(0.16))
-                        .clipShape(Capsule())
                 }
-                .accessibilityLabel("Audio")
-                .confirmationDialog("Remove this note's audio?", isPresented: $isShowingRemoveAudioConfirm, titleVisibility: .visible) {
-                    Button("Remove Audio", role: .destructive) { onRemoveAudio() }
-                }
-            }
-
-            // Opens the breakdown on the line playing now. The sheet rises over this view, so
-            // closing it comes back here.
-            Button {
-                onOpenBreakdown()
             } label: {
-                Image(systemName: "list.bullet.rectangle")
-                    .scaledFont(size: 12, weight: .semibold)
-                    .foregroundStyle(Color.secondary)
-                    .padding(.horizontal, 12)
-                    .frame(height: 28)
-                    .background(Color.secondary.opacity(0.16))
-                    .clipShape(Capsule())
+                barIcon("ellipsis")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Open This Line in Breakdown")
-
-            // Opens the full-screen word-by-word view.
-            Button {
-                onOpenWordFocus()
-            } label: {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .scaledFont(size: 12, weight: .semibold)
-                    .foregroundStyle(Color.secondary)
-                    .padding(.horizontal, 12)
-                    .frame(height: 28)
-                    .background(Color.secondary.opacity(0.16))
-                    .clipShape(Capsule())
+            .accessibilityLabel("More")
+            .confirmationDialog("Remove this note's audio?", isPresented: $isShowingRemoveAudioConfirm, titleVisibility: .visible) {
+                Button("Remove Audio", role: .destructive) { onRemoveAudio() }
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Word by Word")
 
             Button {
                 isShowingSettingsPopup = true
             } label: {
-                Image(systemName: "gearshape")
-                    .scaledFont(size: 12, weight: .semibold)
-                    .foregroundStyle(Color.secondary)
-                    .padding(.horizontal, 12)
-                    .frame(height: 28)
-                    .background(Color.secondary.opacity(0.16))
-                    .clipShape(Capsule())
+                barIcon("gearshape")
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Lyrics Settings")
@@ -183,5 +145,16 @@ extension LyricsView {
         .padding(.vertical, 7)
         .frame(maxWidth: .infinity)
         .background(Color.black.opacity(0.18))
+    }
+
+    // A secondary top-bar button face: one 28 pt circle so every icon in the bar is the same size.
+    // `tint` marks an active state (looping, recording).
+    func barIcon(_ systemName: String, tint: Color = .secondary) -> some View {
+        Image(systemName: systemName)
+            .scaledFont(size: 13, weight: .semibold)
+            .foregroundStyle(tint)
+            .frame(width: 28, height: 28)
+            .background(tint.opacity(0.16))
+            .clipShape(Circle())
     }
 }

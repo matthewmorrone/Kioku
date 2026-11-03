@@ -76,7 +76,7 @@ struct WordFocusView: View {
                         jumpButton(systemImage: "music.note.list", label: "Show in Lyrics", action: onOpenLyrics)
                         // An interlude has no place in the note, so only the lyrics jump applies to it.
                         if word.interludeDurationMs == nil {
-                            jumpButton(systemImage: "list.bullet.rectangle", label: "Show in Breakdown") { onOpenBreakdown(word.id) }
+                            jumpButton(systemImage: "text.book.closed", label: "Show in Breakdown") { onOpenBreakdown(word.id) }
                             jumpButton(systemImage: "character.book.closed", label: "Word Detail") { onOpenWordDetail(word.id, word.surface) }
                         }
                     }

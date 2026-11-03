@@ -1,18 +1,30 @@
 import SwiftUI
 
-// The Sing options sheet, opened from the gear on the lyrics popup's Sing row. Sections: Reveal
+// The Sing options sheet, opened from the options button on the lyrics popup's Sing row. Sections: Mode
+// (sing along, or Guided: hear each line, then repeat it), Reveal
 // (whether the words being listened for are hidden while singing) and Strictness (how much of a
 // word must be heard), each with a line saying what it does.
 struct SingOptionsView: View {
+    @Binding var isGuided: Bool
     @Binding var reveal: SingReveal
     @Binding var strictness: SingStrictness
-    // True while a session runs: strictness applies from the next start.
+    // True while a session runs: mode and strictness apply from the next start.
     let isStrictnessLocked: Bool
     let onDone: () -> Void
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Toggle("Guided", isOn: $isGuided)
+                        .disabled(isStrictnessLocked)
+                } header: {
+                    Text("Mode")
+                } footer: {
+                    Text(isGuided
+                         ? "Hear each line with its vocals, then sing it back."
+                         : "Sing along with the instrumental.")
+                }
                 Section {
                     Picker("Reveal", selection: $reveal) {
                         ForEach(SingReveal.allCases, id: \.self) { Text($0.label).tag($0) }

@@ -273,7 +273,7 @@ struct SongStepperView: View {
                     Button {
                         toggleAllExpansion()
                     } label: {
-                        Image(systemName: areAllLinesExpanded ? "eye.slash" : "eye")
+                        Image(systemName: areAllLinesExpanded ? "chevron.up.2" : "chevron.down.2")
                     }
                     .accessibilityLabel(areAllLinesExpanded ? "Hide all explanations" : "Show all explanations")
                 }
@@ -577,7 +577,7 @@ struct SongStepperView: View {
             Button {
                 pauseListen()
             } label: {
-                Image(systemName: "pause.circle")
+                Image(systemName: "pause.fill")
             }
             .accessibilityLabel("Pause")
         case .failed:
@@ -591,9 +591,9 @@ struct SongStepperView: View {
             Button {
                 playAllListen()
             } label: {
-                Image(systemName: "headphones")
+                Image(systemName: "play.fill")
             }
-            .accessibilityLabel("Listen to breakdown")
+            .accessibilityLabel("Play breakdown")
         }
     }
 
