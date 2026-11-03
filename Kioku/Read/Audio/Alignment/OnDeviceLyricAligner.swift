@@ -17,6 +17,7 @@ enum OnDeviceLyricAligner {
         audioURL: URL,
         lyrics: String,
         romanize: @escaping @Sendable (String) -> [RomanizedSpan],
+        usesMixEmissions: Bool = false,
         cancellationCheck: (@Sendable () -> Bool)? = nil,
         onStage: (@Sendable (String) -> Void)? = nil,
         onSegment: (@Sendable ([AlignedLine]) -> Void)? = nil
@@ -40,7 +41,7 @@ enum OnDeviceLyricAligner {
         let romanization = await Task.detached(priority: .userInitiated) {
             StartupTimer.measure("alignment romanize (\(lines.count) lines)") { lines.map(romanize) }
         }.value
-        let input = AlignmentInput(audioURL: audioURL, lines: lines, romanization: romanization)
+        let input = AlignmentInput(audioURL: audioURL, lines: lines, romanization: romanization, usesMixEmissions: usesMixEmissions)
 
         #if canImport(UIKit)
         let bg = BackgroundTaskHolder.begin("kioku.lyric-alignment")

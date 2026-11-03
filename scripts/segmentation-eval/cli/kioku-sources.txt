@@ -7,6 +7,7 @@ Dictionary/Deinflection/DeinflectionState.swift
 Dictionary/Deinflection/Deinflector.swift
 Dictionary/Deinflection/InflectionFormNames.swift
 Dictionary/DictionaryEntry.swift
+Dictionary/LongVowelSpelling.swift
 Dictionary/DictionaryEntrySense.swift
 Dictionary/DictionarySQLiteError.swift
 Dictionary/DictionaryStore+Frequency.swift

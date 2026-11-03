@@ -3,6 +3,7 @@ import bz2
 import collections
 import csv
 import gzip
+import html
 import io
 import json
 import os
@@ -659,6 +660,14 @@ def create_schema(conn):
             PRIMARY KEY (kanji, stroke_order)
         );
         CREATE INDEX idx_kanji_strokes_kanji ON kanji_strokes(kanji);
+
+        -- Where each kanji came from, in Wiktionary's own words (its "Glyph origin" section as plain
+        -- text; see convert_strict). Only kanji whose section converted without dropping content
+        -- have a row, so a missing row means "no trustworthy entry", never "empty".
+        CREATE TABLE kanji_etymology (
+            literal TEXT PRIMARY KEY,
+            text TEXT NOT NULL
+        );
         """
     )
 
@@ -1811,6 +1820,322 @@ def import_radicals(conn):
         )
 
 
+# Fills kanji_etymology from Resources/kanji-etymology.json (manifest entry wiktionary-en), the
+# committed lossless extract of Wiktionary's Glyph origin sections, for every kanji in
+# kanji_characters. The dump itself is never fetched here; generate_db.py --refresh-kanji-etymology
+# regenerates the file. Must run after import_kanjidic2, which supplies the kanji list.
+CJK_CHAR = re.compile(r"^[㐀-䶿一-鿿豈-﫿\U00020000-\U0002ffff]$")
+HEADING = re.compile(r"^(={2,6})\s*(.+?)\s*\1\s*$")
+SUB_HEADING = re.compile(r"^={3,}[^=\n]+={3,}\s*$", re.M)
+
+# Liu shu (六書) type codes of {{liushu|..}} and {{Han compound|..|ls=..}}.
+LIUSHU = {
+    "p": "Pictogram", "i": "Ideogram", "ic": "Compound ideogram",
+    "psc": "Phono-semantic compound", "j": "Phonetic loan",
+}
+# Component roles of {{Han compound|..|c1=s|c2=p}}.
+COMPONENT_ROLES = {"s": "semantic", "p": "phonetic"}
+# Templates that only carry structure or citations; dropping them loses no reading content.
+HARMLESS_TEMPLATES = {"han etym", "han etyl", "reflist", "zh-ref", "etystub"}
+# Templates whose content is dropped, which makes the entry lossy.
+LOSSY_TEMPLATES = {
+    "han simp", "rfe", "col3", "zh-pron", "zh-forms", "zh-see", "head", "och-retrieve-pron",
+    "shuowen", "zh-x", "lb", "ja-r",
+}
+
+_lossy = []
+
+
+# Splits a template body on top-level pipes, keeping nested [[a|b]] and {{..}} whole, so
+# positional and named arguments can be told apart.
+def split_args(body):
+    parts, depth_square, depth_brace, current, i = [], 0, 0, "", 0
+    while i < len(body):
+        two = body[i:i + 2]
+        if two == "[[":
+            depth_square += 1; current += two; i += 2; continue
+        if two == "]]":
+            depth_square -= 1; current += two; i += 2; continue
+        if two == "{{":
+            depth_brace += 1; current += two; i += 2; continue
+        if two == "}}":
+            depth_brace -= 1; current += two; i += 2; continue
+        if body[i] == "|" and depth_square == 0 and depth_brace == 0:
+            parts.append(current); current = ""
+        else:
+            current += body[i]
+        i += 1
+    parts.append(current)
+    return parts
+
+
+# An argument's text without the leading "*" Wiktionary uses to mark a reconstructed form.
+def plain_arg(arg):
+    return arg.strip().lstrip("*")
+
+
+# Renders one template body as the plain text it stands for, recording in _lossy any template
+# whose content had to be dropped. Unknown templates are dropped and recorded.
+def render_template(body):
+    args = split_args(body)
+    name = args[0].strip().lower()
+    positional, named = [], {}
+    for arg in args[1:]:
+        if "=" in arg.split("[[")[0]:
+            key, value = arg.split("=", 1)
+            named[key.strip()] = value.strip()
+        else:
+            positional.append(arg)
+    if name in ("han simp", "han etym") and positional and plain_arg(positional[0]):
+        return f"Simplified from {plain_arg(positional[0])}."
+    if name in HARMLESS_TEMPLATES or name.startswith("r:") or name.startswith("cite"):
+        return ""
+    if name in LOSSY_TEMPLATES:
+        _lossy.append(name)
+        return ""
+    if name == "liushu":
+        code = positional[0].strip() if positional else ""
+        return f"{LIUSHU[code]} –" if code in LIUSHU else ""
+    if name == "han compound":
+        parts = []
+        for index, component in enumerate(positional, 1):
+            if plain_arg(component) == "":
+                continue
+            gloss = named.get(f"t{index}", "")
+            role = COMPONENT_ROLES.get(named.get(f"c{index}", ""), "")
+            note = ", ".join(part for part in (gloss, role) if part)
+            parts.append(f"{plain_arg(component)} ({note})" if note else plain_arg(component))
+        label = LIUSHU.get(named.get("ls", ""), "")
+        text = " + ".join(parts)
+        return f"{label}: {text}" if label else text
+    if name in ("zh-etym-double", "zh-etym-triple"):
+        pairs = [positional[k:k + 2] for k in range(0, len(positional), 2)]
+        return " + ".join(
+            f"{plain_arg(pair[0])} ({pair[1].strip()})" if len(pair) == 2 else plain_arg(pair[0]) for pair in pairs
+        )
+    if name in ("l-lite", "m-lite", "lang-lite", "l", "m", "lw", "lang", "m-g") and len(positional) >= 2:
+        return plain_arg(positional[1])
+    if name in ("zh-l", "och-l", "zh-m") and positional:
+        return plain_arg(positional[0])
+    if name in ("w", "wp") and positional:
+        return plain_arg(positional[0])
+    if name == "ja-etym-kokuji":
+        return "Kokuji (created in Japan)."
+    _lossy.append(name)
+    return ""
+
+
+# Removes every {{opener ...}} including templates nested inside it, for templates whose body
+# holds single braces (the pinyin in {{zh-x|..{jié}..}}) that the innermost-first pass cannot match.
+def strip_balanced(text, opener):
+    out, i = "", 0
+    while True:
+        start = text.find(opener, i)
+        if start < 0:
+            return out + text[i:]
+        out += text[i:start]
+        depth, k = 0, start
+        while k < len(text):
+            if text.startswith("{{", k):
+                depth += 1; k += 2
+            elif text.startswith("}}", k):
+                depth -= 1; k += 2
+                if depth == 0:
+                    break
+            else:
+                k += 1
+        i = k
+
+
+# Plain text of a glyph-origin wikitext section.
+def convert(wikitext):
+    # Sub-headings (===References===, ====Pronunciation 1====) start other sections that rode along.
+    wikitext = SUB_HEADING.split(wikitext, maxsplit=1)[0]
+    if "{{zh-x" in wikitext:
+        _lossy.append("zh-x")
+    wikitext = strip_balanced(wikitext, "{{zh-x")
+    if "{|" in wikitext:
+        _lossy.append("table")
+    wikitext = re.sub(r"\{\|.*?\|\}", "", wikitext, flags=re.S)
+    text = re.sub(r"<ref[^>]*?/>", "", wikitext)
+    text = re.sub(r"<ref[^>]*>.*?</ref>", "", text, flags=re.S)
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    text = re.sub(r"\[\[(?:File|Image):(?:[^\[\]]|\[\[[^\]]*\]\])*\]\]", "", text)
+    text = re.sub(r"^thumb\|.*$", "", text, flags=re.M)
+    # Innermost templates first, until none remain.
+    for _ in range(8):
+        rendered = re.sub(r"\{\{([^{}]*)\}\}", lambda match: render_template(match.group(1)), text)
+        if rendered == text:
+            break
+        text = rendered
+    text = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]]*)\]\]", r"\1", text)
+    text = re.sub(r"'{2,}", "", text)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = re.sub(r"^[:*#]+\s*", "", text, flags=re.M)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"\s+([,.;:])", r"\1", text)
+    text = re.sub(r"–\s*–", "–", text)
+    text = re.sub(r"–\s*:", ":", text)
+    return text.strip()
+
+
+# The converted text and the reasons it is not trustworthy as a whole (empty when it is).
+def convert_strict(wikitext):
+    _lossy.clear()
+    text = convert(wikitext)
+    reasons = list(dict.fromkeys(_lossy))
+    if re.search(r"[:;]\s*(\n|$)", text):
+        reasons.append("dangling lead-in")
+    if re.search(r"\b(zh|Mandarin|Cantonese|Hokkien|Hakka)\b", text):
+        reasons.append("chinese-specific")
+    if re.search(r"\{\{|\}\}|\[\[|\]\]|\|", text):
+        reasons.append("markup")
+    return text, reasons
+
+
+# The Glyph origin section bodies of one page's wikitext, keyed by the language heading they sit under.
+def glyph_sections(wikitext):
+    language, found, lines, i = None, {}, wikitext.split("\n"), 0
+    while i < len(lines):
+        match = HEADING.match(lines[i])
+        if match:
+            level, name = len(match.group(1)), match.group(2)
+            if level == 2:
+                language = name
+            elif name.lower().startswith("glyph origin") and language in ("Translingual", "Chinese", "Japanese"):
+                body = []
+                i += 1
+                while i < len(lines):
+                    heading = HEADING.match(lines[i])
+                    if heading and len(heading.group(1)) <= level:
+                        break
+                    body.append(lines[i])
+                    i += 1
+                found.setdefault(language, "\n".join(body).strip())
+                continue
+        i += 1
+    return found
+
+
+# Streams the dump and yields (character, wikitext) for each one-character CJK page.
+def single_character_pages(dump_path):
+    title, buffer, in_text = None, [], False
+    with bz2.open(dump_path, "rt", encoding="utf-8") as dump:
+        for line in dump:
+            if line.startswith("    <title>"):
+                title = html.unescape(line.strip()[7:-8])
+            elif "<text" in line and title is not None and CJK_CHAR.match(title):
+                in_text = True
+                buffer = [line.split(">", 1)[1]]
+            elif in_text:
+                buffer.append(line)
+            if in_text and "</text>" in buffer[-1]:
+                buffer[-1] = buffer[-1].split("</text>")[0]
+                yield title, html.unescape("\n".join(buffer))
+                in_text, buffer = False, []
+            if line.startswith("  </page>"):
+                title, buffer, in_text = None, [], False
+
+
+# {character: text} for every kanji in `wanted` (every one-character page when None) whose glyph
+# origin converts losslessly. The first of Translingual, Chinese and Japanese with any text decides
+# the entry.
+# Normalises the converted text and drops entries that still read wrong, so what the app shows is
+# either clean Wiktionary wording or nothing. Template output leaves a space before punctuation,
+# empty parentheses where a citation sat, doubled full stops and HTML entities; those are
+# tidied. Entries that merge several "Etymology N" headings, open with a dangling lead-in
+# ("interprets it as ..."), carry a dash with nothing after it or use private-use characters
+# cannot be repaired from the text, so they are dropped (None).
+def tidy_etymology(text):
+    if re.search(r"Etymology \d", text):
+        return None
+    text = html.unescape(text)
+    text = re.sub(r"\s*\(\s*,[^)]*\)", "", text)
+    text = re.sub(r"\s*\(\s*\)", "", text)
+    text = re.sub(r"\s*–\s*—\s*", " – ", text)
+    text = re.sub(r"[ \t]+([,.:;)])", r"\1", text)
+    text = re.sub(r"(?<!\.)\.\.(?!\.)", ".", text)
+    text = re.sub(r"[ \t]{2,}", " ", text).strip()
+    if not text:
+        return None
+    if re.search(r"(^|\n)[a-z;,:)]", text):
+        return None
+    if re.search(r"[–—]\s*[.,;)]", text) or re.search(r"[\ue000-\uf8ff]", text):
+        return None
+    return text
+
+
+def extract_etymologies(dump_path, wanted=None):
+    result = {}
+    for character, wikitext in single_character_pages(dump_path):
+        if wanted is not None and character not in wanted:
+            continue
+        sections = glyph_sections(wikitext)
+        for language in ("Translingual", "Chinese", "Japanese"):
+            if not sections.get(language):
+                continue
+            text, reasons = convert_strict(sections[language])
+            if text:
+                if not reasons:
+                    tidied = tidy_etymology(text)
+                    if tidied:
+                        result[character] = tidied
+                break
+    return result
+
+
+WIKTIONARY_DUMP_URL = "https://dumps.wikimedia.org/enwiktionary/latest/enwiktionary-latest-pages-articles.xml.bz2"
+KANJI_ETYMOLOGY_PATH = Path(__file__).resolve().parent / "kanji-etymology.json"
+
+
+# Rewrites Resources/kanji-etymology.json from the English Wiktionary dump. Run by hand
+# (--refresh-kanji-etymology) when the etymology should move to a newer edition; builds read the
+# committed JSON and never download the dump. The dump (about 1.7 GB) goes to a temporary folder
+# that is deleted afterwards, or --dump points at one already on disk.
+def refresh_kanji_etymology(dump_arg):
+    work = Path(tempfile.mkdtemp(prefix="kioku-wiktionary-"))
+    try:
+        last_modified = None
+        if dump_arg:
+            dump = Path(dump_arg)
+        else:
+            dump = work / "dump.xml.bz2"
+            request = urllib.request.Request(WIKTIONARY_DUMP_URL, headers={"User-Agent": "Kioku-dictionary-builder"})
+            print(f"Downloading {WIKTIONARY_DUMP_URL}")
+            with urllib.request.urlopen(request, timeout=120) as response, open(dump, "wb") as out:
+                last_modified = response.headers.get("Last-Modified")
+                shutil.copyfileobj(response, out, 1 << 20)
+        print("Extracting glyph origins...")
+        entries = extract_etymologies(dump)
+        document = {
+            "source": {
+                "name": "English Wiktionary, Glyph origin sections",
+                "url": WIKTIONARY_DUMP_URL,
+                "dumpLastModified": last_modified,
+                "extractedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "license": "CC BY-SA 4.0 and GFDL (Wiktionary contributors)",
+            },
+            "entries": dict(sorted(entries.items())),
+        }
+        KANJI_ETYMOLOGY_PATH.write_text(json.dumps(document, ensure_ascii=False, indent=0) + "\n", encoding="utf-8")
+        print(f"Wrote {len(entries)} entries to {KANJI_ETYMOLOGY_PATH}")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def import_kanji_etymology(conn):
+    path = KANJI_ETYMOLOGY_PATH
+    if not path.exists():
+        print(f"  {path.name} not found - skipping kanji etymology")
+        return
+    wanted = {row[0] for row in conn.execute("SELECT literal FROM kanji_characters")}
+    entries = json.loads(path.read_text(encoding="utf-8"))["entries"]
+    rows = sorted((literal, text) for literal, text in entries.items() if literal in wanted)
+    conn.executemany("INSERT INTO kanji_etymology (literal, text) VALUES (?, ?)", rows)
+    print(f"  {len(rows)} kanji have a lossless glyph origin")
+
+
 def import_kanjivg(conn):
     # Parses the KanjiVG single-file XML and populates kanji_strokes with one row per stroke.
     # Each <kanji id="kvg:kanji_XXXXX"> in the XML wraps nested <g> groups; we don't care about
@@ -2069,6 +2394,9 @@ def build_database():
 
     with phase("Importing KanjiVG stroke data..."):
         import_kanjivg(conn)
+
+    with phase("Importing kanji etymology from Wiktionary..."):
+        import_kanji_etymology(conn)
 
     with phase("Materializing frequency lookup tables..."):
         materialize_surface_readings(conn)
@@ -2445,6 +2773,7 @@ def materialize_canonical_entry_ids(conn):
                    MAX(wf.wordfreq_zipf) AS best_zipf,
                    EXISTS (SELECT 1 FROM kanji k WHERE k.entry_id = s.entry_id) AS has_kanji,
                    EXISTS (SELECT 1 FROM entry_functional_pos efp WHERE efp.entry_id = s.entry_id) AS is_functional,
+                   NOT EXISTS (SELECT 1 FROM senses ps WHERE ps.entry_id = s.entry_id AND COALESCE(ps.misc, '') NOT LIKE '%work%' AND COALESCE(ps.pos, '') NOT LIKE '%n-pr%') AS is_proper_only,
                    COALESCE(MIN(sn.order_index), 2147483647) AS min_sense
             FROM surfaces_with_entries s
             LEFT JOIN word_frequency wf ON wf.entry_id = s.entry_id
@@ -2469,6 +2798,7 @@ def materialize_canonical_entry_ids(conn):
                    ROW_NUMBER() OVER (
                        PARTITION BY surface
                        ORDER BY
+                           is_proper_only ASC,
                            CASE WHEN is_functional = 1 AND IS_PURE_KANA(surface) THEN 0 ELSE 1 END ASC,
                            has_kanji ASC,
                            -- Don't let a zipf pseudo-rank rescue this entry past a sibling (same
@@ -2515,7 +2845,12 @@ def main():
     parser.add_argument("--output", type=Path, help="write the database here instead of Resources/dictionary.sqlite")
     parser.add_argument("--sources-only", action="store_true", help="fetch and verify every source, then exit")
     parser.add_argument("--emit-derived", type=Path, metavar="DIR", help="write the derived TSVs (pitch-accent, sentence-pairs, jlpt-vocab) to DIR, then exit")
+    parser.add_argument("--refresh-kanji-etymology", action="store_true", help="rewrite Resources/kanji-etymology.json from the Wiktionary dump, then exit")
+    parser.add_argument("--dump", metavar="PATH", help="with --refresh-kanji-etymology: use this already-downloaded dump instead of fetching one")
     args = parser.parse_args()
+    if args.refresh_kanji_etymology:
+        refresh_kanji_etymology(args.dump)
+        return
     if args.output:
         OUTPUT_DB = args.output.resolve()
 

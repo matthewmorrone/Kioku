@@ -30,6 +30,14 @@ nonisolated public struct DictionaryEntry: Equatable, Sendable {
         self.senses = senses
     }
 
+    // True when every sense names a work (a novel, a film) or is a proper noun — こころ as Sōseki's novel —
+    // so a word ranks ahead of it. The same test as is_proper_only in generate_db.py and FrequencySQL.properNounOnly.
+    public var isWorkOrProperNounOnly: Bool {
+        senses.allSatisfy { sense in
+            (sense.misc ?? "").split(separator: ",").contains("work") || (sense.pos ?? "").split(separator: ",").contains("n-pr")
+        }
+    }
+
     // True when any written or kana form carries a JMdict priority tag (ichi1, news1, spec1, gai1,
     // nfXX) — the dictionary's own mark that a word is in common use. 消す has one; the literary
     // 消する, which 消して also conjugates, has none.

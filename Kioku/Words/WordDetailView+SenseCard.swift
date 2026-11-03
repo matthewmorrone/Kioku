@@ -51,6 +51,8 @@ extension WordDetailView {
     func switchSavedEntry(to entryID: Int64) {
         guard entryID != activeEntryID else { return }
         wordsStore.repoint(fromEntryID: activeEntryID, toEntryID: entryID, lemma: word.surface)
+        // The History row for the old entry follows too, so the list shows the entry now on screen.
+        historyStore.repoint(historyID: "e:\(activeEntryID)", toEntryID: entryID, surface: word.surface)
         repointedEntryID = entryID
         // Ask the List to scroll this card into view once the reload reorders it to the front.
         scrollTargetEntryID = entryID
@@ -64,6 +66,7 @@ extension WordDetailView {
     func senseCard(
         sense: DictionaryEntrySense,
         entryID: Int64,
+        entry: DictionaryEntry? = nil,
         isSavedEntry: Bool,
         refs: [SenseReference],
         sentences: [SentencePair] = []
@@ -155,7 +158,8 @@ extension WordDetailView {
                         ExampleSentenceView(
                             japanese: pair.japanese,
                             english: pair.english,
-                            highlightSurfaces: exampleHighlightSurfaces,
+                            highlightSurfaces: exampleHighlightSurfaces(for: entry),
+                            acceptedReadings: exampleAcceptedReadings(for: entry),
                             segmenter: segmenter,
                             surfaceReadingData: surfaceReadingData,
                             kanjiReadingFallback: kanjiReadingFallback,

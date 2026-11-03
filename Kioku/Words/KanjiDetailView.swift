@@ -12,6 +12,9 @@ struct KanjiDetailView: View {
     @State private var strokes: [DictionaryStore.KanjiStrokeRecord] = []
     // Component radicals of this kanji (KRADFILE2 decomposition); empty for simple/undecomposed kanji.
     @State private var components: [String] = []
+    // Where this kanji came from, from Wiktionary's Glyph origin section; nil when there is no
+    // entry that converted without losing content.
+    @State private var etymology: String? = nil
     // Set when the user taps a common-word row; drives the nested WordDetailView sheet.
     // SavedWord is Identifiable by canonicalEntryID, so .sheet(item:) works directly on it.
     @State private var selectedCommonWord: SavedWord? = nil
@@ -74,6 +77,17 @@ struct KanjiDetailView: View {
                     Section("Components") {
                         // KRADFILE2 decomposition — the radical components this kanji is built from.
                         readingChipFlow(components)
+                    }
+                }
+
+                if let etymology {
+                    Section {
+                        Text(etymology)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } header: {
+                        Text("Etymology")
+                    } footer: {
+                        Text("From Wiktionary, CC BY-SA 4.0")
                     }
                 }
 
@@ -324,10 +338,14 @@ struct KanjiDetailView: View {
         async let componentsTask = Task.detached(priority: .userInitiated) {
             (try? store?.fetchComponents(for: literal)) ?? []
         }.value
-        let (loadedWords, loadedStrokes, loadedComponents) = await (wordsTask, strokesTask, componentsTask)
+        async let etymologyTask = Task.detached(priority: .userInitiated) {
+            try? store?.fetchKanjiEtymology(for: literal)
+        }.value
+        let (loadedWords, loadedStrokes, loadedComponents, loadedEtymology) = await (wordsTask, strokesTask, componentsTask, etymologyTask)
         words = loadedWords
         strokes = loadedStrokes
         components = loadedComponents
+        etymology = loadedEtymology ?? nil
         isLoadingWords = false
     }
 }

@@ -264,6 +264,16 @@ nonisolated final class SongBreakdownParser: Sendable {
             }
         }
 
+        // A model that writes `- **ほど** — (hodo)` puts the romaji where the gloss belongs. The
+        // romaji is not a meaning, so it fills the romaji slot and the definition stays empty.
+        if sungRomaji.isEmpty, remainder.hasPrefix("("), remainder.hasSuffix(")") {
+            let inner = String(remainder.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
+            if inner.isEmpty == false, inner.count <= surface.count * 3, inner.unicodeScalars.allSatisfy({ $0.isASCII && ($0.properties.isAlphabetic || $0 == " " || $0 == "-" || $0 == "'") }) {
+                sungRomaji = inner
+                remainder = ""
+            }
+        }
+
         return SongWord(surface: surface, sungRomaji: sungRomaji, definition: remainder, grammarTag: grammarTag)
     }
 

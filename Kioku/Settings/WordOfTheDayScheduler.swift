@@ -223,9 +223,24 @@ enum WordOfTheDayScheduler {
     // would win while carrying no detail, shadowing the new rich entry for the same day. We re-resolve
     // detail for any senseless history entry (in place, preserving its identity) so today's delivered
     // word gains POS/senses/example without changing which word is shown.
-    private static func writeMirrorRetainingHistory(_ newEntries: [WordOfTheDayMirrorEntry], using dictionaryStore: DictionaryStore) {
+    private static func writeMirrorRetainingHistory(
+        _ newEntries: [WordOfTheDayMirrorEntry],
+        words: [SavedWord],
+        using dictionaryStore: DictionaryStore
+    ) {
         let now = Date()
-        let history = Array(WordOfTheDayMirror.load().filter { $0.fireDate <= now }.suffix(14))
+        // A delivered word keeps its place on the widget, but its meaning follows the user's current choice.
+        let chosenByEntryID = Dictionary(
+            words.compactMap { word in chosenMeaning(of: word, using: dictionaryStore).map { (word.canonicalEntryID, $0) } },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let history = Array(WordOfTheDayMirror.load().filter { $0.fireDate <= now }.suffix(14)).map { entry -> WordOfTheDayMirrorEntry in
+            guard let meaning = chosenByEntryID[entry.entryID], meaning != entry.meaning else { return entry }
+            return WordOfTheDayMirrorEntry(
+                fireDate: entry.fireDate, surface: entry.surface, kana: entry.kana, meaning: meaning,
+                entryID: entry.entryID, senses: entry.senses, example: entry.example, jlpt: entry.jlpt
+            )
+        }
         let stale = history.filter { $0.senses.isEmpty }
         let resolved = stale.isEmpty
             ? [:]
@@ -377,7 +392,7 @@ enum WordOfTheDayScheduler {
             ))
         }
         persistScheduleState(signature: scheduleSignature, requestCount: liveContentByEntryID.count)
-        writeMirrorRetainingHistory(mirrorEntries, using: dictionaryStore)
+        writeMirrorRetainingHistory(mirrorEntries, words: words, using: dictionaryStore)
         StartupTimer.mark("WOTD.scheduleUpcoming enqueued \(count) requests")
         AppLog.info(
             .wordOfTheDay,
@@ -414,7 +429,13 @@ enum WordOfTheDayScheduler {
     private static func scheduleSignature(words: [SavedWord], hour: Int, minute: Int, daysToSchedule: Int) -> String {
         let uniqueEntryIDs = Array(Set(words.map(\.canonicalEntryID))).sorted()
         let idsPart = uniqueEntryIDs.map(String.init).joined(separator: ",")
-        return "v\(scheduleSignatureVersion)|h:\(hour)|m:\(minute)|d:\(min(daysToSchedule, 30))|ids:\(idsPart)"
+        // A changed definition choice changes the meaning shown, so it must read as a changed schedule.
+        let selectionPart = words
+            .filter { $0.selectedSenseIDs.isEmpty == false || $0.selectedGlosses.isEmpty == false }
+            .sorted { $0.canonicalEntryID < $1.canonicalEntryID }
+            .map { "\($0.canonicalEntryID):\($0.selectedSenseIDs.sorted()):\($0.selectedGlosses.map { "\($0.senseID).\($0.glossIndex)" }.sorted())" }
+            .joined(separator: ";")
+        return "v\(scheduleSignatureVersion)|h:\(hour)|m:\(minute)|d:\(min(daysToSchedule, 30))|ids:\(idsPart)|sel:\(selectionPart)"
     }
 
     // Returns true when the persisted schedule metadata still matches the current configuration and system queue.
@@ -529,9 +550,20 @@ enum WordOfTheDayScheduler {
         }
     }
 
+    // The live content for each unique entry ID, its meaning being the user's chosen definition where
+    // they made one and the entry's first gloss otherwise.
+    private static func resolveLiveContent(
+        for words: [SavedWord],
+        using dictionaryStore: DictionaryStore
+    ) -> [Int64: WordOfTheDayLiveContent] {
+        var content = resolveFirstGlossContent(for: words, using: dictionaryStore)
+        applyChosenMeanings(of: words, to: &content, using: dictionaryStore)
+        return content
+    }
+
     // Fetches the kana reading and first gloss for each unique entry ID.
     // Runs synchronously on the caller's thread; DictionaryStore serializes access internally.
-    private static func resolveLiveContent(
+    private static func resolveFirstGlossContent(
         for words: [SavedWord],
         using dictionaryStore: DictionaryStore
     ) -> [Int64: WordOfTheDayLiveContent] {
@@ -590,6 +622,33 @@ enum WordOfTheDayScheduler {
 
         persistCachedLiveContent(cached)
         return out
+    }
+
+    // The meaning the user chose for a saved word (its selected senses and glosses, joined as the
+    // Words list shows them), nil when they chose none or nothing resolves. The cache holds the entry's
+    // first gloss, which a choice must not be overridden by.
+    private static func chosenMeaning(of word: SavedWord, using dictionaryStore: DictionaryStore) -> String? {
+        guard word.selectedSenseIDs.isEmpty == false || word.selectedGlosses.isEmpty == false,
+              let entry = try? dictionaryStore.lookupEntry(entryID: word.canonicalEntryID) else { return nil }
+        let joined = entry
+            .selectedMeanings(selectedSenseIDs: word.selectedSenseIDs, selectedGlosses: word.selectedGlosses)
+            .joined(separator: "; ")
+        return joined.isEmpty ? nil : joined
+    }
+
+    // Replaces each resolved entry's meaning with the user's chosen definition where they made one.
+    private static func applyChosenMeanings(
+        of words: [SavedWord],
+        to content: inout [Int64: WordOfTheDayLiveContent],
+        using dictionaryStore: DictionaryStore
+    ) {
+        for word in words {
+            guard let live = content[word.canonicalEntryID],
+                  let meaning = chosenMeaning(of: word, using: dictionaryStore) else { continue }
+            content[word.canonicalEntryID] = WordOfTheDayLiveContent(
+                kana: live.kana, meaning: meaning, senses: live.senses, example: live.example, jlpt: live.jlpt
+            )
+        }
     }
 
     // Loads cached dictionary-derived notification content keyed by entry id.

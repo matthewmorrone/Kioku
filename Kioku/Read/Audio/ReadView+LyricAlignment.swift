@@ -111,9 +111,10 @@ extension ReadView {
     // Re-runs the whole-song alignment over the note's lyrics against the already-attached
     // audio, then swaps the cue list in place — no wipe / re-import. Backs the karaoke bar's
     // "Re-align" action. Progress + spinner ride on `lyricAlignment.isAligning`;
-    // cancellation reuses the shared alignment token.
+    // cancellation reuses the shared alignment token. `usesMixEmissions` aligns against the raw
+    // mix instead of the vocal stem, for songs whose isolation damaged the vocals.
     @MainActor
-    func realignWholeNote() async {
+    func realignWholeNote(usesMixEmissions: Bool = false) async {
         guard lyricAlignment.isAligning == false else { return }
         guard let attachmentID = audioPlayback.activeAudioAttachmentID,
               let audioURL = NotesAudioStore.shared.audioURL(for: attachmentID) else { return }
@@ -150,6 +151,7 @@ extension ReadView {
                 lyrics: lyrics,
                 romanize: lyricRomanizer.spans(for:),
                 durationMs: durationMs,
+                usesMixEmissions: usesMixEmissions,
                 cancellationCheck: { [token = subtitleImport.alignmentCancellationToken] in token.isCancelled },
                 // The stage string already carries its own per-phase percent
                 // ("Isolating… 73%", "Aligning… 45%"), so each phase shows

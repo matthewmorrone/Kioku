@@ -98,9 +98,8 @@ final class TestReadResources {
             try FileManager.default.removeItem(at: copy)
         }
         try FileManager.default.copyItem(at: try dictionaryDatabaseURL(), to: copy)
-        guard let resources = Bundle(path: repositoryRootURL().appendingPathComponent("Resources").path) else {
-            throw TestReadResourcesError.missingReadableResource(fileName: "extras.json", checkedPaths: [repositoryRootURL().appendingPathComponent("Resources").path])
-        }
+        // On a device the repository path doesn't exist; the host app bundle carries the same file.
+        let resources = Bundle(path: repositoryRootURL().appendingPathComponent("Resources").path) ?? Bundle.main
         let builtIns = CustomWordStore.bundledDefaults(bundle: resources)
         guard builtIns.isEmpty == false else {
             throw TestReadResourcesError.missingReadableResource(fileName: "extras.json", checkedPaths: [resources.bundlePath])

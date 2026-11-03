@@ -112,6 +112,8 @@ extension DictionaryStore {
                MIN(best_frequency_rank) OVER () AS surface_best_rank
         FROM candidates
         ORDER BY
+            -- Tier 0: a work or proper noun (こころ the novel) behind any ordinary word sharing the surface.
+            CASE WHEN \(FrequencySQL.properNounOnly(entryIDExpr: "candidates.entry_id")) THEN 1 ELSE 0 END ASC,
             \(posBoostTier)
             -- Tier 2: kana-only entries (no kanji forms) before kanji-bearing ones. Catches
             -- truly kana-only headwords (interjections, sound effects, casual kana usages)

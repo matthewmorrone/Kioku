@@ -90,5 +90,13 @@ extension DictionaryStore {
         static func functionalPosMatch(entryIDExpr: String) -> String {
             "EXISTS (SELECT 1 FROM entry_functional_pos efp WHERE efp.entry_id = \(entryIDExpr))"
         }
+
+        // True for an entry all of whose senses name a work (a novel, a film) or are proper nouns —
+        // こころ as Sōseki's novel "Kokoro" — so it ranks behind a sibling that is an ordinary word
+        // (心). Mirrors is_proper_only in generate_db.py's materialize_canonical_entry_ids; the
+        // `ps` alias avoids the unqualified-column trap functionalPosMatch's note describes.
+        static func properNounOnly(entryIDExpr: String) -> String {
+            "NOT EXISTS (SELECT 1 FROM senses ps WHERE ps.entry_id = \(entryIDExpr) AND COALESCE(ps.misc, '') NOT LIKE '%work%' AND COALESCE(ps.pos, '') NOT LIKE '%n-pr%')"
+        }
     }
 }

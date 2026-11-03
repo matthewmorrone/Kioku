@@ -110,6 +110,19 @@
       "feedsDictionary": true
     },
     {
+      "name": "wiktionary-en",
+      "description": "The English Wiktionary \"Glyph origin\" sections of one-character kanji pages, converted to plain text and kept only where nothing but headings, references and images was dropped, so the kanji screen's Etymology section shows Wiktionary's own wording. Backs kanji_etymology.",
+      "license": "CC BY-SA 4.0 and GFDL (Wiktionary contributors, en.wiktionary.org)",
+      "type": "supplemental-dictionary",
+      "path": "Resources/kanji-etymology.json",
+      "required": false,
+      "derived": true,
+      "url": "https://dumps.wikimedia.org/enwiktionary/latest/enwiktionary-latest-pages-articles.xml.bz2",
+      "sha256": null,
+      "provenance": "Extract of Wikimedia's English Wiktionary pages-articles dump, written by `generate_db.py --refresh-kanji-etymology` and committed; dictionary builds read the file and never fetch the 1.7 GB dump. The file records the dump's Last-Modified and the extraction time.",
+      "feedsDictionary": true
+    },
+    {
       "name": "jmnedict-all",
       "description": "JMnedict, the Japanese proper-name dictionary: surnames, given names, places, stations, companies and foreign names in katakana, as scriptin's JSON rebuild of the EDRDG XML. Backs the lookup sheet's name readings for words JMdict doesn't have (田中, 富良野). Kept in its own tables; the segmenter never reads it.",
       "license": "CC BY-SA 4.0 (Electronic Dictionary Research and Development Group); JSON conversion by scriptin/jmdict-simplified, also CC BY-SA 4.0",

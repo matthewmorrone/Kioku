@@ -138,7 +138,7 @@ nonisolated extension Lexicon {
     // entries are what a kana surface most likely is, ranked or not; a kanji word that merely
     // reads the same is not.
     private static func isWrittenInKana(_ entry: DictionaryEntry, surface: String) -> Bool {
-        guard ScriptClassifier.containsKanji(surface) == false else { return false }
+        guard ScriptClassifier.containsKanji(surface) == false, entry.isWorkOrProperNounOnly == false else { return false }
         if entry.kanjiForms.isEmpty { return true }
         // "Usually kana" is about the entry's main reading: 黍 is きび in kana, but きみ is only a variant.
         if entry.senses.contains(where: { ($0.misc ?? "").split(separator: ",").contains("uk") }),
@@ -154,6 +154,13 @@ nonisolated extension Lexicon {
     // ratios don't decide it — 着た is an ordinary reading of きた even though 来る ranks far higher.
     static func preferredLookupCandidate(among candidates: [LookupCandidate]) -> LookupCandidate? {
         let common = candidates.filter { $0.entry.hasPriorityForm }
+        // One word normally written in kana (いつか: 何時か "sometime") outweighs a kanji word that
+        // merely reads the same (五日 "the 5th"), even when only the kanji word is tagged common.
+        let writtenInKana = candidates.filter { Self.isWrittenInKana($0.entry, surface: $0.lemma) }
+        if writtenInKana.count == 1, common.count <= 1, common.allSatisfy({ $0.entry.entryId == writtenInKana[0].entry.entryId }) == false,
+           common.allSatisfy({ Self.isWrittenInKana($0.entry, surface: $0.lemma) == false }) {
+            return writtenInKana[0]
+        }
         if common.count == 1 { return common[0] }
         // Several common words share the kana (の: the particle and 野; で: the particle and 出): the
         // particle is what kana text almost always means, when only one of them is a particle normally written in kana.

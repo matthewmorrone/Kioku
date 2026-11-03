@@ -363,7 +363,14 @@ nonisolated public final class Lexicon {
 
         do {
             let lookupMode: LookupMode = ScriptClassifier.containsKanji(surface) ? .kanjiAndKana : .kanaOnly
-            return try dictionaryStore.lookup(surface: surface, mode: lookupMode)
+            let entries = try dictionaryStore.lookup(surface: surface, mode: lookupMode)
+            // A katakana word the dictionary lacks, spelled with its long vowels written out
+            // (ハレイション), is the ー spelling's word (ハレーション).
+            if entries.isEmpty, ScriptClassifier.isPureKatakana(surface),
+               let collapsed = LongVowelSpelling.collapsed(surface) {
+                return try dictionaryStore.lookup(surface: collapsed, mode: .kanaOnly)
+            }
+            return entries
         } catch {
             AppLog.error(.segmentation, "lookup entries failed for surface \(surface): \(error)")
             return []

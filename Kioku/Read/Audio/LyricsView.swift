@@ -46,6 +46,9 @@ struct LyricsView: View {
     let onDismiss: () -> Void
     // The top bar's Re-align action; ReadView owns the run. Defaulted so previews stay valid.
     var onReAlign: () -> Void = {}
+    // The top bar's Re-align without Vocal Stem action (press and hold): the same run, aligned
+    // against the raw mix instead of the isolated vocals.
+    var onReAlignWithoutStem: () -> Void = {}
     // The top bar's Replace Audio action: opens ReadView's audio/srt/TextGrid picker, whose import
     // replaces this note's attachment.
     var onReplaceAudio: () -> Void = {}
@@ -81,6 +84,9 @@ struct LyricsView: View {
     // location and surface; nil for unknown words. Supplied by the Read view, which
     // owns the dictionary; nil (previews) leaves lines without a breakdown bubble-free.
     var dictionaryGloss: ((Int, String) -> String?)? = nil
+    // Changes when the data behind those meanings does (the lexicon or reading data finishing loading,
+    // the dictionary being replaced), so bubbles built before it don't outlive it.
+    var glossRevision: Int = 0
     // Whether a word's dictionary meaning is a particle's, given its note location and surface, for
     // hiding particles' bubbles on lines the breakdown doesn't cover. Supplied by the Read view,
     // which owns the dictionary; nil (previews) counts none.

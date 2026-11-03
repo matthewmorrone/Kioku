@@ -31,9 +31,10 @@ enum CTCAlignmentCore {
     static func align(
         stem: CTCEmissions.Matrix, mix: CTCEmissions.Matrix, vocalMono: [Float],
         lines: [String], romanization: [[RomanizedSpan]],
+        usesMixEmissions: Bool = false,
         log: ((String) -> Void)? = nil
     ) throws -> (lines: [AlignedLine], lineTokens: [[AlignedToken]]) {
-        var matrix = stem
+        var matrix = usesMixEmissions ? mix : stem
         let filled = EmissionDropoutFill.fill(stem: &matrix, mix: mix)
         log?("mix filled \(filled.frames) stem-quiet frames in \(filled.runs) run(s)")
 

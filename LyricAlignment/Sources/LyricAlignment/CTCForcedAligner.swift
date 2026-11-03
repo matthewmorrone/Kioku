@@ -136,6 +136,7 @@ public struct CTCForcedAligner {
         let (lines, lineTokens) = try CTCAlignmentCore.align(
             stem: matrix, mix: mixMatrix, vocalMono: vocalMono,
             lines: input.lines, romanization: input.romanization,
+            usesMixEmissions: input.usesMixEmissions,
             log: { Self.breadcrumb($0) }
         )
         onProgress?(0.95)

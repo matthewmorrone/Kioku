@@ -514,15 +514,7 @@ extension WordsView {
         } else {
             ForEach(visibleWords) { word in
                 let entry = materializedHistory[word.canonicalEntryID]
-                // Show the user's chosen definition(s), not always the entry's first gloss, so a
-                // selection change in WordDetailView is reflected here. Same resolution the
-                // flashcard/multiple-choice paths use; joined for the single-line row preview.
-                let rowGloss: String? = {
-                    guard let joined = entry?
-                        .selectedMeanings(selectedSenseIDs: word.selectedSenseIDs, selectedGlosses: word.selectedGlosses)
-                        .joined(separator: "; "), joined.isEmpty == false else { return nil }
-                    return joined
-                }()
+                let rowGloss = chosenGloss(for: entry, saved: word)
                 wordRow(
                     entryID: word.canonicalEntryID,
                     surface: word.surface,
@@ -539,6 +531,17 @@ extension WordsView {
                 .tag(word.canonicalEntryID)
             }
         }
+    }
+
+    // The row's one-line gloss: the user's chosen definition(s) on a saved word, so a selection change
+    // in WordDetailView shows in Saved and History alike. Same resolution the flashcard and
+    // multiple-choice paths use; nil when the word isn't saved or nothing resolves.
+    func chosenGloss(for entry: DictionaryEntry?, saved: SavedWord?) -> String? {
+        guard let entry, let saved else { return nil }
+        let joined = entry
+            .selectedMeanings(selectedSenseIDs: saved.selectedSenseIDs, selectedGlosses: saved.selectedGlosses)
+            .joined(separator: "; ")
+        return joined.isEmpty ? nil : joined
     }
 
     // History: word-lookup (`.entry`) rows via the unified wordRow, interleaved with typed
@@ -558,7 +561,9 @@ extension WordsView {
                         entryID: entry.canonicalEntryID,
                         surface: entry.surface,
                         entry: materialized,
-                        gloss: materialized?.senses.first?.glosses.first,
+                        gloss: chosenGloss(for: materialized,
+                                           saved: wordsStore.words.first { $0.canonicalEntryID == entry.canonicalEntryID })
+                            ?? materialized?.senses.first?.glosses.first,
                         chosenReading: wordsStore.words.first { $0.canonicalEntryID == entry.canonicalEntryID }?.selectedReading
                             ?? entry.reading,
                         onTap: {

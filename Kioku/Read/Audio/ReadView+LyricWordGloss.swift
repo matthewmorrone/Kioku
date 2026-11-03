@@ -10,9 +10,30 @@ extension ReadView {
     // words with no entry. A negative form's meaning is negated.
     func lyricWordGloss(at location: Int, surface: String) -> String? {
         guard let entry = lyricBubbleEntry(at: location, surface: surface),
-              let lemmaGloss = entry.senses.first(where: { $0.glosses.isEmpty == false })?.glosses.first else { return nil }
+              let lemmaGloss = bubbleGloss(from: entry.senses.first(where: { $0.glosses.isEmpty == false })?.glosses ?? []) else { return nil }
         let gloss = inflectedLyricGloss(lemmaGloss, surface: surface, entry: entry)
         return gloss
+    }
+
+    // The longest first gloss a bubble shows as is.
+    private static let maxBubbleGlossLength = 30
+
+    // Why: a bubble holds a word, not a sentence. A sense's first gloss is kept when short; a long one
+    // ("standing on tiptoe and stretching one's back to make oneself taller") gives way to the
+    // shortest gloss of the same sense ("stretching oneself").
+    private func bubbleGloss(from glosses: [String]) -> String? {
+        guard let first = glosses.first else { return nil }
+        guard first.count > Self.maxBubbleGlossLength else { return first }
+        return glosses.min(by: { $0.count < $1.count }) ?? first
+    }
+
+    // The state the bubble meanings are read from: the lexicon and the reading data in use. LyricsView rebuilds its cached bubbles when this changes.
+    var lyricGlossRevision: Int {
+        var hasher = Hasher()
+        hasher.combine(lexicon.map(ObjectIdentifier.init))
+        hasher.combine(ObjectIdentifier(surfaceReadingData))
+        hasher.combine(dictionaryStore != nil)
+        return hasher.finalize()
     }
 
     // Whether a lyric word's bubble would give a particle's meaning, for the Particle Meanings

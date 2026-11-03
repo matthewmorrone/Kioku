@@ -16,6 +16,7 @@ enum WholeSongAlignment {
         lyrics: String,
         romanize: @escaping @Sendable (String) -> [RomanizedSpan],
         durationMs knownDurationMs: Int? = nil,
+        usesMixEmissions: Bool = false,
         cancellationCheck: (@Sendable () -> Bool)? = nil,
         onStage: (@Sendable (String) -> Void)? = nil
     ) async throws -> [SubtitleCue] {
@@ -23,6 +24,7 @@ enum WholeSongAlignment {
             audioURL: audioURL,
             lyrics: lyrics,
             romanize: romanize,
+            usesMixEmissions: usesMixEmissions,
             cancellationCheck: cancellationCheck,
             onStage: onStage
         )

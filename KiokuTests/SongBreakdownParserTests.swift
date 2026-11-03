@@ -13,6 +13,24 @@ final class SongBreakdownParserTests: XCTestCase {
         SongBreakdownParser()
     }
 
+    // Verifies romaji written where the gloss belongs lands in the romaji slot, not the definition.
+    func testRomajiInTheGlossSlotIsNotADefinition() throws {
+        let markdown = """
+        **Line 1: 深くなるほど**
+        *fukaku naru hodo*
+
+        - **ほど** — (hodo)
+        - **ます** — (honorific)
+
+        **Gist:** The deeper it gets.
+        """
+
+        let words = try parser().parse(markdown: markdown)[0].words
+        XCTAssertEqual(words[0].sungRomaji, "hodo")
+        XCTAssertEqual(words[0].definition, "")
+        XCTAssertEqual(words[1].definition, "(honorific)")
+    }
+
     // Verifies a single well-formed section parses all four layers.
     func testParsesSingleFullyPopulatedLine() throws {
         let markdown = """

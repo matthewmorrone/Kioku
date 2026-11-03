@@ -9,8 +9,12 @@ public struct AlignmentInput {
     /// One array per line: the line's romanization as spans that each cover a UTF-16 range of
     /// the line text. The aligner reads only the romaji; the ranges become karaoke checkpoints.
     public let romanization: [[RomanizedSpan]]
-    public init(audioURL: URL, lines: [String], romanization: [[RomanizedSpan]]) {
+    /// Align against the raw mix's emissions instead of the isolated vocal stem's, for songs
+    /// whose separation damaged the vocals. The stem still supplies the sung regions.
+    public let usesMixEmissions: Bool
+    public init(audioURL: URL, lines: [String], romanization: [[RomanizedSpan]], usesMixEmissions: Bool = false) {
         self.audioURL = audioURL; self.lines = lines; self.romanization = romanization
+        self.usesMixEmissions = usesMixEmissions
     }
 }
 

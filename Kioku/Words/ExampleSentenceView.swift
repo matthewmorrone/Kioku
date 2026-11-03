@@ -17,6 +17,10 @@ struct ExampleSentenceView: View {
     // Candidate surfaces to highlight within the sentence (saved surface + the entry's
     // kanji/kana forms). First one found in the sentence wins; nil highlight when none match.
     let highlightSurfaces: [String]
+    // The readings the word being shown has (its kana forms). A sentence whose highlighted word is
+    // read otherwise (5日 as にち or にっかん under いつか) is another word's example, so it is hidden.
+    // Empty means no such check.
+    var acceptedReadings: [String] = []
     let segmenter: (any TextSegmenting)?
     let surfaceReadingData: SurfaceReadingDataMap
     let kanjiReadingFallback: KanjiReadingFallbackMap
@@ -61,10 +65,49 @@ struct ExampleSentenceView: View {
             let range = ns.range(of: surface)
             if range.location != NSNotFound { return range }
         }
+        // A sentence spelling the number in digits (5日) still holds the kanji-numeral headword (五日).
+        for surface in highlightSurfaces {
+            guard let digitForm = KanjiNumeralDigits.digitForm(of: surface) else { continue }
+            let range = ns.range(of: digitForm)
+            if range.location != NSNotFound { return range }
+        }
         return nil
     }
 
+    // True once the furigana has resolved and the ruby over the highlighted word spells none of the
+    // accepted readings. A run reaching past the highlight (七十五日 read しちじゅうごにち holds 五日)
+    // counts whole, so it matches only when it contains an accepted reading. Kana highlights carry no
+    // ruby, so they never mismatch.
+    private var isReadingMismatch: Bool {
+        guard acceptedReadings.isEmpty == false, let cache, let range = highlightRange else { return false }
+        let ruby = cache.furiganaBySegmentLocation
+            .filter { location, _ in
+                let length = cache.furiganaLengthBySegmentLocation[location] ?? 1
+                return location < range.location + range.length && location + length > range.location
+            }
+            .sorted { $0.key < $1.key }
+            .map(\.value)
+            .joined()
+        guard ruby.isEmpty == false else { return false }
+        let shown = KanaNormalizer.katakanaToHiragana(ruby)
+        return acceptedReadings.map(KanaNormalizer.katakanaToHiragana).contains { shown.contains($0) } == false
+    }
+
     var body: some View {
+        Group {
+            if isReadingMismatch == false {
+                rowContent
+            }
+        }
+        .task(id: japanese) {
+            // The cache is kept, so it must not be built against the empty launch-time segmenter.
+            await segmenter?.waitUntilLoaded()
+            computeCacheIfNeeded()
+        }
+    }
+
+    // The sentence row itself: speaker, furigana'd text, translation.
+    private var rowContent: some View {
         VStack(alignment: .leading, spacing: 4) {
             // Speaker leads the row so the play affordance is in a consistent spot for every
             // example, instead of ragged-right after sentences of varying width.
@@ -89,11 +132,6 @@ struct ExampleSentenceView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 2)
-        .task(id: japanese) {
-            // The cache is kept, so it must not be built against the empty launch-time segmenter.
-            await segmenter?.waitUntilLoaded()
-            computeCacheIfNeeded()
-        }
     }
 
     @ViewBuilder

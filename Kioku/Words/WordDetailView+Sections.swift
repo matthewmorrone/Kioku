@@ -90,6 +90,7 @@ extension WordDetailView {
                         japanese: pair.japanese,
                         english: pair.english,
                         highlightSurfaces: exampleHighlightSurfaces,
+                        acceptedReadings: exampleAcceptedReadings,
                         segmenter: segmenter,
                         surfaceReadingData: surfaceReadingData,
                         kanjiReadingFallback: kanjiReadingFallback,
@@ -132,8 +133,26 @@ extension WordDetailView {
         }
         // The saved word's own entry leads (朝's "morning" is first on the page of the word saved as 朝,
         // not under 麻 for sharing its reading); the homophones follow by frequency.
+        // A kana spelling leads with the words normally written in kana (いつか: 何時か "sometime", not
+        // 五日 "the 5th") when no other word reading that way is common: measured over the dictionary,
+        // a kanji homophone ranked in the top 3000 (書く for かく, 帰る for かえる) is what the kana
+        // means, and beyond that the usually-kana word is. Both stay listed; this only orders them.
+        let isKanaSpelling = ScriptClassifier.isPureKana(word.surface)
+        let usuallyKanaEntryIDs = Set(filteredData.map(\.entry).filter { entry in
+            entry.kanaForms.first?.text == word.surface
+                && entry.senses.contains { ($0.misc ?? "").split(separator: ",").contains("uk") }
+        }.map(\.entryId))
+        let kanaLeads = isKanaSpelling && usuallyKanaEntryIDs.isEmpty == false
+            && filteredData.map(\.entry).filter { usuallyKanaEntryIDs.contains($0.entryId) == false }
+                .allSatisfy { ($0.frequencyRank ?? Int.max) >= 3000 }
+        // The opened entry leads, except when it is only the default (not saved) and the kana-written
+        // word is to lead.
+        let leadEntryID: Int64? = kanaLeads && isActiveEntrySaved == false ? nil : savedEntryID
         let sortedData = filteredData.sorted {
-            if ($0.entry.entryId == savedEntryID) != ($1.entry.entryId == savedEntryID) { return $0.entry.entryId == savedEntryID }
+            if ($0.entry.entryId == leadEntryID) != ($1.entry.entryId == leadEntryID) { return $0.entry.entryId == leadEntryID }
+            if kanaLeads, usuallyKanaEntryIDs.contains($0.entry.entryId) != usuallyKanaEntryIDs.contains($1.entry.entryId) {
+                return usuallyKanaEntryIDs.contains($0.entry.entryId)
+            }
             let a = FrequencyData(frequencyRank: $0.entry.frequencyRank, wordfreqZipf: $0.entry.wordfreqZipf).normalizedScore ?? -1
             let b = FrequencyData(frequencyRank: $1.entry.frequencyRank, wordfreqZipf: $1.entry.wordfreqZipf).normalizedScore ?? -1
             // A kana spelling's wordfreq count is shared by every homophone (あさ for 朝 and 麻), so
@@ -197,7 +216,7 @@ extension WordDetailView {
                     // cap/expand toggle covers the whole section — light verbs like する carry
                     // dozens of senses on a single entry that would otherwise push every other
                     // section off the initial screen.
-                    let allRows = sortedData.flatMap { data -> [(entryID: Int64, isSavedEntry: Bool, idx: Int, sense: DictionaryEntrySense, refs: [SenseReference], sentences: [SentencePair])] in
+                    let allRows = sortedData.flatMap { data -> [(entryID: Int64, entry: DictionaryEntry, isSavedEntry: Bool, idx: Int, sense: DictionaryEntrySense, refs: [SenseReference], sentences: [SentencePair])] in
                         let isSavedEntry = data.entry.entryId == activeEntryID
                         // The senses the lookup sheet would list for this form: those whose reading and
                         // spelling restrictions fit it (様 read よう is "appearance", not "Mr"), the
@@ -215,7 +234,7 @@ extension WordDetailView {
                                 ? senseReferences.filter { $0.senseOrderIndex == idx }
                                 : []
                             let senseSentences = data.sentencesBySenseID[sense.senseID] ?? []
-                            return (data.entry.entryId, isSavedEntry, idx, sense, senseRefs, senseSentences)
+                            return (data.entry.entryId, data.entry, isSavedEntry, idx, sense, senseRefs, senseSentences)
                         }
                     }
                     let senseCap = 5
@@ -224,6 +243,7 @@ extension WordDetailView {
                         senseCard(
                             sense: row.sense,
                             entryID: row.entryID,
+                            entry: row.entry,
                             isSavedEntry: row.isSavedEntry,
                             refs: row.refs,
                             sentences: row.sentences

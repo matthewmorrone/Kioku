@@ -531,8 +531,10 @@ extension Segmenter {
         let surfaceFrequency = frequencyScore(of: surface)
         return candidates.contains { candidate in
             guard candidate != surface, frequencyScore(of: candidate) > surfaceFrequency else { return false }
+            // Nor does a classical ending: いつ is "when", not 居る's い + the classical つ.
             return (paths[candidate] ?? []).contains { path in
-                path.chain.contains { $0.contains("stem") == false && $0 != Self.nounSuffixLabel }
+                path.chain.contains(Self.classicalStepGroup) == false
+                    && path.chain.contains { $0.contains("stem") == false && $0 != Self.nounSuffixLabel }
             }
         }
     }

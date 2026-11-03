@@ -310,6 +310,7 @@ extension ReadView {
                         audioPlayback.isShowingLyricsView = false
                     },
                     onReAlign: { Task { await realignWholeNote() } },
+                    onReAlignWithoutStem: { Task { await realignWholeNote(usesMixEmissions: true) } },
                     onReplaceAudio: { subtitleImport.isShowingLyricMediaPicker = true },
                     onRemoveAudio: { resetCurrentSubtitleAttachment() },
                     isReAligning: lyricAlignment.isAligning,
@@ -325,6 +326,7 @@ extension ReadView {
                     singRomanize: lyricRomanizer.spans(for:),
                     singSession: singSession,
                     dictionaryGloss: { location, surface in lyricWordGloss(at: location, surface: surface) },
+                    glossRevision: lyricGlossRevision,
                     isParticle: { location, surface in isLyricParticle(at: location, surface: surface) },
                     isLoanword: { isLyricLoanword($0) }
                 )

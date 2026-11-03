@@ -20,7 +20,10 @@ extension Lexicon {
     // Each piece is strictly shorter than its surface (a split has two or more pieces covering it), so
     // the recursion ends on its own: it stops at pieces that are single words, not at any fixed depth.
     public func constituentSurfaces(of surface: String, maxMargin: Int) -> [String]? {
-        guard isPlainInflection(surface) == false,
+        // An all-kana word the dictionary lists (いつか, ありがとう) is one word: cut apart, its pieces
+        // (いつ + か) are not what it means, and a piece's own lemma (いる for いつ) misnames it.
+        guard ScriptClassifier.isPureKana(surface) == false || lookupEntries(for: surface).isEmpty,
+              isPlainInflection(surface) == false,
               let split = segmenter.constituentSegments(of: surface), split.margin <= maxMargin else { return nil }
         // A word written as single kanji side by side (二人 ふたり, 今日) is one word with its own reading,
         // not a compound worth taking apart: its pieces carry no meaning of their own to link to.

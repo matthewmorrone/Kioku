@@ -224,9 +224,19 @@ struct WordDetailView: View {
     // Surfaces to highlight inside example sentences — the saved surface plus the entry's
     // kanji/kana forms, de-duplicated and longest-first so the fullest form is highlighted
     // rather than a one-character kana substring.
-    var exampleHighlightSurfaces: [String] {
-        var surfaces: [String] = [word.surface]
-        if let entry = savedDisplayData?.entry {
+    // The active entry's readings, which an example's highlighted word must be read as.
+    var exampleAcceptedReadings: [String] { exampleAcceptedReadings(for: savedDisplayData?.entry) }
+    // The readings an example of `entry` must read its highlighted word as (the entry's kana forms).
+    func exampleAcceptedReadings(for entry: DictionaryEntry?) -> [String] { entry?.kanaForms.map(\.text) ?? [] }
+
+    var exampleHighlightSurfaces: [String] { exampleHighlightSurfaces(for: savedDisplayData?.entry) }
+
+    // The forms to highlight in an example of `entry`: the page's own surface when the entry is the
+    // active one, plus the entry's kanji and kana forms. A homonym card (五日 under いつか) highlights
+    // its own forms, not the active entry's.
+    func exampleHighlightSurfaces(for entry: DictionaryEntry?) -> [String] {
+        var surfaces: [String] = entry == nil || entry?.entryId == activeEntryID ? [word.surface] : []
+        if let entry {
             surfaces.append(contentsOf: entry.kanjiForms.map(\.text))
             surfaces.append(contentsOf: entry.kanaForms.map(\.text))
         }

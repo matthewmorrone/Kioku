@@ -20,6 +20,7 @@ extension LyricsView {
         hasher.combine(breakdown?.generatedAt)
         hasher.combine(noteText.utf16.count)
         hasher.combine(segmentationRanges.count)
+        hasher.combine(glossRevision)
         hasher.combine(showsParticleBubbles)
         hasher.combine(showsLoanwordBubbles)
         hasher.combine(showsKatakanaBubbles)
@@ -89,7 +90,8 @@ extension LyricsView {
         for character in first {
             if "(（".contains(character) { depth += 1 } else if ")）".contains(character) { depth = max(0, depth - 1) } else if depth == 0 { gloss.append(character) }
         }
-        return nonEmpty(gloss)
+        // Removing a parenthetical leaves its surrounding spaces ("to hug (tightly) tight").
+        return nonEmpty(gloss.split(whereSeparator: \.isWhitespace).joined(separator: " "))
     }
 
     // The text trimmed, or nil when nothing is left.

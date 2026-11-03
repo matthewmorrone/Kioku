@@ -2,7 +2,8 @@ import SwiftUI
 import LyricAlignment
 
 // Top action bar for the karaoke view: Re-align (one forced-alignment pass over the whole song;
-// press and hold for Re-align from Scratch, which isolates the vocals again first), the
+// press and hold for Re-align from Scratch, which isolates the vocals again first, or Re-align without
+// Vocal Stem, which listens to the raw mix instead), the
 // Mix / Vocals / Instrumental source toggle, the audio menu (Replace / Remove), the open-in-breakdown button, and the settings-popup gear (LyricsView+SettingsPopup.swift). Not private: called from panel(geo:) in
 // LyricsView.swift.
 extension LyricsView {
@@ -68,6 +69,9 @@ extension LyricsView {
                         onReAlign()
                     }
                     .disabled(attachmentAudioURL.map(VocalStemCache.hasStem(for:)) != true)
+                    Button("Re-align without Vocal Stem", systemImage: "waveform") {
+                        onReAlignWithoutStem()
+                    }
                 }
             }
 
