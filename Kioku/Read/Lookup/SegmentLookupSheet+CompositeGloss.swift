@@ -68,4 +68,12 @@ extension SegmentLookupSheet {
         if currentSheetCompoundComponents.count <= 1 || currentSheetIsHeadWithHelpers { return true }
         return currentSheetDictionaryEntryDefines(surface)
     }
+
+    // True when saving the shown form saves what it shows: one word's own spelling or plain inflection.
+    // A head plus grammar (食べさせられた) opens as its head but has no star, since the save would
+    // be the head alone while the page reads as the whole form.
+    func shownFormIsSaveableWord(surface: String) -> Bool {
+        guard currentSheetDictionaryEntry != nil else { return false }
+        return currentSheetCompoundComponents.count <= 1 || currentSheetDictionaryEntryDefines(surface)
+    }
 }

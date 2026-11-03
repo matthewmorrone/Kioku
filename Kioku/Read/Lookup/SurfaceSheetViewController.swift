@@ -634,8 +634,10 @@ final class SurfaceSheetViewController: UIViewController {
         let isAwaitingPick = sheet?.isAwaitingLookupCandidatePick ?? false
         // A form with no dictionary entry of its own (歌い続けてゆく) is not a word that can be saved:
         // saves are keyed by entry, so its constituents' rows carry the stars instead.
-        let hasNoEntry = sheet?.shownFormHasOwnEntry(surface: currentSurface) != true
+        let hasNoEntry = sheet?.shownFormIsSaveableWord(surface: currentSurface) != true
         let isSaveUnavailable = isAwaitingPick || hasNoEntry
+        // Not-a-word forms drop the star; a form still awaiting a pick keeps it greyed.
+        saveButton.isHidden = hasNoEntry && isAwaitingPick == false
         saveButton.isEnabled = isSaveUnavailable == false
         saveButton.alpha = isSaveUnavailable ? 0.45 : 1
         // Rebuilt on every refresh so the menu's setState closure always targets the currently

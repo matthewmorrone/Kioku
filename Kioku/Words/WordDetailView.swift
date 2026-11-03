@@ -426,6 +426,8 @@ struct WordDetailView: View {
                     .offset(x: -34, y: headwordShift)
                 }
                 .overlay(alignment: .trailing) {
+                    // A multi-word form has no dictionary entry of its own to save, so it gets no star.
+                    if isMultiWordForm == false {
                     let isSaved = isActiveEntrySaved
                     let learnedState = wordsStore.learnedState(for: activeEntryID)
                     Button {
@@ -456,6 +458,7 @@ struct WordDetailView: View {
                             sourceNoteID: noteID,
                             defaultSenseIDs: entry.map { DefaultSenseSelection.defaultSelectedSenseIDs(for: $0) } ?? []
                         ))
+                    }
                     }
                 }
                 .frame(maxWidth: .infinity)
