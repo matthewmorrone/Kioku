@@ -211,11 +211,26 @@ enum KiokuCoreTextAttributedStringBuilder {
                     let rubyW = (reading as NSString).size(withAttributes: [.font: furiganaFont]).width
                     let allowance = KiokuRubyPadding.okuriganaOverhangAllowance(furiganaFont: furiganaFont)
                     let overhang = max(0, (rubyW - kanjiW) / 2 - allowance)
-                    if overhang > 0 {
+                    // A neighbouring kanji run under ruby of its own (両方: りょう, ほう) gets no
+                    // allowance: both rubies reach toward each other, so the gap is the sum of the
+                    // two full overhangs, not half a ruby character.
+                    let nextLoc = kanjiLoc + kanjiLen
+                    var gapToNextRun: CGFloat?
+                    if nextLoc < containing.location + containing.length,
+                       let nextReading = inputs.furiganaBySegmentLocation[nextLoc], nextReading.isEmpty == false,
+                       let nextLen = inputs.furiganaLengthBySegmentLocation[nextLoc], nextLen > 0,
+                       nextLoc + nextLen <= result.length {
+                        let nextText = (result.string as NSString).substring(with: NSRange(location: nextLoc, length: nextLen))
+                        let nextKanjiW = (nextText as NSString).size(withAttributes: [.font: baseFont]).width
+                        let nextRubyW = (nextReading as NSString).size(withAttributes: [.font: furiganaFont]).width
+                        let gap = max(0, (rubyW - kanjiW) / 2) + max(0, (nextRubyW - nextKanjiW) / 2)
+                        if gap > 0 { gapToNextRun = gap }
+                    }
+                    if overhang > 0 || gapToNextRun != nil {
                         let runLastIdx = kanjiLoc + kanjiLen - 1
                         if runLastIdx < containing.location + containing.length - 1 {
                             let kern = (result.attribute(.kern, at: runLastIdx, effectiveRange: nil) as? CGFloat) ?? inputs.kerning
-                            result.addAttribute(.kern, value: max(kern, overhang), range: NSRange(location: runLastIdx, length: 1))
+                            result.addAttribute(.kern, value: max(kern, overhang, gapToNextRun ?? 0), range: NSRange(location: runLastIdx, length: 1))
                         }
                         if kanjiLoc > containing.location {
                             let beforeIdx = kanjiLoc - 1
