@@ -1,7 +1,7 @@
 import SwiftUI
 
 // The sheet Sing mode shows when the singer taps Stop: how many of the graded words were heard
-// (and how strictly), each missed word once (in song order), then the song's earlier sessions.
+// (and how strictly), each missed word once (in song order) with what was heard instead, then the song's earlier sessions.
 // Tapping a missed word opens its dictionary entry, where it can be saved; nothing is saved or
 // reviewed automatically.
 struct SingSummaryView: View {
@@ -39,6 +39,11 @@ struct SingSummaryView: View {
                                         .scaledFont(size: 17)
                                         .foregroundStyle(Color(.systemRed))
                                     Spacer()
+                                    if word.heard.isEmpty == false {
+                                        Text("heard \(word.heard)")
+                                            .scaledFont(size: 13)
+                                            .foregroundStyle(.secondary)
+                                    }
                                     Image(systemName: "book")
                                         .foregroundStyle(.secondary)
                                 }
@@ -76,8 +81,10 @@ struct SingSummaryView: View {
     }
 }
 
-// One missed word in the Sing summary: where it sits in the note, and how it's written there.
+// One missed word in the Sing summary: where it sits in the note, how it's written there, and what
+// the model heard in its place (empty when nothing).
 struct SingMissedWord {
     let location: Int
     let surface: String
+    let heard: String
 }

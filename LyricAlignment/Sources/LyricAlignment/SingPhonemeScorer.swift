@@ -1,7 +1,7 @@
 // SingPhonemeScorer.swift
 //
-// Sing mode's grade for one word: how much of the word's expected phoneme sequence the
-// phoneme model hears, in order, inside the word's time window. The lyrics are the known
+// Sing mode's grade for a run of words: how much of each word's expected phoneme sequence the
+// phoneme model hears, in order, across the audio sung since the previous word. The lyrics are the known
 // target, so this never transcribes — it only asks whether the expected sounds are there.
 // Each phoneme gets the frame where it peaks best (in order, one frame per phoneme, the way a
 // CTC model spikes); it passes when its probability there clears a low bar. A word needs both
@@ -14,14 +14,16 @@ import Foundation
 public enum SingPhonemeScorer {
     /// A phoneme counts as heard when its best in-order frame reaches this probability.
     public static let passProbability: Float = 0.15
+    /// Frames either side of a sound's placed frame whose probabilities are summed: a sung note
+    /// spreads the model's confidence over several frames instead of one spike, so the single-frame
+    /// peak understates it.
+    nonisolated(unsafe) public static var massFrames = 2
+    /// The most frames that may separate two consecutive sounds of one word (0: no limit). Sung
+    /// sounds follow each other closely; without a limit a word's sounds can be picked from
+    /// seconds apart and almost any word is "found" somewhere in a long stretch of audio.
+    nonisolated(unsafe) public static var maxGapFrames = 25
     /// A word counts as sung when this share of its vowels and this share of its consonants are heard.
     public static let passFraction = 0.5
-    /// Slack around the aligned word time: singers come in early and drag late.
-    public static let leadSlackSec = 0.25
-    public static let tailSlackSec = 0.35
-    // At a line's first / last word the neighbour on that side is silence, so the window can widen.
-    public static let lineEdgeLeadSlackSec = 0.6
-    public static let lineEdgeTailSlackSec = 0.8
 
     // Phoneme tokens for a word from its romaji spans. っ (Q) is dropped (a silent gap the
     // model rarely marks in singing) and repeats collapse, since a held long vowel is one sound.
@@ -35,47 +37,34 @@ public enum SingPhonemeScorer {
         return out
     }
 
-    // The word's score (0…1) in frames [first, last] of a row-major [frames × classes]
-    // log-probability matrix: the lower of its heard-vowel and heard-consonant shares. 0 when the
-    // window is shorter than the word.
-    public static func score(tokens: [Int], logProbs: [Float], classes: Int, firstFrame: Int, lastFrame: Int) -> Double {
-        scoreDetails(tokens: tokens, logProbs: logProbs, classes: classes, firstFrame: firstFrame, lastFrame: lastFrame).score
-    }
-
-    // The score plus, per token in order, the absolute frame it was placed on and its probability
-    // there — what the diagnostics log prints to show where in the window each sound was found.
-    public static func scoreDetails(tokens: [Int], logProbs: [Float], classes: Int, firstFrame: Int, lastFrame: Int)
-        -> (score: Double, placements: [(frame: Int, probability: Float)]) {
-        guard let placements = bestPlacements(tokens: tokens, logProbs: logProbs, classes: classes,
-                                              firstFrame: firstFrame, lastFrame: lastFrame) else { return (0, []) }
-        return (share(tokens: tokens, probabilities: placements.map(\.probability)), placements)
-    }
-
-    // Guided Sing's grade for a line repeated with no song clock to time it: each word's score
+    // Sing's grade, with no song clock to time it: each word's score
     // (0…1) when all the words' sounds are placed in order across frames [first, last], so a word
-    // is found wherever the singer put it, with the absolute frame its last sound was placed on
-    // (where the next word's search can start once this one counts as heard). Scored per word with
-    // the same vowel / consonant rule as score(…). All zeros, with no frames, when the window is
-    // shorter than the words.
+    // is found wherever the singer put it, with the absolute frames its first and last sounds were
+    // placed on (the last is where the next word's search can start once this one counts as
+    // heard). Each word is scored by the lower of its heard-vowel and heard-consonant shares. All
+    // zeros, with no frames, when the window is shorter than the words.
     public static func wordScores(words: [[Int]], logProbs: [Float], classes: Int, firstFrame: Int, lastFrame: Int)
-        -> [(score: Double, lastFrame: Int?)] {
+        -> [(score: Double, firstFrame: Int?, lastFrame: Int?)] {
         let joined = words.flatMap { $0 }
-        guard let placements = bestPlacements(tokens: joined, logProbs: logProbs, classes: classes,
+        var wordStarts = Set<Int>()
+        var running = 0
+        for word in words { wordStarts.insert(running); running += word.count }
+        guard let placements = bestPlacements(tokens: joined, wordStarts: wordStarts, logProbs: logProbs, classes: classes,
                                               firstFrame: firstFrame, lastFrame: lastFrame) else {
-            return words.map { _ in (0, nil) }
+            return words.map { _ in (0, nil, nil) }
         }
         var offset = 0
         return words.map { word in
             defer { offset += word.count }
             let placed = placements[offset..<(offset + word.count)]
-            return (share(tokens: word, probabilities: placed.map(\.probability)), placed.last?.frame)
+            return (share(tokens: word, probabilities: placed.map(\.probability)), placed.first?.frame, placed.last?.frame)
         }
     }
 
     // Per token in order, the absolute frame of its best in-order placement (frames strictly
     // increasing, best summed log-probability) and its probability there; nil when the window
     // is shorter than the tokens.
-    private static func bestPlacements(tokens: [Int], logProbs: [Float], classes: Int, firstFrame: Int, lastFrame: Int)
+    private static func bestPlacements(tokens: [Int], wordStarts: Set<Int>, logProbs: [Float], classes: Int, firstFrame: Int, lastFrame: Int)
         -> [(frame: Int, probability: Float)]? {
         let k = tokens.count, t = lastFrame - firstFrame + 1
         guard k > 0, t >= k, firstFrame >= 0 else { return nil }
@@ -87,6 +76,18 @@ public enum SingPhonemeScorer {
         var from = [Int](repeating: -1, count: k * t)
         for f in 0..<t { best[f] = lp(f, tokens[0]) }
         for i in 1..<k {
+            if maxGapFrames > 0, wordStarts.contains(i) == false {
+                // Inside a word: the previous sound must be at most `maxGapFrames` back.
+                for f in i..<t {
+                    var bestPrev: Float = -.infinity, arg = -1
+                    for g in max(i - 1, f - maxGapFrames)...(f - 1) where best[(i - 1) * t + g] > bestPrev {
+                        bestPrev = best[(i - 1) * t + g]; arg = g
+                    }
+                    best[i * t + f] = bestPrev + lp(f, tokens[i])
+                    from[i * t + f] = arg
+                }
+                continue
+            }
             var runMax: Float = -.infinity, runArg = -1
             for f in i..<t {
                 let prev = best[(i - 1) * t + f - 1]
@@ -98,7 +99,13 @@ public enum SingPhonemeScorer {
         var f = (k - 1..<t).max { best[(k - 1) * t + $0] < best[(k - 1) * t + $1] } ?? (t - 1)
         var placements = [(frame: Int, probability: Float)](repeating: (0, 0), count: k)
         for i in stride(from: k - 1, through: 0, by: -1) {
-            placements[i] = (firstFrame + f, exp(lp(f, tokens[i])))
+            var probability = exp(lp(f, tokens[i]))
+            if massFrames > 0 {
+                var mass: Float = 0
+                for near in max(0, f - massFrames)...min(t - 1, f + massFrames) { mass += exp(lp(near, tokens[i])) }
+                probability = min(1, max(probability, mass))
+            }
+            placements[i] = (firstFrame + f, probability)
             if i > 0 { f = from[i * t + f] }
         }
         return placements

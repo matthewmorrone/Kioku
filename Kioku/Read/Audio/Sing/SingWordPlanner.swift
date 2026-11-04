@@ -2,17 +2,13 @@ import Foundation
 import LyricAlignment
 
 // Turns a song note's aligned cues into the words Sing mode listens for: each word is a
-// segment of the note's segmentation inside a sung line, timed by the line's karaoke
-// checkpoints, with its phonemes from the note's own furigana (so an edited reading is what's
-// listened for) spelled by the romanizer the aligner reads. Pure, and run off
-// the main thread because romanizing a whole song takes a moment.
+// segment of the note's segmentation inside a sung line, in lyric order, with its start taken
+// from the line's karaoke checkpoints (only to resume after a seek), and its phonemes from the
+// note's own furigana (so an edited reading is what's listened for) spelled by the romanizer the
+// aligner reads. Pure, and run off the main thread because romanizing a whole song takes a moment.
 nonisolated enum SingWordPlanner {
     // Words with fewer phonemes than this (を, a lone vowel) are too short to grade reliably.
     static let minimumTokens = 2
-    // A line's last word runs to the cue's end, which can be seconds of instrumental after the
-    // singing stops; past this a word is graded without waiting for the rest.
-    static let maximumWordSec = 2.4
-
     // One SingWordTarget per gradeable word, keyed by the word's UTF-16 start in `noteText`.
     // `highlightRanges[i]` is cue i's range in the note (nil → found by substring search, as the
     // lyrics card does).
@@ -49,18 +45,7 @@ nonisolated enum SingWordPlanner {
                     ?? spans.filter { $0.charOffsetUTF16 >= word.start && $0.charOffsetUTF16 < word.end }.map(\.romaji)
                 let tokens = SingPhonemeScorer.tokens(fromRomaji: romaji)
                 guard tokens.count >= minimumTokens else { continue }
-                let start = starts[w]
-                let nextStart = w + 1 < words.count ? starts[w + 1] : Double(cue.endMs) / 1000
-                // A line's last word tends to be aligned late (its sound lands in the previous
-                // word's slot), so it gets the wide lead slack of a line's first word.
-                let lead = w == 0 || w == words.count - 1 ? SingPhonemeScorer.lineEdgeLeadSlackSec : SingPhonemeScorer.leadSlackSec
-                let end = min(max(nextStart, start + 0.1), start + maximumWordSec)
-                let tail = w == words.count - 1 ? SingPhonemeScorer.lineEdgeTailSlackSec : SingPhonemeScorer.tailSlackSec
-                targets.append(SingWordTarget(
-                    id: cueStart + word.start, tokens: tokens, startSec: start, endSec: end,
-                    leadSlackSec: lead,
-                    tailSlackSec: tail
-                ))
+                targets.append(SingWordTarget(id: cueStart + word.start, tokens: tokens, startSec: starts[w]))
             }
         }
         return targets

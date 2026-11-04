@@ -64,6 +64,14 @@ extension LyricsView {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(singSession.isActive ? "Stop singing" : "Sing along")
+        // The song reaching its end on its own finishes the session, so the summary opens
+        // without the singer having to tap Stop.
+        .onAppear {
+            controller.onDidFinishPlayingNaturally = {
+                guard singSession.isActive, singSession.scope != .guided else { return }
+                endSingSession()
+            }
+        }
         // The instrumental Sing asked for has finished switching in (or the switch ended without
         // it, e.g. no instrumental could be built): start the song. Watching the source too covers
         // a switch quick enough that the in-progress flag never reaches this view.
@@ -148,12 +156,7 @@ extension LyricsView {
     func toggleSing() {
         let guided = singGuided
         if singSession.isActive {
-            isSingPlaybackPending = false
-            if let previous = singSession.restoreAudioSource { onSetAudioSource(previous) }
-            singSession.stop()
-            controller.pause()
-            saveSingSession()
-            if singSession.verdicts.isEmpty == false { isShowingSingSummary = true }
+            endSingSession()
             return
         }
         guard let singRomanize else { return }
@@ -189,6 +192,17 @@ extension LyricsView {
                 onSetAudioSource(.instrumental)
             }
         }
+    }
+
+    // Ends the session the same way whether the singer tapped Stop or the song played out:
+    // restores the audio source, records the session and opens the summary.
+    func endSingSession() {
+        isSingPlaybackPending = false
+        if let previous = singSession.restoreAudioSource { onSetAudioSource(previous) }
+        singSession.stop()
+        controller.pause()
+        saveSingSession()
+        if singSession.verdicts.isEmpty == false { isShowingSingSummary = true }
     }
 
     // Plays the song for a Sing start that was waiting on its audio source switch, once: the
@@ -325,7 +339,8 @@ extension LyricsView {
         return singMissedLocations.sorted().compactMap { location in
             guard let range = words.first(where: { location >= $0.location && location < NSMaxRange($0) }) else { return nil }
             let surface = noteNS.substring(with: NSRange(location: location, length: NSMaxRange(range) - location))
-            return seen.insert(surface).inserted ? SingMissedWord(location: location, surface: surface) : nil
+            return seen.insert(surface).inserted
+                ? SingMissedWord(location: location, surface: surface, heard: singSession.heard[location] ?? "") : nil
         }
     }
 
