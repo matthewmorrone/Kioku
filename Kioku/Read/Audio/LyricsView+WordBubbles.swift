@@ -82,9 +82,11 @@ extension LyricsView {
     // A meaning short enough for a bubble: its first sense, up to the first semicolon or comma —
     // a breakdown's loanword definition runs on after it ("search, from English search") — with its
     // parenthetical qualifiers left out ("caramel (confectionery)" says "caramel", "light (from
-    // French 'lumière')" says "light"). Nil when nothing is left.
+    // French 'lumière')" says "light") — and only the first of its " or " alternatives ("surpassing or
+    // crossing" says "surpassing"). Nil when nothing is left.
     static func shortGloss(_ text: String) -> String? {
-        guard let first = text.split(whereSeparator: { ";,".contains($0) }).first.map(String.init) else { return nil }
+        guard let sense = text.split(whereSeparator: { ";,".contains($0) }).first.map(String.init) else { return nil }
+        let first = sense.components(separatedBy: " or ").first ?? sense
         var gloss = ""
         var depth = 0
         for character in first {
