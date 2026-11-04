@@ -27,6 +27,32 @@ nonisolated struct SegmentRange: Codable, Equatable, Hashable {
         self.needsSegmentation = needsSegmentation
     }
 
+    // Reconstructs a segment's full reading (kanji-run readings interleaved with its own literal
+    // kana) from its persisted furigana annotations, whose start/end are UTF-16 offsets relative
+    // to the segment's own surface. Empty when the segment has no furigana (kana-only segments,
+    // or a kanji segment whose reading was never computed).
+    var reconstructedReading: String {
+        guard let furigana = furigana, furigana.isEmpty == false else { return "" }
+        let surface = self.surface
+
+        var reading = ""
+        var cursor = surface.startIndex
+        for annotation in furigana.sorted(by: { $0.start < $1.start }) {
+            let start = String.Index(utf16Offset: annotation.start, in: surface)
+            let end = String.Index(utf16Offset: annotation.end, in: surface)
+            guard start >= cursor, end <= surface.endIndex, start <= end else { continue }
+            if cursor < start {
+                reading += surface[cursor..<start]
+            }
+            reading += annotation.reading
+            cursor = end
+        }
+        if cursor < surface.endIndex {
+            reading += surface[cursor...]
+        }
+        return reading
+    }
+
     // Whether every segment is a finished segmentation, i.e. none is an edited stretch still
     // waiting for the segmenter. Persisted segments are only used as they are when this holds.
     static func isFullySegmented(_ segments: [SegmentRange]) -> Bool {

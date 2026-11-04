@@ -662,37 +662,11 @@ struct NotesView: View {
         let entries = segments
             .filter { $0.surface == "\n" || $0.surface.trimmingCharacters(in: .whitespaces).isEmpty == false }
             .map { segment in
-                NoteSegmentationExportEntry(surface: segment.surface, reading: reconstructedReading(for: segment))
+                NoteSegmentationExportEntry(surface: segment.surface, reading: segment.reconstructedReading)
             }
         let compact = NoteSegmentationExport.compactText(from: entries)
 
         return "\(note.resolvedTitle)\n\n\(compact)"
-    }
-
-    // Reconstructs a segment's full reading (kanji-run readings interleaved with its own literal
-    // kana) from its persisted furigana annotations, whose start/end are UTF-16 offsets relative
-    // to the segment's own surface. Empty when the segment has no furigana (kana-only segments,
-    // or a kanji segment whose reading was never computed).
-    private func reconstructedReading(for segment: SegmentRange) -> String {
-        guard let furigana = segment.furigana, furigana.isEmpty == false else { return "" }
-        let surface = segment.surface
-
-        var reading = ""
-        var cursor = surface.startIndex
-        for annotation in furigana.sorted(by: { $0.start < $1.start }) {
-            let start = String.Index(utf16Offset: annotation.start, in: surface)
-            let end = String.Index(utf16Offset: annotation.end, in: surface)
-            guard start >= cursor, end <= surface.endIndex, start <= end else { continue }
-            if cursor < start {
-                reading += surface[cursor..<start]
-            }
-            reading += annotation.reading
-            cursor = end
-        }
-        if cursor < surface.endIndex {
-            reading += surface[cursor...]
-        }
-        return reading
     }
 }
 

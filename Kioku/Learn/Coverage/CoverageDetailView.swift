@@ -103,7 +103,7 @@ struct CoverageDetailView: View {
                 selection: selection,
                 count: $launchCount,
                 onStart: { mode in
-                    launch = CoverageLaunch(words: selection.words, count: launchCount, mode: mode)
+                    launch = CoverageLaunch(words: withNoteReadings(selection.words), count: launchCount, mode: mode)
                     pendingSelection = nil
                 }
             )
@@ -139,6 +139,14 @@ struct CoverageDetailView: View {
                 }
                 .buttonStyle(.bordered)
                 .padding(.top, 4)
+                // Straight into multiple choice over every word, one question per word, skipping the
+                // mode/count sheet.
+                Button {
+                    launch = CoverageLaunch(words: withNoteReadings(coverage.allWords), count: coverage.allWords.count, mode: .multipleChoice)
+                } label: {
+                    Label("Quiz All \(coverage.total) Words", systemImage: CoverageStudyMode.multipleChoice.systemImage)
+                }
+                .buttonStyle(.borderedProminent)
             }
         }
         .padding(14)
@@ -263,6 +271,24 @@ struct CoverageDetailView: View {
         .buttonStyle(.plain)
         .disabled(words.isEmpty)
         .opacity(words.isEmpty ? 0.4 : 1)
+    }
+
+    // The words with the reading this note gives each (刃 sung やいば, not は) as their chosen
+    // reading, for this session only — nothing is saved. A word keeps its own reading when the note
+    // never shows its surface with furigana; the activities ignore a reading its entry lacks. The
+    // most frequent reading wins when the note reads one surface two ways.
+    private func withNoteReadings(_ words: [SavedWord]) -> [SavedWord] {
+        var counts: [String: [String: Int]] = [:]
+        for segment in note.segments ?? [] {
+            let reading = segment.reconstructedReading
+            if reading.isEmpty == false { counts[segment.surface, default: [:]][reading, default: 0] += 1 }
+        }
+        return words.map { word in
+            guard let best = counts[word.surface]?.max(by: { $0.value < $1.value })?.key else { return word }
+            var copy = word
+            copy.selectedReading = best
+            return copy
+        }
     }
 
     // The presented scoped session, re-injecting the stores each activity requires.
