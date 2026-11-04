@@ -14,6 +14,8 @@ struct LyricWordBubbleOverlay: View {
     // Height of the clipped lyric area (coordinate space "lyricClip") the overlay sits in; when
     // known, the rows use the room it really leaves above and below the line instead of verticalRoom.
     var clipHeight: CGFloat = 0
+    // Space under the line already taken (the translation), which the rows below start past.
+    var belowInset: CGFloat = 0
 
     static let glossFont = UIFont.systemFont(ofSize: 12, weight: .medium)
     static let horizontalPadding: CGFloat = 12
@@ -47,7 +49,8 @@ struct LyricWordBubbleOverlay: View {
                 shown: shownIDs,
                 size: proxy.size,
                 roomAbove: roomAbove,
-                roomBelow: roomBelow
+                roomBelow: roomBelow,
+                belowInset: belowInset
             )
             ZStack(alignment: .topLeading) {
                 ForEach(slots, id: \.id) { slot in
@@ -146,7 +149,7 @@ struct LyricWordBubbleOverlay: View {
     // panel has room for is taken, the oldest bubble is popped until the new one fits, so the
     // queue goes first in, first out. Replaying the same shown words gives the same places, so a
     // bubble never moves while it's up.
-    static func stackedLayout(_ bubbles: [PlacedLyricWordBubble], shown: Set<Int>? = nil, size cardSize: CGSize, roomAbove: CGFloat = rowOverflow, roomBelow: CGFloat = rowOverflow) -> [Slot] {
+    static func stackedLayout(_ bubbles: [PlacedLyricWordBubble], shown: Set<Int>? = nil, size cardSize: CGSize, roomAbove: CGFloat = rowOverflow, roomBelow: CGFloat = rowOverflow, belowInset: CGFloat = 0) -> [Slot] {
         let width = cardSize.width
         guard width > 0 else { return [] }
         // The line's geometry (and whether it wraps) comes from every word, so a bubble's side and
@@ -158,7 +161,7 @@ struct LyricWordBubbleOverlay: View {
         // The room each side leaves past the line. A row is as tall as its own tallest bubble (plus
         // tail room), so one long meaning doesn't make every row that expensive.
         let spaceAbove = lineTop + roomAbove
-        let spaceBelow = cardSize.height + roomBelow - lineBottom
+        let spaceBelow = cardSize.height + roomBelow - lineBottom - belowInset
         // Whether `rows` (nearest the line first) stack within `space`, so no bubble is clipped.
         func rowsFit(_ rows: [[Slot]], space: CGFloat) -> Bool {
             let heights = rows.filter { $0.isEmpty == false }.map { $0.map(\.frame.height).max() ?? 0 }
@@ -172,7 +175,7 @@ struct LyricWordBubbleOverlay: View {
             var offset: CGFloat = 10
             for row in rows where row.isEmpty == false {
                 for slot in row {
-                    let y = isAbove ? lineTop - offset - slot.frame.height : lineBottom + offset
+                    let y = isAbove ? lineTop - offset - slot.frame.height : lineBottom + belowInset + offset
                     result.append(Slot(id: slot.id, text: slot.text, frame: CGRect(x: slot.frame.minX, y: y, width: slot.frame.width, height: slot.frame.height), tip: slot.tip))
                 }
                 offset += (row.map(\.frame.height).max() ?? 0) + 12

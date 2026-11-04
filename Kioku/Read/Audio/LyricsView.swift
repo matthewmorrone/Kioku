@@ -102,6 +102,8 @@ struct LyricsView: View {
     @State var wordBubbleRects: [NSRange: CGRect] = [:]
     // The active line's laid-out height from the renderer, so a wrapped line gets its full card.
     @State var activeCueContentHeight: CGFloat = 0
+    // Height of the translation line under the active card, so word bubbles below the line start under it.
+    @State var translationHeight: CGFloat = 0
     // The line the bubbles show on: set once the card has stayed on a line a moment, so dragging or
     // scrubbing through lines doesn't flash and spring bubbles on each one passed.
     @State var settledBubbleLine: Int?
@@ -488,7 +490,8 @@ struct LyricsView: View {
                                         cueOriginInNote: cueOriginInNote,
                                         cueLength: cueInput.text.utf16.count
                                     ),
-                                    clipHeight: lyricClipHeight
+                                    clipHeight: lyricClipHeight,
+                                    belowInset: isTranslationVisible && displayedTranslation(for: displayIndex) != nil ? translationHeight + 6 : 0
                                 )
                                 .id(displayIndex)
                             }
@@ -506,6 +509,10 @@ struct LyricsView: View {
                             .multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity)
+                            .background(GeometryReader { proxy in
+                                Color.clear.onAppear { translationHeight = proxy.size.height }
+                                    .onChange(of: proxy.size.height) { _, height in translationHeight = height }
+                            })
                     }
                     if displayIndex < cues.count && hasMismatch(at: displayIndex) {
                         HStack(spacing: 4) {
