@@ -28,26 +28,37 @@ nonisolated struct PointerBubbleShape: Shape {
     // tip is inside the body. The layouts use it too, to keep tails from crossing.
     static func tailRoot(body: CGRect, tip: CGPoint, cornerRadius: CGFloat = 14, baseHalfWidth: CGFloat = 10) -> (base1: CGPoint, base2: CGPoint, edge: CGPoint)? {
         guard body.contains(tip) == false else { return nil }
-        // Wide enough to read as an arrow even on a one-line bubble: the base may overlap the rounded
-        // corners, since it starts a little inside the body.
-        let half = min(baseHalfWidth, max(3, min(body.width, body.height) / 2 - 3))
+        // Wide enough to read as an arrow even on a one-line bubble.
+        let half = min(baseHalfWidth, max(3, min(body.height, body.width) / 2 - 3))
+        // The base points sit well inside the body, and clear of the rounded corners, so the wedge
+        // always overlaps solid body and never leaves a gap or a sliver (which showed as a detached
+        // tail, or as a dark line from the shadow) where the corner curves away from the edge.
+        let radius = min(cornerRadius, body.height / 2, body.width / 2)
+        let inset: CGFloat = 4
+        // Where along an edge of `length` starting at `origin` the tail may be centred: at `target`,
+        // kept `radius + half` from the ends, or the middle when the edge is too short for that.
+        func along(_ target: CGFloat, origin: CGFloat, length: CGFloat) -> CGFloat {
+            let margin = radius + half
+            guard length > 2 * margin else { return origin + length / 2 }
+            return min(max(target, origin + margin), origin + length - margin)
+        }
         if tip.x > body.maxX || tip.x < body.minX, tip.y >= body.minY - 4, tip.y <= body.maxY + 4 {
             let toRight = tip.x > body.maxX
-            let x = toRight ? body.maxX - 1 : body.minX + 1
-            let y = min(max(tip.y, body.minY + half + 2), max(body.minY + half + 2, body.maxY - half - 2))
+            let x = toRight ? body.maxX - inset : body.minX + inset
+            let y = along(tip.y, origin: body.minY, length: body.height)
             return (CGPoint(x: x, y: y - half), CGPoint(x: x, y: y + half), CGPoint(x: toRight ? body.maxX : body.minX, y: y))
         }
         let below = tip.y > body.maxY
-        let y = below ? body.maxY - 1 : body.minY + 1
-        let x = min(max(tip.x, body.minX + half + 2), max(body.minX + half + 2, body.maxX - half - 2))
+        let y = below ? body.maxY - inset : body.minY + inset
+        let x = along(tip.x, origin: body.minX, length: body.width)
         return (CGPoint(x: x - half, y: y), CGPoint(x: x + half, y: y), CGPoint(x: x, y: below ? body.maxY : body.minY))
     }
 
-    // The body plus the tail wedge, as one filled outline.
+    // The body plus the tail wedge, as one filled outline (their union, so the overlap is solid).
     func path(in rect: CGRect) -> Path {
         let radius = min(cornerRadius, body.height / 2, body.width / 2)
-        var path = Path(roundedRect: body, cornerRadius: radius)
-        guard let root = Self.tailRoot(body: body, tip: tip, cornerRadius: cornerRadius, baseHalfWidth: baseHalfWidth) else { return path }
+        let bodyPath = Path(roundedRect: body, cornerRadius: radius)
+        guard let root = Self.tailRoot(body: body, tip: tip, cornerRadius: cornerRadius, baseHalfWidth: baseHalfWidth) else { return bodyPath }
         let base1 = root.base1
         let base2 = root.base2
         // Each side bows toward the other's base, tapering the tail.
@@ -55,10 +66,13 @@ nonisolated struct PointerBubbleShape: Shape {
             let mid = CGPoint(x: (base.x + tip.x) / 2, y: (base.y + tip.y) / 2)
             return CGPoint(x: mid.x + (other.x - base.x) * 0.1, y: mid.y + (other.y - base.y) * 0.1)
         }
-        path.move(to: base1)
-        path.addQuadCurve(to: tip, control: bowed(from: base1, toward: base2))
-        path.addQuadCurve(to: base2, control: bowed(from: base2, toward: base1))
-        path.closeSubpath()
-        return path
+        var wedge = Path()
+        wedge.move(to: base1)
+        wedge.addQuadCurve(to: tip, control: bowed(from: base1, toward: base2))
+        wedge.addQuadCurve(to: base2, control: bowed(from: base2, toward: base1))
+        wedge.closeSubpath()
+        // A real union: the body and the wedge wind in opposite directions depending on which edge the
+        // tail leaves, and filling them as two subpaths of one path left a hole where they overlap.
+        return bodyPath.union(wedge)
     }
 }

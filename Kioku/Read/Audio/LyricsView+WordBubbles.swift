@@ -36,29 +36,37 @@ extension LyricsView {
 
     // The breakdown line covering the cue (SongBreakdownPlacement), its words in the cue each with
     // its definition in the speech bubble, minus the kinds of word the shared filters hide — the
-    // same SongWordVisibility rule the Breakdown's cards and listen-along use. The line's
-    // pattern-to-bank note stays out: bubbles hold meanings only. Nil when no breakdown line covers
-    // the cue or none of its words could be found in it.
+    // same SongWordVisibility rule the Breakdown's cards use. Words of the cue the breakdown didn't
+    // place (it names 手を取る where the note sings 手を取り, or leaves a word out) take their
+    // dictionary meaning instead, as on a line with no breakdown. The line's pattern-to-bank note
+    // stays out: bubbles hold meanings only. Nil when no breakdown line covers the cue or nothing
+    // in it has a meaning.
     private func breakdownWordBubbles(_ placement: SongBreakdownPlacement, in cueRange: NSRange) -> [LyricWordBubble]? {
         guard let line = placement.line(overlapping: cueRange) else { return nil }
         let filter = meaningFilter
         var bubbles: [LyricWordBubble] = []
+        var covered: [NSRange] = []
         for placed in line.words {
-            guard NSIntersectionRange(placed.range, cueRange).length > 0, filter.allows(breakdownWord: placed.word) else { continue }
+            guard NSIntersectionRange(placed.range, cueRange).length > 0 else { continue }
+            covered.append(placed.range)
+            guard filter.allows(breakdownWord: placed.word) else { continue }
             bubbles.append(LyricWordBubble(noteRange: placed.range, gloss: Self.shortGloss(placed.word.definition)))
         }
+        bubbles += dictionaryWordBubbles(in: cueRange, excluding: covered)
+        bubbles.sort { $0.noteRange.location < $1.noteRange.location }
         return bubbles.isEmpty ? nil : bubbles
     }
 
     // The cue's segments, each with its dictionary meaning (none for anything the dictionary
     // doesn't know, which dictionaryGloss returns nil for, nor for particles while their bubbles
-    // are off).
-    private func dictionaryWordBubbles(in cueRange: NSRange) -> [LyricWordBubble] {
+    // are off), leaving out the segments inside `excluded` ranges (words the breakdown covers).
+    private func dictionaryWordBubbles(in cueRange: NSRange, excluding excluded: [NSRange] = []) -> [LyricWordBubble] {
         guard let dictionaryGloss else { return [] }
         let filter = meaningFilter
         return segmentationRanges.compactMap { range in
             let nsRange = NSRange(range, in: noteText)
-            guard nsRange.length > 0, NSIntersectionRange(nsRange, cueRange).length > 0 else { return nil }
+            guard nsRange.length > 0, NSIntersectionRange(nsRange, cueRange).length > 0,
+                  excluded.contains(where: { NSIntersectionRange($0, nsRange).length > 0 }) == false else { return nil }
             let surface = String(noteText[range])
             guard filter.allows(dictionaryWord: surface, at: nsRange.location),
                   let gloss = dictionaryGloss(nsRange.location, surface) else { return nil }
@@ -133,14 +141,14 @@ extension LyricsView {
 
     // All the line's bubbles, each placed at its word's measured rect, so the overlay lays out the
     // whole line at once and none moves as more appear. Shown: on the line being played, the words
-    // sung so far; on a line the user has dragged into view, all of them.
+    // sung so far; on a line the user has dragged into view, or while playback is paused, all of them.
     func placedWordBubbles(forCueAt index: Int, cueOriginInNote: Int, cueLength: Int) -> [PlacedLyricWordBubble] {
         let cueSpan = NSRange(location: cueOriginInNote, length: cueLength)
         let isLive = index == activeIndex
         let now = controller.currentTimeMs
         return wordBubbles(in: cueSpan).compactMap { bubble in
             guard let local = cueLocalRange(bubble, cueSpan: cueSpan), let rect = wordBubbleRects[local] else { return nil }
-            let isSung = isLive == false || wordStartMs(bubble, cueAt: index, cueSpan: cueSpan) <= now
+            let isSung = isLive == false || controller.isPlaying == false || wordStartMs(bubble, cueAt: index, cueSpan: cueSpan) <= now
             return PlacedLyricWordBubble(
                 id: bubble.noteRange.location,
                 anchor: rect,
