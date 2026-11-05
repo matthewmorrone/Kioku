@@ -14,6 +14,8 @@ struct LyricWordBubbleOverlay: View {
     // Height of the clipped lyric area (coordinate space "lyricClip") the overlay sits in; when
     // known, the rows use the room it really leaves above and below the line instead of verticalRoom.
     var clipHeight: CGFloat = 0
+    // The line's translation, drawn here under the line so it sits in front of the bubbles' tails.
+    var translation: String? = nil
     // Space under the line already taken (the translation), which the rows below start past.
     var belowInset: CGFloat = 0
 
@@ -55,6 +57,12 @@ struct LyricWordBubbleOverlay: View {
             ZStack(alignment: .topLeading) {
                 ForEach(slots, id: \.id) { slot in
                     bubble(slot, in: proxy.size)
+                }
+                if let translation {
+                    // In front of the tails running behind it.
+                    LyricTranslationText(text: translation)
+                        .frame(width: proxy.size.width)
+                        .offset(y: proxy.size.height)
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)

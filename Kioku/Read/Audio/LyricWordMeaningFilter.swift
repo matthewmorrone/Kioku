@@ -18,10 +18,13 @@ struct LyricWordMeaningFilter {
 
     // Whether a breakdown word gets its meaning: by its spelling, then by the breakdown's own tags
     // (particle, vocalization) through the same rule the Breakdown's cards use.
-    func allows(breakdownWord word: SongWord) -> Bool {
+    // A particle whose bubble meaning is a single word ("with", "from", "too") stays while
+    // particles are hidden: the word carries real meaning, unlike は "topic marker" or を "direct
+    // object", which only name a grammar role. `gloss` is the bubble's meaning, when known.
+    func allows(breakdownWord word: SongWord, gloss: String? = nil) -> Bool {
         let surface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
         let visibility = SongWordVisibility(
-            showsParticles: showsParticles,
+            showsParticles: showsParticles || Self.isSingleWord(gloss),
             showsKatakana: showsKatakana,
             showsVocalizations: showsVocalizations,
             showsPatterns: false
@@ -31,8 +34,17 @@ struct LyricWordMeaningFilter {
 
     // Whether a word the breakdown doesn't cover gets its dictionary meaning: by its spelling,
     // and not a particle while particles are hidden.
-    func allows(dictionaryWord surface: String, at location: Int) -> Bool {
-        allows(surface: surface) && (showsParticles || isParticle?(location, surface) != true)
+    // A particle with a single-word meaning stays (see allows(breakdownWord:gloss:)).
+    func allows(dictionaryWord surface: String, at location: Int, gloss: String? = nil) -> Bool {
+        allows(surface: surface) && (showsParticles || Self.isSingleWord(gloss) || isParticle?(location, surface) != true)
+    }
+
+    // Whether a bubble meaning is one word: no spaces, so "with" and "too" count, "to" followed by a
+    // verb, "topic marker" and "(indicates) object" do not.
+    static func isSingleWord(_ gloss: String?) -> Bool {
+        guard let gloss else { return false }
+        let trimmed = gloss.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty == false && trimmed.contains(where: \.isWhitespace) == false
     }
 
     // The spelling checks both kinds of word share.

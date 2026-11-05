@@ -17,8 +17,12 @@ nonisolated enum LearnedSettings {
 
     static let defaultExcludeLearned = true
 
+    // Defaults to ON: stages are derived from the Learned flag alone, so with auto-learn off,
+    // answering questions can never move a word out of New. Single spelling shared by reader and writer.
+    static let defaultAutoLearn = true
+
     // Reads the auto-learn switch from the shared store @AppStorage writes to.
     static func isAutoLearnEnabled(_ defaults: UserDefaults = .standard) -> Bool {
-        UserDefaultsBool.read(enabledKey, default: false, from: defaults)
+        UserDefaultsBool.read(enabledKey, default: defaultAutoLearn, from: defaults)
     }
 }

@@ -83,21 +83,16 @@ extension ReadView {
         return entry.kanjiForms.isEmpty && entry.kanaForms.allSatisfy { ScriptClassifier.isPureKatakana($0.text) }
     }
 
-    // The lemma's meaning turned into the sung form's where the form flips it: 足りない under 足りる
-    // reads "not sufficient", not "to be sufficient". Only negation is carried over (tense and
-    // politeness don't change what the word means in a bubble), and only when `entry` is the lemma —
-    // an entry spelled like the surface (足りない's own entry) already means the whole form.
+    // The lemma's meaning turned into the sung form's, so a bubble never shows the plain verb for an
+    // inflected one: 足りない under 足りる reads "not sufficient", 食べたい "want to eat", 食べた "eat
+    // (past)". A guess already stored for the whole form (the lookup sheet's composite gloss) wins.
+    // Only when `entry` is the lemma — an entry spelled like the surface (足りない's own entry)
+    // already means the whole form.
     private func inflectedLyricGloss(_ gloss: String, surface: String, entry: DictionaryEntry) -> String {
         let definesSurface = entry.kanjiForms.contains { $0.text == surface } || entry.kanaForms.contains { $0.text == surface }
-        guard definesSurface == false,
-              let chain = lexicon?.inflectionInfo(surface: surface)?.chain,
-              InflectionFormNames.isNegative(chain) else { return gloss }
-        var base = gloss
-        for prefix in ["to be ", "to "] where base.hasPrefix(prefix) {
-            base.removeFirst(prefix.count)
-            break
-        }
-        return "not " + base
+        guard definesSurface == false, let info = lexicon?.inflectionInfo(surface: surface) else { return gloss }
+        if let stored = GuessedGlossStore.composite.gloss(for: surface, in: info.lemma) { return stored }
+        return InflectionFormNames.applying(info.chain, to: gloss)
     }
 
     // The words sharing a lyric word's shown reading, in order: the sheet's list when it's unpicked.

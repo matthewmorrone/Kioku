@@ -491,6 +491,7 @@ struct LyricsView: View {
                                         cueLength: cueInput.text.utf16.count
                                     ),
                                     clipHeight: lyricClipHeight,
+                                    translation: isTranslationVisible ? displayedTranslation(for: displayIndex) : nil,
                                     belowInset: isTranslationVisible && displayedTranslation(for: displayIndex) != nil ? translationHeight + 6 : 0
                                 )
                                 .id(displayIndex)
@@ -502,17 +503,15 @@ struct LyricsView: View {
                     }
                     // The line's English translation under the card (LyricsView+BreakdownGist).
                     if isTranslationVisible, let translation = displayedTranslation(for: displayIndex) {
-                        Text(translation)
-                            .scaledFont(size: 12)
-                            .foregroundStyle(.secondary)
-                            .italic()
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
+                        LyricTranslationText(text: translation)
                             .frame(maxWidth: .infinity)
                             .background(GeometryReader { proxy in
                                 Color.clear.onAppear { translationHeight = proxy.size.height }
                                     .onChange(of: proxy.size.height) { _, height in translationHeight = height }
                             })
+                            // While the bubble overlay is up it draws this line itself, in front of the
+                            // bubbles' tails; this copy only holds the space.
+                            .opacity(bubbleOverlayDrawsTranslation(at: displayIndex) ? 0 : 1)
                     }
                     if displayIndex < cues.count && hasMismatch(at: displayIndex) {
                         HStack(spacing: 4) {

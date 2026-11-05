@@ -52,4 +52,29 @@ nonisolated enum InflectionFormNames {
     static func isNegative(_ chain: [String]) -> Bool {
         chain.filter { displayNames[$0]?.contains("negative") == true }.count % 2 == 1
     }
+
+    // Turns a lemma's gloss ("to eat") into the sung form's short meaning for tight spaces like
+    // lyric bubbles: desire → "want to eat", potential → "can eat", negation in front of either
+    // ("don't want to", "can't"), then a trailing tag for past / progressive / imperative /
+    // conditional. Forms without a clear short English rendering (te-form, polite) leave the
+    // gloss as is. Reads the chain labels directly so internal recovery steps never count.
+    static func applying(_ chain: [String], to gloss: String) -> String {
+        var base = gloss
+        for prefix in ["to be ", "to "] where base.hasPrefix(prefix) {
+            base.removeFirst(prefix.count)
+            break
+        }
+        let negative = isNegative(chain)
+        let wants = chain.contains("desire")
+        let can = chain.contains("potential")
+        var text = base
+        if wants { text = (negative ? "don't want to " : "want to ") + base }
+        else if can { text = (negative ? "can't " : "can ") + base }
+        else if negative { text = "not " + base }
+        if chain.contains("past") || chain.contains("negative past") { text += " (past)" }
+        if chain.contains("progressive") { text += " (ongoing)" }
+        if chain.contains("imperative") { text += "!" }
+        if chain.contains("conditional") { text = "if " + text }
+        return text
+    }
 }

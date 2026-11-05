@@ -52,7 +52,7 @@ struct SettingsView: View {
 
     // Auto-mark-as-learned: one right answer in every kind of question → learned (see AutoLearnPolicy).
     @AppStorage(PlaybackControlSize.storageKey) private var playbackControlSizeRaw = PlaybackControlSize.small.rawValue
-    @AppStorage(LearnedSettings.enabledKey) private var autoLearnEnabled: Bool = false
+    @AppStorage(LearnedSettings.enabledKey) private var autoLearnEnabled: Bool = LearnedSettings.defaultAutoLearn
     // Whether the Learn tab's study modes skip Learned/Mastered words. Read by each mode through
     // StudyWordPool; this is the single place it's set.
     @AppStorage(LearnedSettings.excludeLearnedKey) private var excludeLearnedInStudy: Bool = LearnedSettings.defaultExcludeLearned

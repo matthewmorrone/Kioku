@@ -49,8 +49,9 @@ extension LyricsView {
         for placed in line.words {
             guard NSIntersectionRange(placed.range, cueRange).length > 0 else { continue }
             covered.append(placed.range)
-            guard filter.allows(breakdownWord: placed.word) else { continue }
-            bubbles.append(LyricWordBubble(noteRange: placed.range, gloss: Self.shortGloss(placed.word.definition)))
+            let gloss = Self.shortGloss(placed.word.definition)
+            guard filter.allows(breakdownWord: placed.word, gloss: gloss) else { continue }
+            bubbles.append(LyricWordBubble(noteRange: placed.range, gloss: gloss))
         }
         bubbles += dictionaryWordBubbles(in: cueRange, excluding: covered)
         bubbles.sort { $0.noteRange.location < $1.noteRange.location }
@@ -59,7 +60,7 @@ extension LyricsView {
 
     // The cue's segments, each with its dictionary meaning (none for anything the dictionary
     // doesn't know, which dictionaryGloss returns nil for, nor for particles while their bubbles
-    // are off), leaving out the segments inside `excluded` ranges (words the breakdown covers).
+    // are off, unless the meaning is a single word like "with"), leaving out the segments inside `excluded` ranges (words the breakdown covers).
     private func dictionaryWordBubbles(in cueRange: NSRange, excluding excluded: [NSRange] = []) -> [LyricWordBubble] {
         guard let dictionaryGloss else { return [] }
         let filter = meaningFilter
@@ -68,9 +69,10 @@ extension LyricsView {
             guard nsRange.length > 0, NSIntersectionRange(nsRange, cueRange).length > 0,
                   excluded.contains(where: { NSIntersectionRange($0, nsRange).length > 0 }) == false else { return nil }
             let surface = String(noteText[range])
-            guard filter.allows(dictionaryWord: surface, at: nsRange.location),
-                  let gloss = dictionaryGloss(nsRange.location, surface) else { return nil }
-            return LyricWordBubble(noteRange: nsRange, gloss: Self.shortGloss(gloss))
+            guard let gloss = dictionaryGloss(nsRange.location, surface) else { return nil }
+            let short = Self.shortGloss(gloss)
+            guard filter.allows(dictionaryWord: surface, at: nsRange.location, gloss: short) else { return nil }
+            return LyricWordBubble(noteRange: nsRange, gloss: short)
         }
     }
 
@@ -172,5 +174,13 @@ extension LyricsView {
         try? await Task.sleep(for: .milliseconds(waitMs))
         guard Task.isCancelled == false else { return }
         settledBubbleLine = line
+    }
+
+    // Whether the word-bubble overlay is up on the active card for `index`, and so draws the
+    // translation line itself in front of the bubbles' tails. False for interlude rows, which have
+    // no overlay.
+    func bubbleOverlayDrawsTranslation(at index: Int) -> Bool {
+        guard showsBubbles, settledBubbleLine == index else { return false }
+        return (index < cues.count && isNonSpeechCue(at: index)) == false
     }
 }
