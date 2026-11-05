@@ -56,7 +56,7 @@ struct ContentView: View {
     @State private var wotdRefreshTask: Task<Void, Never>?
 
     // Initializes the selected tab so previews and deep links can choose an initial section.
-    init(selectedTab: ContentTab = .read) {
+    init(selectedTab: ContentTab = .words) {
         _selectedTab = State(initialValue: selectedTab)
     }
 
