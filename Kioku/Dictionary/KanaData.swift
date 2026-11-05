@@ -15,8 +15,9 @@ nonisolated enum KanaData {
 
     // Words the dictionary tags as particles (JMdict "prt") or a breakdown tags `[particle]`, but
     // that carry real meaning, so the Particles filter must not hide them. Add a surface here to
-    // keep it visible: まで "until", ほど "extent".
-    static let nonParticleWords: Set<String> = ["まで", "ほど"]
+    // keep it visible: まで "until", ほど "extent"; the copula です/でしょ/だろう, which a breakdown
+    // tags as a sentence-ending particle but is a verb form.
+    static let nonParticleWords: Set<String> = ["まで", "ほど", "です", "でした", "でしょ", "でしょう", "だろ", "だろう"]
 
     // Kana variants normalized during furigana alignment so equivalent spellings match.
     // Maps archaic/alternate forms to their modern equivalents (e.g. づ→ず, ヴ→ブ).
