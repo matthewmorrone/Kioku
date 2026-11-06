@@ -50,8 +50,13 @@ extension LyricsView {
             guard NSIntersectionRange(placed.range, cueRange).length > 0 else { continue }
             covered.append(placed.range)
             let gloss = Self.shortGloss(placed.word.definition)
-            guard filter.allows(breakdownWord: placed.word, gloss: gloss) else { continue }
-            bubbles.append(LyricWordBubble(noteRange: placed.range, gloss: gloss))
+            if filter.allows(breakdownWord: placed.word) {
+                bubbles.append(LyricWordBubble(noteRange: placed.range, gloss: gloss))
+            } else if let word = LyricWordMeaningFilter.singleWordMeaning(in: placed.word.definition),
+                      filter.allows(breakdownWord: placed.word, gloss: word) {
+                // A particle hidden by the toggle that still has a one-word meaning.
+                bubbles.append(LyricWordBubble(noteRange: placed.range, gloss: word))
+            }
         }
         bubbles += dictionaryWordBubbles(in: cueRange, excluding: covered)
         bubbles.sort { $0.noteRange.location < $1.noteRange.location }
@@ -70,9 +75,13 @@ extension LyricsView {
                   excluded.contains(where: { NSIntersectionRange($0, nsRange).length > 0 }) == false else { return nil }
             let surface = String(noteText[range])
             guard let gloss = dictionaryGloss(nsRange.location, surface) else { return nil }
-            let short = Self.shortGloss(gloss)
-            guard filter.allows(dictionaryWord: surface, at: nsRange.location, gloss: short) else { return nil }
-            return LyricWordBubble(noteRange: nsRange, gloss: short)
+            if filter.allows(dictionaryWord: surface, at: nsRange.location) {
+                return LyricWordBubble(noteRange: nsRange, gloss: Self.shortGloss(gloss))
+            }
+            // A particle hidden by the toggle that still has a one-word meaning.
+            guard let word = LyricWordMeaningFilter.singleWordMeaning(in: gloss),
+                  filter.allows(dictionaryWord: surface, at: nsRange.location, gloss: word) else { return nil }
+            return LyricWordBubble(noteRange: nsRange, gloss: word)
         }
     }
 

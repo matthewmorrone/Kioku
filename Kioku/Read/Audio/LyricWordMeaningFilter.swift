@@ -39,12 +39,22 @@ struct LyricWordMeaningFilter {
         allows(surface: surface) && (showsParticles || Self.isSingleWord(gloss) || isParticle?(location, surface) != true)
     }
 
-    // Whether a bubble meaning is one word: no spaces, so "with" and "too" count, "to" followed by a
-    // verb, "topic marker" and "(indicates) object" do not.
+    // Whether a bubble meaning is one word, for the particle rule: no spaces, so "with" and "too"
+    // count; "topic marker", "to do" and "(by) means (of)" do not.
     static func isSingleWord(_ gloss: String?) -> Bool {
         guard let gloss else { return false }
         let trimmed = gloss.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty == false && trimmed.contains(where: \.isWhitespace) == false
+    }
+
+    // The first meaning in a definition ("by means of; with") that is one plain word, judged as
+    // written: a parenthetical is not stripped first, since "(by) means (of)" would read as "means".
+    // Nil when no alternative is a single word.
+    static func singleWordMeaning(in definition: String) -> String? {
+        definition.split(whereSeparator: { ";,".contains($0) })
+            .flatMap { $0.components(separatedBy: " or ") }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { isSingleWord($0) && $0.contains(where: { "()（）".contains($0) }) == false }
     }
 
     // The spelling checks both kinds of word share.
