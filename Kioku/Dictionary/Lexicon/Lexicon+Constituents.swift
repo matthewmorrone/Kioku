@@ -5,12 +5,36 @@ import Foundation
 // Segmenter.constituentSegments), applied again to every piece that is itself built from smaller
 // ones; each piece is then named by its dictionary form.
 extension Lexicon {
+    // The lemma `surface` is a plain inflection of, else nil. A form that folds helper words in
+    // (歩いてゆこう) is a compound, not a plain inflection. The verb stem of a word that is also a headword
+    // of its own counts: 超え is the stem of 超える as well as the suffix 超え, and inflectionInfo prefers
+    // the surface itself, so the stem is read off the deinflection paths directly.
+    func plainInflectionLemma(of surface: String) -> String? {
+        if let info = inflectionInfo(surface: surface), info.lemma != surface {
+            return helperWords(surface: surface, lemma: info.lemma).isEmpty ? info.lemma : nil
+        }
+        return verbStemLemma(of: surface)
+    }
+
+    // The verb whose stem `surface` is: the lemma the deinflector reaches in one stem-recovery step
+    // (超え → 超える, 思い → 思う, via a godan or ichidan stem rule) that has a dictionary entry and folds no helper word in. Ranked by the
+    // admitted-lemma order so the choice is deterministic.
+    private func verbStemLemma(of surface: String) -> String? {
+        // Godan stems (巡り → 巡る) and ichidan stems (超え → 超える) are separate rule groups.
+        let stemLabels = Set(["stemRecoveryForms", "ichidanStemForms"].map(Deinflector.normalizedRuleLabel))
+        let paths = deinflector.deinflectionPaths(for: surface)
+        let stems = paths.filter { lemma, found in
+            lemma != surface && found.contains { $0.transitions.count == 1 && stemLabels.contains($0.transitions[0].label) }
+                && lookupEntries(for: lemma).isEmpty == false
+                && deinflector.helperWords(from: paths, targetLemma: lemma).isEmpty
+        }
+        return stems.keys.sorted().first
+    }
+
     // A piece is a word of its own, not a compound, when it is a plain inflection of one lemma:
-    // 食べた is 食べる conjugated, not 食べ + た, and 歌い is 歌う's stem. A form that folds helper words
-    // in (歩いてゆこう) is a compound.
+    // 食べた is 食べる conjugated, not 食べ + た, and 歌い is 歌う's stem.
     func isPlainInflection(_ surface: String) -> Bool {
-        guard let info = inflectionInfo(surface: surface), info.lemma != surface else { return false }
-        return helperWords(surface: surface, lemma: info.lemma).isEmpty
+        plainInflectionLemma(of: surface) != nil
     }
 
     // The segments `surface` is built from, outermost split first and each piece split again where it

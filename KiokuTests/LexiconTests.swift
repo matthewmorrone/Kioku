@@ -534,4 +534,19 @@ private enum SharedLexiconSurface {
         return lexicalSurface
     }
 
+    // 超え is the suffix ごえ (JMdict, rank 165298) and the stem of 超える (rank 1145). A bare 超え, as in
+    // 時を超え遥か, is the verb: it leads the possibilities, is no compound of 超 + え, and the suffix
+    // follows. 100万人超え keeps the suffix reachable as its second row.
+    func testBareKoeIsTheVerbStemNotTheBoundSuffix() throws {
+        let surface = try reinflectionLexicon()
+
+        let candidates = surface.lookupCandidates(surface: "超え")
+        XCTAssertEqual(candidates.first?.lemma, "超える", "the verb leads: \(candidates.map { "\($0.lemma)/\($0.reading)" })")
+        XCTAssertTrue(candidates.contains { $0.lemma == "超え" && $0.reading == "ごえ" }, "the suffix stays listed")
+        XCTAssertNil(surface.lemmaLine(surface: "超え"), "a verb stem is one word, not 超 + え")
+        XCTAssertNil(surface.lemmaLine(surface: "越え"))
+        XCTAssertEqual(surface.readingsPreferringFreeWord(["ごえ"], surface: "超え").first, "こえ", "a bare 超え defaults to the verb's reading")
+        XCTAssertEqual(surface.readingsPreferringFreeWord(["いれる"], surface: "入れる"), ["いれる"], "a free word's own reading is left alone")
+    }
+
 }

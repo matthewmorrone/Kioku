@@ -1,6 +1,7 @@
 import Foundation
 // Harness over the repo's REAL transition code (TransitionClass, SegmenterTransitionTable).
 //   segcli lexicon < surfaces                    → "surface<TAB>lemma=…<TAB>candidates=…": the lookup sheet's lemma line and possibilities (Lexicon)
+//   segcli defaults < surfaces                   → "surface<TAB>default reading<TAB>leading candidate<TAB>its readings" for each surface whose default reading (ReadingVariants.orderedReadings.first) is not one of the leading lookup candidate's readings
 //   segcli count <lexical.txt> < gold.jsonl       → "start,end,className" per gold token
 //   segcli fit <configs> <outdir> < sentences   configs: "WEIGHT CLAMP"; the dictionary's transition rows, lattice once, DP per config
 //   segcli readings < lines                       → each contextual reading decision with its score parts
@@ -103,6 +104,24 @@ if mode == "lexicon" {
         let info = lexicon.inflectionInfo(surface: line).map { "\($0.lemma) [\($0.chain.joined(separator: ","))]" } ?? "-"
         let candidates = lexicon.lookupCandidates(surface: line).map { "\($0.lemma):\($0.headword)/\($0.reading)" }
         print("\(line)\tlemma=\(info)\tcandidates=\(candidates.joined(separator: " "))")
+    }
+    exit(0)
+}
+
+if mode == "defaults" {
+    let lexicon = Lexicon(
+        dictionaryStore: store,
+        segmenter: segmenter,
+        deinflector: deinflector,
+        surfaceReadingData: try store.fetchSurfaceReadingData()
+    )
+    let readingData = SurfaceReadingDataMap(try store.fetchSurfaceReadingData())
+    while let line = readLine() {
+        let readings = ReadingVariants.orderedReadings(surface: line, lexicon: lexicon, segmenter: segmenter, surfaceReadingData: readingData)
+        let candidates = lexicon.lookupCandidates(surface: line)
+        guard candidates.count > 1, let first = readings.first, let leader = candidates.first,
+              leader.surfaceReadings.contains(first) == false else { continue }
+        print("\(line)\t\(first)\t\(leader.lemma):\(leader.headword)\t\(leader.surfaceReadings.joined(separator: ","))")
     }
     exit(0)
 }

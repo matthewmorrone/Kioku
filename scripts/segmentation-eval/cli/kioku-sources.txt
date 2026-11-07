@@ -111,3 +111,4 @@ Dictionary/JMdictTagExpander.swift
 Dictionary/Segmenter/ContextualClassChoice.swift
 Dictionary/Lexicon/Lexicon+ContextualCandidate.swift
 Dictionary/Lexicon/PotentialChoice.swift
+Read/Lookup/ReadingVariants.swift

@@ -90,7 +90,40 @@ nonisolated extension Lexicon {
             }
         }
         others.sort { usageRank($0.entry, surface: $0.lemma) < usageRank($1.entry, surface: $1.lemma) }
-        return Array((leaders + others).prefix(Self.maxLookupCandidates))
+        // An entry that is only ever a suffix or prefix (超え "exceeding ~", read ごえ) needs a word before
+        // it, so it does not lead when a free word is also a possibility: a bare 超え is far more often
+        // the stem of 超える than the suffix (frequency ranks 1145 vs 165298). A stable partition keeps
+        // the engine's order within each group.
+        let freeLeaders = leaders.filter { Self.isBoundMorphemeOnly($0.entry) == false }
+        let boundLeaders = leaders.filter { Self.isBoundMorphemeOnly($0.entry) }
+        return Array((freeLeaders + boundLeaders + others).prefix(Self.maxLookupCandidates))
+    }
+
+    // The surface's readings with a free word's ahead of a bound morpheme's: a bare 超え is read こえ
+    // (the stem of 超える), not the suffix's ごえ. Applies only when the reading shown first belongs to
+    // a suffix/prefix-only entry and a free word is also a possibility; otherwise `readings` as given.
+    // Why: the sheet, the saved-word coloring and the word page all take the first reading as the
+    // default, so the choice is made once here (Lexicon.isBoundMorphemeOnly) and not per screen.
+    func readingsPreferringFreeWord(_ readings: [String], surface: String) -> [String] {
+        guard let first = readings.first,
+              lookupEntries(for: surface).contains(where: { Self.isBoundMorphemeOnly($0) }) else { return readings }
+        let candidates = lookupCandidates(surface: surface)
+        guard let leader = candidates.first, Self.isBoundMorphemeOnly(leader.entry) == false,
+              leader.surfaceReadings.contains(first) == false,
+              candidates.contains(where: { Self.isBoundMorphemeOnly($0.entry) && $0.surfaceReadings.contains(first) })
+        else { return readings }
+        var ordered = leader.surfaceReadings
+        for reading in readings where ordered.contains(reading) == false { ordered.append(reading) }
+        return ordered
+    }
+
+    // True when every sense of `entry` is a suffix or prefix: a bound morpheme that is never a word on
+    // its own. Why: lets the candidate list rank free words ahead of it.
+    static func isBoundMorphemeOnly(_ entry: DictionaryEntry) -> Bool {
+        let tags = entry.senses.compactMap(\.pos).flatMap { $0.components(separatedBy: ",") }
+        guard tags.isEmpty == false else { return false }
+        let bound: Set<String> = ["suf", "pref", "n-suf", "n-pref"]
+        return tags.allSatisfy { bound.contains($0.trimmingCharacters(in: .whitespaces)) }
     }
 
     // True when the entry writes the kanji `lemma` as an everyday spelling: a homograph (抱く read

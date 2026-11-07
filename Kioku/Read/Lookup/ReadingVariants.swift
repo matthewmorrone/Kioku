@@ -65,7 +65,7 @@ nonisolated enum ReadingVariants {
         surfaceReadingData: SurfaceReadingDataMap
     ) -> [String] {
         if let data = surfaceReadingData[surface], data.readings.isEmpty == false {
-            return data.readings
+            return lexicon?.readingsPreferringFreeWord(data.readings, surface: surface) ?? data.readings
         }
         guard let lexicon else {
             if let lemma = segmenter?.preferredLemma(for: surface),
