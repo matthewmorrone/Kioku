@@ -92,13 +92,13 @@ struct WordsFilterView: View {
     private var markRow: some View {
         Menu {
             Button { tapMarkScope(.saved) } label: {
-                Label(savedLabel, systemImage: markScope == .saved ? "checkmark" : "star")
+                LearnedStateStyle.menuLabel(for: .unmarked, title: savedLabel)
             }
             Button { tapMarkScope(.notLearned) } label: {
-                Label(notLearnedLabel, systemImage: markScope == .notLearned ? "checkmark" : "questionmark.circle")
+                LearnedStateStyle.menuLabel(for: .notLearned, title: notLearnedLabel)
             }
             Button { tapMarkScope(.learned) } label: {
-                Label(learnedLabel, systemImage: markScope == .learned ? "checkmark" : "checkmark.circle")
+                LearnedStateStyle.menuLabel(for: .learned, title: learnedLabel)
             }
         } label: {
             filterRowLabel(title: "Mark", value: markLabel)

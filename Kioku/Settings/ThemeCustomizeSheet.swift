@@ -3,7 +3,7 @@ import SwiftUI
 // Renders the Customize Colors sheet opened from the Settings theme section: the live text
 // preview at the top, then an Interface section (Custom Colors toggle + background, surface,
 // text and accent pickers) and a Text section (Custom Colors toggle + the two segment colors,
-// the selection highlight, and the Saved / Learned / Not Learned highlights), each ending in a
+// the selection highlight, and the Saved / Not Learned / Learned highlights), each ending in a
 // Reset to Theme button. With a toggle off that group follows the selected theme; turning it
 // back on restores the earlier picks, and Reset sets every picker to the theme's color.
 struct ThemeCustomizeSheet: View {
@@ -62,14 +62,14 @@ struct ThemeCustomizeSheet: View {
                         ColorPicker("Secondary", selection: textBinding($tokenColorBHex), supportsOpacity: false)
                         ColorPicker("Selection", selection: textBinding($highlightHex), supportsOpacity: false)
                         ColorPicker("Saved", selection: textBinding($savedHex), supportsOpacity: false)
-                        ColorPicker("Learned", selection: textBinding($savedLearnedHex), supportsOpacity: false)
                         ColorPicker("Not Learned", selection: textBinding($savedNotLearnedHex), supportsOpacity: false)
+                        ColorPicker("Learned", selection: textBinding($savedLearnedHex), supportsOpacity: false)
                         Button("Reset to Theme") { seedTextColors(onlyUnset: false) }
                     }
                 } header: {
                     Text("Text")
                 } footer: {
-                    Text("Primary and Secondary alternate from word to word to show where the text is split. Saved, Learned and Not Learned color the words you've saved.")
+                    Text("Primary and Secondary alternate from word to word to show where the text is split. Saved, Not Learned and Learned color the words you've saved.")
                 }
             }
             .washiBackground()

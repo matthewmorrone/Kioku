@@ -421,7 +421,7 @@ extension ReadView {
     // turning it on shows everything — a shortcut for the common case. The chevron submenu still
     // holds three INDEPENDENT toggles, one per Learned-state category, for narrowing after that;
     // each is its own on/off, not a single-select mode, so any combination can be showing at
-    // once. Each category always renders in its own fixed color (Save/Learned/Not Learned)
+    // once. Each category always renders in its own fixed color (Saved/Not Learned/Learned)
     // when its toggle is on — see ReadView+Editor.computeSavedSegmentLocations.
     private var savedHighlightRow: some View {
         HStack(spacing: 4) {
@@ -452,7 +452,7 @@ extension ReadView {
             }
             .buttonStyle(.plain)
 
-            InfoButton(text: "Color the words you've saved. The chevron picks which kinds: saved, learned or not learned.")
+            InfoButton(text: "Color the words you've saved. The chevron picks which kinds: saved, not learned or learned.")
 
             Button {
                 readSheets.isShowingSavedHighlightCategories = true
@@ -482,9 +482,9 @@ extension ReadView {
     // as its own top-level row.
     private var savedHighlightCategoriesPopover: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Toggle("Save", isOn: $isSavedHighlightShowingSaved)
-            Toggle("Learned", isOn: $isSavedHighlightShowingLearned)
+            Toggle("Saved", isOn: $isSavedHighlightShowingSaved)
             Toggle("Not Learned", isOn: $isSavedHighlightShowingNotLearned)
+            Toggle("Learned", isOn: $isSavedHighlightShowingLearned)
             Divider()
             Toggle(isOn: $isHighlightUnknownEnabled) {
                 Text("Highlight Unknown")

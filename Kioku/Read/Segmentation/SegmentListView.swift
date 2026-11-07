@@ -161,7 +161,7 @@ struct SegmentListView: View {
         } else {
             icon = "star"
         }
-        let starColor: Color = isSaved ? .primary : .secondary
+        let starColor: Color = LearnedStateStyle.buttonColor(state: learnedState, isSaved: isSaved)
         return Image(systemName: icon)
             .foregroundStyle(starColor)
             .scaledFont(size: 16, weight: .semibold)

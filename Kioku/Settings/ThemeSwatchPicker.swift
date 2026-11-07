@@ -3,7 +3,7 @@ import SwiftUI
 // Renders the Settings theme chooser: one swatch card per built-in theme, side by side. Each
 // card paints the theme's own background with a sample of its text colors (the two segment
 // colors on its surface) over an accent rule, then a row of dots for the selection and Saved /
-// Learned / Not Learned highlight colors. The selected card gets an accent border; the theme's
+// Not Learned / Learned highlight colors. The selected card gets an accent border; the theme's
 // name sits under each card.
 struct ThemeSwatchPicker: View {
     @Binding var themeIDRaw: String
@@ -48,8 +48,8 @@ struct ThemeSwatchPicker: View {
                 HStack(spacing: 5) {
                     dot(palette.defaultHighlightHex)
                     dot(palette.defaultSavedHex)
-                    dot(palette.defaultSavedLearnedHex)
                     dot(palette.defaultSavedNotLearnedHex)
+                    dot(palette.defaultSavedLearnedHex)
                 }
             }
             .padding(10)

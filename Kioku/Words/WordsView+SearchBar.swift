@@ -130,13 +130,13 @@ extension WordsView {
                         if selectedWordIDs.isEmpty == false, activeTab != .history {
                             Menu {
                                 Button { wordsStore.setLearnedState(.unmarked, forAll: selectedWordIDs) } label: {
-                                    Label("Save", systemImage: "star")
-                                }
-                                Button { wordsStore.setLearnedState(.learned, forAll: selectedWordIDs) } label: {
-                                    Label("Learned", systemImage: "checkmark")
+                                    LearnedStateStyle.menuLabel(for: .unmarked)
                                 }
                                 Button { wordsStore.setLearnedState(.notLearned, forAll: selectedWordIDs) } label: {
-                                    Label("Not Learned", systemImage: "questionmark")
+                                    LearnedStateStyle.menuLabel(for: .notLearned)
+                                }
+                                Button { wordsStore.setLearnedState(.learned, forAll: selectedWordIDs) } label: {
+                                    LearnedStateStyle.menuLabel(for: .learned)
                                 }
                             } label: {
                                 Label("Mark As… (\(selectedWordIDs.count))", systemImage: "checkmark.circle")
