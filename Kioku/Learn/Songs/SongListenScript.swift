@@ -159,8 +159,12 @@ nonisolated enum SongListenScript {
     // between two word characters is rewritten; one with whitespace already on either side is
     // left alone (not the alternatives-list shape this targets). Applied only to text that
     // reaches the narration script — the visually-displayed card keeps "/" as written.
+    //
+    // A lone single-letter utterance is spelled out ("capital I") rather than read as a word, so a
+    // definition that is just the pronoun "I" is respelled "eye", which the voice says as the word.
     private static func ttsFriendlyText(_ text: String) -> String {
-        text.replacingOccurrences(of: #"(\w)/(\w)"#, with: "$1 or $2", options: .regularExpression)
+        if text.trimmingCharacters(in: .whitespacesAndNewlines) == "I" { return "eye" }
+        return text.replacingOccurrences(of: #"(\w)/(\w)"#, with: "$1 or $2", options: .regularExpression)
     }
 
     // Same "own value, else the referenced line's value" rule as SongLineCard.effectiveGrammarNote.

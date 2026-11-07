@@ -61,6 +61,18 @@ final class SongListenScriptTests: XCTestCase {
         XCTAssertFalse(texts.contains { $0.contains("/") })
     }
 
+    // A definition that is only "I" is spelled out as "capital I" by the voice; the spoken script
+    // respells it, while the displayed definition stays "I".
+    func testLoneIDefinitionIsSpokenAsAWord() {
+        let bd = breakdown(lines: [line(words: [SongWord(surface: "私", sungRomaji: "watashi", definition: "I")])])
+        let definition = SongListenScript.build(from: bd).compactMap { step -> SongListenSegment? in
+            if case .speech(let s) = step, s.kind == .wordDefinition { return s }
+            return nil
+        }.first
+        XCTAssertEqual(definition?.text, "I")
+        XCTAssertEqual(definition?.spokenText, "eye")
+    }
+
     // A "/" with whitespace already on both sides isn't the alternatives-list shape the
     // rewrite targets, so it's left alone rather than mangled into "word or word2" spacing.
     func testSlashWithSurroundingWhitespaceIsLeftAlone() {

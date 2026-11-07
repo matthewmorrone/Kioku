@@ -75,11 +75,21 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         AudioRouteDescription.startLoggingRouteChanges()
         RemoteCommandRouter.registerIfNeeded()
         NotificationCenter.default.addObserver(self, selector: #selector(otherPlayerStarted(_:)), name: ExclusivePlayback.didStart, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(sessionInterrupted(_:)), name: AVAudioSession.interruptionNotification, object: nil)
+    }
+
+    // Logs every audio-session interruption (call, Siri, another app taking the session) so a
+    // playback that stops by itself can be matched to what interrupted it.
+    @objc private func sessionInterrupted(_ notification: Notification) {
+        let type = (notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init(rawValue:))
+        let reason = (notification.userInfo?[AVAudioSessionInterruptionReasonKey] as? UInt).map(String.init) ?? "none"
+        AppLog.info(.audioPlayback, "controller.interruption: type=\(type.map { $0 == .began ? "began" : "ended" } ?? "unknown") reason=\(reason) wasPlaying=\(isPlaying)")
     }
 
     // Pauses when another of the app's players starts (ExclusivePlayback): one sound at a time.
     @objc private func otherPlayerStarted(_ notification: Notification) {
         guard notification.object as AnyObject? !== self, isPlaying else { return }
+        AppLog.info(.audioPlayback, "controller.pause: another player started")
         pause()
     }
 
@@ -262,7 +272,8 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         let activationMs = Int((CFAbsoluteTimeGetCurrent() - activationStart) * 1000)
         AppLog.info(.audioPlayback, "controller.start: route=\(AudioRouteDescription.current()) category \(categoryBefore)→\(session.category.rawValue) setup+activate=\(activationMs)ms at \(Int((player?.currentTime ?? 0) * 1000))ms otherAudio=\(session.isOtherAudioPlaying)")
         ExclusivePlayback.claim(self)
-        player?.play()
+        let didPlay = player?.play() ?? false
+        if didPlay == false { AppLog.error(.audioPlayback, "controller.start: AVAudioPlayer.play() returned false") }
         playStartedAt = CFAbsoluteTimeGetCurrent()
         playStartPosition = player?.currentTime ?? 0
         isPlaying = true
@@ -405,6 +416,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
 
         // Detect natural end-of-playback (player stopped on its own).
         if player.isPlaying == false && isPlaying {
+            AppLog.info(.audioPlayback, "controller.timer: player stopped by itself at \(Int(player.currentTime * 1000))ms of \(Int(duration * 1000))ms (route=\(AudioRouteDescription.current()))")
             isPlaying = false
             stopTimer()
             // A playRange ending at the file's end must not also fire its range-end callback.
@@ -509,6 +521,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
 extension AudioPlaybackController: RemotePlaybackTarget {
     // Resumes the loaded song; false with nothing loaded.
     func remotePlay() -> Bool {
+        AppLog.info(.audioPlayback, "controller.remote: play command")
         guard player != nil else { return false }
         play()
         return true
@@ -516,6 +529,7 @@ extension AudioPlaybackController: RemotePlaybackTarget {
 
     // Pauses the loaded song; false with nothing loaded.
     func remotePause() -> Bool {
+        AppLog.info(.audioPlayback, "controller.remote: pause command at \(Int((player?.currentTime ?? 0) * 1000))ms")
         guard player != nil else { return false }
         pause()
         return true
