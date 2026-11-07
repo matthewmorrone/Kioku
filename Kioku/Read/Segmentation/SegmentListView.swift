@@ -133,7 +133,7 @@ struct SegmentListView: View {
     @ViewBuilder
     private var coveragePage: some View {
         if let note {
-            CoverageDetailView(note: note, dictionaryStore: dictionaryStore, savedIdentitiesForThisNote: savedIdentitiesForThisNote)
+            CoverageDetailView(note: note, dictionaryStore: dictionaryStore, savedIdentitiesForThisNote: savedIdentitiesForThisNote, unsavedEntryIDsForThisNote: unsavedEntryIDsForThisNote)
         } else {
             ContentUnavailableView(
                 "No note to show coverage for",

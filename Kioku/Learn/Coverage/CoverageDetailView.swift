@@ -54,6 +54,9 @@ struct CoverageDetailView: View {
     // instead of re-deriving its own "is this word saved" logic, so the two screens' totals can't
     // drift apart.
     let savedIdentitiesForThisNote: Set<String>
+    // The note's words that are NOT saved, surface → dictionary entry id. Not part of `coverage`
+    // (which is saved-words-only by design); used solely so "Quiz All" can include them.
+    var unsavedEntryIDsForThisNote: [String: Int64] = [:]
 
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var notesStore: NotesStore
@@ -87,6 +90,19 @@ struct CoverageDetailView: View {
             stage: { wordsStore.masteryStage(for: $0) },
             isDue: { wordsStore.isDueForReview(id: $0) }
         )
+    }
+
+    // Every word in the note for "Quiz All", regardless of save status: the saved words from the
+    // coverage grid plus transient, unsaved-card stand-ins for the rest. Stand-ins are deduped by
+    // entry id (against saved words and each other) and never written to the words store.
+    private var quizAllWords: [SavedWord] {
+        let saved = coverage.allWords
+        var seenIDs = Set(saved.map(\.canonicalEntryID))
+        var extras: [SavedWord] = []
+        for (surface, entryID) in unsavedEntryIDsForThisNote.sorted(by: { $0.key < $1.key }) where seenIDs.insert(entryID).inserted {
+            extras.append(SavedWord(canonicalEntryID: entryID, surface: surface, sourceNoteIDs: [note.id]))
+        }
+        return saved + extras
     }
 
     var body: some View {
@@ -139,12 +155,15 @@ struct CoverageDetailView: View {
                 }
                 .buttonStyle(.bordered)
                 .padding(.top, 4)
-                // Straight into multiple choice over every word, one question per word, skipping the
-                // mode/count sheet.
+            }
+            // Straight into multiple choice over every word in the note — saved or not — one
+            // question per word, skipping the mode/count sheet.
+            let quizWords = quizAllWords
+            if quizWords.isEmpty == false {
                 Button {
-                    launch = CoverageLaunch(words: withNoteReadings(coverage.allWords), count: coverage.allWords.count, mode: .multipleChoice)
+                    launch = CoverageLaunch(words: withNoteReadings(quizWords), count: quizWords.count, mode: .multipleChoice)
                 } label: {
-                    Label("Quiz All \(coverage.total) Words", systemImage: CoverageStudyMode.multipleChoice.systemImage)
+                    Label("Quiz All \(quizWords.count) Words", systemImage: CoverageStudyMode.multipleChoice.systemImage)
                 }
                 .buttonStyle(.borderedProminent)
             }
