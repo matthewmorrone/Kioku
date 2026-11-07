@@ -103,6 +103,18 @@ struct MultipleChoiceView: View {
                     .padding()
                 }
             }
+            // Moves on by itself a few seconds after a question is answered (or revealed). Keyed on
+            // the answered question's index so it restarts per question, and is cancelled by
+            // SwiftUI the moment the user taps Next/Finish (index changes) or ends the session
+            // (key goes back to -1), so a manual advance can never be doubled by the timer.
+            .task(id: autoAdvanceKey) {
+                guard autoAdvanceKey >= 0 else { return }
+                let wasCorrect = selected == questions[index].correct && didReveal == false
+                let delay = wasCorrect ? Self.autoAdvanceCorrectDelay : Self.autoAdvanceMissDelay
+                try? await Task.sleep(for: .seconds(delay))
+                guard Task.isCancelled == false else { return }
+                advance()
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 LearnHomeTitle(title: "Multiple Choice", systemImage: "checklist")
@@ -481,6 +493,18 @@ struct MultipleChoiceView: View {
             sessionWrong += 1
             wordsStore.recordAgain(for: id, direction: direction, hasKanjiForm: hasKanjiForm)
         }
+    }
+
+    // Seconds the feedback stays up before auto-advancing: brief after a correct answer, longer
+    // after a miss or "Show Answer" so the correct option can actually be read.
+    private static let autoAdvanceCorrectDelay: Double = 2
+    private static let autoAdvanceMissDelay: Double = 4
+
+    // The index of the question currently showing answer feedback, or -1 when none is. Drives the
+    // auto-advance task's identity.
+    private var autoAdvanceKey: Int {
+        guard sessionActive, isResolving == false, selected != nil, index < questions.count else { return -1 }
+        return index
     }
 
     // Advances to the next question, or falls through to the summary when the pool is exhausted.
