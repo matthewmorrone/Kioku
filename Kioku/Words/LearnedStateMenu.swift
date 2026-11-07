@@ -5,7 +5,7 @@ import UIKit
 // LearnedState directly (not a toggle — the star icon already shows the current mark). One
 // definition so every star in the app (Words list, Word Detail, sentence-parse rows, dictionary
 // search results, Read-tab segment list, and the Read-tab lookup popover/sheet) offers the
-// identical Save/Learned/Not Learned choices instead of drifting copies.
+// identical Saved/Not Learned/Learned choices instead of drifting copies.
 //
 // Rendered as Toggle rather than Button so the currently-active option shows a checkmark inside
 // the menu itself — SwiftUI renders a Toggle inside Menu/.contextMenu content as a checkable
@@ -17,11 +17,11 @@ func learnedStateMenuButtons(currentState: LearnedState, isSaved: Bool, setState
     Toggle(isOn: Binding(get: { isSaved && currentState == .unmarked }, set: { _ in setState(.unmarked) })) {
         LearnedStateStyle.menuLabel(for: .unmarked)
     }
-    Toggle(isOn: Binding(get: { currentState == .learned }, set: { _ in setState(.learned) })) {
-        LearnedStateStyle.menuLabel(for: .learned)
-    }
     Toggle(isOn: Binding(get: { currentState == .notLearned }, set: { _ in setState(.notLearned) })) {
         LearnedStateStyle.menuLabel(for: .notLearned)
+    }
+    Toggle(isOn: Binding(get: { currentState == .learned }, set: { _ in setState(.learned) })) {
+        LearnedStateStyle.menuLabel(for: .learned)
     }
 }
 
@@ -60,19 +60,19 @@ func learnedStateSetter(
 func learnedStateUIMenu(currentState: LearnedState, isSaved: Bool, setState: @escaping (LearnedState) -> Void) -> UIMenu {
     UIMenu(children: [
         UIAction(
-            title: "Save",
+            title: "Saved",
             image: LearnedStateStyle.coloredMenuImage(for: .unmarked),
             state: isSaved && currentState == .unmarked ? .on : .off
         ) { _ in setState(.unmarked) },
-        UIAction(
-            title: "Learned",
-            image: LearnedStateStyle.coloredMenuImage(for: .learned),
-            state: currentState == .learned ? .on : .off
-        ) { _ in setState(.learned) },
         UIAction(
             title: "Not Learned",
             image: LearnedStateStyle.coloredMenuImage(for: .notLearned),
             state: currentState == .notLearned ? .on : .off
         ) { _ in setState(.notLearned) },
+        UIAction(
+            title: "Learned",
+            image: LearnedStateStyle.coloredMenuImage(for: .learned),
+            state: currentState == .learned ? .on : .off
+        ) { _ in setState(.learned) },
     ])
 }

@@ -132,11 +132,11 @@ extension WordsView {
                                 Button { wordsStore.setLearnedState(.unmarked, forAll: selectedWordIDs) } label: {
                                     LearnedStateStyle.menuLabel(for: .unmarked)
                                 }
-                                Button { wordsStore.setLearnedState(.learned, forAll: selectedWordIDs) } label: {
-                                    LearnedStateStyle.menuLabel(for: .learned)
-                                }
                                 Button { wordsStore.setLearnedState(.notLearned, forAll: selectedWordIDs) } label: {
                                     LearnedStateStyle.menuLabel(for: .notLearned)
+                                }
+                                Button { wordsStore.setLearnedState(.learned, forAll: selectedWordIDs) } label: {
+                                    LearnedStateStyle.menuLabel(for: .learned)
                                 }
                             } label: {
                                 Label("Mark As… (\(selectedWordIDs.count))", systemImage: "checkmark.circle")

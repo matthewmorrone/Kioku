@@ -1,13 +1,13 @@
 import SwiftUI
 import UIKit
 
-// The one place that says how a word's mark looks: the Save / Learned / Not Learned order every
+// The one place that says how a word's mark looks: the Saved / Not Learned / Learned order every
 // menu follows, and the icon + color each mark uses. The colors are the same Saved Highlight
 // colors the reading text is tinted with (ReadingColors), so an icon always matches the highlight
 // of the words it describes — theme default, or the user's custom hex when Custom Text Colors is on.
 enum LearnedStateStyle {
     // Standard menu order, shared by every long-press menu, bulk menu and filter.
-    static let menuOrder: [LearnedState] = [.unmarked, .learned, .notLearned]
+    static let menuOrder: [LearnedState] = [.unmarked, .notLearned, .learned]
 
     // Resolves the current highlight colors from stored settings so every caller agrees with the text.
     // Read at call time: menus and icons are rebuilt whenever a mark changes.
@@ -50,7 +50,7 @@ enum LearnedStateStyle {
     // Menu title for a mark.
     static func title(for state: LearnedState) -> String {
         switch state {
-        case .unmarked:   return "Save"
+        case .unmarked:   return "Saved"
         case .learned:    return "Learned"
         case .notLearned: return "Not Learned"
         }
