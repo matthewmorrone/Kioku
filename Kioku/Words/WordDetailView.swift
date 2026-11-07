@@ -455,7 +455,7 @@ struct WordDetailView: View {
                         // mirroring the segment list row star.
                         Image(systemName: detailLearnedIcon(state: learnedState, saved: isSaved))
                             .scaledFont(size: 18, weight: .semibold)
-                            .foregroundStyle(isSaved ? Color.primary : Color.secondary)
+                            .foregroundStyle(LearnedStateStyle.buttonColor(state: learnedState, isSaved: isSaved))
                     }
                     .buttonStyle(.plain)
                     .offset(x: 34, y: headwordShift)

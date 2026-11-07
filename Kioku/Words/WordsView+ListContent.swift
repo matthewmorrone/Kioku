@@ -263,7 +263,7 @@ extension WordsView {
     // primary while saved (any mark), secondary for the empty/unsaved star.
     func learnedIconColor(state: LearnedState, saved: Bool) -> Color {
         if japaneseTheme { return .white }
-        return saved ? .primary : .secondary
+        return LearnedStateStyle.buttonColor(state: state, isSaved: saved)
     }
 
     // Speaks the row's Japanese pronunciation via ja-JP TTS. Prefers the kana reading (least

@@ -37,13 +37,13 @@ enum WordsStatScope: String {
     case mastered
 }
 
-// The star's mark as a filter on the saved list: Saved (no mark), Not Learned, or Learned.
+// The star's mark as a filter on the saved list: Saved (no mark), Learned, or Not Learned.
 // Independent of WordsStatScope, so a mark and a review-history filter combine.
 enum WordsMarkScope: String {
     case none
     case saved
-    case notLearned
     case learned
+    case notLearned
 }
 
 // Cross-tab routing for the Words screen.

@@ -88,17 +88,17 @@ struct WordsFilterView: View {
 
     // MARK: - Narrowing filter rows
 
-    // The star's mark: Saved (no mark), Not Learned, Learned — the flag alone, no review history.
+    // The star's mark: Saved (no mark), Learned, Not Learned — the flag alone, no review history.
     private var markRow: some View {
         Menu {
             Button { tapMarkScope(.saved) } label: {
-                Label(savedLabel, systemImage: markScope == .saved ? "checkmark" : "star")
-            }
-            Button { tapMarkScope(.notLearned) } label: {
-                Label(notLearnedLabel, systemImage: markScope == .notLearned ? "checkmark" : "questionmark.circle")
+                LearnedStateStyle.menuLabel(for: .unmarked, title: savedLabel)
             }
             Button { tapMarkScope(.learned) } label: {
-                Label(learnedLabel, systemImage: markScope == .learned ? "checkmark" : "checkmark.circle")
+                LearnedStateStyle.menuLabel(for: .learned, title: learnedLabel)
+            }
+            Button { tapMarkScope(.notLearned) } label: {
+                LearnedStateStyle.menuLabel(for: .notLearned, title: notLearnedLabel)
             }
         } label: {
             filterRowLabel(title: "Mark", value: markLabel)

@@ -317,9 +317,11 @@ extension SegmentListView {
         let (foreground, fill, border, accessibilityState): (Color, Color, Color, String) = {
             switch learnedState {
             case .learned:
-                return (.green, Color.green.opacity(0.15), Color.green.opacity(0.45), "Marked learned")
+                let c = LearnedStateStyle.color(for: .learned)
+                return (c, c.opacity(0.15), c.opacity(0.45), "Marked learned")
             case .notLearned:
-                return (.orange, Color.orange.opacity(0.15), Color.orange.opacity(0.45), "Marked not learned")
+                let c = LearnedStateStyle.color(for: .notLearned)
+                return (c, c.opacity(0.15), c.opacity(0.45), "Marked not learned")
             case .unmarked:
                 if isChecked {
                     return (

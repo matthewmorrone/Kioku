@@ -20,8 +20,7 @@ struct DictionarySearchResultRow: View {
     }
     private var starColor: Color {
         if japaneseTheme { return .white }
-        if learnedState != .unmarked || isSaved { return .primary }
-        return .secondary
+        return LearnedStateStyle.buttonColor(state: learnedState, isSaved: isSaved)
     }
 
     // Picks the best display surface: first kanji form if present, else first kana form.

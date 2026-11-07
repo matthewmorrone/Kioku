@@ -15,13 +15,13 @@ import UIKit
 func learnedStateMenuButtons(currentState: LearnedState, isSaved: Bool, setState: @escaping (LearnedState) -> Void) -> some View {
     // Save is checked only for a saved word with no mark: an unsaved word has no state to show.
     Toggle(isOn: Binding(get: { isSaved && currentState == .unmarked }, set: { _ in setState(.unmarked) })) {
-        Label("Save", systemImage: "star")
+        LearnedStateStyle.menuLabel(for: .unmarked)
     }
     Toggle(isOn: Binding(get: { currentState == .learned }, set: { _ in setState(.learned) })) {
-        Label("Learned", systemImage: "checkmark")
+        LearnedStateStyle.menuLabel(for: .learned)
     }
     Toggle(isOn: Binding(get: { currentState == .notLearned }, set: { _ in setState(.notLearned) })) {
-        Label("Not Learned", systemImage: "questionmark")
+        LearnedStateStyle.menuLabel(for: .notLearned)
     }
 }
 
@@ -61,17 +61,17 @@ func learnedStateUIMenu(currentState: LearnedState, isSaved: Bool, setState: @es
     UIMenu(children: [
         UIAction(
             title: "Save",
-            image: UIImage(systemName: "star"),
+            image: LearnedStateStyle.coloredMenuImage(for: .unmarked),
             state: isSaved && currentState == .unmarked ? .on : .off
         ) { _ in setState(.unmarked) },
         UIAction(
             title: "Learned",
-            image: UIImage(systemName: "checkmark"),
+            image: LearnedStateStyle.coloredMenuImage(for: .learned),
             state: currentState == .learned ? .on : .off
         ) { _ in setState(.learned) },
         UIAction(
             title: "Not Learned",
-            image: UIImage(systemName: "questionmark"),
+            image: LearnedStateStyle.coloredMenuImage(for: .notLearned),
             state: currentState == .notLearned ? .on : .off
         ) { _ in setState(.notLearned) },
     ])

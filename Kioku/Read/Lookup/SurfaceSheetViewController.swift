@@ -625,7 +625,7 @@ final class SurfaceSheetViewController: UIViewController {
         case .unmarked:   icon = isSaved ? "star.fill" : "star"
         }
         saveButton.setImage(UIImage(systemName: icon), for: .normal)
-        saveButton.tintColor = (learnedState != .unmarked || isSaved) ? .systemYellow : .secondaryLabel
+        saveButton.tintColor = LearnedStateStyle.buttonUIColor(state: learnedState, isSaved: isSaved)
         saveButton.accessibilityLabel = isSaved ? "Unsave" : "Save"
         // KiokuUITests finds the star by this; "Save" alone also matches other buttons on screen.
         saveButton.accessibilityIdentifier = "lookupSaveStar"
