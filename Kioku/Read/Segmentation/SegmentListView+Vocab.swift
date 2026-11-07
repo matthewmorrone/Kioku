@@ -308,7 +308,7 @@ extension SegmentListView {
         let isChecked = flipped ? defaultChecked == false : defaultChecked
         let learnedState = canonicalEntryIDBySurface[normalizedIdentity].map { wordsStore.learnedState(for: $0) } ?? .unmarked
 
-        // Two colors: blue = saved (checked), gray = not saved. A word carrying an explicit
+        // Two colors: the Saved highlight color = saved (checked), gray = not saved. A word carrying an explicit
         // learned/not-learned mark
         // overrides this with its own color instead — a chip has no separate star glyph to carry
         // the mark the way Lines/Words rows do, so color is the only slot available for it. An
@@ -324,10 +324,11 @@ extension SegmentListView {
                 return (c, c.opacity(0.15), c.opacity(0.45), "Marked not learned")
             case .unmarked:
                 if isChecked {
+                    let c = LearnedStateStyle.color(for: .unmarked)
                     return (
-                        .accentColor,
-                        Color.accentColor.opacity(0.15),
-                        Color.accentColor.opacity(0.45),
+                        c,
+                        c.opacity(0.15),
+                        c.opacity(0.45),
                         flipped ? "Will be saved" : "Saved"
                     )
                 } else if flipped {
