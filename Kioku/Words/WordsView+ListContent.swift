@@ -330,6 +330,20 @@ extension WordsView {
             }
         }
 
+        // Same learned-state marks as the star's long-press menu and the row's swipe "Mark…",
+        // so the row's own context menu offers them too. Marking an unsaved word saves it.
+        Menu {
+            learnedStateMenuButtons(currentState: wordsStore.learnedState(for: entryID), isSaved: saved, setState: learnedStateSetter(
+                entryID: entryID,
+                wordsStore: wordsStore,
+                surface: surface,
+                defaultSenseIDs: matchedSenseID.map { [$0] }
+                    ?? entry.map { DefaultSenseSelection.defaultSelectedSenseIDs(for: $0) } ?? []
+            ))
+        } label: {
+            Label("Mark", systemImage: "ellipsis.circle")
+        }
+
         Divider()
 
         Button(role: saved ? .destructive : nil) {
