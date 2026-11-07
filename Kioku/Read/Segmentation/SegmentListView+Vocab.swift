@@ -404,6 +404,18 @@ extension SegmentListView {
         noteVocabularyIdentities.filter(vocabRowCountsAsSaved)
     }
 
+    // The note's NOT-saved vocabulary identities that have a resolved dictionary entry, mapped to
+    // that entry's id. Lets Coverage's "Quiz All" include words the user never saved; identities
+    // whose entry hasn't hydrated yet are skipped since a quiz needs an entry to build questions.
+    // Internal: `coveragePage`, in the main file, reads this to build CoverageDetailView.
+    var unsavedEntryIDsForThisNote: [String: Int64] {
+        var result: [String: Int64] = [:]
+        for identity in noteVocabularyIdentities where identity.isEmpty == false && vocabRowCountsAsSaved(identity) == false {
+            if let entryID = canonicalEntryIDBySurface[identity] { result[identity] = entryID }
+        }
+        return result
+    }
+
     // Additions go through the exact same path Add All uses — just scoped to the flipped rows
     // instead of every visible one (the override addAllVisibleWords(rows:) was already built for).
     // Unchecked rows are unsaved outright via WordsStore.remove. Then the picker resets to fresh
