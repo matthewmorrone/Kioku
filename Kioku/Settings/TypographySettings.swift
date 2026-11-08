@@ -25,6 +25,7 @@ nonisolated enum TypographySettings {
     // Read-view display toggles set from ReadView's menus.
     static let hideFuriganaForKnownWordsKey = "kioku.settings.hideFuriganaForKnownWords"
     static let highlightUnknownKey = "kioku.settings.highlightUnknown"
+    static let alternateSameCategoryKey = "kioku.settings.alternateSameCategory"
     static let applyGloballyKey = "kioku.settings.applyGlobally"
     static let savedGlowKey = "kioku.settings.savedGlow"
     static let savedHighlightShowSavedKey = "kioku.settings.savedHighlight.showSaved"

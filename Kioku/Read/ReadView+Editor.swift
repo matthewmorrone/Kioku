@@ -346,6 +346,7 @@ extension ReadView {
                         playbackHighlightColor: UIColor.systemBlue.withAlphaComponent(0.20),
                         unknownSegmentLocations: document.unknownSegmentLocations,
                         isHighlightUnknownEnabled: isHighlightUnknownEnabled,
+                        isSameCategoryAlternationEnabled: isSameCategoryAlternationEnabled,
                         unknownSegmentColor: .label,
                         // Sing results take over the Saved Highlight slots: heard green, missed red.
                         isSavedHighlightEnabled: isShowingSingResults || isSavedHighlightEnabled,

@@ -486,6 +486,10 @@ extension ReadView {
             Toggle("Not Learned", isOn: $isSavedHighlightShowingNotLearned)
             Toggle("Learned", isOn: $isSavedHighlightShowingLearned)
             Divider()
+            Toggle(isOn: $isSameCategoryAlternationEnabled) {
+                Text("Alternate Shades")
+                    .infoButton("When neighboring words share a category color, draw every other one lighter so they read as separate words.")
+            }
             Toggle(isOn: $isHighlightUnknownEnabled) {
                 Text("Highlight Unknown")
                     .infoButton("Color words the dictionary doesn't recognize.")

@@ -64,6 +64,7 @@ struct ReadView: View {
     @AppStorage(TypographySettings.hideFuriganaForKnownWordsKey) var isFuriganaHiddenForKnownWords = false
     @AppStorage(TypographySettings.colorAlternationKey) var isColorAlternationEnabled = true
     @AppStorage(TypographySettings.highlightUnknownKey) var isHighlightUnknownEnabled = false
+    @AppStorage(TypographySettings.alternateSameCategoryKey) var isSameCategoryAlternationEnabled = true
     @AppStorage(TypographySettings.applyGloballyKey) var shouldApplyChangesGlobally = true
     @AppStorage(TypographySettings.lineWrappingKey) var isLineWrappingEnabled = true
     @AppStorage(TypographySettings.rubySpacingKey) var isRubySpacingEnabled = true
