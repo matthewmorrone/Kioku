@@ -225,6 +225,7 @@ final class KiokuCoreTextView: UIView {
                 let baselineYBottomUp = bounds.height - line.baselineY
                 context.textPosition = CGPoint(x: line.origin.x, y: baselineYBottomUp)
                 CTLineDraw(line.line, context)
+                drawUnderlines(of: line.line, originX: line.origin.x, baselineY: baselineYBottomUp, in: context)
             }
 
             // Ruby pass: walk entries and draw each reading centered over its kanji rect, with
@@ -235,6 +236,36 @@ final class KiokuCoreTextView: UIView {
         }
 
         context.restoreGState()
+    }
+
+    // Extra space, in points, between the glyphs and an underline beyond the font's own underline position.
+    private static let underlineExtraGap: CGFloat = 1
+
+    // Space, in points, trimmed from each end of an underline so neighbouring segments' underlines
+    // read as separate rather than one continuous line.
+    private static let underlineEndInset: CGFloat = 1
+
+    // Draws the underline under every run of `line` marked `.kiokuUnderline`. CoreText's own underline
+    // can't be moved, so it is drawn here at the font's underline position plus `underlineExtraGap`
+    // below the baseline. `baselineY` is in the flipped (bottom-up) space the glyphs are drawn in.
+    private func drawUnderlines(of line: CTLine, originX: CGFloat, baselineY: CGFloat, in context: CGContext) {
+        guard let runs = CTLineGetGlyphRuns(line) as? [CTRun] else { return }
+        for run in runs {
+            let attributes = CTRunGetAttributes(run) as NSDictionary
+            guard attributes[NSAttributedString.Key.kiokuUnderline] != nil else { continue }
+            var ascent: CGFloat = 0
+            var descent: CGFloat = 0
+            let width = CGFloat(CTRunGetTypographicBounds(run, CFRange(location: 0, length: 0), &ascent, &descent, nil))
+            var start = CGPoint.zero
+            CTRunGetPositions(run, CFRange(location: 0, length: 1), &start)
+            let font = (attributes[NSAttributedString.Key.font] as? UIFont) ?? UIFont.systemFont(ofSize: baseTextSize)
+            let color = (attributes[NSAttributedString.Key.foregroundColor] as? UIColor) ?? .label
+            let thickness = max(0.5, CTFontGetUnderlineThickness(font as CTFont))
+            // underlinePosition is negative (below the baseline); the extra gap pushes it further down.
+            let y = baselineY + CTFontGetUnderlinePosition(font as CTFont) - Self.underlineExtraGap
+            context.setFillColor(color.cgColor)
+            context.fill(CGRect(x: originX + start.x + Self.underlineEndInset, y: y - thickness, width: max(0, width - 2 * Self.underlineEndInset), height: thickness))
+        }
     }
 
     // Per-segment renderer used when the engine is in segment-packed mode. For each
@@ -284,6 +315,7 @@ final class KiokuCoreTextView: UIView {
                 let headwordOriginX = placement.originX + placement.leftOverhang + lineShift
                 context.textPosition = CGPoint(x: headwordOriginX, y: baselineYBottomUp)
                 CTLineDraw(segLine, context)
+                drawUnderlines(of: segLine, originX: headwordOriginX, baselineY: baselineYBottomUp, in: context)
             }
         }
 

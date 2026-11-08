@@ -55,6 +55,8 @@ enum KiokuCoreTextAttributedStringBuilder {
         // `unknownSegmentColor` instead of the alternation palette.
         var unknownSegmentLocations: Set<Int> = []
         var isHighlightUnknownEnabled: Bool = false
+        // Lighten every other neighbouring segment that shares a category color.
+        var isSameCategoryAlternationEnabled: Bool = true
         var unknownSegmentColor: UIColor = .label
         // When true, the renderer is in segment-packed mode and handles inter-segment
         // spacing via per-segment X placement. The builder must NOT inject its
@@ -84,6 +86,9 @@ enum KiokuCoreTextAttributedStringBuilder {
         // inside a dictionary example sentence) — independent of the read-mode passes above.
         var accentTextRange: NSRange? = nil
         var accentTextColor: UIColor = .label
+        // Ranges drawn with a thin underline, for call sites marking tappable words (the words of a
+        // dictionary example sentence that have an entry of their own).
+        var underlinedRanges: [NSRange] = []
     }
 
     // Composes the renderer-ready NSAttributedString: base font + paragraph style,
@@ -156,7 +161,9 @@ enum KiokuCoreTextAttributedStringBuilder {
             }
         }
 
-        lightenRepeatedSegmentColors(in: result, segmentationRanges: inputs.segmentationRanges, text: inputs.text)
+        if inputs.isSameCategoryAlternationEnabled {
+            lightenRepeatedSegmentColors(in: result, segmentationRanges: inputs.segmentationRanges, text: inputs.text)
+        }
 
         // Accent range. Applied after every other foreground-color pass so a caller's
         // explicit emphasis always wins, even over Saved Highlight.
@@ -165,6 +172,14 @@ enum KiokuCoreTextAttributedStringBuilder {
            accentTextRange.length > 0,
            accentTextRange.upperBound <= result.length {
             result.addAttribute(.foregroundColor, value: inputs.accentTextColor, range: accentTextRange)
+        }
+
+        for (underlineIndex, underlined) in inputs.underlinedRanges.enumerated()
+        where underlined.location != NSNotFound && underlined.length > 0 && underlined.upperBound <= result.length {
+            // A custom marker rather than .underlineStyle: CoreText fixes the underline's distance from
+            // the glyphs, and KiokuCoreTextView draws this one so that distance can be set. The value is
+            // the segment's index so touching segments stay separate runs and get separate underlines.
+            result.addAttribute(.kiokuUnderline, value: underlineIndex, range: underlined)
         }
 
         // Ruby application. The furiganaBySegmentLocation dictionary is keyed by each
@@ -365,4 +380,9 @@ enum KiokuCoreTextAttributedStringBuilder {
             previousWasLightened = lightens
         }
     }
+}
+
+// Marks text KiokuCoreTextView underlines itself (see KiokuCoreTextView.drawUnderlines).
+extension NSAttributedString.Key {
+    static let kiokuUnderline = NSAttributedString.Key("kiokuUnderline")
 }

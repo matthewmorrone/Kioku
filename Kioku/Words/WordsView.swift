@@ -200,7 +200,15 @@ struct WordsView: View {
     // Materialized dictionary entries keyed by canonical entry id, populated on view
     // appear and whenever the history list grows. Lets historyContent reuse the
     // wordRow layout (kanji+reading+gloss+star) without per-row SQL.
+    @ObservedObject private var entryCache = WordEntryCache.shared
     @State var materializedHistory: [Int64: DictionaryEntry] = [:]
+
+    // The materialized entry for a row: this view's own, else the one preloaded at launch. The view is
+    // built before that preload finishes, so seeding its state from the cache at init would stay empty;
+    // reading through to the cache when a row renders is what lets the tab open filled in.
+    func materializedEntry(_ id: Int64) -> DictionaryEntry? {
+        materializedHistory[id] ?? WordEntryCache.shared.entries[id]
+    }
     // Saved kanji rows in the Saved tab need full KanjiInfo (meanings, grade, JLPT)
     // to render the kanji-tile row. We hydrate them off-main into this cache keyed
     // by literal — same lazy pattern as materializedHistory. Without the cache, the
@@ -286,12 +294,28 @@ struct WordsView: View {
         pendingRoute.wrappedValue = nil
     }
 
+    // Covers the tab until the launch preload has loaded its rows' definitions, so it appears
+    // complete rather than filling in. Lifts after three seconds regardless, in case the preload
+    // never finishes.
+    @ViewBuilder
+    private var loadingCover: some View {
+        if entryCache.isReady == false {
+            Color(.systemBackground)
+                .overlay { ProgressView() }
+                .task {
+                    try? await Task.sleep(for: .seconds(3))
+                    entryCache.markReady()
+                }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 customSearchBar
                 resultsList
             }
+            .overlay { loadingCover }
             .sheet(item: $selectedDetailWord, onDismiss: clearRouteDetailContext) { word in
                 let _ = WOTDDiag.log("sheet PRESENTING entryID=\(word.canonicalEntryID)")
                 WordDetailView(
@@ -599,11 +623,12 @@ struct WordsView: View {
             .map(\.canonicalEntryID)
         let savedIDs = wordsStore.words.map(\.canonicalEntryID)
         let neededIDs = Array(Set(historyIDs + savedIDs))
-        let missing = neededIDs.filter { materializedHistory[$0] == nil }
+        let missing = neededIDs.filter { materializedEntry($0) == nil }
         guard missing.isEmpty == false else { return }
         Task.detached(priority: .userInitiated) {
             let entries = (try? store.lookupEntries(entryIDs: missing)) ?? []
             await MainActor.run {
+                WordEntryCache.shared.merge(entries)
                 for entry in entries {
                     materializedHistory[entry.entryId] = entry
                 }
@@ -618,7 +643,7 @@ struct WordsView: View {
     func refreshMaterializedSavedKanji() {
         guard let store = dictionaryStore else { return }
         let literals = savedKanjiStore.kanji.map(\.literal)
-        let missing = literals.filter { materializedSavedKanji[$0] == nil }
+        let missing = literals.filter { materializedSavedKanji[$0] == nil && WordEntryCache.shared.kanji[$0] == nil }
         guard missing.isEmpty == false else { return }
         Task.detached(priority: .userInitiated) {
             var loaded: [String: KanjiInfo] = [:]
@@ -628,6 +653,7 @@ struct WordsView: View {
                 }
             }
             await MainActor.run {
+                WordEntryCache.shared.mergeKanji(loaded)
                 for (literal, info) in loaded {
                     materializedSavedKanji[literal] = info
                 }

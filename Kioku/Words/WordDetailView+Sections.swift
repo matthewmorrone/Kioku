@@ -95,7 +95,9 @@ extension WordDetailView {
                         surfaceReadingData: surfaceReadingData,
                         kanjiReadingFallback: kanjiReadingFallback,
                         textSize: 17,
-                        onSpeak: { speak($0) }
+                        onSpeak: { speak($0) },
+                        onOpenWord: { openExampleWord($0) },
+                        hasEntry: { exampleEntry(for: $0) != nil }
                     )
                 }
                 if unrouted.count > 1 + extras.count {
@@ -124,9 +126,17 @@ extension WordDetailView {
         // Words sharing this spelling (抱く いだく / だく) are listed in the Same Spelling
         // section instead, each opening its own page, so they're left out here.
         let sameSpellingIDs = Set(sameSpellingEntries.map(\.entryId))
+        // A particle written in kana (よ, は) is not the kanji words that happen to be read the same
+        // (夜, 歯): its page lists only other particles, not those homophones.
+        let isParticle: (DictionaryEntry) -> Bool = { entry in
+            entry.senses.contains { ($0.pos ?? "").components(separatedBy: ",").contains("prt") }
+        }
+        let leadIsKanaParticle = ScriptClassifier.isPureKana(word.surface)
+            && allDisplayData.first { $0.entry.entryId == savedEntryID }.map { isParticle($0.entry) } == true
         let filteredData = allDisplayData.filter { data in
             if sameSpellingIDs.contains(data.entry.entryId) { return false }
             if data.entry.entryId == savedEntryID { return true }
+            if leadIsKanaParticle && isParticle(data.entry) == false { return false }
             let kanjiHopeless = data.entry.hasNoEverydayKanji
             let allUK = data.entry.allSensesUsuallyKana
             return !(kanjiHopeless && allUK)

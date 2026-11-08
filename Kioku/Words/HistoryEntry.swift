@@ -23,6 +23,10 @@ nonisolated struct HistoryEntry: Codable, Identifiable {
     // detail view's reading switcher). Lets an unsaved word's row keep the reading the user chose
     // (瞬き → またたき) instead of the entry's first kana form. Nil for .query rows.
     let reading: String?
+    // The definitions the user picked on the detail view of a word that isn't saved, so its row shows
+    // that gloss instead of the first one. A saved word keeps its own selection on the saved word.
+    let selectedSenseIDs: [Int64]
+    let selectedGlosses: [GlossRef]
 
     // Composite identifier so .entry rows dedupe by entry id and .query rows dedupe by
     // their text. Without this, every .query row would collide on canonicalEntryID=0.
@@ -33,7 +37,10 @@ nonisolated struct HistoryEntry: Codable, Identifiable {
         }
     }
 
-    init(canonicalEntryID: Int64, surface: String, lookedUpAt: Date, kind: Kind = .entry, reading: String? = nil) {
+    init(canonicalEntryID: Int64, surface: String, lookedUpAt: Date, kind: Kind = .entry, reading: String? = nil,
+         selectedSenseIDs: [Int64] = [], selectedGlosses: [GlossRef] = []) {
+        self.selectedSenseIDs = selectedSenseIDs
+        self.selectedGlosses = selectedGlosses
         self.canonicalEntryID = canonicalEntryID
         self.surface = surface
         self.lookedUpAt = lookedUpAt
@@ -51,5 +58,7 @@ nonisolated struct HistoryEntry: Codable, Identifiable {
         lookedUpAt = try container.decode(Date.self, forKey: .lookedUpAt)
         kind = try container.decodeIfPresent(Kind.self, forKey: .kind) ?? .entry
         reading = try container.decodeIfPresent(String.self, forKey: .reading)
+        selectedSenseIDs = try container.decodeIfPresent([Int64].self, forKey: .selectedSenseIDs) ?? []
+        selectedGlosses = try container.decodeIfPresent([GlossRef].self, forKey: .selectedGlosses) ?? []
     }
 }

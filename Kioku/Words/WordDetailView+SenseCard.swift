@@ -14,7 +14,7 @@ extension WordDetailView {
             senses.append(senseID)
             glosses.removeAll { $0.senseID == senseID }
         }
-        wordsStore.setSelection(id: activeEntryID, senseIDs: senses, glosses: glosses)
+        storeSelection(entryID: activeEntryID, senseIDs: senses, glosses: glosses)
     }
 
     // Toggle one gloss. If the parent sense is currently whole-selected, narrow down: clear the
@@ -39,7 +39,20 @@ extension WordDetailView {
                 senses.append(senseID)
             }
         }
-        wordsStore.setSelection(id: activeEntryID, senseIDs: senses, glosses: glosses)
+        storeSelection(entryID: activeEntryID, senseIDs: senses, glosses: glosses)
+    }
+
+    // Keeps the definitions picked for an entry: on the saved word when it is saved, otherwise on its
+    // history row, which the Words list reads for the gloss it shows. Picking never saves a word.
+    func storeSelection(entryID: Int64, senseIDs: [Int64], glosses: [GlossRef]) {
+        if wordsStore.words.contains(where: { $0.canonicalEntryID == entryID }) {
+            wordsStore.setSelection(id: entryID, senseIDs: senseIDs, glosses: glosses)
+            return
+        }
+        if historyStore.entries.contains(where: { $0.kind == .entry && $0.canonicalEntryID == entryID }) == false {
+            historyStore.record(canonicalEntryID: entryID, surface: word.surface)
+        }
+        historyStore.setSelection(canonicalEntryID: entryID, senseIDs: senseIDs, glosses: glosses)
     }
 
     // Re-points this saved card to a different dictionary entry (a homonym shown for context) and
@@ -50,6 +63,12 @@ extension WordDetailView {
     // review stats, and saved-first ordering all follow within the open view.
     func switchSavedEntry(to entryID: Int64) {
         guard entryID != activeEntryID else { return }
+        // An unsaved word has no card to re-point: its history row follows to the tapped homonym.
+        guard isActiveEntrySaved else {
+            historyStore.repoint(historyID: "e:\(activeEntryID)", toEntryID: entryID, surface: word.surface)
+            repointedEntryID = entryID
+            return
+        }
         wordsStore.repoint(fromEntryID: activeEntryID, toEntryID: entryID, lemma: word.surface)
         // The History row for the old entry follows too, so the list shows the entry now on screen.
         historyStore.repoint(historyID: "e:\(activeEntryID)", toEntryID: entryID, surface: word.surface)
@@ -89,9 +108,24 @@ extension WordDetailView {
                         // then select the tapped sense. Written explicitly (not via toggleSenseSelection)
                         // so it doesn't depend on the @State activeEntryID flip being visible same-tick.
                         switchSavedEntry(to: entryID)
-                        wordsStore.setSelection(id: entryID, senseIDs: [sense.senseID], glosses: [])
+                        storeSelection(entryID: entryID, senseIDs: [sense.senseID], glosses: [])
                     }
                 }
+
+            // A particle's usage note is its explanation ("at sentence-end; indicates certainty,
+            // emphasis…"), so it leads the card at reading size. Other senses keep the note below.
+            let isParticle = (sense.pos ?? "").components(separatedBy: ",").contains("prt")
+            if isParticle, let info = sense.info, info.isEmpty == false {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(info.components(separatedBy: "\n"), id: \.self) { note in
+                        Text(note)
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
 
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(sense.glosses.enumerated()), id: \.offset) { gIdx, gloss in
@@ -123,10 +157,10 @@ extension WordDetailView {
                                 // selection, mirroring toggleGlossSelection's promote rule.
                                 switchSavedEntry(to: entryID)
                                 if sense.glosses.count == 1 {
-                                    wordsStore.setSelection(id: entryID, senseIDs: [sense.senseID], glosses: [])
+                                    storeSelection(entryID: entryID, senseIDs: [sense.senseID], glosses: [])
                                 } else {
-                                    wordsStore.setSelection(
-                                        id: entryID,
+                                    storeSelection(
+                                        entryID: entryID,
                                         senseIDs: [],
                                         glosses: [GlossRef(senseID: sense.senseID, glossIndex: gIdx)]
                                     )
@@ -138,7 +172,7 @@ extension WordDetailView {
 
             // s_inf usage notes (e.g. "after the -te form of a verb", "esp. as 持ってる").
             // Newline-joined in the DB when a sense carries several; one line each here.
-            if let info = sense.info, info.isEmpty == false {
+            if isParticle == false, let info = sense.info, info.isEmpty == false {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(info.components(separatedBy: "\n"), id: \.self) { note in
                         Text(note)
@@ -164,7 +198,9 @@ extension WordDetailView {
                             surfaceReadingData: surfaceReadingData,
                             kanjiReadingFallback: kanjiReadingFallback,
                             textSize: 15,
-                            onSpeak: { speak($0) }
+                            onSpeak: { speak($0) },
+                        onOpenWord: { openExampleWord($0) },
+                        hasEntry: { exampleEntry(for: $0) != nil }
                         )
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 6)

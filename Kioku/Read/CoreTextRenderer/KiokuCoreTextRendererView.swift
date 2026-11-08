@@ -66,6 +66,8 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     // the unknown color overlaid on its NSRange. Empty = feature off.
     let unknownSegmentLocations: Set<Int>
     let isHighlightUnknownEnabled: Bool
+    // Lighten every other neighbouring segment that shares a category color.
+    var isSameCategoryAlternationEnabled: Bool = true
     let unknownSegmentColor: UIColor
     // Saved Highlight: segments whose resolved dictionary entry matches a saved word,
     // colored by Learned-state category (Save/Learned/Not Learned each have their own
@@ -85,6 +87,8 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     // the read/lyrics/song call sites that don't need it need not pass it.
     var accentTextRange: NSRange? = nil
     var accentTextColor: UIColor = .label
+    // Ranges drawn with a thin underline (see KiokuCoreTextAttributedStringBuilder.Inputs).
+    var underlinedRanges: [NSRange] = []
     // Dev-only debug overlay toggles. The overlay view stays mounted always but only
     // draws when a flag is on, so this is zero-cost for normal users.
     let debugFlags: KiokuDebugOverlayView.Flags
@@ -313,6 +317,7 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         typographyHasher.combine(oddSegmentColor.description)
         for location in unknownSegmentLocations { typographyHasher.combine(location) }
         typographyHasher.combine(isHighlightUnknownEnabled)
+        typographyHasher.combine(isSameCategoryAlternationEnabled)
         typographyHasher.combine(unknownSegmentColor.description)
         typographyHasher.combine(isSavedHighlightEnabled)
         for location in savedSegmentLocations.sorted() { typographyHasher.combine(location) }
@@ -324,6 +329,7 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         typographyHasher.combine(accentTextRange?.location ?? -1)
         typographyHasher.combine(accentTextRange?.length ?? -1)
         typographyHasher.combine(accentTextColor.description)
+        for range in underlinedRanges { typographyHasher.combine(range.location); typographyHasher.combine(range.length) }
         typographyHasher.combine(furiganaGap)
         typographyHasher.combine(furiganaSizeOverride ?? -1)
         let typographyFingerprint = typographyHasher.finalize()
@@ -347,6 +353,7 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
                     oddSegmentColor: oddSegmentColor,
                     unknownSegmentLocations: unknownSegmentLocations,
                     isHighlightUnknownEnabled: isHighlightUnknownEnabled,
+                    isSameCategoryAlternationEnabled: isSameCategoryAlternationEnabled,
                     unknownSegmentColor: unknownSegmentColor,
                     isSegmentPacked: isRubySpacingEnabled && isFuriganaVisible,
                     furiganaSizeOverride: furiganaSizeOverride,
@@ -358,7 +365,8 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
                     savedNotLearnedSegmentLocations: savedNotLearnedSegmentLocations,
                     savedNotLearnedHighlightColor: savedNotLearnedHighlightColor,
                     accentTextRange: accentTextRange,
-                    accentTextColor: accentTextColor
+                    accentTextColor: accentTextColor,
+                    underlinedRanges: underlinedRanges
                 )
             )
             uiView.contentView.setAttributedString(output.attributedString)

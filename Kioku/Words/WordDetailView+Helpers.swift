@@ -12,6 +12,24 @@ extension WordDetailView {
         SavedWord.ephemeral(for: entry)
     }
 
+    // Opens the dictionary entry for a word tapped inside an example sentence: an inflected surface
+    // resolves to its lemma first, then the entry is recorded to history and shown in the nested
+    // sheet. Silently does nothing when the word has no entry (particles' punctuation, names).
+    func openExampleWord(_ surface: String) {
+        guard let entry = exampleEntry(for: surface) else { return }
+        historyStore.record(canonicalEntryID: entry.entryId, surface: entry.primarySearchSurface)
+        presentedRelatedSavedWord = ephemeralSavedWord(for: entry)
+    }
+
+    // The dictionary entry a word in an example sentence opens, if any. One resolution shared by the
+    // tap and by the underline that marks which words are tappable.
+    func exampleEntry(for surface: String) -> DictionaryEntry? {
+        guard let dictionaryStore else { return nil }
+        let target = lexicon?.lemma(surface: surface).first ?? surface
+        let mode: LookupMode = ScriptClassifier.containsKanji(target) ? .kanjiAndKana : .kanaOnly
+        return (try? dictionaryStore.lookup(surface: target, mode: mode))?.first
+    }
+
     // Chip strip for the WordDetail header when the saved word matches a structured-morpheme
     // derivation (currently only ～がり屋). Each chip stacks the form (body) over its role
     // (caption2, secondary) inside a capsule; FlowLayout lets a 4-chip strip wrap to a
@@ -69,8 +87,14 @@ extension WordDetailView {
     var currentSavedWord: SavedWord {
         wordsStore.words.first { $0.canonicalEntryID == activeEntryID } ?? word
     }
-    var currentSelectedSenseIDs: [Int64] { currentSavedWord.selectedSenseIDs }
-    var currentSelectedGlosses: [GlossRef] { currentSavedWord.selectedGlosses }
+    // The picked definitions: the saved word's, or for a word that isn't saved the ones kept on its
+    // history row.
+    var currentSelectedSenseIDs: [Int64] {
+        isActiveEntrySaved ? currentSavedWord.selectedSenseIDs : historyStore.selection(for: activeEntryID).senseIDs
+    }
+    var currentSelectedGlosses: [GlossRef] {
+        isActiveEntrySaved ? currentSavedWord.selectedGlosses : historyStore.selection(for: activeEntryID).glosses
+    }
 
     // Delegates to the unit-tested WordVariants helper. Surfaces alternate kanji
     // spellings (same reading, different kanji) for kanji-bearing saved surfaces;

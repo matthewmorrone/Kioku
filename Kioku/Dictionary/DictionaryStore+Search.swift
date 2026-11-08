@@ -161,8 +161,11 @@ extension DictionaryStore {
 
     // Prefix-only fallback for 1–2 char Japanese queries that the trigram index can't represent.
     // Uses idx_kanji_text / idx_kana_text for an indexed range scan.
+    // Kana-only terms get no prefix hits: よ is a word of its own, and listing every よ… word
+    // (よる, ようす, …) under it buries it. Only a kanji term completes (食 → 食べる).
     nonisolated private func matchingJapanesePrefixEntryIDs(term: String, limit: Int) throws -> [Int64] {
-        try withSerializedDatabaseAccess {
+        guard ScriptClassifier.containsKanji(term) else { return [] }
+        return try withSerializedDatabaseAccess {
             let pattern = "\(escapeLikeLiteral(term))%"
             let sql = """
             SELECT entry_id, MIN(best_rank) AS best_rank FROM (

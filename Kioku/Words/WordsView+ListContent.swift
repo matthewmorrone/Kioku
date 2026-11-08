@@ -388,7 +388,7 @@ extension WordsView {
         if visibleSavedKanji.isEmpty == false {
             Section("Kanji") {
                 ForEach(visibleSavedKanji) { saved in
-                    if let info = materializedSavedKanji[saved.literal] {
+                    if let info = materializedSavedKanji[saved.literal] ?? WordEntryCache.shared.kanji[saved.literal] {
                         savedKanjiRow(info: info, saved: saved)
                     }
                 }
@@ -527,7 +527,7 @@ extension WordsView {
             }
         } else {
             ForEach(visibleWords) { word in
-                let entry = materializedHistory[word.canonicalEntryID]
+                let entry = materializedEntry(word.canonicalEntryID)
                 let rowGloss = chosenGloss(for: entry, saved: word)
                 wordRow(
                     entryID: word.canonicalEntryID,
@@ -551,9 +551,15 @@ extension WordsView {
     // in WordDetailView shows in Saved and History alike. Same resolution the flashcard and
     // multiple-choice paths use; nil when the word isn't saved or nothing resolves.
     func chosenGloss(for entry: DictionaryEntry?, saved: SavedWord?) -> String? {
-        guard let entry, let saved else { return nil }
+        guard let saved else { return nil }
+        return chosenGloss(for: entry, senseIDs: saved.selectedSenseIDs, glosses: saved.selectedGlosses)
+    }
+
+    // The same resolution from a bare selection, for the picks kept on a history row of an unsaved word.
+    func chosenGloss(for entry: DictionaryEntry?, senseIDs: [Int64], glosses: [GlossRef]) -> String? {
+        guard let entry else { return nil }
         let joined = entry
-            .selectedMeanings(selectedSenseIDs: saved.selectedSenseIDs, selectedGlosses: saved.selectedGlosses)
+            .selectedMeanings(selectedSenseIDs: senseIDs, selectedGlosses: glosses)
             .joined(separator: "; ")
         return joined.isEmpty ? nil : joined
     }
@@ -570,13 +576,14 @@ extension WordsView {
             ForEach(entries) { entry in
                 switch entry.kind {
                 case .entry:
-                    let materialized = materializedHistory[entry.canonicalEntryID]
+                    let materialized = materializedEntry(entry.canonicalEntryID)
                     wordRow(
                         entryID: entry.canonicalEntryID,
                         surface: entry.surface,
                         entry: materialized,
                         gloss: chosenGloss(for: materialized,
                                            saved: wordsStore.words.first { $0.canonicalEntryID == entry.canonicalEntryID })
+                            ?? chosenGloss(for: materialized, senseIDs: entry.selectedSenseIDs, glosses: entry.selectedGlosses)
                             ?? materialized?.senses.first?.glosses.first,
                         chosenReading: wordsStore.words.first { $0.canonicalEntryID == entry.canonicalEntryID }?.selectedReading
                             ?? entry.reading,

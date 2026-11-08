@@ -26,10 +26,18 @@ struct ExampleSentenceView: View {
     let kanjiReadingFallback: KanjiReadingFallbackMap
     let textSize: Double
     let onSpeak: (String) -> Void
+    // Called with the surface of a tapped word so the host can open its dictionary entry. Nil keeps
+    // the sentence's words inert.
+    var onOpenWord: ((String) -> Void)? = nil
+    // Whether a segment's surface has a dictionary entry; those segments (other than the highlighted
+    // word) are underlined to show they open. Nil underlines nothing.
+    var hasEntry: ((String) -> Bool)? = nil
 
     @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
     // Computed once per appearance; nil before the resolver has run for this sentence.
     @State private var cache: LineFuriganaCache?
+    // UTF-16 ranges of the segments that open an entry, resolved once alongside the cache.
+    @State private var underlinedRanges: [NSRange] = []
 
     // Height of the ruby band above the first text line when furigana is rendered, so the
     // leading speaker button can align with the first HEADWORD line instead of the ruby.
@@ -93,9 +101,21 @@ struct ExampleSentenceView: View {
         return acceptedReadings.map(KanaNormalizer.katakanaToHiragana).contains { shown.contains($0) } == false
     }
 
+    // True when a kana highlight sits inside a longer word of the sentence (よ inside よる, の inside
+    // のんびり): that sentence is an example of the longer word, not of the one being shown. Kanji
+    // highlights are left to the reading check above.
+    private var isHighlightInsideLongerWord: Bool {
+        guard let cache, let range = highlightRange,
+              ScriptClassifier.isPureKana((japanese as NSString).substring(with: range)) else { return false }
+        return cache.segmentationRanges.contains { segment in
+            let segmentRange = NSRange(segment, in: japanese)
+            return NSIntersectionRange(segmentRange, range).length > 0 && segmentRange.length > range.length
+        }
+    }
+
     var body: some View {
         Group {
-            if isReadingMismatch == false {
+            if isReadingMismatch == false && isHighlightInsideLongerWord == false {
                 rowContent
             }
         }
@@ -166,9 +186,10 @@ struct ExampleSentenceView: View {
                 // fallback's accent-colored run.
                 accentTextRange: highlightRange,
                 accentTextColor: .init(Color.accentColor),
+                underlinedRanges: underlinedRanges,
                 debugFlags: KiokuDebugOverlayView.Flags(),
                 illegalMergeLocation: nil,
-                onSegmentTapped: { _, _, _ in },
+                onSegmentTapped: { location, _, _ in openWord(at: location, in: cache) },
                 isScrollEnabled: false
             )
         } else {
@@ -178,6 +199,18 @@ struct ExampleSentenceView: View {
                 .font(.system(size: textSize))
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    // Hands the tapped segment's surface to the host, which resolves it to a dictionary entry. The
+    // renderer reports the segment's UTF-16 location; taps outside any segment do nothing.
+    private func openWord(at location: Int?, in cache: LineFuriganaCache) {
+        guard let onOpenWord, let location else { return }
+        let match = cache.segmentationRanges.first { range in
+            NSRange(range, in: japanese).contains(location)
+        }
+        guard let match else { return }
+        let surface = String(japanese[match])
+        onOpenWord(surface)
     }
 
     // Plain-text rendering with the target surface tinted in the accent color.
@@ -213,12 +246,26 @@ struct ExampleSentenceView: View {
             surfaceReadingData: surfaceReadingData
         )
         let split = splitRubyAtHighlight(byLocation: resolved.byLocation, lengthByLocation: resolved.lengthByLocation)
+        let ranges = edges.map { $0.start..<$0.end }
+        underlinedRanges = entryBackedRanges(in: ranges)
         cache = LineFuriganaCache(
             sourceText: japanese,
-            segmentationRanges: edges.map { $0.start..<$0.end },
+            segmentationRanges: ranges,
             furiganaBySegmentLocation: split.byLocation,
             furiganaLengthBySegmentLocation: split.lengthByLocation
         )
+    }
+
+    // The segments whose surface has a dictionary entry, minus any touching the highlighted subject
+    // word (already accent-colored), as UTF-16 ranges for the underline.
+    private func entryBackedRanges(in segments: [Range<String.Index>]) -> [NSRange] {
+        guard let hasEntry else { return [] }
+        let subject = highlightRange
+        return segments.compactMap { segment in
+            let range = NSRange(segment, in: japanese)
+            if let subject, NSIntersectionRange(range, subject).length > 0 { return nil }
+            return hasEntry(String(japanese[segment])) ? range : nil
+        }
     }
 
     // Splits a compound's ruby where the highlighted word ends inside it (化石 in 化石燃料), so the

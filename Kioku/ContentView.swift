@@ -563,6 +563,19 @@ struct ContentView: View {
         }
     }
 
+    // Loads the entries and kanji info the Words tab's saved and history rows show into the shared
+    // cache, in the background, so that tab doesn't fetch them after it appears.
+    private func warmWordsTabCache(store: DictionaryStore) {
+        let ids = wordsStore.words.map(\.canonicalEntryID)
+            + historyStore.entries.filter { $0.kind == .entry }.map(\.canonicalEntryID)
+        let literals = savedKanjiStore.kanji.map(\.literal)
+        Task {
+            await WordEntryCache.shared.warm(store: store, entryIDs: ids)
+            await WordEntryCache.shared.warmKanji(store: store, literals: literals)
+            WordEntryCache.shared.markReady()
+        }
+    }
+
     // Rebuilds the segmenter and related resources on a background thread using the current settings.
     //
     // Two-stage publish: the bare DictionaryStore lands on the main actor as soon as SQLite
@@ -589,11 +602,18 @@ struct ContentView: View {
             // Stage 1 — fast path: open the read-only SQLite handle so the dictionary search bar is
             // usable at once.
             let earlyStore = try? DictionaryStore()
+            if earlyStore == nil {
+                // No dictionary to preload from (a fresh install still downloading): don't hold the tab.
+                await MainActor.run { WordEntryCache.shared.markReady() }
+            }
             if let earlyStore {
                 await MainActor.run {
                     if readResources.dictionaryStore == nil {
                         readResources.dictionaryStore = earlyStore
                         StartupTimer.mark("dictionaryStore published (fast path)")
+                        // The Words tab's rows load now, long before `ready`, so the tab shows definitions
+                        // and kanji readings the first time it appears.
+                        warmWordsTabCache(store: earlyStore)
                     }
                 }
             }
