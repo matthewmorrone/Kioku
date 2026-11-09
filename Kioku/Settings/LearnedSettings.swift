@@ -32,9 +32,10 @@ nonisolated enum LearnedSettings {
     static let learnedDirectionsKey = "kioku.autoLearn.learnedDirections"
     static let masteredDirectionsKey = "kioku.autoLearn.masteredDirections"
 
-    // Learned by default needs every recognition direction; Mastered needs all six.
+    // Learned by default needs every recognition direction; Mastered the production three on top
+    // (Mastered also needs the Learned flag, so recognition is already covered).
     static let defaultLearnedDirections = DirectionSelection(directions: Set(QuestionDirection.tier1))
-    static let defaultMasteredDirections = DirectionSelection.all
+    static let defaultMasteredDirections = DirectionSelection(directions: Set(QuestionDirection.tier2))
 
     // The Learned bar from the shared store, the default when never set.
     static func learnedDirections(_ defaults: UserDefaults = .standard) -> DirectionSelection {
