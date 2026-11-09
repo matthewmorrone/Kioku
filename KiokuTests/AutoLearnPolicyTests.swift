@@ -82,4 +82,28 @@ final class AutoLearnPolicyTests: XCTestCase {
         let both = directionStats(for: [.kanaToMeaning, .meaningToKana], correct: 1)
         XCTAssertTrue(AutoLearnPolicy.shouldMarkMastered(directionStats: both, hasKanjiForm: false, enabled: true))
     }
+
+    // MARK: - configurable bar
+
+    // A bar of just kanji→English promotes on that one answer alone.
+    func testLearnedBarFollowsRequiredDirections() {
+        let required = DirectionSelection(directions: [.kanjiToMeaning])
+        let stats = directionStats(for: [.kanjiToMeaning], correct: 1)
+        XCTAssertTrue(AutoLearnPolicy.shouldMarkLearned(directionStats: stats, required: required, enabled: true))
+        XCTAssertFalse(AutoLearnPolicy.shouldMarkLearned(directionStats: directionStats(for: [.kanaToMeaning], correct: 1), required: required, enabled: true))
+    }
+
+    // An empty bar never promotes.
+    func testEmptyBarNeverPromotes() {
+        let stats = directionStats(for: QuestionDirection.allCases, correct: 1)
+        XCTAssertFalse(AutoLearnPolicy.shouldMarkLearned(directionStats: stats, required: DirectionSelection(directions: []), enabled: true))
+    }
+
+    // A kana-only word whose required directions are all kanji ones is promoted by any correct answer.
+    func testKanaOnlyWordWithOnlyKanjiBarPromotesOnAnyCorrect() {
+        let required = DirectionSelection(directions: [.kanjiToMeaning])
+        let stats = directionStats(for: [.kanaToMeaning], correct: 1)
+        XCTAssertTrue(AutoLearnPolicy.shouldMarkLearned(directionStats: stats, hasKanjiForm: false, required: required, enabled: true))
+        XCTAssertFalse(AutoLearnPolicy.shouldMarkLearned(directionStats: [:], hasKanjiForm: false, required: required, enabled: true))
+    }
 }

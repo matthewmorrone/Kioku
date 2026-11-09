@@ -84,6 +84,20 @@ final class QuestionDirectionTests: XCTestCase {
         XCTAssertNotNil(selection.resolved(seed: 7, hasKanjiForm: true, directionStats: stats))
     }
 
+    // Until the Learned bar is met only its directions are asked; after that, the rest are.
+    func testResolvedAsksLearnedBarBeforeOtherDirections() {
+        let selection = DirectionSelection.all
+        let bar = DirectionSelection(directions: [.kanjiToMeaning, .kanaToMeaning])
+        var stats: [String: DirectionStats] = [:]
+        for _ in 0..<2 {
+            let picked = selection.resolved(seed: 3, hasKanjiForm: true, directionStats: stats, learnedBar: bar)
+            XCTAssertTrue(bar.directions.contains(picked!))
+            stats[picked!.rawValue] = DirectionStats(correct: 1)
+        }
+        let next = selection.resolved(seed: 3, hasKanjiForm: true, directionStats: stats, learnedBar: bar)
+        XCTAssertFalse(bar.directions.contains(next!))
+    }
+
     // Only the two English-answer directions need gloss-set grading.
     func testAnswerIsMeaningIdentifiesEnglishAnswers() {
         XCTAssertEqual(

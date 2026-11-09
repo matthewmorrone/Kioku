@@ -17,7 +17,7 @@ enum AppBackupExtrasStore {
     ]
     private static let settingKeys: Set<String> = [
         "kioku.japaneseTheme", "kioku.themeID", "kioku.llm.provider", "kioku.llm.useLLM",
-        "kioku.autoLearn.enabled", "kioku.study.excludeLearned", "clozeExcludeDuplicateLines",
+        "kioku.autoLearn.enabled", "kioku.autoLearn.learnedDirections", "kioku.autoLearn.masteredDirections", "kioku.study.excludeLearned", "clozeExcludeDuplicateLines",
         "clipboardLookup.autoDetectEnabled", "kioku.segmenter.strategy", "searchShowKanji",
         "savedWordsShowKanji", "savedWordsSortOrder", "historySortOrder", "browseProficiency.level",
         "notes.sortField", "notes.sortAscending", "notes.seededSampleNotes",

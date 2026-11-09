@@ -497,8 +497,8 @@ struct MultipleChoiceView: View {
 
     // Seconds the feedback stays up before auto-advancing: brief after a correct answer, longer
     // after a miss or "Show Answer" so the correct option can actually be read.
-    private static let autoAdvanceCorrectDelay: Double = 2
-    private static let autoAdvanceMissDelay: Double = 4
+    private static let autoAdvanceCorrectDelay: Double = 1
+    private static let autoAdvanceMissDelay: Double = 2.5
 
     // The index of the question currently showing answer feedback, or -1 when none is. Drives the
     // auto-advance task's identity.

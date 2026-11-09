@@ -55,6 +55,8 @@ struct SettingsView: View {
     @AppStorage(LearnedSettings.enabledKey) private var autoLearnEnabled: Bool = LearnedSettings.defaultAutoLearn
     // Whether the Learn tab's study modes skip Learned/Mastered words. Read by each mode through
     // StudyWordPool; this is the single place it's set.
+    @AppStorage(LearnedSettings.learnedDirectionsKey) private var learnedDirections = LearnedSettings.defaultLearnedDirections
+    @AppStorage(LearnedSettings.masteredDirectionsKey) private var masteredDirections = LearnedSettings.defaultMasteredDirections
     @AppStorage(LearnedSettings.excludeLearnedKey) private var excludeLearnedInStudy: Bool = LearnedSettings.defaultExcludeLearned
 
     @AppStorage(DebugSettings.pixelRulerKey) var debugPixelRuler: Bool = false
@@ -201,7 +203,19 @@ struct SettingsView: View {
                     }
                     Toggle(isOn: $autoLearnEnabled) {
                         Text("Auto-mark as Learned")
-                            .infoButton("Mark a word learned once you've answered every kind of question about it correctly. Long-press any star to mark words by hand.")
+                            .infoButton("Mark a word learned or mastered once you've answered the required kinds of question about it correctly. Long-press any star to mark words by hand.")
+                    }
+                    if autoLearnEnabled {
+                        LearnDirectionPicker(
+                            supported: QuestionDirection.allCases, selection: $learnedDirections,
+                            title: "Learned Requires",
+                            info: "A word becomes Learned once each ticked direction has been answered right once. Kana-only words skip the kanji ones."
+                        )
+                        LearnDirectionPicker(
+                            supported: QuestionDirection.allCases, selection: $masteredDirections,
+                            title: "Mastered Requires",
+                            info: "A word becomes Mastered once each ticked direction has been answered right once."
+                        )
                     }
                 } header: {
                     Text("Learning")

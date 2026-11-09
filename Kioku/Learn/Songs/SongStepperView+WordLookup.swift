@@ -6,8 +6,8 @@ import SwiftUI
 extension SongStepperView {
 
     // Resolves a tapped breakdown word to a dictionary entry and opens the shared lookup sheet.
-    // Tries the sung surface first, then the segmenter's lemma for conjugated forms (歌った → 歌う)
-    // that don't resolve directly; silently no-ops when there's no dictionary or no entry.
+    // Tries the line's context, then the sheet's leading possibility, then the sung surface, then the
+    // segmenter's lemma for conjugated forms (歌った → 歌う) that don't resolve directly; silently no-ops when there's no dictionary or no entry.
     func presentWordLookup(_ word: SongWord, in line: SongLine) {
         let surface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
         guard surface.isEmpty == false, let dictionaryStore else { return }
@@ -15,6 +15,10 @@ extension SongStepperView {
         let entryID: Int64?
         if let contextual = contextualEntryID(surface: surface, in: line) {
             entryID = contextual
+        } else if let leading = lexicon?.lookupCandidates(surface: surface).first?.entry.entryId {
+            // The lookup sheet's own leading possibility (a bare 超え is the verb 超える, not the
+            // suffix ごえ that the dictionary's surface table lists first), so tap and sheet agree.
+            entryID = leading
         } else if let direct = dictionaryStore.lookupFirstEntryID(surface: surface) {
             entryID = direct
         } else if let lemma = segmenter?.preferredLemma(for: surface), lemma.isEmpty == false {

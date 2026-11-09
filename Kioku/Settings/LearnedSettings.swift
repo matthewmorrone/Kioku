@@ -25,4 +25,31 @@ nonisolated enum LearnedSettings {
     static func isAutoLearnEnabled(_ defaults: UserDefaults = .standard) -> Bool {
         UserDefaultsBool.read(enabledKey, default: defaultAutoLearn, from: defaults)
     }
+
+    // Which directions a word must have answered right at least once to be auto-marked Learned /
+    // Mastered. Stored as DirectionSelection raw strings so @AppStorage in Settings writes what
+    // the policy reads.
+    static let learnedDirectionsKey = "kioku.autoLearn.learnedDirections"
+    static let masteredDirectionsKey = "kioku.autoLearn.masteredDirections"
+
+    // Learned by default needs every recognition direction; Mastered needs all six.
+    static let defaultLearnedDirections = DirectionSelection(directions: Set(QuestionDirection.tier1))
+    static let defaultMasteredDirections = DirectionSelection.all
+
+    // The Learned bar from the shared store, the default when never set.
+    static func learnedDirections(_ defaults: UserDefaults = .standard) -> DirectionSelection {
+        directions(forKey: learnedDirectionsKey, default: defaultLearnedDirections, from: defaults)
+    }
+
+    // The Mastered bar from the shared store, the default when never set.
+    static func masteredDirections(_ defaults: UserDefaults = .standard) -> DirectionSelection {
+        directions(forKey: masteredDirectionsKey, default: defaultMasteredDirections, from: defaults)
+    }
+
+    // Reads one stored selection; an unset key is the default, while a stored empty string is a
+    // deliberate "none" and stays empty.
+    private static func directions(forKey key: String, default fallback: DirectionSelection, from defaults: UserDefaults) -> DirectionSelection {
+        guard let raw = defaults.string(forKey: key) else { return fallback }
+        return DirectionSelection(rawValue: raw)
+    }
 }
