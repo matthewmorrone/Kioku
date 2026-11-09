@@ -16,6 +16,8 @@ struct WordFocusWord: Equatable, Identifiable {
     let pieces: [WordFocusPiece]
     let startMs: Int
     var interludeDurationMs: Int? = nil
+    // The cue (lyric line) the word is sung in, so the TV lyrics view can regroup words into lines.
+    var lineIndex: Int = 0
 }
 
 // What the word list was built from; a change to any part rebuilds it (a shuffle swaps the song under

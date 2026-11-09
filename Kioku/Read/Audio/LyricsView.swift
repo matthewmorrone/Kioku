@@ -74,6 +74,8 @@ struct LyricsView: View {
     var onOpenBreakdown: () -> Void = {}
     // The top bar's full-screen button: opens the word-by-word view.
     var onOpenWordFocus: () -> Void = {}
+    // The top bar's TV button: casts the song as a lyric video in the chosen view.
+    var onCast: (TVCastMode) -> Void = { _ in }
     // Romanizes one lyric line for Sing mode's phoneme targets (ReadView's LyricRomanizer). Nil
     // hides the Sing button (previews).
     var singRomanize: (@Sendable (String) -> [RomanizedSpan])? = nil

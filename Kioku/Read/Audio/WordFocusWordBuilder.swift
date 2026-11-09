@@ -33,7 +33,8 @@ enum WordFocusWordBuilder {
                     surface: "",
                     pieces: [],
                     startMs: startMs,
-                    interludeDurationMs: cue.endMs - cue.startMs
+                    interludeDurationMs: cue.endMs - cue.startMs,
+                    lineIndex: index
                 ))
                 continue
             }
@@ -63,7 +64,8 @@ enum WordFocusWordBuilder {
                         furigana: furiganaBySegmentLocation,
                         furiganaLengths: furiganaLengthBySegmentLocation
                     ),
-                    startMs: sungMs
+                    startMs: sungMs,
+                    lineIndex: index
                 ))
             }
         }
@@ -90,7 +92,8 @@ enum WordFocusWordBuilder {
                     id: previous.id,
                     surface: previous.surface + word.surface,
                     pieces: previous.pieces + word.pieces,
-                    startMs: previous.startMs
+                    startMs: previous.startMs,
+                    lineIndex: previous.lineIndex
                 )
             } else {
                 result.append(word)

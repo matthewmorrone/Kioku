@@ -324,6 +324,7 @@ extension ReadView {
                     onSetAudioSource: { setLyricAudioSource($0) },
                     onOpenBreakdown: { openNoteDestination(.breakdown, atNoteLocation: activeLyricNoteLocation()) },
                     onOpenWordFocus: { audioPlayback.isShowingWordFocus = true },
+                    onCast: { castLyricVideo(mode: $0) },
                     singRomanize: lyricRomanizer.spans(for:),
                     singSession: singSession,
                     dictionaryGloss: { location, surface in lyricWordGloss(at: location, surface: surface) },
@@ -353,7 +354,8 @@ extension ReadView {
                 onOpenLyrics: { openLyricsFromWordFocus() },
                 onOpenBreakdown: { openBreakdownFromWordFocus(atNoteLocation: $0) },
                 onOpenWordDetail: { openWordDetailFromWordFocus(atNoteLocation: $0, surface: $1) },
-                onDismiss: { audioPlayback.isShowingWordFocus = false }
+                onDismiss: { audioPlayback.isShowingWordFocus = false },
+                onCast: { castLyricVideo(mode: $0) }
             )
         }
         .sheet(isPresented: $readSheets.isShowingSegmentList) {

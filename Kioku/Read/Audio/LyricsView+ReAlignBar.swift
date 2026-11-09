@@ -106,6 +106,8 @@ extension LyricsView {
                 .accessibilityLabel("Playing \(audioSource.label). Tap to switch to \(audioSource.next.label).")
             }
 
+            TVCastButton(onCast: onCast)
+
             // One overflow menu for everything that isn't a mid-listen toggle: the breakdown and
             // word-by-word views, and Replace / Remove Audio (Replace picks a different song file,
             // optionally with srt / TextGrid; Remove deletes the audio and its cues after a

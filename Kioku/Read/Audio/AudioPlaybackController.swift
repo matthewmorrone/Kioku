@@ -29,6 +29,8 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     var onDidFinishRange: (() -> Void)? = nil
 
     private var player: AVAudioPlayer?
+    // The file currently loaded, so the cast lyric video can use the same audio.
+    var currentAudioURL: URL? { player?.url }
     // True while Sing mode listens: the session must allow recording alongside playback.
     // Re-applies the session category on change so the switch takes effect mid-song.
     var isSingRecording = false {
