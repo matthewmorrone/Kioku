@@ -220,25 +220,28 @@ extension WordsView {
                 dictionarySearchFilterMenu
             } else {
                 let filterTint = isFilterActive ? Color.accentColor : Color.secondary
-                Button {
-                    isFilterSheetPresented = true
-                } label: {
-                    HStack(spacing: 4) {
-                        // Names the list you're looking at — the only place this ever showed
-                        // was buried inside the filter sheet's own "Show" picker, so nothing on
-                        // screen said Saved vs. History while you were actually scrolling one.
-                        Text(activeTab == .saved ? "Saved" : "History")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(filterTint)
-                        Image(systemName: isFilterActive
-                            ? "line.3.horizontal.decrease.circle.fill"
-                            : "line.3.horizontal.decrease.circle")
-                            .scaledFont(size: 22)
-                            .foregroundStyle(filterTint)
-                    }
+                // Tap flips between Saved and History; long press opens the filter/sort sheet.
+                HStack(spacing: 4) {
+                    // Names the list you're looking at, so Saved vs. History is visible on screen.
+                    Text(activeTab == .saved ? "Saved" : "History")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(filterTint)
+                    Image(systemName: isFilterActive
+                        ? "line.3.horizontal.decrease.circle.fill"
+                        : "line.3.horizontal.decrease.circle")
+                        .scaledFont(size: 22)
+                        .foregroundStyle(filterTint)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(activeTab == .saved ? "Saved" : "History"), filter by Note or List")
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    activeTab = activeTab == .saved ? .history : .saved
+                }
+                .onLongPressGesture {
+                    isFilterSheetPresented = true
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel("\(activeTab == .saved ? "Saved" : "History"), tap to switch, long press to filter by Note or List")
                 .tourTarget(.wordsFilter)
             }
         }
