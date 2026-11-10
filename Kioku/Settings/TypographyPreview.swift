@@ -4,6 +4,11 @@ import SwiftUI
 // on a rounded card, driven straight from the typography and debug-overlay settings. One view
 // so the Settings row and the top of the typography sheet show the identical preview.
 struct TypographyPreview: View {
+    // Values being dragged in the typography sheet. When set, the preview draws these instead of the
+    // stored settings, so a slider drag redraws only this preview and the stored values (which the
+    // Read tab observes and re-typesets the open note for) are written once, when the drag ends.
+    var draft: TypographyDraft? = nil
+
     @AppStorage(TypographySettings.textSizeKey) private var textSize = TypographySettings.defaultTextSize
     @AppStorage(TypographySettings.lineSpacingKey) private var lineSpacing = TypographySettings.defaultLineSpacing
     @AppStorage(TypographySettings.kerningKey) private var kerning = TypographySettings.defaultKerning
@@ -21,12 +26,20 @@ struct TypographyPreview: View {
     @AppStorage(DebugSettings.envelopeRectsKey) private var debugEnvelopeRects = false
     @AppStorage(DebugSettings.leftInsetGuideKey) private var debugLeftInsetGuide = false
 
+    // The draft's size while the sheet is dragging, else the stored setting (two-way, so a pinch in
+    // the preview still writes through).
+    private var textSizeBinding: Binding<Double> {
+        guard let draft else { return $textSize }
+        return .constant(draft.textSize)
+    }
+
     var body: some View {
         SettingsPreviewRenderer(
-            textSize: $textSize,
-            lineSpacing: lineSpacing,
-            kerning: kerning,
-            furiganaGap: furiganaGap,
+            textSize: textSizeBinding,
+            lineSpacing: draft?.lineSpacing ?? lineSpacing,
+            kerning: draft?.kerning ?? kerning,
+            furiganaGap: draft?.furiganaGap ?? furiganaGap,
+            furiganaSizeDraft: draft?.furiganaSize,
             debugFuriganaRects: debugFuriganaRects,
             debugHeadwordRects: debugHeadwordRects,
             debugHeadwordLineBands: debugHeadwordLineBands,

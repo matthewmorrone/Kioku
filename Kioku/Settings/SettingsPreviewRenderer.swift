@@ -29,6 +29,8 @@ struct SettingsPreviewRenderer: View {
     let lineSpacing: Double
     let kerning: Double
     let furiganaGap: Double
+    // In-flight furigana size from the typography sheet; nil reads the stored setting.
+    var furiganaSizeDraft: Double? = nil
 
     // Read the same keys ReadView+Editor reads so the preview's color and font paths stay
     // byte-for-byte parallel with the read tab — flip the toggle or change a swatch / slider
@@ -237,7 +239,7 @@ struct SettingsPreviewRenderer: View {
             lineSpacing: lineSpacing,
             kerning: kerning,
             furiganaGap: CGFloat(furiganaGap),
-            furiganaSizeOverride: customFuriganaSizeEnabled ? CGFloat(furiganaSize) : nil,
+            furiganaSizeOverride: customFuriganaSizeEnabled ? CGFloat(furiganaSizeDraft ?? furiganaSize) : nil,
             evenSegmentColor: evenColor,
             oddSegmentColor: oddColor,
             isLineWrappingEnabled: isLineWrappingEnabled,

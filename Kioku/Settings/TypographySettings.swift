@@ -50,3 +50,13 @@ nonisolated enum TypographySettings {
     static let furiganaGapRange = 0.0...10.0
     static let furiganaSizeRange = 6.0...24.0
 }
+
+// The typography sheet's in-flight slider values, handed to TypographyPreview while a drag is
+// under way. Pure data.
+struct TypographyDraft {
+    var textSize: Double
+    var lineSpacing: Double
+    var kerning: Double
+    var furiganaGap: Double
+    var furiganaSize: Double
+}
