@@ -727,6 +727,25 @@ def join_reference_target(parts):
     return "・".join(pieces)
 
 
+NUMERAL_DIGITS = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+
+
+def digit_spellings(kanji_text):
+    # Digit spellings of a numeral-led compound (一発 -> 1発, １発) so text typed with digits finds the
+    # entry whose kanji form it abbreviates and reads it as a whole (いっぱつ), not as a bare number plus
+    # a counter. Only one leading numeral followed by non-numeral characters qualifies; longer numerals
+    # (三十分) are left to the number-run edge.
+    if len(kanji_text) < 2 or kanji_text[0] not in NUMERAL_DIGITS:
+        return []
+    rest = kanji_text[1:]
+    if any(ch in NUMERAL_DIGITS or ch in "百千万" for ch in rest):
+        return []
+    value = NUMERAL_DIGITS[kanji_text[0]]
+    ascii_form = f"{value}{rest}"
+    fullwidth = "".join(chr(ord(ch) + 0xFEE0) if ch.isdigit() else ch for ch in ascii_form)
+    return [ascii_form, fullwidth]
+
+
 def insert_entry(conn, entry, ent_seq):
     # Inserts one entry and its forms/senses. Returns (entry_id, kanji_rows, kana_rows)
     # where kanji_rows = [(kanji_id, text)] and kana_rows = [(kana_id, text, applies_to_kanji_set)].
@@ -751,6 +770,25 @@ def insert_entry(conn, entry, ent_seq):
                 (k["text"], entry_id, priority_str, info_str),
             )
             kanji_rows.append((cur.lastrowid, k["text"]))
+
+    # Digit spellings ride along as search-only (sK) forms linked to the same readings as the original.
+    # An entry used as an adjective or a verb (十分 じゅうぶん: adj-na, vs) is not a quantity, so digits
+    # never mean it: 10分 is ten minutes. It gets no digit spelling, leaving the quantity entry (じっぷん).
+    variants_of = {}
+    existing_texts = {text for _, text in kanji_rows}
+    entry_pos = {pos for sense in (entry.get("sense") or []) for pos in (sense.get("partOfSpeech") or [])}
+    digit_ok = entry_pos.isdisjoint({"adj-na", "vs"})
+    for original_id, original_text in list(kanji_rows):
+        for variant in (digit_spellings(original_text) if digit_ok else []):
+            if variant in existing_texts:
+                continue
+            existing_texts.add(variant)
+            cur = conn.execute(
+                "INSERT INTO kanji (text, entry_id, priority, info) VALUES (?, ?, ?, ?)",
+                (variant, entry_id, None, "sK"),
+            )
+            kanji_rows.append((cur.lastrowid, variant))
+            variants_of.setdefault(original_text, []).append(variant)
 
     kana_rows = []
     for r in entry.get("kana", []):
@@ -786,7 +824,7 @@ def insert_entry(conn, entry, ent_seq):
                         (kanji_id, kana_id),
                     )
             else:
-                for kanji_text in re_restr:
+                for kanji_text in set(re_restr).union(*(variants_of.get(t, []) for t in re_restr)):
                     kanji_id = kanji_text_to_id.get(kanji_text)
                     if kanji_id is not None:
                         conn.execute(
@@ -996,6 +1034,155 @@ def import_entry_decomposition(conn):
           f" ({len(verified)} pieces){f', {dropped} dropped as non-reconstructing' if dropped else ''}")
 
 
+# Readings of a numeral before a counter, longest first so きゅう is not read as く. Value -> spellings.
+NUMERAL_PREFIXES = {
+    1: ["いっ", "いち"], 2: ["に"], 3: ["さん"], 4: ["よん", "よ", "し"], 5: ["ご"], 6: ["ろっ", "ろく"],
+    7: ["なな", "しち"], 8: ["はっ", "はち"], 9: ["きゅう", "く"], 10: ["じゅっ", "じっ", "じゅう"],
+}
+DEFAULT_NUMERAL_READING = {1: "いち", 2: "に", 3: "さん", 4: "よん", 5: "ご", 6: "ろく", 7: "なな", 8: "はち", 9: "きゅう"}
+# Counter surface -> surface it is ranked as, for the frequency materializers (digit compounds have no
+# rank of their own).
+COUNTER_COMPOUND_RANK_SOURCE = {}
+HIRAGANA_PLAIN_TO_SEMIVOICED = dict(zip("はひふへほ", "ぱぴぷぺぽ"))
+GEMINATING_ONSETS = set("かきくけこさしすせそたちつてとぱぴぷぺぽ")
+
+
+def counter_numeral_classes(prefix):
+    # How a numeral reading ends decides what the counter's first sound does: ん (さん), a geminate
+    # っ (いっ), or anything else.
+    if prefix.endswith("ん"):
+        return "n"
+    if prefix.endswith("っ"):
+        return "x"
+    return "v"
+
+
+def counter_lexical_readings(conn, counter_kanji, counter_entry_ids):
+    # What JMdict itself records for 一..十 + this counter: value -> (numeral prefix, remainder).
+    # Returns None when some listed compound has a numeral reading outside NUMERAL_PREFIXES (一人
+    # ひとり, 三日 みっか): an irregular counter is not composed.
+    lexical = {}
+    for value, kanji_numeral in enumerate("一二三四五六七八九十", start=1):
+        rows = conn.execute(
+            """SELECT DISTINCT kf.text FROM kanji k
+               JOIN kanji_kana_links l ON l.kanji_id = k.id JOIN kana_forms kf ON kf.id = l.kana_id
+               WHERE k.text = ? AND k.info IS NOT 'sK' AND (kf.info IS NULL OR kf.info NOT LIKE '%sk%')
+               ORDER BY kf.id""",
+            (kanji_numeral + counter_kanji,),
+        ).fetchall()
+        if not rows:
+            continue
+        found = None
+        for (reading,) in rows:
+            for prefix in NUMERAL_PREFIXES[value]:
+                if reading.startswith(prefix) and len(reading) > len(prefix):
+                    found = (prefix, reading[len(prefix):])
+                    break
+            if found:
+                break
+        if found is None:
+            return None
+        lexical[value] = found
+    return lexical
+
+
+def compose_counter_reading(number, counter_reading, lexical):
+    # The reading of `number` (1-99) + counter, from the counter's own recorded sound changes
+    # (lexical) and, where it records none for a class of numerals, the plain default.
+    remainder = {}
+    geminates = None
+    for prefix, rest in lexical.values():
+        cls = counter_numeral_classes(prefix)
+        remainder.setdefault(cls, rest)
+        if cls == "x":
+            geminates = True
+    for value, (prefix, rest) in lexical.items():
+        if value in (1, 6, 8, 10) and counter_numeral_classes(prefix) == "v":
+            geminates = False if geminates is None else geminates
+    onset = counter_reading[0]
+    default_x = HIRAGANA_PLAIN_TO_SEMIVOICED.get(onset, onset) + counter_reading[1:]
+    if geminates is None:
+        geminates = onset in GEMINATING_ONSETS or onset in HIRAGANA_PLAIN_TO_SEMIVOICED
+    rest_x = remainder.get("x", default_x if geminates else counter_reading)
+    rest_n = remainder.get("n", rest_x if rest_x != counter_reading and geminates else counter_reading)
+    rest_v = remainder.get("v", counter_reading)
+
+    tens, unit = divmod(number, 10)
+    tens_reading = "" if tens == 0 else ("じゅう" if tens == 1 else DEFAULT_NUMERAL_READING[tens] + "じゅう")
+    if unit == 0:
+        if geminates:
+            return tens_reading[:-1] + "っ" + rest_x
+        return tens_reading + rest_v
+    lexical_unit = lexical.get(unit)
+    unit_reading = lexical_unit[0] if lexical_unit else DEFAULT_NUMERAL_READING[unit]
+    if tens > 0 and unit_reading.endswith("っ"):
+        unit_reading = {"いっ": "いち", "ろっ": "ろく", "はっ": "はち"}[unit_reading] if unit != 10 else unit_reading
+    if unit in (1, 6, 8) and geminates and unit_reading in ("いち", "ろく", "はち"):
+        unit_reading = unit_reading[:-1] + "っ"
+    cls = counter_numeral_classes(unit_reading)
+    rest = {"n": rest_n, "x": rest_x, "v": rest_v}[cls]
+    return tens_reading + unit_reading + rest
+
+
+def add_counter_compounds(conn):
+    # Numeral + counter written as one word (3発, 11本, ３分), for counters JMdict has no such
+    # compound for: the number belongs to the segment and the whole reads as one (さんぱつ, じゅういっぽん),
+    # not a bare number beside a counter. The spellings ride on the counter's entry as search-only
+    # forms (sK / sk) linked only to each other, so every lookup path finds them and no reading list
+    # shows them. Sound changes come from the compounds JMdict does list for that counter; a counter
+    # with an irregular one (日, 人) is left alone.
+    existing = {text for (text,) in conn.execute("SELECT text FROM kanji")}
+    counters = conn.execute(
+        """SELECT DISTINCT e.id, k.text FROM entries e
+           JOIN kanji k ON k.entry_id = e.id AND k.info IS NOT 'sK' AND length(k.text) = 1
+           JOIN senses s ON s.entry_id = e.id AND (',' || s.pos || ',') LIKE '%,ctr,%'
+           WHERE k.text NOT IN ('一','二','三','四','五','六','七','八','九','十')"""
+    ).fetchall()
+    added = 0
+    skipped_irregular = 0
+    for entry_id, counter_kanji in counters:
+        reading_row = conn.execute(
+            """SELECT kf.text, l.frequency_rank FROM kanji k
+               JOIN kanji_kana_links l ON l.kanji_id = k.id JOIN kana_forms kf ON kf.id = l.kana_id
+               WHERE k.entry_id = ? AND k.text = ? AND (kf.info IS NULL OR kf.info NOT LIKE '%sk%')
+               ORDER BY kf.id LIMIT 1""",
+            (entry_id, counter_kanji),
+        ).fetchone()
+        if reading_row is None:
+            continue
+        counter_reading, counter_rank = reading_row
+        lexical = counter_lexical_readings(conn, counter_kanji, {entry_id})
+        if lexical is None:
+            skipped_irregular += 1
+            continue
+        for number in range(1, 100):
+            digits = str(number)
+            surfaces = [digits + counter_kanji, "".join(chr(ord(ch) + 0xFEE0) for ch in digits) + counter_kanji]
+            if number <= 10:
+                surfaces.append("一二三四五六七八九十"[number - 1] + counter_kanji)
+            surfaces = [surface for surface in surfaces if surface not in existing]
+            if not surfaces:
+                continue
+            reading = compose_counter_reading(number, counter_reading, lexical)
+            kana_id = conn.execute(
+                "INSERT INTO kana_forms (text, entry_id, priority, info, re_nokanji) VALUES (?, ?, NULL, 'sk', 0)",
+                (reading, entry_id),
+            ).lastrowid
+            for surface in surfaces:
+                kanji_id = conn.execute(
+                    "INSERT INTO kanji (text, entry_id, priority, info) VALUES (?, ?, NULL, 'sK')",
+                    (surface, entry_id),
+                ).lastrowid
+                conn.execute(
+                    "INSERT INTO kanji_kana_links (kanji_id, kana_id, frequency_rank) VALUES (?, ?, ?)",
+                    (kanji_id, kana_id, counter_rank),
+                )
+                existing.add(surface)
+                COUNTER_COMPOUND_RANK_SOURCE[surface] = counter_kanji
+                added += 1
+    print(f"  Done: {added} number+counter spellings added ({skipped_irregular} counters skipped as irregular)")
+
+
 def import_frequency_ranks(conn):
     # Populates frequency_rank on kanji_kana_links from Jiten's global frequency list (fetched and
     # extracted by ensure_sources; see data-manifest.json). Only Shape B entries without the ㋕ marker
@@ -1057,6 +1244,28 @@ def import_frequency_ranks(conn):
             updated += 1
 
     print(f"  Done: {updated} kanji_kana_links updated with frequency rank")
+
+    # A digit spelling (1発) is the same word as its kanji form (一発): it takes that form's rank per
+    # reading, or the segmenter would price it as an unseen word and split the number off.
+    inherited = 0
+    digit_forms = conn.execute(
+        "SELECT id, entry_id, text FROM kanji WHERE info = 'sK' AND (text GLOB '[0-9]*' OR text GLOB '[０-９]*')"
+    ).fetchall()
+    for digit_id, entry_id, digit_text in digit_forms:
+        # The original spells the same remainder behind a kanji numeral (一 + 発 for 1発).
+        for original_id, original_text in conn.execute(
+            "SELECT id, text FROM kanji WHERE entry_id = ? AND id <> ? AND info IS NOT 'sK'", (entry_id, digit_id)
+        ).fetchall():
+            if original_text[1:] != digit_text[1:] or original_text[0] not in NUMERAL_DIGITS:
+                continue
+            inherited += conn.execute(
+                """UPDATE kanji_kana_links SET frequency_rank = (
+                       SELECT o.frequency_rank FROM kanji_kana_links o
+                       WHERE o.kanji_id = ? AND o.kana_id = kanji_kana_links.kana_id)
+                   WHERE kanji_id = ? AND frequency_rank IS NULL""",
+                (original_id, digit_id),
+            ).rowcount
+    print(f"  Done: {inherited} digit-spelling links took their kanji form's rank")
 
 
 def import_kanjidic2(conn):
@@ -1479,6 +1688,69 @@ def import_usage_tables(conn):
     conn.executemany("INSERT INTO reading_contexts VALUES (?, ?, ?, ?, ?)", tables["readings"])
     print(f"  Done: {len(tables['transitions'])} transition pairs from {tables['transition_sentences']} sentences; "
           f"{len(tables['readings'])} reading rows from {tables['sentences']}")
+
+
+# Writes sentence_tokens (entry_id, ja_id, surface): which dictionary entries each Tatoeba sentence uses
+# and how it is written there (突きつけられた for 突きつける), which the example list highlights,
+# so a word's examples are the sentences that contain the word, not every sentence that merely
+# contains its spelling (痛み inside 痛みます, which is 痛む). Tatoeba's Japanese indices tokenize every
+# sentence into JMdict headwords, marking a reading where a headword has several (方(かた)) and the
+# JMdict sequence number where two entries share both (が(#2028930)). A token resolves to the entry
+# with that sequence number, else to the entries holding its headword (a kanji or kana form), narrowed
+# to those with its reading when that leaves any. A headword shared by several entries keeps all of
+# them. Needs entries, kanji, kana_forms and sentence_pairs.
+def import_sentence_tokens(conn):
+    entry = load_manifest()["tatoeba-jpn-indices"]
+    archive = fetch_archive(entry)
+    token_pattern = re.compile(r"^(?P<head>[^(\[{~|]+)(?:\|\d+)?(?:\((?P<read>[^)]*)\))?(?:\[\d+\])?(?:\{(?P<surf>[^}]*)\})?")
+
+    def hiragana(text):
+        return "".join(chr(ord(c) - 0x60) if "ァ" <= c <= "ヶ" else c for c in text)
+
+    sequence_to_id = dict(conn.execute("SELECT ent_seq, id FROM entries"))
+    by_head = {}
+    kana_of = {}
+    for text, entry_id in conn.execute("SELECT text, entry_id FROM kanji"):
+        by_head.setdefault(text, set()).add(entry_id)
+    for text, entry_id in conn.execute("SELECT text, entry_id FROM kana_forms"):
+        by_head.setdefault(text, set()).add(entry_id)
+        kana_of.setdefault(entry_id, set()).add(hiragana(text))
+    sentence_ids = {ja_id for (ja_id,) in conn.execute("SELECT DISTINCT ja_id FROM sentence_pairs")}
+
+    rows = set()
+    unresolved = 0
+    with open_source_member(entry["fetch"], archive) as raw:
+        for line in io.TextIOWrapper(raw, encoding="utf-8-sig"):
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) < 3 or fields[0].isdigit() is False or int(fields[0]) not in sentence_ids:
+                continue
+            ja_id = int(fields[0])
+            for token in fields[2].split():
+                match = token_pattern.match(token)
+                if match is None:
+                    unresolved += 1
+                    continue
+                reading = match.group("read") or ""
+                if reading.startswith("#"):
+                    entry_id = sequence_to_id.get(int(reading[1:]) if reading[1:].isdigit() else -1)
+                    candidates = {entry_id} if entry_id is not None else set()
+                else:
+                    candidates = by_head.get(match.group("head"), set())
+                    if reading:
+                        wanted = hiragana(reading)
+                        candidates = {c for c in candidates if wanted in kana_of.get(c, ())} or candidates
+                if candidates:
+                    surface = match.group("surf") or match.group("head")
+                    rows.update((entry_id, ja_id, surface) for entry_id in candidates)
+                else:
+                    unresolved += 1
+    conn.execute("""
+        CREATE TABLE sentence_tokens (
+            entry_id INTEGER NOT NULL, ja_id INTEGER NOT NULL, surface TEXT NOT NULL,
+            PRIMARY KEY (entry_id, ja_id, surface)
+        ) WITHOUT ROWID""")
+    conn.executemany("INSERT INTO sentence_tokens VALUES (?, ?, ?)", sorted(rows))
+    print(f"  Done: {len(rows)} entry-sentence links; {unresolved} tokens matched no entry")
 
 
 def import_sentence_pairs(conn):
@@ -2353,6 +2625,7 @@ def build_database():
     with phase("Importing frequency data..."):
         import_wordfreq(conn)
         import_frequency_ranks(conn)
+        add_counter_compounds(conn)
 
     with phase("Decomposing multi-word headwords..."):
         import_entry_decomposition(conn)
@@ -2415,6 +2688,9 @@ def build_database():
 
     with phase("Counting transition costs and reading contexts (segcli)..."):
         import_usage_tables(conn)
+
+    with phase("Linking example sentences to the entries they use..."):
+        import_sentence_tokens(conn)
 
     with phase("Recording build provenance..."):
         record_build_provenance(conn)
@@ -2689,6 +2965,13 @@ def materialize_surface_frequency(conn):
     known_surfaces = {
         text for (text,) in conn.execute("SELECT text FROM kana_forms UNION SELECT text FROM kanji")
     }
+    # A digit spelling (1発) is ranked as its kanji spelling (一発): the list only measures the latter.
+    for kanji_text, rank in list(best_rank_by_surface.items()):
+        for digit_text in digit_spellings(kanji_text):
+            keep_best(digit_text, rank)
+    # Number + counter compounds (3発) are ranked as their counter.
+    for compound, counter_kanji in COUNTER_COMPOUND_RANK_SOURCE.items():
+        keep_best(compound, best_rank_by_surface.get(counter_kanji))
     conn.executescript(
         """
         DROP TABLE IF EXISTS surface_frequency;

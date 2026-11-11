@@ -192,8 +192,9 @@ extension WordDetailView {
                         ExampleSentenceView(
                             japanese: pair.japanese,
                             english: pair.english,
-                            highlightSurfaces: exampleHighlightSurfaces(for: entry),
+                            highlightSurfaces: (pair.highlight.map { [$0] } ?? []) + exampleHighlightSurfaces(for: entry),
                             acceptedReadings: exampleAcceptedReadings(for: entry),
+                            isHighlightVerified: pair.highlight != nil,
                             segmenter: segmenter,
                             surfaceReadingData: surfaceReadingData,
                             kanjiReadingFallback: kanjiReadingFallback,

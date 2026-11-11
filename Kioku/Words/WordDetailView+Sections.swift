@@ -83,14 +83,17 @@ extension WordDetailView {
         let extras = own.isEmpty ? [] : componentSentences.filter { extra in own.contains { $0.japanese == extra.japanese } == false }
         let unrouted = Array(own.prefix(1)) + extras + Array(own.dropFirst())
         if unrouted.isEmpty == false {
-            let shown = sentencesExpanded ? unrouted : Array(unrouted.prefix(1 + extras.count))
+            // Up to three examples show before the button; a multi-word form always shows its one per part.
+            let collapsedCount = max(3, 1 + extras.count)
+            let shown = sentencesExpanded ? unrouted : Array(unrouted.prefix(collapsedCount))
             Section("Examples") {
                 ForEach(shown, id: \.japanese) { pair in
                     ExampleSentenceView(
                         japanese: pair.japanese,
                         english: pair.english,
-                        highlightSurfaces: exampleHighlightSurfaces,
+                        highlightSurfaces: (pair.highlight.map { [$0] } ?? []) + exampleHighlightSurfaces,
                         acceptedReadings: exampleAcceptedReadings,
+                        isHighlightVerified: pair.highlight != nil,
                         segmenter: segmenter,
                         surfaceReadingData: surfaceReadingData,
                         kanjiReadingFallback: kanjiReadingFallback,
@@ -100,8 +103,8 @@ extension WordDetailView {
                         hasEntry: { exampleEntry(for: $0) != nil }
                     )
                 }
-                if unrouted.count > 1 + extras.count {
-                    Button(sentencesExpanded ? "Show fewer" : "Show \(unrouted.count - 1 - extras.count) more…") {
+                if unrouted.count > collapsedCount {
+                    Button(sentencesExpanded ? "Show fewer" : "Show \(unrouted.count - collapsedCount) more…") {
                         sentencesExpanded.toggle()
                     }
                     .font(.caption)

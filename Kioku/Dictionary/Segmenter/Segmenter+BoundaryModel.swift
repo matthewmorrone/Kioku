@@ -93,12 +93,16 @@ extension Segmenter {
     // and a join priced alike, so the model has no say there. Training masks the gaps no gold token
     // covers, and gold leaves numbers outside its tokens, so the model has never been taught a
     // digit–digit gap: its guess there is noise, and at its weight that noise split ２０２ into ２０|２
-    // (a dictionary entry plus a digit).
+    // (a dictionary entry plus a digit). The gap between a digit and a kanji (３|発) gets the same
+    // treatment: gold keeps the number outside the counter, so the model learned to cut there, and
+    // that cut would split a number + counter the dictionary spells as one word (３発 さんぱつ).
     static func withoutDigitGapVerdicts(_ probabilities: [Double], in text: String) -> [Double] {
         let characters = Array(text)
         var adjusted = probabilities
         for gap in 1..<characters.count where gap - 1 < adjusted.count {
-            if BoundaryFeatures.scriptClass(characters[gap - 1]) == 5, BoundaryFeatures.scriptClass(characters[gap]) == 5 {
+            let before = BoundaryFeatures.scriptClass(characters[gap - 1])
+            let after = BoundaryFeatures.scriptClass(characters[gap])
+            if before == 5, after == 5 || after == 0 {
                 adjusted[gap - 1] = 0.5
             }
         }

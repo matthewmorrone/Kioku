@@ -21,6 +21,9 @@ struct ExampleSentenceView: View {
     // read otherwise (5日 as にち or にっかん under いつか) is another word's example, so it is hidden.
     // Empty means no such check.
     var acceptedReadings: [String] = []
+    // True when `highlightSurfaces` leads with the exact token the dictionary's index marks as the word. That
+    // token is already the right word in the right reading, so the reading and longer-word checks are skipped.
+    var isHighlightVerified = false
     let segmenter: (any TextSegmenting)?
     let surfaceReadingData: SurfaceReadingDataMap
     let kanjiReadingFallback: KanjiReadingFallbackMap
@@ -39,13 +42,18 @@ struct ExampleSentenceView: View {
     // UTF-16 ranges of the segments that open an entry, resolved once alongside the cache.
     @State private var underlinedRanges: [NSRange] = []
 
-    // Height of the ruby band above the first text line when furigana is rendered, so the
-    // leading speaker button can align with the first HEADWORD line instead of the ruby.
-    // Zero on the plain-text fallback path.
+    // Distance from the top of the renderer to the first text line when furigana is rendered, so the
+    // leading speaker button can align with the first HEADWORD line instead of the ruby. It comes from
+    // the same RenderGeometry the renderer places its lines with. Zero on the plain-text fallback path.
     private var speakerTopInset: CGFloat {
         guard let cache, cache.furiganaBySegmentLocation.isEmpty == false else { return 0 }
-        let rubyFont = UIFont.systemFont(ofSize: textSize * TypographySettings.furiganaSizeFactor)
-        return ceil(rubyFont.lineHeight) + CGFloat(furiganaGap)
+        return RenderGeometry.resolve(textSize: textSize, userLineSpacing: 4, furiganaGap: furiganaGap).topInset
+    }
+
+    // Height of one line of the sentence text; the speaker is centred in a box this tall so it sits on
+    // the middle of the first line.
+    private var firstLineHeight: CGFloat {
+        ceil(UIFont.systemFont(ofSize: textSize).lineHeight)
     }
 
     // The sentence as the speaker should say it: every kanji run replaced by the furigana shown over
@@ -87,7 +95,7 @@ struct ExampleSentenceView: View {
     // counts whole, so it matches only when it contains an accepted reading. Kana highlights carry no
     // ruby, so they never mismatch.
     private var isReadingMismatch: Bool {
-        guard acceptedReadings.isEmpty == false, let cache, let range = highlightRange else { return false }
+        guard isHighlightVerified == false, acceptedReadings.isEmpty == false, let cache, let range = highlightRange else { return false }
         let ruby = cache.furiganaBySegmentLocation
             .filter { location, _ in
                 let length = cache.furiganaLengthBySegmentLocation[location] ?? 1
@@ -98,14 +106,25 @@ struct ExampleSentenceView: View {
             .joined()
         guard ruby.isEmpty == false else { return false }
         let shown = KanaNormalizer.katakanaToHiragana(ruby)
-        return acceptedReadings.map(KanaNormalizer.katakanaToHiragana).contains { shown.contains($0) } == false
+        // Ruby covers only the kanji of a word, so a word with okurigana (痛み) shows いた while its
+        // reading is いたみ; the accepted readings are compared with that trailing kana removed too.
+        let surface = (japanese as NSString).substring(with: range)
+        let okurigana = String(surface.reversed().prefix { ScriptClassifier.isPureKana(String($0)) }.reversed())
+        let accepted = acceptedReadings.map(KanaNormalizer.katakanaToHiragana)
+        let stems = accepted.compactMap { reading -> String? in
+            let kana = KanaNormalizer.katakanaToHiragana(okurigana)
+            return okurigana.isEmpty == false && reading.hasSuffix(kana) ? String(reading.dropLast(kana.count)) : nil
+        }
+        // A stem must equal the ruby exactly: stems can be a single kana and would otherwise match
+        // inside unrelated readings.
+        return accepted.contains { shown.contains($0) } == false && stems.contains(shown) == false
     }
 
     // True when a kana highlight sits inside a longer word of the sentence (よ inside よる, の inside
     // のんびり): that sentence is an example of the longer word, not of the one being shown. Kanji
     // highlights are left to the reading check above.
     private var isHighlightInsideLongerWord: Bool {
-        guard let cache, let range = highlightRange,
+        guard isHighlightVerified == false, let cache, let range = highlightRange,
               ScriptClassifier.isPureKana((japanese as NSString).substring(with: range)) else { return false }
         return cache.segmentationRanges.contains { segment in
             let segmentRange = NSRange(segment, in: japanese)
@@ -137,6 +156,7 @@ struct ExampleSentenceView: View {
                 } label: {
                     Image(systemName: "speaker.wave.2")
                         .font(.subheadline)
+                        .frame(height: firstLineHeight)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
@@ -256,14 +276,17 @@ struct ExampleSentenceView: View {
         )
     }
 
-    // The segments whose surface has a dictionary entry, minus any touching the highlighted subject
-    // word (already accent-colored), as UTF-16 ranges for the underline.
+    // The segments whose surface has a dictionary entry, as UTF-16 ranges for the underline. The
+    // highlighted subject word is accent-colored instead of underlined, so a segment it covers is left
+    // out; a segment that reaches past it (3発 with 発 highlighted) is one word and is underlined whole,
+    // so the number is not left bare beside the counter.
     private func entryBackedRanges(in segments: [Range<String.Index>]) -> [NSRange] {
         guard let hasEntry else { return [] }
         let subject = highlightRange
         return segments.compactMap { segment in
             let range = NSRange(segment, in: japanese)
-            if let subject, NSIntersectionRange(range, subject).length > 0 { return nil }
+            if let subject, NSIntersectionRange(range, subject).length > 0,
+               NSEqualRanges(NSIntersectionRange(range, subject), range) { return nil }
             return hasEntry(String(japanese[segment])) ? range : nil
         }
     }

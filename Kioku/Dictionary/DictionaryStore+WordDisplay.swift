@@ -31,7 +31,12 @@ extension DictionaryStore {
         if entry.kanjiForms.isEmpty {
             terms += entry.kanaForms.map(\.text)
         }
-        let sentences = try fetchSentencePairs(terms: terms)
+        // The sentences that use this entry; the spelling scan only when none are indexed (an older
+        // dictionary, or a word Tatoeba's index never tokenized).
+        var sentences = try fetchIndexedSentencePairs(entryID: entryID)
+        if sentences.isEmpty {
+            sentences = try fetchSentencePairs(terms: terms)
+        }
 
         return WordDisplayData(entry: entry, pitchAccents: pitchAccents, sentences: sentences)
     }

@@ -634,13 +634,13 @@ extension WordDetailView {
 
     // A single reading chip. Kun'yomi readings mark the boundary between the kanji's core
     // reading and its okurigana (the inflecting kana suffix) with a "." (e.g. う.まれる) — rather
-    // than print that dot, the stem is colored differently from the okurigana so the split reads
+    // than print that dot, the stem is orange and the okurigana plain so the split reads
     // at a glance without the visual noise of a literal period.
     @ViewBuilder
     private func readingChip(_ reading: String) -> some View {
         let parts = reading.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
         let text: Text = parts.count == 2
-            ? Text(String(parts[0])).foregroundStyle(.primary) + Text(String(parts[1])).foregroundStyle(.orange)
+            ? Text(String(parts[0])).foregroundStyle(.orange) + Text(String(parts[1])).foregroundStyle(.primary)
             : Text(reading).foregroundStyle(.primary)
         text
             .font(.caption.weight(.medium))
