@@ -41,6 +41,9 @@ struct ExampleSentenceView: View {
     @State private var cache: LineFuriganaCache?
     // UTF-16 ranges of the segments that open an entry, resolved once alongside the cache.
     @State private var underlinedRanges: [NSRange] = []
+    // The highlighted word with the number written before it in the same segment (3発), accent-colored
+    // and left without an underline as one unit. Nil until the sentence is segmented.
+    @State private var accentRange: NSRange?
 
     // Distance from the top of the renderer to the first text line when furigana is rendered, so the
     // leading speaker button can align with the first HEADWORD line instead of the ruby. It comes from
@@ -204,7 +207,7 @@ struct ExampleSentenceView: View {
                 unknownSegmentColor: .label,
                 // Accent TEXT for the target word, not a highlight band — matches the plain
                 // fallback's accent-colored run.
-                accentTextRange: highlightRange,
+                accentTextRange: accentRange ?? highlightRange,
                 accentTextColor: .init(Color.accentColor),
                 underlinedRanges: underlinedRanges,
                 debugFlags: KiokuDebugOverlayView.Flags(),
@@ -267,6 +270,7 @@ struct ExampleSentenceView: View {
         )
         let split = splitRubyAtHighlight(byLocation: resolved.byLocation, lengthByLocation: resolved.lengthByLocation)
         let ranges = edges.map { $0.start..<$0.end }
+        accentRange = accentRangeIncludingNumber(in: ranges)
         underlinedRanges = entryBackedRanges(in: ranges)
         cache = LineFuriganaCache(
             sourceText: japanese,
@@ -276,17 +280,30 @@ struct ExampleSentenceView: View {
         )
     }
 
-    // The segments whose surface has a dictionary entry, as UTF-16 ranges for the underline. The
-    // highlighted subject word is accent-colored instead of underlined, so a segment it covers is left
-    // out; a segment that reaches past it (3発 with 発 highlighted) is one word and is underlined whole,
-    // so the number is not left bare beside the counter.
+    // The highlighted word widened over the digits that precede it in its own segment: 3発 is one word
+    // (さんぱつ), so the 3 takes the accent colour with the 発 rather than sitting beside it plain.
+    // Nil when the highlight is absent or its segment holds more than digits before it.
+    private func accentRangeIncludingNumber(in segments: [Range<String.Index>]) -> NSRange? {
+        guard let subject = highlightRange else { return nil }
+        for segment in segments {
+            let range = NSRange(segment, in: japanese)
+            guard range.location < subject.location, NSLocationInRange(subject.location, range),
+                  subject.upperBound <= range.upperBound else { continue }
+            let lead = (japanese as NSString).substring(with: NSRange(location: range.location, length: subject.location - range.location))
+            guard lead.isEmpty == false, lead.allSatisfy({ $0.isNumber }) else { return nil }
+            return NSRange(location: range.location, length: subject.upperBound - range.location)
+        }
+        return nil
+    }
+
+    // The segments whose surface has a dictionary entry, as UTF-16 ranges for the underline, minus
+    // any touching the accent-colored highlighted word (which is marked by colour instead).
     private func entryBackedRanges(in segments: [Range<String.Index>]) -> [NSRange] {
         guard let hasEntry else { return [] }
-        let subject = highlightRange
+        let subject = accentRange ?? highlightRange
         return segments.compactMap { segment in
             let range = NSRange(segment, in: japanese)
-            if let subject, NSIntersectionRange(range, subject).length > 0,
-               NSEqualRanges(NSIntersectionRange(range, subject), range) { return nil }
+            if let subject, NSIntersectionRange(range, subject).length > 0 { return nil }
             return hasEntry(String(japanese[segment])) ? range : nil
         }
     }
