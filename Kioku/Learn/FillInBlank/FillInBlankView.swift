@@ -140,6 +140,20 @@ struct FillInBlankView: View {
                 .font(.largeTitle.weight(.bold))
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
+                .overlay(alignment: .topTrailing) {
+                    // Escape hatch: Check is disabled on an empty field, so without this a blanked
+                    // question the user can't answer would strand the whole session. Kept on the
+                    // prompt line, away from Check.
+                    if verdict == nil {
+                        Button { reveal(question: question) } label: {
+                            Image(systemName: "eye")
+                                .font(.title3)
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Show Answer")
+                    }
+                }
 
             if let verdict {
                 feedback(for: verdict, correct: question.correct)
@@ -160,14 +174,6 @@ struct FillInBlankView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(typedAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                // Escape hatch: Check is disabled on an empty field, so without this a blanked
-                // question the user can't answer would strand the whole session.
-                Button { reveal(question: question) } label: {
-                    Label("Show Answer", systemImage: "eye")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
             }
         }
         .onAppear { isFocused = true }
