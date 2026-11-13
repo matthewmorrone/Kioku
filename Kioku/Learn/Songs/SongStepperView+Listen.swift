@@ -132,7 +132,7 @@ extension SongStepperView {
             // Listen-along opens cards itself, so a line it already expanded counts by how it
             // stood before it got there.
             let wasExpanded = expansionBeforeListen[lineIndex] ?? expandedByLineIndex.contains(lineIndex)
-            return wordWalk.walksWords(lineIsExpanded: wasExpanded)
+            return BreakdownListenSettings.currentWordWalk().walksWords(lineIsExpanded: wasExpanded)
         }
         liveListen.nowPlayingTitle = note.resolvedTitle
         liveListen.configure(steps: steps, sourceAudioURL: listenSourceAudioURL, originalByLineIndex: originalByIndex, lineCues: lineCues)

@@ -26,6 +26,15 @@ nonisolated enum BreakdownListenSettings {
     static let wordWalkKey = "breakdown.listen.wordWalk"
 
     static let defaultWordWalk = BreakdownWordWalk.yes
+
+    // The word-walk choice as stored right now. The controller asks this on every word step from a
+    // closure that outlives the view value that made it, so it reads UserDefaults itself rather
+    // than a captured @AppStorage copy, which can hold the value from when the closure was built.
+    static func currentWordWalk() -> BreakdownWordWalk {
+        guard let raw = UserDefaults.standard.string(forKey: wordWalkKey),
+              let choice = BreakdownWordWalk(rawValue: raw) else { return defaultWordWalk }
+        return choice
+    }
     static let defaultPauseAfterLine = false
     static let defaultWordRepeatCount = 1
     static let defaultRepeatEarlierWords = true
