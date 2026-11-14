@@ -52,6 +52,22 @@ enum SegmentRangeRestoration {
         return byLocation
     }
 
+    // The readings the user pinned, from persisted segments flagged `readingPinned`: every furigana
+    // entry of a flagged segment, keyed by its absolute UTF-16 location.
+    static func pinnedFuriganaFromSegmentRanges(_ segments: [SegmentRange]) -> [Int: String] {
+        var byLocation: [Int: String] = [:]
+        var cursor = 0
+        for segment in segments {
+            if segment.readingPinned == true, let annotations = segment.furigana {
+                for annotation in annotations where annotation.end > annotation.start {
+                    byLocation[cursor + annotation.start] = annotation.reading
+                }
+            }
+            cursor += segment.surface.utf16.count
+        }
+        return byLocation
+    }
+
     // Extracts absolute-offset furigana maps from persisted order-only segments by walking
     // the surface cursor. Annotations are stored segment-relative and rebased here.
     static func furiganaFromSegmentRanges(_ segments: [SegmentRange]) -> (byLocation: [Int: String], lengthByLocation: [Int: Int]) {

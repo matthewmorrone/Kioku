@@ -91,4 +91,32 @@ final class FuriganaSongLineRegressionTests: XCTestCase {
         )
         XCTAssertEqual(locations, [3])
     }
+
+    // A pin counts only while the entry still holds the pinned reading: 止 pinned や survives a
+    // merge, but a pin whose entry was since replaced (or cleared) no longer does.
+    func testPinnedFuriganaLocationsRequireTheSameReading() {
+        let pinned = ReadView.pinnedFuriganaLocations(
+            pinnedReadingByLocation: [2: "や", 5: "や"],
+            readingByLocation: [2: "や", 5: "と"]
+        )
+        XCTAssertEqual(pinned, [2])
+    }
+
+    // The pin flag round-trips through the saved segments: a segment holding a pinned entry is
+    // flagged, an unpinned one is not, and loading rebuilds the pinned readings by location.
+    func testPinFlagRoundTripsThroughSegmentRanges() {
+        let text = "鳴り止まぬ"
+        let nari = LatticeEdge(start: text.startIndex, end: text.index(text.startIndex, offsetBy: 2), surface: "鳴り")
+        let yamanu = LatticeEdge(start: text.index(text.startIndex, offsetBy: 2), end: text.endIndex, surface: "止まぬ")
+        let segments = SegmentRange.ranges(
+            from: [nari, yamanu],
+            in: text,
+            furiganaByLocation: [0: "な", 2: "や"],
+            furiganaLengthByLocation: [0: 1, 2: 1],
+            pinnedFuriganaLocations: [2]
+        )
+        XCTAssertNil(segments[0].readingPinned)
+        XCTAssertEqual(segments[1].readingPinned, true)
+        XCTAssertEqual(SegmentRangeRestoration.pinnedFuriganaFromSegmentRanges(segments), [2: "や"])
+    }
 }

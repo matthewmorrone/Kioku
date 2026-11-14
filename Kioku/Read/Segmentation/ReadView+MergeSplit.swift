@@ -155,10 +155,28 @@ extension ReadView {
     // the default さま of a lone 様 would outlive a merge into の様に (read のように) as if the user
     // had pinned it. Entries inside the merged ranges stay in place for compound synthesis (月色)
     // when the merged surface has no dictionary reading of its own.
+    // A reading the user pinned inside the range is not marked: it is theirs, not a default, so
+    // the merged word's computed reading backfills around it instead of replacing it.
     func markFuriganaReplaceable(inside ranges: [NSRange]) {
+        let pinned = Self.pinnedFuriganaLocations(
+            pinnedReadingByLocation: document.pinnedFuriganaReadingByLocation,
+            readingByLocation: document.furiganaBySegmentLocation
+        )
         document.synthesizedFuriganaLocations.formUnion(
             Self.furiganaLocations(inside: ranges, lengthByLocation: document.furiganaLengthBySegmentLocation)
+                .subtracting(pinned)
         )
+    }
+
+    // The locations whose current reading is still the one the user pinned there. Static so the
+    // rule is testable without a live view.
+    static func pinnedFuriganaLocations(
+        pinnedReadingByLocation: [Int: String],
+        readingByLocation: [Int: String]
+    ) -> Set<Int> {
+        Set(pinnedReadingByLocation.compactMap { location, reading in
+            readingByLocation[location] == reading ? location : nil
+        })
     }
 
     // The furigana entries that lie wholly inside any of `ranges`. Static so the containment rule

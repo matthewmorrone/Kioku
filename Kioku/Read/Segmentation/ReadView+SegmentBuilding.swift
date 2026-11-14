@@ -123,7 +123,11 @@ extension ReadView {
             in: sourceText ?? document.text,
             furiganaByLocation: furiganaByLocation,
             furiganaLengthByLocation: furiganaLengthByLocation,
-            chosenEntryIDByLocation: document.chosenEntryIDBySegmentLocation
+            chosenEntryIDByLocation: document.chosenEntryIDBySegmentLocation,
+            pinnedFuriganaLocations: Self.pinnedFuriganaLocations(
+                pinnedReadingByLocation: document.pinnedFuriganaReadingByLocation,
+                readingByLocation: furiganaByLocation
+            )
         )
     }
 
@@ -341,6 +345,11 @@ extension ReadView {
     // to SegmentRangeRestoration — see normalizedSegmentRanges above for why.
     func furiganaFromSegmentRanges(_ segments: [SegmentRange]) -> (byLocation: [Int: String], lengthByLocation: [Int: Int]) {
         SegmentRangeRestoration.furiganaFromSegmentRanges(segments)
+    }
+
+    // The readings the user pinned, from persisted segments flagged readingPinned.
+    func pinnedFuriganaFromSegmentRanges(_ segments: [SegmentRange]) -> [Int: String] {
+        SegmentRangeRestoration.pinnedFuriganaFromSegmentRanges(segments)
     }
 
     // The user's word picks from persisted segments, keyed by UTF-16 segment start.

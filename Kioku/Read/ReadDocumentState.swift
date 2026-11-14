@@ -48,6 +48,13 @@ final class ReadDocumentState {
     // character dict concat — precise enough to spare LLM pins (whose value diverges from
     // the concat) but aggressive enough to recover disk state poisoned by pre-gate code.
     var synthesizedFuriganaLocations: Set<Int> = []
+    // Readings the user pinned with the lookup sheet, keyed by the entry's UTF-16 location. A pin
+    // only counts while the furigana map still holds that same reading at that location, so a
+    // cleared, replaced or text-shifted entry stops counting without every reset having to prune
+    // this. A merge consults it so the dictionary's reading for the merged word doesn't overwrite
+    // a pin on one of its pieces (止まぬ pinned やまぬ, then merged into 鳴り止まぬ). Persisted as
+    // SegmentRange.readingPinned and rebuilt from the saved segments when a note loads.
+    var pinnedFuriganaReadingByLocation: [Int: String] = [:]
     var furiganaComputationTask: Task<Void, Never>?
 
     // Cache for the saved-highlight set so it isn't recomputed (dictionary-lookup sweep) on

@@ -53,6 +53,7 @@ extension ReadView {
         if let selectedSurface {
             for (targetLocation, _) in targets {
                 applyPerRunFurigana(surface: selectedSurface, reading: reading, at: targetLocation)
+                recordPinnedFurigana(inside: NSRange(location: targetLocation, length: surfaceLength))
             }
         }
         // A pinned reading is a genuine user edit — enable the reset button.
@@ -65,6 +66,16 @@ extension ReadView {
         if let selectedSurface {
             let isDictionaryReading = SegmentLookupSheet.shared.readingsForArrows.contains(reading)
             recordLookupHistory(surface: selectedSurface, reading: isDictionaryReading ? reading : nil)
+        }
+    }
+
+    // Remembers the entries just written inside `range` as user pins, so a later merge keeps them
+    // (see markFuriganaReplaceable) instead of treating them as replaceable defaults.
+    func recordPinnedFurigana(inside range: NSRange) {
+        for location in Self.furiganaLocations(inside: [range], lengthByLocation: document.furiganaLengthBySegmentLocation) {
+            if let reading = document.furiganaBySegmentLocation[location] {
+                document.pinnedFuriganaReadingByLocation[location] = reading
+            }
         }
     }
 
@@ -121,6 +132,7 @@ extension ReadView {
     func resetSegmentationToComputed() {
         document.segments = nil
         document.chosenEntryIDBySegmentLocation = [:]
+        document.pinnedFuriganaReadingByLocation = [:]
         document.hasManualSegmentationEdits = false
         segmentSelection.illegalMergeBoundaryLocation = nil
         segmentSelection.illegalMergeFlashTask?.cancel()
@@ -256,6 +268,7 @@ extension ReadView {
                     let spliced = segmentsAfterEdit(persistedSegments, computedEdges: baseEdges, in: sourceText)
                     refreshedEdges = spliced.flatMap { edgesFromSegmentRanges($0, in: sourceText) } ?? baseEdges
                     document.chosenEntryIDBySegmentLocation = spliced.map(chosenEntryIDsFromSegmentRanges) ?? [:]
+                    document.pinnedFuriganaReadingByLocation = spliced.map(pinnedFuriganaFromSegmentRanges) ?? [:]
                     persistsSplicedSegments = true
                 } else if let persistedSegments,
                    let overriddenEdges = edgesFromSegmentRanges(persistedSegments, in: sourceText) {

@@ -82,6 +82,7 @@ extension ReadView {
         document.furiganaBySegmentLocation = restored.byLocation
         document.furiganaLengthBySegmentLocation = restored.lengthByLocation
         document.chosenEntryIDBySegmentLocation = segments.map(chosenEntryIDsFromSegmentRanges) ?? [:]
+        document.pinnedFuriganaReadingByLocation = segments.map(pinnedFuriganaFromSegmentRanges) ?? [:]
         document.text = text
         // The song's saved alignment carries its own copy of each line; it gets the same edit, and
         // the cue ranges are re-resolved because the note text just changed length.

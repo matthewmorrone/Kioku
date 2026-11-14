@@ -119,10 +119,12 @@ extension ReadView {
                         document.furiganaBySegmentLocation = restored.byLocation
                         document.furiganaLengthBySegmentLocation = restored.lengthByLocation
                         document.chosenEntryIDBySegmentLocation = chosenEntryIDsFromSegmentRanges(reconciled)
+                        document.pinnedFuriganaReadingByLocation = pinnedFuriganaFromSegmentRanges(reconciled)
                     } else {
                         document.furiganaBySegmentLocation = [:]
                         document.furiganaLengthBySegmentLocation = [:]
                         document.chosenEntryIDBySegmentLocation = [:]
+                        document.pinnedFuriganaReadingByLocation = [:]
                     }
                     scheduleCurrentNotePersistenceIfNeeded()
                     return

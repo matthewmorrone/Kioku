@@ -19,12 +19,23 @@ nonisolated struct SegmentRange: Codable, Equatable, Hashable {
     // segmenter runs in edit mode), and segmented with the whole text's context the next time the
     // note is shown. Nil otherwise.
     var needsSegmentation: Bool?
+    // True when the user set this segment's furigana themselves (the lookup sheet's reading
+    // picker), as opposed to a computed default. A merge keeps a pinned reading instead of
+    // letting the merged word's dictionary reading replace it. Nil otherwise.
+    var readingPinned: Bool?
 
-    init(surface: String, furigana: [FuriganaAnnotation]? = nil, chosenEntryID: Int64? = nil, needsSegmentation: Bool? = nil) {
+    init(
+        surface: String,
+        furigana: [FuriganaAnnotation]? = nil,
+        chosenEntryID: Int64? = nil,
+        needsSegmentation: Bool? = nil,
+        readingPinned: Bool? = nil
+    ) {
         self.surface = surface
         self.furigana = furigana
         self.chosenEntryID = chosenEntryID
         self.needsSegmentation = needsSegmentation
+        self.readingPinned = readingPinned
     }
 
     // Reconstructs a segment's full reading (kanji-run readings interleaved with its own literal

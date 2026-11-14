@@ -54,6 +54,7 @@ extension ReadView {
             document.furiganaBySegmentLocation = [:]
             document.furiganaLengthBySegmentLocation = [:]
             document.chosenEntryIDBySegmentLocation = [:]
+            document.pinnedFuriganaReadingByLocation = [:]
             segmentSelection.illegalMergeBoundaryLocation = nil
             SegmentLookupSheet.shared.dismissPopover()
             document.isLoadingSelectedNote = false
@@ -137,6 +138,7 @@ extension ReadView {
                 document.furiganaBySegmentLocation = restoredFurigana.byLocation
                 document.furiganaLengthBySegmentLocation = restoredFurigana.lengthByLocation
                 document.chosenEntryIDBySegmentLocation = chosenEntryIDsFromSegmentRanges(loadedSegments)
+                document.pinnedFuriganaReadingByLocation = pinnedFuriganaFromSegmentRanges(loadedSegments)
                 // Backfill semantics preserve restored annotations while filling gaps; early-returns
                 // on kana-only edge sets so kana notes don't trigger a prompt.
                 scheduleFuriganaGeneration(for: document.text, edges: edges)
@@ -157,6 +159,7 @@ extension ReadView {
                 document.furiganaBySegmentLocation = restoredFurigana.byLocation
                 document.furiganaLengthBySegmentLocation = restoredFurigana.lengthByLocation
                 document.chosenEntryIDBySegmentLocation = chosenEntryIDsFromSegmentRanges(loadedSegments)
+                document.pinnedFuriganaReadingByLocation = pinnedFuriganaFromSegmentRanges(loadedSegments)
             }
             // Defer the segmentation kickoff by one main-actor turn so SwiftUI can
             // commit the plain-text frame FIRST. The CoreText builder already draws
@@ -196,6 +199,7 @@ extension ReadView {
         document.furiganaBySegmentLocation = [:]
         document.furiganaLengthBySegmentLocation = [:]
         document.chosenEntryIDBySegmentLocation = [:]
+        document.pinnedFuriganaReadingByLocation = [:]
     }
 
     // Saves the in-memory editor state to storage and maintains active note identity.

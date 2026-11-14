@@ -11,7 +11,8 @@ extension SegmentRange {
         in sourceText: String,
         furiganaByLocation: [Int: String] = [:],
         furiganaLengthByLocation: [Int: Int] = [:],
-        chosenEntryIDByLocation: [Int: Int64] = [:]
+        chosenEntryIDByLocation: [Int: Int64] = [:],
+        pinnedFuriganaLocations: Set<Int> = []
     ) -> [SegmentRange] {
         edges.compactMap { edge in
             let nsRange = NSRange(edge.start..<edge.end, in: sourceText)
@@ -28,10 +29,18 @@ extension SegmentRange {
                 return FuriganaAnnotation(start: relativeStart, end: relativeStart + length, reading: reading)
             }.sorted { $0.start < $1.start }
 
+            // A segment is flagged when any of its furigana entries is a user pin.
+            let hasPinnedReading = furiganaByLocation.keys.contains { location in
+                guard pinnedFuriganaLocations.contains(location),
+                      let length = furiganaLengthByLocation[location] else { return false }
+                return location >= segStart && location + length <= segEnd
+            }
+
             return SegmentRange(
                 surface: edge.surface,
                 furigana: annotations.isEmpty ? nil : annotations,
-                chosenEntryID: chosenEntryIDByLocation[segStart]
+                chosenEntryID: chosenEntryIDByLocation[segStart],
+                readingPinned: hasPinnedReading ? true : nil
             )
         }
     }
