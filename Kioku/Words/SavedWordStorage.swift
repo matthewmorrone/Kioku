@@ -70,7 +70,10 @@ nonisolated enum SavedWordStorage {
                     encounteredSurfaces: mergedEncountered,
                     entSeq: existing.entSeq ?? entry.entSeq,
                     hasBeenOrphaned: existing.hasBeenOrphaned || entry.hasBeenOrphaned,
-                    selectedReading: mergedReading
+                    selectedReading: mergedReading,
+                    sourceSpots: existing.sourceSpots + entry.sourceSpots.filter { spot in
+                        existing.sourceSpots.contains { $0.noteID == spot.noteID } == false
+                    }
                 )
                 mergedByEntryID[entry.canonicalEntryID] = existing
                 continue

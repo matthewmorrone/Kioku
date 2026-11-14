@@ -107,6 +107,9 @@ struct WordDetailView: View {
         compositeGlossLemmaLine?.components(separatedBy: " + ").first.flatMap { $0.isEmpty ? nil : $0 } ?? word.surface
     }
     @State var showingCompositeGlossInfo = false
+    // Where this word occurs in each source note (starred spot first), found off the main thread by
+    // loadSourceOccurrences. Empty until it lands, so the Saved section shows the note title first.
+    @State var sourceOccurrences: [UUID: [NoteWordOccurrence]] = [:]
     // Each word the lemma line names (起こる + そう) with its meaning and entry, shown on one line
     // under the whole-form meaning like the lookup sheet's. Empty for a single-word lemma line.
     @State var kanjiInfos: [KanjiInfo] = []
@@ -614,6 +617,9 @@ struct WordDetailView: View {
         .task(id: "\(dictionaryStore != nil)|\(activeEntryID)|\(word.surface)") {
             await loadDisplayData()
             onSameSpellingReady?()
+        }
+        .task(id: "\(activeEntryID)|\(savedDisplayData?.entry.entryId ?? 0)|\(currentSavedWord.sourceNoteIDs.count)") {
+            await loadSourceOccurrences()
         }
     }
 }

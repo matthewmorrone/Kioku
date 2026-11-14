@@ -612,11 +612,11 @@ extension WordDetailView {
                         VStack(alignment: .leading, spacing: 4) {
                             Label(note.title, systemImage: "doc.text")
                                 .font(.subheadline)
-                            // The note's lines the word occurs in, so the source shows its context.
-                            ForEach(originLines(in: note), id: \.self) { line in
-                                Text(line)
+                            // The note's lines the word occurs in (the starred one first), so the source shows its context.
+                            ForEach(Array(originLines(in: note).enumerated()), id: \.offset) { _, line in
+                                Text(line.text)
                                     .font(.footnote)
-                                    .foregroundStyle(.primary)
+                                    .foregroundStyle(line.isPointed ? .primary : .secondary)
                                     .padding(.leading, 28)
                             }
                         }

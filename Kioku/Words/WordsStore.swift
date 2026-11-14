@@ -409,6 +409,7 @@ final class WordsStore: ObservableObject {
         let updated = words.map { word in
             var detached = word
             detached.sourceNoteIDs.removeAll { noteIDs.contains($0) }
+            detached.sourceSpots.removeAll { noteIDs.contains($0.noteID) }
             // Explicitly preserved rather than deleted (see the comment above), so if that
             // leaves it with zero attribution it's now a genuine orphan going forward.
             if detached.sourceNoteIDs.isEmpty {
@@ -463,7 +464,10 @@ final class WordsStore: ObservableObject {
             learnedMark: existing?.learnedMark ?? old.learnedMark,
             mastered: existing?.mastered ?? old.mastered,
             markedWrong: existing?.markedWrong ?? old.markedWrong,
-            reviewStats: existing?.reviewStats ?? old.reviewStats
+            reviewStats: existing?.reviewStats ?? old.reviewStats,
+            sourceSpots: old.sourceSpots + (existing?.sourceSpots ?? []).filter { spot in
+                old.sourceSpots.contains { $0.noteID == spot.noteID } == false
+            }
         )
 
         // Keep the card roughly where the old one sat; drop both old and any target collision first.
@@ -495,6 +499,7 @@ final class WordsStore: ObservableObject {
             guard word.canonicalEntryID == wordID, word.sourceNoteIDs.contains(noteID) else { return word }
             var updated = word
             updated.sourceNoteIDs.removeAll { $0 == noteID }
+            updated.sourceSpots.removeAll { $0.noteID == noteID }
             // Never deleted here, so a drop to zero attribution is a real orphan going forward.
             if updated.sourceNoteIDs.isEmpty {
                 updated.hasBeenOrphaned = true
@@ -603,6 +608,7 @@ final class WordsStore: ObservableObject {
         storedSurface: String,
         encounteredSurface: String? = nil,
         sourceNoteID: UUID? = nil,
+        sourceSpot: SourceSpot? = nil,
         defaultSenseIDs: [Int64] = []
     ) {
         var entries = words
@@ -615,7 +621,10 @@ final class WordsStore: ObservableObject {
                     surface: storedSurface,
                     sourceNoteIDs: sourceNoteID.map { [$0] } ?? [],
                     selectedSenseIDs: defaultSenseIDs,
-                    encounteredSurfaces: [encounteredSurface ?? storedSurface]
+                    // Both forms: the lemma it is stored under and the form actually met in the text,
+                    // since the source note's line preview and jump-to-word search by these.
+                    encounteredSurfaces: [storedSurface, encounteredSurface ?? storedSurface],
+                    sourceSpots: sourceSpot.map { [$0] } ?? []
                 )
             )
         }

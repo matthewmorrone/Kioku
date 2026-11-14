@@ -675,10 +675,23 @@ extension ReadView {
         wordsStore.toggle(
             canonicalEntryID: entry.entryId,
             storedSurface: key,
-            encounteredSurface: key,
+            // The form as written in the note (りりしく), not just the lemma (りりしい): the word
+            // page finds its source line in the note by this text.
+            encounteredSurface: surface,
             sourceNoteID: document.activeNoteID,
+            sourceSpot: selectedSegmentSourceSpot(surface: surface),
             defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
         )
+    }
+
+    // The tapped segment's exact place in the active note, saved with the word so its page can point
+    // back at this occurrence rather than the first one. Nil outside a note or with nothing selected.
+    private func selectedSegmentSourceSpot(surface: String) -> SourceSpot? {
+        guard let noteID = document.activeNoteID,
+              let bounds = segmentSelection.selectedBounds,
+              bounds.lowerBound < document.segmentEdges.count else { return nil }
+        let start = document.segmentEdges[bounds.lowerBound].start
+        return SourceSpot(noteID: noteID, location: start.utf16Offset(in: document.text), surface: surface)
     }
 
     // The dictionary entry backing the currently selected/shown segment — same resolution

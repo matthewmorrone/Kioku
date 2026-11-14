@@ -20,7 +20,8 @@ extension WordsStore {
                     selectedGlosses: saved.selectedGlosses,
                     encounteredSurfaces: saved.encounteredSurfaces,
                     entSeq: saved.entSeq,
-                    hasBeenOrphaned: saved.hasBeenOrphaned
+                    hasBeenOrphaned: saved.hasBeenOrphaned,
+                    sourceSpots: saved.sourceSpots
                 )
             }
             return saved

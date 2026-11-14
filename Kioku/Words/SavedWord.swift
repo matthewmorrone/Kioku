@@ -34,6 +34,10 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable, NoteAndListAttrib
     // Provenance: which notes this word was saved from. Mutable so a word can be detached
     // from a single note ("Remove from <note>") without rebuilding the whole record.
     var sourceNoteIDs: [UUID]
+    // Where in each of those notes the word was starred from, when it was starred from the text
+    // (not every source note has one). The word page shows this spot first, then the word's other
+    // occurrences. Dropped with the note membership it belongs to.
+    var sourceSpots: [SourceSpot]
     // True once this card has ever sat with zero note attribution — either created that way
     // (Words tab / dictionary lookup, no note involved) or detached down to empty by
     // WordsStore.removeNoteMembership / detachNoteReferences. Never reset back to false once
@@ -107,8 +111,10 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable, NoteAndListAttrib
         learnedMark: LearnedState = .unmarked,
         mastered: Bool = false,
         markedWrong: Bool = false,
-        reviewStats: ReviewWordStats? = nil
+        reviewStats: ReviewWordStats? = nil,
+        sourceSpots: [SourceSpot] = []
     ) {
+        self.sourceSpots = sourceSpots
         self.canonicalEntryID = canonicalEntryID
         self.entSeq = entSeq
         self.surface = surface
@@ -140,6 +146,7 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable, NoteAndListAttrib
         entSeq = try c.decodeIfPresent(Int64.self, forKey: .entSeq)
         surface = try c.decode(String.self, forKey: .surface)
         sourceNoteIDs = try c.decodeIfPresent([UUID].self, forKey: .sourceNoteIDs) ?? []
+        sourceSpots = try c.decodeIfPresent([SourceSpot].self, forKey: .sourceSpots) ?? []
         wordListIDs = try c.decodeIfPresent([UUID].self, forKey: .wordListIDs) ?? []
         personalNote = try c.decodeIfPresent(String.self, forKey: .personalNote)
         savedAt = try c.decodeIfPresent(Date.self, forKey: .savedAt) ?? Date()
@@ -210,7 +217,8 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable, NoteAndListAttrib
             learnedMark: learnedMark,
             mastered: mastered,
             markedWrong: markedWrong,
-            reviewStats: reviewStats
+            reviewStats: reviewStats,
+            sourceSpots: sourceSpots
         )
     }
 

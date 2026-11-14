@@ -649,52 +649,79 @@ extension WordDetailView {
             .background(Color.secondary.opacity(0.15), in: Capsule())
     }
 
-    // Lines of a source note that contain this word (any surface it was saved or met under), with
-    // those surfaces highlighted, so the Saved section shows where in the note it came from.
-    // Capped at three so a word repeated through a whole song doesn't swamp the section.
-    func originLines(in note: Note) -> [AttributedString] {
-        let surfaces = ([word.surface, currentSavedWord.surface] + currentSavedWord.encounteredSurfaces)
-            .filter { $0.isEmpty == false }
-            .sorted { $0.count > $1.count }
-        var seen = Set<String>()
-        let lines = note.content
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { line in
-                line.isEmpty == false
-                    && surfaces.contains { line.contains($0) }
-                    && seen.insert(line).inserted
+    // The spellings to look for in a source note: the entry's own kanji and kana forms plus every
+    // surface this card was saved or met under.
+    private var sourceNoteSearchForms: Set<String> {
+        var forms = Set([word.surface, currentSavedWord.surface]).union(currentSavedWord.encounteredSurfaces)
+        if let entry = savedDisplayData?.entry {
+            forms.formUnion(entry.kanjiForms.map(\.text))
+            forms.formUnion(entry.kanaForms.map(\.text))
+        }
+        return forms
+    }
+
+    // Finds the word in each source note (the spot it was starred from, then every other occurrence)
+    // off the main thread, since the segmenter resolves every segment of a long song.
+    func loadSourceOccurrences() async {
+        let saved = currentSavedWord
+        let notes = saved.sourceNoteIDs.compactMap { notesStore.note(withID: $0) }
+        let forms = sourceNoteSearchForms
+        let entryID = activeEntryID
+        let segmenter = segmenter
+        sourceOccurrences = await Task.detached(priority: .userInitiated) {
+            var found: [UUID: [NoteWordOccurrence]] = [:]
+            for note in notes {
+                found[note.id] = NoteWordLocator.occurrences(
+                    ofEntry: entryID,
+                    forms: forms,
+                    pointed: saved.sourceSpots.first { $0.noteID == note.id },
+                    in: note,
+                    segmenter: segmenter
+                )
             }
-        return lines.prefix(3).map { line in
-            var attributed = AttributedString(line)
-            for surface in surfaces {
-                var searchStart = attributed.startIndex
-                while searchStart < attributed.endIndex,
-                      let range = attributed[searchStart...].range(of: surface) {
+            return found
+        }.value
+    }
+
+    // The note's lines this word occurs in, the starred one first, with the word highlighted, so the
+    // Saved section shows where in the note it came from. One row per line; a repeated identical
+    // line (a chorus) shows once.
+    func originLines(in note: Note) -> [(text: AttributedString, isPointed: Bool)] {
+        let content = note.content as NSString
+        var lines: [(range: NSRange, hits: [NSRange], isPointed: Bool)] = []
+        for occurrence in sourceOccurrences[note.id] ?? [] {
+            let lineRange = content.lineRange(for: occurrence.range)
+            if let index = lines.firstIndex(where: { $0.range == lineRange }) {
+                lines[index].hits.append(occurrence.range)
+                lines[index].isPointed = lines[index].isPointed || occurrence.isPointed
+            } else {
+                lines.append((lineRange, [occurrence.range], occurrence.isPointed))
+            }
+        }
+        var seenText = Set<String>()
+        return lines.compactMap { line in
+            let raw = content.substring(with: line.range).trimmingCharacters(in: .newlines)
+            guard line.isPointed || seenText.insert(raw).inserted else { return nil }
+            var attributed = AttributedString(raw)
+            for hit in line.hits {
+                let relative = NSRange(location: hit.location - line.range.location, length: hit.length)
+                if let stringRange = Range(relative, in: raw),
+                   let range = Range(stringRange, in: attributed) {
                     attributed[range].swiftUI.foregroundColor = Color.accentColor
                     attributed[range].swiftUI.font = Font.footnote.weight(.semibold)
-                    searchStart = range.upperBound
                 }
             }
-            return attributed
+            return (attributed, line.isPointed)
         }
     }
 
     // Opens a source note on this word — the Read text, the lyrics view or the breakdown — and
-    // closes the detail. Pins the earliest spot any of the word's surfaces occurs (the same ones
-    // originLines highlights), since the saved form may be a lemma the lyrics never spell out.
+    // closes the detail. Lands on the spot the word was starred from, else its first occurrence.
     func openSourceNote(_ note: Note, in destination: ReadNoteDestination) {
-        let content = note.content as NSString
-        let surfaces = ([word.surface, currentSavedWord.surface] + currentSavedWord.encounteredSurfaces)
-            .filter { $0.isEmpty == false }
-        let location = surfaces
-            .map { content.range(of: $0).location }
-            .filter { $0 != NSNotFound }
-            .min()
         ReadNoteNavigation.shared.pendingTarget = ReadNoteTarget(
             noteID: note.id,
             surface: currentSavedWord.surface,
-            noteLocation: location,
+            noteLocation: sourceOccurrences[note.id]?.first?.range.location,
             destination: destination
         )
         dismiss()
