@@ -2,7 +2,9 @@
 
 An iOS app for reading, looking up, and studying Japanese. It turns Japanese text and audio into something you can read along with, and everything runs on the device.
 
-[Kioku Reader on the App Store](https://apps.apple.com/us/app/kioku-reader/id6761954675)
+[Kioku Reader on the App Store](https://apps.apple.com/us/app/kioku-reader-learn-japanese/id6761954675) · [Watch the app preview](https://apps.apple.com/us/app/kioku-reader-learn-japanese/id6761954675#product_media_phone_)
+
+<a href="https://apps.apple.com/us/app/kioku-reader-learn-japanese/id6761954675#product_media_phone_"><img src="https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/53/c6/a5/53c6a596-1fde-a88c-2b29-6ae908be67e9/01-karaoke-REVIEW-1284x2778.png/314x680bb.webp" alt="Kioku Reader displaying time-aligned Japanese lyrics" width="180"></a>
 
 ## What it does
 
