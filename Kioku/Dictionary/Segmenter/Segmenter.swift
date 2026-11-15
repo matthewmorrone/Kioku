@@ -479,7 +479,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             // If Viterbi fails to terminate (no path reaches text.endIndex), fall through to greedy
             // so we never return a partial / empty segmentation. This keeps the flag safe to flip.
             if !path.isEmpty {
-                return (latticeEdges: annotatedEdges, selectedEdges: absorbingBoundCharacters(in: path, of: text))
+                return (latticeEdges: annotatedEdges, selectedEdges: mergingFragmentRuns(in: absorbingBoundCharacters(in: path, of: text), of: text))
             }
         }
 
@@ -758,7 +758,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
     // True for any character that ends a scan span: a configured boundary character or a
     // Unicode line break. Centralizes the boundary-or-newline test the span scanners share.
-    private func isSpanBreak(_ character: Character) -> Bool {
+    func isSpanBreak(_ character: Character) -> Bool {
         boundaryCharacters.contains(character) || isLineBreakCharacter(character)
     }
 

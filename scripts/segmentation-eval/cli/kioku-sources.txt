@@ -40,6 +40,7 @@ Dictionary/Segmenter/Segmenter+Constituents.swift
 Dictionary/Segmenter/Segmenter+Viterbi.swift
 Dictionary/Segmenter/Segmenter+Names.swift
 Dictionary/Segmenter/Segmenter+KatakanaRuns.swift
+Dictionary/Segmenter/Segmenter+FragmentRuns.swift
 Dictionary/Segmenter/Segmenter+KatakanaPlurals.swift
 Dictionary/DictionaryStore+Names.swift
 Dictionary/DictionaryName.swift
