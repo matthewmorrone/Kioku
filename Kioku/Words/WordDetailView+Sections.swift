@@ -79,8 +79,9 @@ extension WordDetailView {
             ? (savedDisplayData?.sentences ?? []).filter { $0.japanese.contains(word.surface) }
             : savedDisplayData?.unroutedSentences ?? []
         // A word with none of its own shows no Examples: a sentence about only one of its parts would
-        // read as an example of the word.
-        let extras = own.isEmpty ? [] : componentSentences.filter { extra in own.contains { $0.japanese == extra.japanese } == false }
+        // read as an example of the word. A word that is itself a dictionary entry (生まれ変わる) takes
+        // no part sentences either; only a multi-word form borrows one from each of its parts.
+        let extras = own.isEmpty || isMultiWordForm == false ? [] : componentSentences.filter { extra in own.contains { $0.japanese == extra.japanese } == false }
         let unrouted = Array(own.prefix(1)) + extras + Array(own.dropFirst())
         if unrouted.isEmpty == false {
             // Up to three examples show before the button; a multi-word form always shows its one per part.
