@@ -1,11 +1,12 @@
 import Foundation
 
-// Which reading a kanji takes next to which word classes, counted from Tatoeba's indexed sentences,
-// whose index marks the reading of every headword that has more than one (時(じ) after a number,
-// 方(かた) after a verb). FuriganaResolver asks it to choose among a word's dictionary readings by
-//   P(reading | kanji) · P(class before | kanji, reading) · P(class after | kanji, reading)
-// with class names from TransitionClass, as the transition table uses them. A kanji the counts never
-// saw keeps the dictionary's frequency order.
+// Which reading a kanji takes next to which words, counted from Tatoeba's indexed sentences, whose
+// index marks the reading of every headword that has more than one (時(じ) after a number, 方(かた)
+// after a verb). FuriganaResolver asks it to choose among a word's dictionary readings by
+//   P(reading | kanji) · P(word before | kanji, reading) · P(word after | kanji, reading)
+// where a neighbour is its class (TransitionClass, as the transition table names it), moved by how
+// much more or less often the counts saw that very word beside this reading than its class predicts.
+// A kanji the counts never saw keeps the dictionary's frequency order.
 //
 // The numbers live in the dictionary's reading_contexts table, recounted at every dictionary build
 // (Resources/generate_db.py, import_usage_tables). Measured on its own with
@@ -19,40 +20,49 @@ nonisolated final class ReadingContextTable: Sendable {
     // close calls without overriding what the counts are sure of. Fitted on train2k (0: 94.17%,
     // 2: 94.57%, 4: 94.25%, 6: 93.85%), confirmed on held2k and fresh5k.
     static let appleVote = 2.0
+    // Log-odds added to a reading that makes the text around the run spell a dictionary expression
+    // (PhraseReadingEvidence): 態をみろ read ざま spells ざまをみろ.
+    static let phraseVote = 2.0
     // How many sightings of a reading count against a neighbour class never seen beside it. Uncapped,
     // a class missing from 15,714 sightings of わたし cost it more than one missing from 5 of わたくし,
     // so 私 before a verb with no particle between (lyrics drop them) read わたくし. Swept offline with
     // simulate_readings.py: 10–1000 cost train2k up to 0.6 points; 3000 leaves train2k, held2k and
     // fresh5k scores as they were (one ungraded fresh5k change: 私ども → わたし) and fixes the lyrics' 私.
     static let classEvidenceCap = 3000.0
+    // Pseudo-sightings on each side of a neighbour word's observed-over-expected ratio (slotTerm).
+    // Fitted on train2k with gold segmentation (0.5 and 1 best, 5 back to the class model).
+    static let wordPseudoSightings = 1.0
 
     // Counts by kanji run, then by its hiragana reading.
     private let countsByKanji: [String: [String: ReadingContextCounts]]
     // How many distinct classes the counts name: the smoothing's denominator.
     private let classCount: Int
 
-    // Builds the table from its rows, whose class lists read "name=count name=count".
+    // Builds the table from its rows, whose class lists read "name=count name=count" and word lists
+    // "class<TAB>lemma=count".
     init(rows: [ReadingContextRow]) {
         var countsByKanji: [String: [String: ReadingContextCounts]] = [:]
         var classes = Set<String>()
-        // Reads a "name=count name=count" list.
-        func classCounts(_ field: String) -> [String: Int] {
+        // Reads a "key=count key=count" list; the keys of class lists join the smoothing's classes.
+        func counts(_ field: String, areClasses: Bool) -> [String: Int] {
             var counts: [String: Int] = [:]
             for pair in field.split(separator: " ") {
                 guard let equals = pair.lastIndex(of: "="), let n = Int(pair[pair.index(after: equals)...]) else {
-                    AppLog.error(.segmentation, "reading_contexts: skipping malformed class count \(pair)")
+                    AppLog.error(.segmentation, "reading_contexts: skipping malformed count \(pair)")
                     continue
                 }
                 let name = String(pair[..<equals])
                 counts[name] = n
-                classes.insert(name)
+                if areClasses { classes.insert(name) }
             }
             return counts
         }
         for row in rows {
-            countsByKanji[row.kanji, default: [:]][row.reading] = ReadingContextCounts(
-                total: row.count, previous: classCounts(row.previous), next: classCounts(row.next)
-            )
+            let slots = [
+                ReadingSlotCounts(classes: counts(row.previous, areClasses: true), words: counts(row.previousWords, areClasses: false)),
+                ReadingSlotCounts(classes: counts(row.next, areClasses: true), words: counts(row.nextWords, areClasses: false)),
+            ]
+            countsByKanji[row.kanji, default: [:]][row.reading] = ReadingContextCounts(total: row.count, slots: slots)
         }
         self.countsByKanji = countsByKanji
         self.classCount = max(1, classes.count)
@@ -74,23 +84,6 @@ nonisolated final class ReadingContextTable: Sendable {
         }
     }
 
-    // The likeliest of `candidates` (hiragana run readings, in the dictionary's frequency order) for
-    // `kanji` between a word of class `previous` and one of class `next`; nil when no counts saw this
-    // kanji. `addedCounts` (ReadingRegisters: a web note's web counts) join Tatoeba's in
-    // P(reading | kanji); the class terms stay Tatoeba's, the only counts with classes. Ties keep the
-    // earlier candidate, so the frequency order breaks them.
-    func choose(
-        kanji: String,
-        candidates: [String],
-        previous: String,
-        next: String,
-        appleReading: String? = nil,
-        addedCounts: [String: Double] = [:]
-    ) -> String? {
-        scores(kanji: kanji, candidates: candidates, previous: previous, next: next,
-               appleReading: appleReading, addedCounts: addedCounts).flatMap { Self.best(of: $0) }
-    }
-
     // The reading with the highest total; the earlier one on a tie, so the frequency order breaks it.
     static func best(of scores: [ReadingScore]) -> String? {
         var best: ReadingScore?
@@ -101,31 +94,54 @@ nonisolated final class ReadingContextTable: Sendable {
         return best?.reading
     }
 
-    // Each candidate's score in its parts, in candidate order, with the counts behind them: what
-    // `choose` decides by, and what segcli's `readings` mode prints. Nil when no counts saw this kanji.
+    // Each candidate's score in its parts, in candidate order, with the counts behind them: what furigana
+    // decides by, and what segcli's `readings` mode prints. Nil when no counts saw this kanji.
+    // `candidates` are hiragana run readings in the dictionary's frequency order; `neighbours` the words
+    // directly before and after the run (ReadingNeighbour), BOUNDARY past the text; `phraseReadings` the candidates that spell a dictionary expression with the text around
+    // them. `addedCounts` (ReadingRegisters: a web note's web counts) join Tatoeba's in
+    // P(reading | kanji); the neighbour terms stay Tatoeba's, the only counts with neighbours.
     func scores(
         kanji: String,
         candidates: [String],
-        previous: String,
-        next: String,
+        neighbours: [ReadingNeighbour],
         appleReading: String? = nil,
+        phraseReadings: Set<String> = [],
         addedCounts: [String: Double] = [:]
     ) -> [ReadingScore]? {
         let seen = countsByKanji[kanji] ?? [:]
-        guard seen.isEmpty == false || addedCounts.isEmpty == false, candidates.isEmpty == false else { return nil }
+        guard seen.isEmpty == false || addedCounts.isEmpty == false, candidates.isEmpty == false,
+              neighbours.count == 2 else { return nil }
         let total = Double(seen.values.reduce(0) { $0 + $1.total }) + addedCounts.values.reduce(0, +)
+        // Per slot, how often this kanji's readings together saw the neighbour's word and its class:
+        // a word never seen beside the kanji says nothing about the reading and keeps the class term.
+        let kanjiWordSightings = (0..<2).map { slot in
+            neighbours[slot].wordKey.map { key in seen.values.reduce(0) { $0 + ($1.slots[slot].words[key] ?? 0) } } ?? 0
+        }
+        let kanjiClassSightings = (0..<2).map { slot in
+            seen.values.reduce(0) { $0 + ($1.slots[slot].classes[neighbours[slot].className] ?? 0) }
+        }
+        // One neighbour slot's log probability beside `reading`: the class term, moved by how far the
+        // word's count beside this reading departs from what the class model expects of it, when the
+        // word was seen beside this kanji at all. Pseudo-sightings on both sides keep a word seen twice
+        // from outweighing thousands of sightings of a reading: smoothing the word's own probability
+        // instead put にん on 人います (いる seen twice after にん, never in 2,781 ひと).
+        func slotTerm(_ slot: Int, reading: String) -> Double {
+            let counts = seen[reading]
+            let n = Double(counts?.total ?? 0)
+            let sightings = min(n, Self.classEvidenceCap)
+            let observed = Double(counts?.slots[slot].classes[neighbours[slot].className] ?? 0)
+            let classTerm = log((min(observed, sightings) + Self.classSmoothing) / (sightings + Self.classSmoothing * Double(classCount)))
+            guard let key = neighbours[slot].wordKey, kanjiWordSightings[slot] > 0 else { return classTerm }
+            // The word's share of its class beside this kanji: P(word | class), which the class term lacks.
+            let share = Double(kanjiWordSightings[slot] + 1) / Double(kanjiClassSightings[slot] + 1)
+            let wordSeen = Double(counts?.slots[slot].words[key] ?? 0)
+            let expected = n * exp(classTerm) * share
+            return classTerm + log((wordSeen + Self.wordPseudoSightings) / (expected + Self.wordPseudoSightings))
+        }
         return candidates.map { reading in
             let counts = seen[reading]
             let n = Double(counts?.total ?? 0)
             let added = addedCounts[reading] ?? 0
-            let previousSeen = counts?.previous[previous] ?? 0
-            let nextSeen = counts?.next[next] ?? 0
-            // How likely the neighbour's class is beside this reading, from at most classEvidenceCap
-            // sightings.
-            func classTerm(_ observed: Int) -> Double {
-                let sightings = min(n, Self.classEvidenceCap)
-                return log((min(Double(observed), sightings) + Self.classSmoothing) / (sightings + Self.classSmoothing * Double(classCount)))
-            }
             return ReadingScore(
                 reading: reading,
                 count: Int(n),
@@ -133,21 +149,27 @@ nonisolated final class ReadingContextTable: Sendable {
                 kanjiTotal: total,
                 candidateCount: candidates.count,
                 classCount: classCount,
-                previousSeen: previousSeen,
-                nextSeen: nextSeen,
+                previousSeen: counts?.slots[0].classes[neighbours[0].className] ?? 0,
+                nextSeen: counts?.slots[1].classes[neighbours[1].className] ?? 0,
                 prior: log((n + added + 1) / (total + Double(candidates.count))),
-                previous: classTerm(previousSeen),
-                next: classTerm(nextSeen),
-                apple: reading == appleReading ? Self.appleVote : 0
+                previous: slotTerm(0, reading: reading),
+                next: slotTerm(1, reading: reading),
+                apple: reading == appleReading ? Self.appleVote : 0,
+                phrase: phraseReadings.contains(reading) ? Self.phraseVote : 0
             )
         }
     }
 }
 
-// One reading's counts in ReadingContextTable: how often it occurs, and the classes seen before and
-// after it.
+// One reading's counts in ReadingContextTable: how often it occurs, and per neighbour slot (before,
+// after) the classes and words seen there.
 nonisolated struct ReadingContextCounts: Sendable {
     let total: Int
-    let previous: [String: Int]
-    let next: [String: Int]
+    let slots: [ReadingSlotCounts]
+}
+
+// The classes, and the "class<TAB>lemma" words, seen in one neighbour slot of a reading.
+nonisolated struct ReadingSlotCounts: Sendable {
+    let classes: [String: Int]
+    let words: [String: Int]
 }

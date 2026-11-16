@@ -16,5 +16,8 @@ nonisolated struct ReadingScore: Sendable {
     let previous: Double
     let next: Double
     let apple: Double
-    var total: Double { prior + previous + next + apple }
+    // The vote for a reading that makes the text around the run spell a dictionary expression
+    // (PhraseReadingEvidence).
+    let phrase: Double
+    var total: Double { prior + previous + next + apple + phrase }
 }

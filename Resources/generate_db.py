@@ -1671,9 +1671,13 @@ def import_usage_tables(conn):
     irregular = {text for (text,) in conn.execute(
         "SELECT DISTINCT k.text FROM kanji k JOIN senses s ON s.entry_id = k.entry_id "
         "WHERE ',' || s.pos || ',' LIKE '%,vk,%' OR ',' || s.pos || ',' LIKE '%,adj-ix,%'")}
+    # Every (spelling, hiragana reading) pair the dictionary reads: a token written in another kanji
+    # spelling than its headword (身体 for 体) counts under the spelling as written when it is one.
+    spellings = {(surface, usage_tables.to_hiragana(reading))
+                 for surface, reading in conn.execute("SELECT surface, reading FROM surface_readings")}
     with open_source_member(entry["fetch"], archive) as raw:
         tables = usage_tables.build(io.TextIOWrapper(raw, encoding="utf-8-sig"), sentences, EVAL_DATA_DIR, classify,
-                                    irregular)
+                                    irregular, spellings)
     conn.execute("BEGIN")
     conn.execute("""
         CREATE TABLE segmenter_transitions (
@@ -1683,11 +1687,73 @@ def import_usage_tables(conn):
     conn.execute("""
         CREATE TABLE reading_contexts (
             kanji TEXT NOT NULL, reading TEXT NOT NULL, count INTEGER NOT NULL,
-            previous TEXT NOT NULL, next TEXT NOT NULL, PRIMARY KEY (kanji, reading)
+            previous TEXT NOT NULL, next TEXT NOT NULL, previous_words TEXT NOT NULL, next_words TEXT NOT NULL,
+            PRIMARY KEY (kanji, reading)
         ) WITHOUT ROWID""")
-    conn.executemany("INSERT INTO reading_contexts VALUES (?, ?, ?, ?, ?)", tables["readings"])
+    conn.executemany("INSERT INTO reading_contexts VALUES (?, ?, ?, ?, ?, ?, ?)", tables["readings"])
     print(f"  Done: {len(tables['transitions'])} transition pairs from {tables['transition_sentences']} sentences; "
           f"{len(tables['readings'])} reading rows from {tables['sentences']}")
+
+
+# Writes phrase_readings (phrase, kanji, reading): how a kanji reads inside JMdict's set phrases, so
+# furigana can tell a reading that makes the text spell a phrase (態をみろ read ざま is ざまをみろ) from
+# kana that only happen to line up with one (保 も + に → にも). For every expression entry, each kanji
+# spelling is aligned with each kana spelling: the kanji runs become groups between the spelling's
+# kana (様を見ろ against ざまをみろ: 様 = ざま, 見 = み). A run's other kanji spellings that JMdict
+# reads the same way join it (様 and 態 are both ざま in one entry). One row per spelling of the phrase,
+# kana or kanji, as the lattice matches it, and per run and reading; kana-only phrases have none.
+def import_phrase_readings(conn):
+    kanji_run = re.compile(r'[㐀-䶿一-鿿豈-﫿々]+')
+    phrases = collections.defaultdict(lambda: (set(), set()))
+    exp = "SELECT DISTINCT entry_id FROM senses WHERE ',' || pos || ',' LIKE '%,exp,%'"
+    for entry_id, text in conn.execute(f"SELECT entry_id, text FROM kanji WHERE entry_id IN ({exp})"):
+        phrases[entry_id][0].add(text)
+    for entry_id, text in conn.execute(f"SELECT entry_id, text FROM kana_forms WHERE entry_id IN ({exp})"):
+        phrases[entry_id][1].add(text)
+    rows, aligned = set(), set()
+    for kanji_forms, kana_forms in phrases.values():
+        for form in kanji_forms:
+            runs = kanji_run.findall(form)
+            if not runs:
+                continue
+            # The spelling split into kanji runs and the kana between them (re.split keeps the runs).
+            parts = [part for part in re.split(f'({kanji_run.pattern})', form) if part]
+            pattern = re.compile('^' + ''.join('(.+?)' if kanji_run.fullmatch(part) else re.escape(katakana_to_hiragana(part))
+                                               for part in parts) + '$')
+            for kana in kana_forms:
+                match = pattern.match(katakana_to_hiragana(kana))
+                if not match:
+                    continue
+                for run, reading in zip(runs, match.groups()):
+                    aligned.add((run, reading))
+                    for spelling in kanji_forms | kana_forms:
+                        rows.add((spelling, run, reading))
+    # The other kanji spellings of each run's word at that reading.
+    alternates = collections.defaultdict(set)
+    spellings_by_entry = collections.defaultdict(set)
+    for entry_id, text in conn.execute("SELECT entry_id, text FROM kanji"):
+        if kanji_run.fullmatch(text):
+            spellings_by_entry[entry_id].add(text)
+    readings_by_entry = collections.defaultdict(set)
+    for entry_id, text in conn.execute("SELECT entry_id, text FROM kana_forms"):
+        readings_by_entry[entry_id].add(katakana_to_hiragana(text))
+    for entry_id, spellings in spellings_by_entry.items():
+        if len(spellings) < 2:
+            continue
+        for reading in readings_by_entry[entry_id]:
+            for spelling in spellings:
+                if (spelling, reading) in aligned:
+                    alternates[(spelling, reading)] |= spellings - {spelling}
+    for phrase, run, reading in list(rows):
+        for other in alternates.get((run, reading), ()):
+            rows.add((phrase, other, reading))
+    conn.execute("DROP TABLE IF EXISTS phrase_readings")
+    conn.execute("""
+        CREATE TABLE phrase_readings (
+            phrase TEXT NOT NULL, kanji TEXT NOT NULL, reading TEXT NOT NULL, PRIMARY KEY (phrase, kanji, reading)
+        ) WITHOUT ROWID""")
+    conn.executemany("INSERT INTO phrase_readings VALUES (?, ?, ?)", sorted(rows))
+    print(f"  Done: {len(rows)} phrase readings from {len(phrases)} expressions")
 
 
 # Writes sentence_tokens (entry_id, ja_id, surface): which dictionary entries each Tatoeba sentence uses
@@ -2676,6 +2742,9 @@ def build_database():
         materialize_word_frequency(conn)
         materialize_surface_frequency(conn)
         materialize_noun_kana_entry_rank(conn)
+
+    with phase("Aligning kanji readings inside set phrases..."):
+        import_phrase_readings(conn)
 
     with phase("Estimating JLPT levels for unlabeled entries from frequency..."):
         estimate_jlpt_levels_from_frequency(conn)

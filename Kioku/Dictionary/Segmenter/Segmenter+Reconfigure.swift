@@ -39,6 +39,7 @@ extension Segmenter {
         boundaryModel = other.boundaryModel
         readingRegisters = other.readingRegisters
         readingContexts = other.readingContexts
+        phraseReadings = other.phraseReadings
         reconfigure(
             trie: other.trie,
             deinflector: other.deinflector,

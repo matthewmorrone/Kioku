@@ -32,14 +32,22 @@ extension DictionaryStore {
         }
     }
 
-    // Every kanji run and reading with its count and the "class=count" lists either side. Empty
-    // without the table.
+    // Every kanji run and reading with its count and the "class=count" lists either side, and, from
+    // a dictionary that has them, the "class<TAB>lemma=count" word lists either side (empty strings
+    // otherwise). Empty without the table.
     nonisolated func fetchReadingContexts() throws -> [ReadingContextRow] {
         try withSerializedDatabaseAccess {
             guard tableExists("reading_contexts") else { return [] }
+            let hasNeighbourWords = try readingContextsHaveNeighbourWords()
             var statement: OpaquePointer?
             defer { sqlite3_finalize(statement) }
-            try prepare(sql: "SELECT kanji, reading, count, previous, next FROM reading_contexts", statement: &statement)
+            let wordColumns = hasNeighbourWords ? ", previous_words, next_words" : ""
+            try prepare(sql: "SELECT kanji, reading, count, previous, next\(wordColumns) FROM reading_contexts", statement: &statement)
+            // A text column, or "" when the dictionary predates it.
+            func text(_ column: Int32) -> String {
+                guard hasNeighbourWords, let value = sqlite3_column_text(statement, column) else { return "" }
+                return String(cString: value)
+            }
             var rows: [ReadingContextRow] = []
             var stepCode = sqlite3_step(statement)
             while stepCode == SQLITE_ROW {
@@ -50,7 +58,9 @@ extension DictionaryStore {
                         reading: String(cString: reading),
                         count: Int(sqlite3_column_int64(statement, 2)),
                         previous: String(cString: previous),
-                        next: String(cString: next)
+                        next: String(cString: next),
+                        previousWords: text(5),
+                        nextWords: text(6)
                     ))
                 }
                 stepCode = sqlite3_step(statement)
@@ -63,6 +73,26 @@ extension DictionaryStore {
     }
 }
 
+extension DictionaryStore {
+    // True when reading_contexts carries the neighbour words. Caller must already hold the queue.
+    nonisolated fileprivate func readingContextsHaveNeighbourWords() throws -> Bool {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        try prepare(sql: "PRAGMA table_info(reading_contexts)", statement: &statement)
+        var found = false
+        var stepCode = sqlite3_step(statement)
+        while stepCode == SQLITE_ROW {
+            // Column 1 of table_info is the column's name.
+            if let name = sqlite3_column_text(statement, 1), String(cString: name) == "next_words" { found = true }
+            stepCode = sqlite3_step(statement)
+        }
+        guard stepCode == SQLITE_DONE else {
+            throw DictionarySQLiteError.step(message: errorMessage()).logged()
+        }
+        return found
+    }
+}
+
 // One segmenter_transitions row: how much likelier class `next` is right after class `previous`
 // than by chance, as PMI in nats.
 nonisolated struct SegmenterTransitionRow: Sendable {
@@ -71,12 +101,15 @@ nonisolated struct SegmenterTransitionRow: Sendable {
     let pmi: Double
 }
 
-// One reading_contexts row: a kanji run's reading, how often the counts saw it, and the classes seen
-// before and after it as "name=count name=count" lists.
+// One reading_contexts row: a kanji run's reading, how often the counts saw it, the classes seen before
+// and after it as "name=count name=count" lists, and the same neighbours' words as
+// "class<TAB>lemma=count" lists (ReadingNeighbour.wordKey), empty from a dictionary built before them.
 nonisolated struct ReadingContextRow: Sendable {
     let kanji: String
     let reading: String
     let count: Int
     let previous: String
     let next: String
+    var previousWords = ""
+    var nextWords = ""
 }

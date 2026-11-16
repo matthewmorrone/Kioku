@@ -2,9 +2,9 @@ import Foundation
 // Harness over the repo's REAL transition code (TransitionClass, SegmenterTransitionTable).
 //   segcli lexicon < surfaces                    → "surface<TAB>lemma=…<TAB>candidates=…": the lookup sheet's lemma line and possibilities (Lexicon)
 //   segcli defaults < surfaces                   → "surface<TAB>default reading<TAB>leading candidate<TAB>its readings" for each surface whose default reading (ReadingVariants.orderedReadings.first) is not one of the leading lookup candidate's readings
-//   segcli count <lexical.txt> < gold.jsonl       → "start,end,className" per gold token
+//   segcli count <lexical.txt> < gold.jsonl       → "start,end,className[\u{1F}lemma]" per gold token
 //   segcli fit <configs> <outdir> < sentences   configs: "WEIGHT CLAMP"; the dictionary's transition rows, lattice once, DP per config
-//   segcli readings < lines                       → each contextual reading decision with its score parts
+//   segcli readings < lines                       → each contextual reading decision with its score parts (WHOLE=1: stdin as one text)
 //   segcli lemmas < surfaces                     → what each surface resolves to, with each lemma's score (the audit's input)
 //   segcli oracle < gold.jsonl                   → per cut-through: is the gold parse in the lattice, and by how much does it lose
 //   segcli features < gold.jsonl                → per sentence: characters, gold gap labels, shipped cuts, lattice gap features (boundary model input)
@@ -304,8 +304,12 @@ if mode == "count" {
             if cache[surface] == nil {
                 // The class the lattice would give this exact span: take the real edge, not a re-derivation.
                 let edge = segmenter.buildLattice(for: surface).first { $0.surface == surface && $0.isDictionaryMatch }
-                cache[surface] = edge.map { TransitionClass.name(surface: surface, partOfSpeech: $0.partOfSpeech, lexical: lexical) }
+                let name = edge.map { TransitionClass.name(surface: surface, partOfSpeech: $0.partOfSpeech, lexical: lexical) }
                     ?? TransitionClass.boundary
+                // The lemma furigana keys neighbour words by (ReadingNeighbour.lemma), after the class
+                // and a unit separator; none where the class is the word itself or BOUNDARY.
+                let lemma = ReadingNeighbour.lemma(of: surface, className: name, segmenter: segmenter)
+                cache[surface] = lemma.map { name + "\u{1F}" + $0 } ?? name
             }
             parts.append("\(a),\(b),\(cache[surface]!)")
         }
@@ -416,17 +420,28 @@ if mode == "readings" {
     // apple), and the reading chosen.
     let readingData = SurfaceReadingDataMap(try store.fetchSurfaceReadingData())
     let resolver = FuriganaResolver(segmenter: segmenter)
-    while let line = readLine() {
+    // WHOLE=1 reads all of stdin as one text, as the Read view resolves a whole note at once
+    // (Apple's tokenizer and the register classifier then see the full note).
+    var texts: [String] = []
+    if ProcessInfo.processInfo.environment["WHOLE"] == "1" {
+        texts = [String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)]
+    } else {
+        while let line = readLine() { texts.append(line) }
+    }
+    for line in texts {
         let edges = segmenter.longestMatchEdges(for: line)
         let furigana = resolver.build(for: line, edges: edges, surfaceReadingData: readingData)
+        if ProcessInfo.processInfo.environment["WHOLE"] == "1" {
+            print("register: \(segmenter.readingRegisters?.classifier.register(of: line) ?? "none")")
+        }
         for choice in resolver.contextualReadingChoices(
             furigana: furigana.byLocation, lengths: furigana.lengthByLocation, edges: edges,
             sourceText: line, surfaceReadingData: readingData
         ) {
-            print("\(choice.kanji)@\(choice.location)  prev \(choice.previous)  next \(choice.next)  apple \(choice.apple ?? "-")  → \(choice.chosen ?? choice.current)")
+            print("\(choice.kanji)@\(choice.location)  prev \(choice.previous)  next \(choice.next)  apple \(choice.apple ?? "-")  phrase \(choice.phrase.sorted().joined(separator: ","))  → \(choice.chosen ?? choice.current)")
             for score in choice.scores {
-                print(String(format: "    %@ ×%d  prior %.2f  prev %.2f  next %.2f  apple %.1f  total %.2f",
-                             score.reading, score.count, score.prior, score.previous, score.next, score.apple, score.total))
+                print(String(format: "    %@ ×%d  prior %.2f  prev %.2f  next %.2f  apple %.1f  phrase %.1f  total %.2f",
+                             score.reading, score.count, score.prior, score.previous, score.next, score.apple, score.phrase, score.total))
             }
         }
     }
@@ -450,10 +465,12 @@ if mode == "readings-json" {
                 "location": choice.location, "length": furigana.lengthByLocation[choice.location] ?? 0,
                 "kanji": choice.kanji, "previous": choice.previous, "next": choice.next,
                 "apple": choice.apple ?? NSNull(), "fallback": choice.chosen ?? choice.current,
+                "phrase": choice.phrase.sorted(),
                 "candidates": choice.scores.map { score -> [String: Any] in
                     ["reading": score.reading, "n": score.count, "added": score.addedCount, "total": score.kanjiTotal,
                      "k": score.candidateCount, "classes": score.classCount,
-                     "prevSeen": score.previousSeen, "nextSeen": score.nextSeen]
+                     "prevSeen": score.previousSeen, "nextSeen": score.nextSeen,
+                     "previousTerm": score.previous, "nextTerm": score.next]
                 },
             ]
         }

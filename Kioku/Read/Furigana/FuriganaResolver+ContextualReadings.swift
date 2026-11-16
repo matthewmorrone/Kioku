@@ -1,17 +1,19 @@
 import Foundation
 
 // Context for the readings `build` picked by frequency alone. One rule for every word with more
-// than one dictionary reading, from three sources in order of authority:
-//   1. usage: Tatoeba's reading counts (ReadingContextTable) score each reading between the
-//      classes of the words either side (方 after a verb → かた, 時 after a number → じ); a note that
-//      reads like web pages adds the web counts (ReadingRegisters);
-//   2. Apple's tokenizer (AppleTokenReadings) adds a fixed vote to the reading it gives, which tips
+// than one dictionary reading, from four sources in order of authority:
+//   1. phrases: a reading that makes the words around it spell a dictionary expression holding
+//      another content word decides (PhraseReadingEvidence: 態をみろ read ざま is ざまをみろ, 笑う門には福来たる
+//      reads 門 かど), since the dictionary then names the reading outright;
+//   2. usage: Tatoeba's reading counts (ReadingContextTable) score each reading between the
+//      words either side (方 after a verb → かた, 時 after a number → じ); a note that reads like
+//      web pages adds the web counts (ReadingRegisters);
+//   3. Apple's tokenizer (AppleTokenReadings) adds a fixed vote to the reading it gives, which tips
 //      close calls (後 → ご in 説明会後) but not clear ones (私 stays わたし);
-//   3. the dictionary: its frequency order breaks ties, and decides alone when neither has a say.
-// A kanji the counts never saw takes Apple's reading when the dictionary lists it.
+//   4. the dictionary: its frequency order breaks ties, and decides alone when no other source has a say.
 // held2k 91.09% → 95.03%, fresh5k 94.79% → 97.30% on scripts/segmentation-eval/score_readings.py.
 nonisolated extension FuriganaResolver {
-    // Rewrites `furigana` in place with the readings the three sources agree on.
+    // Rewrites `furigana` in place with the readings the sources agree on.
     func applyContextualReadings(
         to furigana: inout [Int: String],
         lengths: [Int: Int],
@@ -46,11 +48,26 @@ nonisolated extension FuriganaResolver {
         // The note's register (everyday or web), told once for the whole text.
         let registers = (segmenter as? Segmenter)?.readingRegisters
         let register = registers?.classifier.register(of: sourceText)
-        // A neighbour's class as the counts name it: text the dictionary doesn't cover and the
-        // ends of the text are BOUNDARY.
-        func className(_ edge: LatticeEdge?) -> String {
-            guard let edge, edge.isDictionaryMatch, let transitionTable else { return TransitionClass.boundary }
-            return TransitionClass.name(surface: edge.surface, partOfSpeech: edge.partOfSpeech, lexical: transitionTable.lexical)
+        // The edge at `position` as the counts name it (ReadingNeighbour): text the dictionary doesn't
+        // cover and the ends of the text are BOUNDARY.
+        func neighbour(at position: Int) -> ReadingNeighbour {
+            guard edges.indices.contains(position), edges[position].isDictionaryMatch, let transitionTable else { return .boundary }
+            let edge = edges[position]
+            let name = TransitionClass.name(surface: edge.surface, partOfSpeech: edge.partOfSpeech, lexical: transitionTable.lexical)
+            return ReadingNeighbour(className: name, lemma: ReadingNeighbour.lemma(of: edge.surface, className: name, segmenter: segmenter))
+        }
+        // Where the note's segments meet, in UTF-16 offsets: a phrase must start and end on one.
+        // Where its content words start: a phrase must hold one besides the run's own word.
+        var wordBoundaries: Set<Int> = [0, nsText.length]
+        var contentWordStarts: Set<Int> = []
+        for edge in edges {
+            let range = NSRange(edge.start..<edge.end, in: sourceText)
+            wordBoundaries.insert(range.location)
+            wordBoundaries.insert(range.location + range.length)
+            if edge.isDictionaryMatch, let lexical = transitionTable?.lexical,
+               PhraseReadingEvidence.isContentWord(surface: edge.surface, partOfSpeech: edge.partOfSpeech, lexical: lexical) {
+                contentWordStarts.insert(range.location)
+            }
         }
         var choices: [ContextualReadingChoice] = []
         for (index, edge) in edges.enumerated() where edge.isDictionaryMatch {
@@ -62,20 +79,29 @@ nonisolated extension FuriganaResolver {
             // Apple's reading counts only when the dictionary lists it for this word.
             let apple = appleReadings[run.location].flatMap { $0.length == run.length && candidates.contains($0.reading) ? $0.reading : nil }
             let kanji = nsText.substring(with: run)
-            let previous = className(index > 0 ? edges[index - 1] : nil)
-            let next = className(index + 1 < edges.count ? edges[index + 1] : nil)
+            let neighbours = [neighbour(at: index - 1), neighbour(at: index + 1)]
+            let previous = neighbours[0].className
+            let next = neighbours[1].className
+            let phrase = (segmenter as? Segmenter).map {
+                PhraseReadingEvidence.readings(
+                    spellingPhrasesAround: run, in: nsText, candidates: candidates, wordBoundaries: wordBoundaries,
+                    contentWordStarts: contentWordStarts, runWord: NSRange(edge.start..<edge.end, in: sourceText), segmenter: $0
+                )
+            } ?? []
             let scores = transitionTable == nil ? nil : table?.scores(
                 kanji: kanji,
                 candidates: candidates,
-                previous: previous,
-                next: next,
+                neighbours: neighbours,
                 appleReading: apple,
+                phraseReadings: phrase,
                 addedCounts: registers?.addedCounts(kanji: kanji, register: register) ?? [:]
             )
             let counted = scores.flatMap { ReadingContextTable.best(of: $0) }
+            // The one reading that spells a phrase decides; several spelling one leave it to the counts.
+            let phraseReading = phrase.count == 1 ? phrase.first : nil
             choices.append(ContextualReadingChoice(
                 location: run.location, kanji: kanji, current: current, previous: previous, next: next,
-                apple: apple, scores: scores ?? [], chosen: counted ?? apple
+                apple: apple, phrase: phrase, scores: scores ?? [], chosen: phraseReading ?? counted ?? apple
             ))
         }
         return choices
@@ -121,8 +147,8 @@ nonisolated extension FuriganaResolver {
 }
 
 // One decision of FuriganaResolver.contextualReadingChoices: the kanji run at `location`, the reading
-// `build` gave it (`current`), its neighbours' classes, Apple's reading, every candidate's score, and
-// the reading chosen (nil leaves `current`).
+// `build` gave it (`current`), its neighbours' classes, Apple's reading, the readings that spell a
+// phrase, every candidate's score, and the reading chosen (nil leaves `current`).
 nonisolated struct ContextualReadingChoice {
     let location: Int
     let kanji: String
@@ -130,6 +156,7 @@ nonisolated struct ContextualReadingChoice {
     let previous: String
     let next: String
     let apple: String?
+    let phrase: Set<String>
     let scores: [ReadingScore]
     let chosen: String?
 }

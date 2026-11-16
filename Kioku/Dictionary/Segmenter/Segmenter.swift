@@ -37,6 +37,9 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     // Tatoeba's reading counts by neighbouring class for furigana (ReadingContextTable); nil without a
     // dictionary that has them.
     var readingContexts: ReadingContextTable?
+    // How kanji read inside JMdict's set phrases, for furigana (PhraseReadingTable); nil without a
+    // dictionary that has them.
+    var phraseReadings: PhraseReadingTable?
     // JMnedict spellings the lattice may use as one word where JMdict has none (田中, スティーヴン);
     // see Segmenter+Names.swift. Empty when built without a dictionary store or with an older
     // dictionary that has no name tables. Set through useNameSurfaces, which keeps
@@ -123,6 +126,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         boundaryModel = BoundaryModel.bundled()
         readingRegisters = dictionaryStore.flatMap { ReadingRegisters(store: $0) }
         readingContexts = dictionaryStore.flatMap { ReadingContextTable.load(from: $0) }
+        phraseReadings = dictionaryStore.flatMap { PhraseReadingTable.load(from: $0) }
         do {
             useNameSurfaces(try dictionaryStore?.fetchSegmenterNameSurfaces() ?? [])
         } catch {
