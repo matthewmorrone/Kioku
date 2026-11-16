@@ -52,9 +52,35 @@ extension Lexicon {
         // A word written as single kanji side by side (二人 ふたり, 今日) is one word with its own reading,
         // not a compound worth taking apart: its pieces carry no meaning of their own to link to.
         if split.pieces.allSatisfy({ $0.surface.count == 1 && ScriptClassifier.containsKanji($0.surface) }) { return nil }
+        if firstPieceChangesReading(surface, firstPiece: split.pieces[0].surface) { return nil }
         return split.pieces.flatMap { piece in
             constituentSurfaces(of: piece.surface, maxMargin: maxMargin) ?? [piece.surface]
         }
+    }
+
+    // True when `surface` is a dictionary word none of whose readings begins with any reading of the
+    // piece its split starts with: the piece is then not a word inside it but its kanji read another
+    // way. 来たる (きたる) cut into 来 (らい) + たる, 上がる (あがる) into 上 (うえ) + がる, 下さる (くださる)
+    // into 下 + さる. A real compound keeps its first word's reading: 出歩く (であるく) starts with 出
+    // (で), 女らしい with 女 (おんな), 着こなす with 着 as 着る's stem (き). A piece the dictionary has no
+    // reading for says nothing.
+    func firstPieceChangesReading(_ surface: String, firstPiece: String) -> Bool {
+        guard ScriptClassifier.containsKanji(firstPiece) else { return false }
+        let wholeReadings = lookupEntries(for: surface).flatMap { $0.offeredReadings(includeArchaic: true) }.map(KanaNormalizer.katakanaToHiragana)
+        var pieceReadings = lookupEntries(for: firstPiece).flatMap { $0.offeredReadings(includeArchaic: true) }.map(KanaNormalizer.katakanaToHiragana)
+        // A verb stem reads as its verb does without the ending: 着 in 着こなす is 着る (きる) → き,
+        // where the noun 着 is ちゃく; 打ち in 打ちまくる is 打つ → う.
+        let lemma = verbStemLemma(of: firstPiece) ?? constituentLemmas(of: [firstPiece, ""])[0]
+        let runs = FuriganaAttributedString.kanjiRuns(in: lemma)
+        if lemma != firstPiece, runs.count == 1, runs[0].start == 0 {
+            let ending = KanaNormalizer.katakanaToHiragana(String(lemma.dropFirst(runs[0].end)))
+            for reading in lookupEntries(for: lemma).flatMap({ $0.offeredReadings(includeArchaic: true) }).map(KanaNormalizer.katakanaToHiragana)
+            where ending.isEmpty == false && reading.hasSuffix(ending) && reading.count > ending.count {
+                pieceReadings.append(String(reading.dropLast(ending.count)))
+            }
+        }
+        guard wholeReadings.isEmpty == false, pieceReadings.isEmpty == false else { return false }
+        return wholeReadings.contains { whole in pieceReadings.contains { whole.hasPrefix($0) } } == false
     }
 
     // The dictionary form each of `pieces` is named by. A piece followed by another word is a verb's
