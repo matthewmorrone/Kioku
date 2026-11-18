@@ -1764,7 +1764,8 @@ def import_phrase_readings(conn):
 # JMdict sequence number where two entries share both (が(#2028930)). A token resolves to the entry
 # with that sequence number, else to the entries holding its headword (a kanji or kana form), narrowed
 # to those with its reading when that leaves any. A headword shared by several entries keeps all of
-# them. Needs entries, kanji, kana_forms and sentence_pairs.
+# them. A surface led by an honorific お/ご/御 that the entry's own forms don't begin with is stored
+# without it. Needs entries, kanji, kana_forms and sentence_pairs.
 def import_sentence_tokens(conn):
     entry = load_manifest()["tatoeba-jpn-indices"]
     archive = fetch_archive(entry)
@@ -1776,11 +1777,14 @@ def import_sentence_tokens(conn):
     sequence_to_id = dict(conn.execute("SELECT ent_seq, id FROM entries"))
     by_head = {}
     kana_of = {}
+    initials_of = {}
     for text, entry_id in conn.execute("SELECT text, entry_id FROM kanji"):
         by_head.setdefault(text, set()).add(entry_id)
+        initials_of.setdefault(entry_id, set()).add(text[:1])
     for text, entry_id in conn.execute("SELECT text, entry_id FROM kana_forms"):
         by_head.setdefault(text, set()).add(entry_id)
         kana_of.setdefault(entry_id, set()).add(hiragana(text))
+        initials_of.setdefault(entry_id, set()).add(text[:1])
     sentence_ids = {ja_id for (ja_id,) in conn.execute("SELECT DISTINCT ja_id FROM sentence_pairs")}
 
     rows = set()
@@ -1807,7 +1811,11 @@ def import_sentence_tokens(conn):
                         candidates = {c for c in candidates if wanted in kana_of.get(c, ())} or candidates
                 if candidates:
                     surface = match.group("surf") or match.group("head")
-                    rows.update((entry_id, ja_id, surface) for entry_id in candidates)
+                    # Tatoeba writes the honorific prefix into the token (贈る{お贈り}); an entry none of whose
+                    # forms begins with it (贈る) owns only what follows, so the example highlights that.
+                    rows.update((entry_id, ja_id, surface[1:] if len(surface) > 1 and surface[0] in "おご御"
+                                 and surface[0] not in initials_of.get(entry_id, ()) else surface)
+                                for entry_id in candidates)
                 else:
                     unresolved += 1
     conn.execute("""
