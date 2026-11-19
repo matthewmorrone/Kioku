@@ -4,14 +4,16 @@ import Foundation
 // (the iOS client's search response is a server-driven layout with no stable video list), so like
 // the rest of the YouTube support it may break without notice.
 enum YouTubeSearch {
-    // Returns up to `limit` video results for `query`; throws on network or format failure so the
-    // picker can say why it is empty.
-    static func search(query: String, limit: Int = 12) async throws -> [YouTubeSearchResult] {
-        guard let endpoint = URL(string: "https://www.youtube.com/youtubei/v1/search?prettyPrint=false") else { return [] }
-        let body: [String: Any] = [
-            "context": ["client": ["clientName": "WEB", "clientVersion": "2.20250101.00.00", "hl": "ja", "gl": "JP"]],
-            "query": query
+    // Returns one page of video results for `query`, or the page after `continuation`; throws on
+    // network or format failure so the picker can say why it is empty.
+    static func search(query: String, continuation: String? = nil) async throws -> YouTubeSearchPage {
+        guard let endpoint = URL(string: "https://www.youtube.com/youtubei/v1/search?prettyPrint=false") else {
+            return YouTubeSearchPage(results: [], continuation: nil)
+        }
+        var body: [String: Any] = [
+            "context": ["client": ["clientName": "WEB", "clientVersion": "2.20250101.00.00", "hl": "ja", "gl": "JP"]]
         ]
+        if let continuation { body["continuation"] = continuation } else { body["query"] = query }
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -26,7 +28,18 @@ enum YouTubeSearch {
             throw YouTubeAudioFailure.badResponse(http.statusCode)
         }
         let root = try JSONSerialization.jsonObject(with: data)
-        return Array(videoRenderers(in: root).compactMap(result(from:)).prefix(limit))
+        return YouTubeSearchPage(results: videoRenderers(in: root).compactMap(result(from:)), continuation: continuationToken(in: root))
+    }
+
+    // The token for the next page: the first continuation command in the response, if any.
+    private static func continuationToken(in node: Any) -> String? {
+        if let dict = node as? [String: Any] {
+            if let command = dict["continuationCommand"] as? [String: Any], let token = command["token"] as? String { return token }
+            for value in dict.values { if let token = continuationToken(in: value) { return token } }
+        } else if let list = node as? [Any] {
+            for value in list { if let token = continuationToken(in: value) { return token } }
+        }
+        return nil
     }
 
     // Every `videoRenderer` object in the response, in page order; the nesting above them varies
@@ -53,6 +66,10 @@ enum YouTubeSearch {
         let duration = ((renderer["lengthText"] as? [String: Any])?["simpleText"] as? String) ?? ""
         // Thumbnails arrive as protocol-relative or absolute URLs; the standard-quality frame is stable.
         let thumb = URL(string: "https://i.ytimg.com/vi/\(id)/mqdefault.jpg")
-        return YouTubeSearchResult(videoID: id, title: title, channel: channel, duration: duration, thumbnailURL: thumb)
+        // The subtitle badge reads "CC" or its localized form (字幕 under the ja interface language).
+        let badges = (renderer["badges"] as? [[String: Any]] ?? [])
+            .compactMap { ($0["metadataBadgeRenderer"] as? [String: Any])?["label"] as? String }
+        let hasSubtitles = badges.contains { $0 == "CC" || $0 == "字幕" }
+        return YouTubeSearchResult(videoID: id, title: title, channel: channel, duration: duration, thumbnailURL: thumb, hasSubtitles: hasSubtitles)
     }
 }
