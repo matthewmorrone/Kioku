@@ -18,6 +18,8 @@ struct LyricWordBubbleOverlay: View {
     var translation: String? = nil
     // Space under the line already taken (the translation), which the rows below start past.
     var belowInset: CGFloat = 0
+    // True to put every bubble above the line (the video layout keeps the space below clear).
+    var aboveOnly = false
 
     static let glossFont = UIFont.systemFont(ofSize: 12, weight: .medium)
     static let horizontalPadding: CGFloat = 12
@@ -52,10 +54,12 @@ struct LyricWordBubbleOverlay: View {
                 size: proxy.size,
                 roomAbove: roomAbove,
                 roomBelow: roomBelow,
-                belowInset: belowInset
+                belowInset: belowInset,
+                aboveOnly: aboveOnly
             )
             ZStack(alignment: .topLeading) {
-                ForEach(slots, id: \.id) { slot in
+                // Farthest row first, so a bubble nearer the line sits in front of the tails running behind it.
+                ForEach(aboveOnly ? slots.reversed() : slots, id: \.id) { slot in
                     bubble(slot, in: proxy.size)
                 }
                 if let translation {
@@ -157,7 +161,7 @@ struct LyricWordBubbleOverlay: View {
     // panel has room for is taken, the oldest bubble is popped until the new one fits, so the
     // queue goes first in, first out. Replaying the same shown words gives the same places, so a
     // bubble never moves while it's up.
-    static func stackedLayout(_ bubbles: [PlacedLyricWordBubble], shown: Set<Int>? = nil, size cardSize: CGSize, roomAbove: CGFloat = rowOverflow, roomBelow: CGFloat = rowOverflow, belowInset: CGFloat = 0) -> [Slot] {
+    static func stackedLayout(_ bubbles: [PlacedLyricWordBubble], shown: Set<Int>? = nil, size cardSize: CGSize, roomAbove: CGFloat = rowOverflow, roomBelow: CGFloat = rowOverflow, belowInset: CGFloat = 0, aboveOnly: Bool = false) -> [Slot] {
         // Plan ahead: lay out every word's bubble first, as though all were up. When they all fit,
         // each bubble's place is fixed for the whole line and `shown` only decides which are drawn,
         // so nothing is popped to make room for a later word. Only when the line can't hold them
@@ -166,21 +170,21 @@ struct LyricWordBubbleOverlay: View {
         // First choice: one joint plan that spreads each row's bubbles together, so a bubble gives
         // way in whichever direction the whole row needs rather than every bubble after the first
         // being pushed along the line.
-        if let joint = jointLayout(bubbles, size: cardSize, roomAbove: roomAbove, roomBelow: roomBelow, belowInset: belowInset) {
+        if let joint = jointLayout(bubbles, size: cardSize, roomAbove: roomAbove, roomBelow: roomBelow, belowInset: belowInset, aboveOnly: aboveOnly) {
             return joint.filter { shown?.contains($0.id) ?? true }
         }
-        let planned = greedyLayout(bubbles, considering: glossed, size: cardSize, roomAbove: roomAbove, roomBelow: roomBelow, belowInset: belowInset)
+        let planned = greedyLayout(bubbles, considering: glossed, size: cardSize, roomAbove: roomAbove, roomBelow: roomBelow, belowInset: belowInset, aboveOnly: aboveOnly)
         if planned.dropped == false {
             return planned.slots.filter { shown?.contains($0.id) ?? true }
         }
         let sofar = glossed.filter { shown?.contains($0.id) ?? true }
-        return greedyLayout(bubbles, considering: sofar, size: cardSize, roomAbove: roomAbove, roomBelow: roomBelow, belowInset: belowInset).slots
+        return greedyLayout(bubbles, considering: sofar, size: cardSize, roomAbove: roomAbove, roomBelow: roomBelow, belowInset: belowInset, aboveOnly: aboveOnly).slots
     }
 
     // Places `all` (a subset of the line's `bubbles`, in word order) in rows, reporting whether any
     // bubble had to be popped or skipped for lack of room. The line's own geometry still comes from
     // every bubble, so a bubble's side and row don't depend on which others are considered.
-    private static func greedyLayout(_ bubbles: [PlacedLyricWordBubble], considering all: [PlacedLyricWordBubble], size cardSize: CGSize, roomAbove: CGFloat, roomBelow: CGFloat, belowInset: CGFloat) -> (slots: [Slot], dropped: Bool) {
+    private static func greedyLayout(_ bubbles: [PlacedLyricWordBubble], considering all: [PlacedLyricWordBubble], size cardSize: CGSize, roomAbove: CGFloat, roomBelow: CGFloat, belowInset: CGFloat, aboveOnly: Bool) -> (slots: [Slot], dropped: Bool) {
         let width = cardSize.width
         guard width > 0, all.isEmpty == false else { return ([], false) }
         var dropped = false
@@ -189,7 +193,7 @@ struct LyricWordBubbleOverlay: View {
         // The room each side leaves past the line. A row is as tall as its own tallest bubble (plus
         // tail room), so one long meaning doesn't make every row that expensive.
         let spaceAbove = lineTop + roomAbove
-        let spaceBelow = cardSize.height + roomBelow - lineBottom - belowInset
+        let spaceBelow = aboveOnly ? -CGFloat.greatestFiniteMagnitude : cardSize.height + roomBelow - lineBottom - belowInset
         // Whether `rows` (nearest the line first) stack within `space`, so no bubble is clipped.
         func rowsFit(_ rows: [[Slot]], space: CGFloat) -> Bool {
             let heights = rows.filter { $0.isEmpty == false }.map { $0.map(\.frame.height).max() ?? 0 }
@@ -212,7 +216,9 @@ struct LyricWordBubbleOverlay: View {
         }
         // Whether `rows` fit the room and no tail crosses another tail or a bubble.
         func accepts(_ rows: [[Slot]], isAbove: Bool) -> Bool {
-            rowsFit(rows, space: isAbove ? spaceAbove : spaceBelow) && hasCrossing(placedSlots(rows, isAbove: isAbove)) == false
+            // With everything above, rows must stack even where a farther tail passes behind a nearer
+            // bubble (drawn farthest first below), rather than dropping the bubble.
+            rowsFit(rows, space: isAbove ? spaceAbove : spaceBelow) && (aboveOnly || hasCrossing(placedSlots(rows, isAbove: isAbove)) == false)
         }
         // `rows` with `slot` added to `row` (a new last row when `row` is past the end).
         func adding(_ slot: Slot, toRow row: Int, of rows: [[Slot]]) -> [[Slot]] {

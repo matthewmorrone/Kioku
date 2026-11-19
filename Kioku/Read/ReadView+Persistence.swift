@@ -94,6 +94,7 @@ extension ReadView {
         // Load or unload the audio attachment whenever the active note changes — now that
         // `text` reflects the new note, range resolution lines up with the actual content.
         loadAudioAttachmentIfNeeded(attachmentID: noteToLoad.audioAttachmentID)
+        audioPlayback.youTubeVideoID = noteToLoad.audioAttachmentID == nil ? nil : noteToLoad.youtubeVideoID
         let loadedSegments = normalizedSegmentRanges(
             noteToLoad.segments,
             for: noteToLoad.content
