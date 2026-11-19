@@ -9,6 +9,8 @@ struct YouTubeFollowerView: View {
     // True to show the whole video letterboxed; false to crop it to fill the screen.
     @AppStorage(YouTubeFollowerView.fitsScreenKey) private var fitsScreen = false
 
+    // Told when the video's length stops or starts matching the audio's.
+    private let onLengthMismatch: (Bool) -> Void
     private let videoID: String
     // True for the blurred copy that fills the screen behind a fitted video; it always crops to fill.
     private let isAmbient: Bool
@@ -18,10 +20,11 @@ struct YouTubeFollowerView: View {
     // Creates the player for `videoID`, following `audio`. The controller is built inside the
     // autoclosure so SwiftUI creates it once; building it outside would spawn a new web view (and a
     // page reload) on every refresh of the parent.
-    init(videoID: String, audio: AudioPlaybackController, isAmbient: Bool = false) {
+    init(videoID: String, audio: AudioPlaybackController, isAmbient: Bool = false, onLengthMismatch: @escaping (Bool) -> Void = { _ in }) {
         self.videoID = videoID
         self.isAmbient = isAmbient
         self.audio = audio
+        self.onLengthMismatch = onLengthMismatch
         _player = StateObject(wrappedValue: YouTubePlayerController(videoID: videoID))
     }
 
@@ -74,6 +77,7 @@ struct YouTubeFollowerView: View {
             if audio.isPlaying == false || abs(new - old) > 700 { syncVideo() }
         }
         .onChange(of: player.isReady) { _, _ in syncVideo() }
+        .onChange(of: player.lengthMismatch) { _, mismatch in onLengthMismatch(mismatch) }
         .onAppear {
             player.audioState = { [weak audio] in
                 guard let audio else { return (false, 0, 0) }
@@ -81,7 +85,10 @@ struct YouTubeFollowerView: View {
             }
             syncVideo()
         }
-        .onDisappear { player.teardown() }
+        .onDisappear {
+            onLengthMismatch(false)
+            player.teardown()
+        }
     }
 
     // Asks the video follower to re-check itself against the audio.

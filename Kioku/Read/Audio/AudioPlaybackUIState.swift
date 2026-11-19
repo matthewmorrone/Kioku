@@ -23,6 +23,8 @@ final class AudioPlaybackUIState {
     var isShowingLyricsView = false
     // The lyrics view's video-only layout (video unveiled, only the active line over it).
     var isVideoMode = false
+    // Whether the open note's video is a different length from its audio.
+    var videoLengthMismatch = false
     // The "alignment may be off" popup (AlignmentConfidence) and the line counts it shows.
     var isShowingLowConfidenceNotice = false
     var lowConfidenceWeakLines = 0

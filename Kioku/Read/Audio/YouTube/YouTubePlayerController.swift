@@ -20,14 +20,10 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
     // False until the IFrame player is ready; nothing is sent to the page before then.
     @Published private(set) var isReady = false
     // True when the video's length differs from the audio's, so its timestamps can't be trusted.
-    private var lengthMismatch = false
+    @Published private(set) var lengthMismatch = false
     // The IFrame API's error code (101/150 = embedding disabled for this video), or nil.
     @Published private(set) var errorCode: Int?
 
-    private let videoID: String
-    // The stretch looped while the video can't follow the song (see YouTubeClipFinder), once found.
-    private var loopClip: YouTubeClip?
-    private var isFindingClip = false
     private var videoSeconds: Double = 0
     private var videoDuration: Double = 0
     private var videoState = -1
@@ -37,7 +33,6 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
 
     // Builds the web view and loads the player page for `videoID`.
     init(videoID: String) {
-        self.videoID = videoID
         let configuration = WKWebViewConfiguration()
         configuration.allowsInlineMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
@@ -67,15 +62,7 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
         // timestamps don't line up with the audio's. It then just plays and pauses with the song,
         // looping at its end, instead of being seeked to positions that mean something else.
         let isSameLength = videoDuration <= 0 || audioDuration <= 0 || abs(videoDuration - audioDuration) <= 3
-        if lengthMismatch == isSameLength {
-            lengthMismatch = !isSameLength
-            if lengthMismatch { findLoopClip() }
-        }
-        // A video that can't follow the song loops its best-looking stretch instead of playing through.
-        if isSameLength == false, let clip = loopClip, videoSeconds >= clip.end || videoSeconds < clip.start - 1 {
-            run("player.seekTo(\(clip.start), true)")
-            videoSeconds = clip.start
-        }
+        if lengthMismatch == isSameLength { lengthMismatch = !isSameLength }
         if isSameLength, abs(videoSeconds - audioSeconds) > Self.driftTolerance {
             run("player.seekTo(\(audioSeconds), true)")
             videoSeconds = audioSeconds
@@ -85,19 +72,6 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
             run("player.playVideo()")
         } else if audioPlaying == false, videoPlaying {
             run("player.pauseVideo()")
-        }
-    }
-
-    // Looks for the video's best stretch to loop; once, and only while the video is mismatched. Until
-    // it's found the video just plays through as before.
-    private func findLoopClip() {
-        guard loopClip == nil, isFindingClip == false else { return }
-        isFindingClip = true
-        let id = videoID
-        Task { @MainActor in
-            loopClip = await YouTubeClipFinder.shared.clip(for: id)
-            isFindingClip = false
-            sync()
         }
     }
 

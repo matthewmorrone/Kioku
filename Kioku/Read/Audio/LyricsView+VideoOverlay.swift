@@ -10,6 +10,15 @@ extension LyricsView {
         let displayIndex = dragDisplayIndex ?? (singSession.isActive ? singSession.guidedCueIndex : nil) ?? activeIndex
         return VStack(spacing: 0) {
             videoTopBar
+            if videoLengthMismatch {
+                Label("This video's length doesn't match the audio, so it only plays along and can't follow the lyrics.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Capsule().fill(Color.orange.opacity(0.85)))
+                    .padding(.horizontal, 12)
+            }
             Spacer(minLength: 0)
             VStack(spacing: 0) {
                 cardHandle(maxUp: geo.size.height * 0.6)

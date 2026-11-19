@@ -20,8 +20,12 @@ extension ReadView {
         ZStack {
             Color(.systemBackground)
             if hasVideoBackdrop, let videoID = audioPlayback.youTubeVideoID {
-                YouTubeFollowerView(videoID: videoID, audio: audioPlayback.audioController)
-                    .id(videoID)
+                YouTubeFollowerView(
+                    videoID: videoID,
+                    audio: audioPlayback.audioController,
+                    onLengthMismatch: { audioPlayback.videoLengthMismatch = $0 }
+                )
+                .id(videoID)
                 if audioPlayback.isShowingLyricsView && audioPlayback.isVideoMode {
                     Color.clear
                 } else {

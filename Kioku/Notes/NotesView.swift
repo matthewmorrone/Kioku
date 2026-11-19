@@ -18,8 +18,6 @@ struct NotesView: View {
     var onOCRImportedNotes: (([Note]) -> Void)? = nil
     // Import Audio's picked file, handed to ContentView to transcribe into a new note on Read.
     var onAudioImported: ((URL) -> Void)? = nil
-    // Called with the id of the YouTube video picked in the search sheet, to start a note around it.
-    var onYouTubeVideoPicked: ((String) -> Void)? = nil
 
     @EnvironmentObject var store: NotesStore
     @EnvironmentObject private var wordsStore: WordsStore
@@ -54,7 +52,6 @@ struct NotesView: View {
     @State var isPerformingOCRImport = false
     @State var ocrImportErrorMessage = ""
     @State var isShowingURLImportSheet = false
-    @State var isShowingYouTubeSearch = false
     @State var isShowingAudioImporter = false
 
     var body: some View {
@@ -258,16 +255,6 @@ struct NotesView: View {
                         await importTextFromOCRImageData(imageData)
                     }
                 })
-            }
-            .sheet(isPresented: $isShowingYouTubeSearch) {
-                YouTubeSearchSheet(
-                    query: "",
-                    onSelect: { videoID in
-                        isShowingYouTubeSearch = false
-                        onYouTubeVideoPicked?(videoID)
-                    },
-                    onCancel: { isShowingYouTubeSearch = false }
-                )
             }
             .sheet(isPresented: $isShowingURLImportSheet) {
                 URLImportSheet { note in

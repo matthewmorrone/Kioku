@@ -202,15 +202,6 @@ extension ReadView {
                 pendingAudioImportURL = nil
                 Task { await prepareAudioImport(at: url) }
             }
-            .onChange(of: pendingYouTubeVideoID) { _, videoID in
-                guard let videoID else { return }
-                pendingYouTubeVideoID = nil
-                // Yield once so the freshly selected note is loaded before the video attaches to it.
-                Task {
-                    await Task.yield()
-                    await addYouTubeVideo(from: videoID)
-                }
-            }
             // Keeps the reset button's differsFromDefault current; a newer key cancels the older run.
             .task(id: defaultComparisonKey) {
                 await refreshDiffersFromDefault()
@@ -392,6 +383,7 @@ extension ReadView {
                     onSearchYouTube: { subtitleImport.isShowingYouTubeSearch = true },
                     isVideoMode: audioPlayback.isVideoMode,
                     onToggleVideoMode: { audioPlayback.isVideoMode.toggle() },
+                    videoLengthMismatch: audioPlayback.videoLengthMismatch,
                     onRemoveAudio: { resetCurrentSubtitleAttachment() },
                     isReAligning: lyricAlignment.isAligning,
                     reAlignMessage: lyricAlignment.progressMessage,
