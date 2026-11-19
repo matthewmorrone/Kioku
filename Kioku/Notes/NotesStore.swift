@@ -359,16 +359,6 @@ final class NotesStore: ObservableObject {
         notes[index].modifiedAt = Date()
     }
 
-    // Sets or clears the YouTube video a note plays beside its lyrics, without touching text or audio.
-    func updateYouTubeVideoID(id: UUID, videoID: String?) {
-        guard let index = notes.firstIndex(where: { $0.id == id }) else {
-            return
-        }
-
-        notes[index].youtubeVideoID = videoID
-        notes[index].modifiedAt = Date()
-    }
-
     // Persists a read-screen edit by upserting into the in-memory store and writing to disk immediately.
     // Uses upsertNote so writes are coalesced in memory and can be flushed explicitly when needed.
     @discardableResult

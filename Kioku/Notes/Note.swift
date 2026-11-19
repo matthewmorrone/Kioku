@@ -21,9 +21,6 @@ struct Note: Identifiable, Codable, Equatable, Hashable {
     // Non-nil when the note was created from a subtitle import with audio; references
     // files managed by NotesAudioStore.
     var audioAttachmentID: UUID?
-    // The 11-character id of a YouTube video played muted beside the lyrics, following the note's
-    // audio. Optional so notes and backups written before it existed decode unchanged.
-    var youtubeVideoID: String?
     // The folder this note is filed in; nil (or an id with no matching folder) means the top level.
     // Optional so notes and backups written before folders existed decode unchanged.
     var folderID: UUID?
@@ -50,7 +47,6 @@ struct Note: Identifiable, Codable, Equatable, Hashable {
         createdAt: Date = Date(),
         modifiedAt: Date = Date(),
         audioAttachmentID: UUID? = nil,
-        youtubeVideoID: String? = nil,
         folderID: UUID? = nil
     ) {
         self.id = id
@@ -61,7 +57,6 @@ struct Note: Identifiable, Codable, Equatable, Hashable {
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
         self.audioAttachmentID = audioAttachmentID
-        self.youtubeVideoID = youtubeVideoID
         self.folderID = folderID
     }
 }

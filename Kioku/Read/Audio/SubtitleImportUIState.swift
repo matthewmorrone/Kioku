@@ -24,17 +24,4 @@ final class SubtitleImportUIState {
     var pendingSubtitleTextGridFilename = ""
     // Drives the lyric-button "nothing loaded yet" media picker (mp3 + srt + textgrid, multi-select).
     var isShowingLyricMediaPicker = false
-    // The "audio file or YouTube link?" choice shown from the lyric button when nothing is attached,
-    // and the link prompt it opens.
-    var isShowingLyricSourceChoice = false
-    var isShowingYouTubePrompt = false
-    var isShowingYouTubeSearch = false
-    var isShowingYouTubeReplaceChoice = false
-    var youTubeReplaceLink = ""
-    var youTubeLinkText = ""
-    // Captions found for a link pasted into an empty note, held while the "use these as the note's
-    // text?" offer is showing, along with the link to resume with.
-    var youTubeCaptionOffer: YouTubeCaptions?
-    var youTubeCaptionLink = ""
-    var isShowingYouTubeCaptionOffer = false
 }

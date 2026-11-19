@@ -45,9 +45,6 @@ extension ReadView {
                         .tourTarget(.readLyrics)
                         .matchedGeometryEffect(id: "lyricsControl", in: lyricsMiniPlayerNamespace)
                 }
-                if hasVideoBackdrop {
-                    titleVideoButton
-                }
                 titleBreakdownButton
                     .tourTarget(.readBreakdown)
                 titleShuffleButton

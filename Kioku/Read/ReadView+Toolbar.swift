@@ -97,7 +97,7 @@ extension ReadView {
                 // attachment exists, the tap reverts to its normal show/hide-lyrics behavior; opening
                 // the lyrics on a note with no cues yet starts alignment (autoAlignIfNeeded).
                 if audioPlayback.activeAudioAttachmentID == nil {
-                    subtitleImport.isShowingLyricSourceChoice = true
+                    subtitleImport.isShowingLyricMediaPicker = true
                 } else {
                     audioPlayback.isShowingLyricsView.toggle()
                     // How long the main thread stays busy after the tap, i.e. how late the view shows.
@@ -118,18 +118,6 @@ extension ReadView {
             }
             .accessibilityLabel(lyricAlignment.isAligning ? "Aligning Lyrics" : (audioPlayback.isShowingLyricsView ? "Hide Lyrics" : "Show Lyrics"))
             .accessibilityHint("Press and hold to open and play")
-            .accessibilityAddTraits(.isButton)
-    }
-
-    // Opens the lyrics view in its video-only layout; shown when the note has a video.
-    var titleVideoButton: some View {
-        titleActionLabel(systemImage: "play.rectangle", foreground: .accentColor)
-            .contentShape(Capsule())
-            .onTapGesture {
-                audioPlayback.isVideoMode = true
-                audioPlayback.isShowingLyricsView = true
-            }
-            .accessibilityLabel("Show Video")
             .accessibilityAddTraits(.isButton)
     }
 

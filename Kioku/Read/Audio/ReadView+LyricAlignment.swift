@@ -323,8 +323,6 @@ extension ReadView {
         audioPlayback.audioController.stop()
         NotesAudioStore.shared.deleteAttachment(attachmentID)
         notesStore.updateAudioAttachment(id: noteID, attachmentID: nil)
-        notesStore.updateYouTubeVideoID(id: noteID, videoID: nil)
-        audioPlayback.youTubeVideoID = nil
         loadAudioAttachmentIfNeeded(attachmentID: nil)
     }
 
