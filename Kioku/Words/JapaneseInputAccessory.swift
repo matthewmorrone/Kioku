@@ -76,6 +76,19 @@ final class JapaneseInputAccessory: NSObject {
     // is created in makeUIView.
     func install() {
         installAccessoryBar()
+        // The input-view wrappers carry their own light/dark override (the keyboard window's traits
+        // are unreliable), so follow the field's appearance whenever it changes.
+        responder?.registerForTraitChanges([UITraitUserInterfaceStyle.self], target: self, action: #selector(syncInputViewStyle))
+    }
+
+    // Copies the field's current light/dark style onto every cached radical/handwriting wrapper.
+    // Without it a wrapper keeps the style it was created under: switching the app's appearance
+    // afterwards left the handwriting canvas dark on a light screen (and the reverse).
+    @objc private func syncInputViewStyle() {
+        guard let style = responder?.traitCollection.userInterfaceStyle, style != .unspecified else { return }
+        for wrapper in inputViewContainers.values {
+            wrapper.overrideUserInterfaceStyle = style
+        }
     }
 
     // Captures the system keyboard's measured height so subsequent inline inputView swaps can
@@ -163,6 +176,7 @@ final class JapaneseInputAccessory: NSObject {
         guard let responder, newMode != currentMode else { return }
         currentMode = newMode
         accessoryHost?.rootView = makeBar()
+        syncInputViewStyle()
         switch newMode {
         case .keyboard:
             responder.inputView = nil
