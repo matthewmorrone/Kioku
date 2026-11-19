@@ -306,6 +306,10 @@ struct ContentView: View {
         #endif
         guard !dictionaryDownloadManager.isInstalled || dictionaryDownloadManager.updateAvailable else { return }
         if await dictionaryDownloadManager.downloadIfNeeded() {
+            // The install replaced the file the current store has open, so its handle now fails every
+            // query ("disk I/O error"). Dropping it lets the rebuild's fast path publish a store on
+            // the new file straight away; it only publishes into an empty slot.
+            readResources.dictionaryStore = nil
             rebuildReadResources()
         }
     }
