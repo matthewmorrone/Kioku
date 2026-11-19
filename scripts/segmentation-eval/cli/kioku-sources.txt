@@ -77,6 +77,8 @@ Read/Furigana/FuriganaResolver+InflectedStem.swift
 Read/Furigana/FuriganaResolver+ContextualReadings.swift
 Read/Furigana/ReadingContextTable.swift
 Read/Furigana/ReadingScore.swift
+Read/Furigana/ReadingContext.swift
+Read/Furigana/WordVectorTable.swift
 Read/Furigana/ReadingNeighbour.swift
 Read/Furigana/PhraseReadingEvidence.swift
 Read/Furigana/PhraseProbe.swift

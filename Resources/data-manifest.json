@@ -311,19 +311,21 @@
     },
     {
       "name": "reading-contexts",
-      "description": "Which reading a kanji takes next to which word classes (時 after a number → じ, 方 after a verb → かた). Furigana picks among a word's dictionary readings with these counts instead of frequency order alone.",
-      "license": "Inherits tatoeba-jpn-indices: CC BY 2.0 FR (Tatoeba)",
+      "description": "Which reading a kanji run takes from the words around it (時 after a number → じ, 方 after a verb → かた, 人気 in a sentence about empty streets → ひとけ): one logistic regression per kanji run with 2+ readings over the embeddings of the words beside it and within five places. Furigana picks among a word's dictionary readings with it instead of frequency order alone.",
+      "license": "Inherits tatoeba-jpn-indices (CC BY 2.0 FR, Tatoeba), fasttext-ja-vectors (CC BY-SA 3.0) and ndl-furigana (CC BY 4.0, National Diet Library)",
       "type": "dictionary-table",
       "path": null,
       "required": false,
       "derived": true,
       "url": null,
       "sha256": null,
-      "provenance": "The reading_contexts table in dictionary.sqlite, counted at every dictionary build by import_usage_tables in generate_db.py (scripts/calibration/usage_tables.py) from every tatoeba-jpn-indices sentence no eval set uses: the training half minus train2k, plus the held-out half minus held2k, fresh5k and kana2k (by id or text). Every gold token written as its headword whose index marks a reading (方(かた)) gives its kanji run's reading and the classes of the gold tokens either side, classed through segcli count with the transition table's lexical words. Without the table furigana keeps the dictionary's frequency order.",
+      "provenance": "The reading_contexts table (per reading: count, bias, weights) and the word_vectors table in dictionary.sqlite, fitted at every dictionary build by import_usage_tables in generate_db.py (scripts/calibration/usage_tables.py counts, reading_model.py fits) from every tatoeba-jpn-indices sentence no eval set uses: the training half minus train2k, plus the held-out half minus held2k, fresh5k and kana2k (by id or text). Every gold token written as its headword whose index marks a reading (方(かた)) gives its kanji run's reading; the features are the fastText vectors of the gold tokens either side and within five places, classed and lemmatised through segcli count. Without the tables furigana keeps the dictionary's frequency order.",
       "derivedFrom": [
-        "tatoeba-jpn-indices"
+        "tatoeba-jpn-indices",
+        "fasttext-ja-vectors",
+        "ndl-furigana"
       ],
-      "derivation": "import_usage_tables in Resources/generate_db.py (segcli count + scripts/calibration/usage_tables.py)",
+      "derivation": "import_usage_tables in Resources/generate_db.py (segcli count + scripts/calibration/usage_tables.py + reading_model.py)",
       "feedsDictionary": true
     },
     {
@@ -437,6 +439,42 @@
         "format": "tar.bz2",
         "member": "jpn_indices.csv",
         "cacheName": "jpn_indices.tar.bz2"
+      }
+    },
+    {
+      "name": "fasttext-ja-vectors",
+      "description": "fastText's pretrained Japanese word vectors (cc.ja.300, 300 dimensions, trained on Common Crawl and Wikipedia). The reading model's word meanings: which words sit around a kanji run.",
+      "license": "CC BY-SA 3.0 (Facebook AI Research, Grave et al., Learning Word Vectors for 157 Languages)",
+      "type": "source-archive",
+      "path": null,
+      "required": false,
+      "derived": false,
+      "url": "https://fasttext.cc/docs/en/crawl-vectors.html",
+      "sha256": null,
+      "provenance": "Facebook's published cc.ja.300.vec.gz. No hash is pinned. import_usage_tables streams it and keeps the 50,000 commonest words the dictionary spells, as unit vectors quantised to int8, in the word_vectors table. The rest of the 1.3 GB archive is not kept.",
+      "feedsDictionary": true,
+      "fetch": {
+        "url": "https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.ja.300.vec.gz",
+        "format": "gz",
+        "cacheName": "cc.ja.300.vec.gz"
+      }
+    },
+    {
+      "name": "ndl-furigana",
+      "description": "Furigana for National Diet Library bibliography titles (ndl-lab/huriganacorpus-ndlbib, republished as the Calvin-Xu/Furigana-NDLBIB dataset): ~16 million titles with a reading marked on every kanji run. Tatoeba shows most ambiguous kanji runs' rarer readings too few times to model; book titles show them often. Extra training tokens for the reading model, never shown to the user.",
+      "license": "CC BY 4.0 (National Diet Library, ndl-lab/huriganacorpus-ndlbib); the Hugging Face dataset card says MIT",
+      "type": "source-archive",
+      "path": null,
+      "required": false,
+      "derived": false,
+      "url": "https://huggingface.co/datasets/Calvin-Xu/Furigana-NDLBIB",
+      "sha256": null,
+      "provenance": "14 Arrow shards at a pinned dataset revision, streamed one at a time by import_ndl_tokens in generate_db.py (never all on disk). Up to 400 titles per (kanji, reading) are sampled uniformly over the whole set, for the readings Tatoeba also lists for a kanji run it reads two or more ways; those titles are segmented by segcli and become reading-model training tokens with a source flag, so they teach the shared weights while the bias stays Tatoeba's (reading_model.reading_rows). No title is shipped. build_sources records a digest of the shards' own sha256 values. generate_db.py --skip-ndl omits it.",
+      "feedsDictionary": true,
+      "shards": {
+        "urlTemplate": "https://huggingface.co/datasets/Calvin-Xu/Furigana-NDLBIB/resolve/9cf75663498ecdb95968cbe566fa6b7dd3b3cd02/data-{n:05d}-of-{count:05d}.arrow",
+        "count": 14,
+        "revision": "9cf75663498ecdb95968cbe566fa6b7dd3b3cd02"
       }
     },
     {

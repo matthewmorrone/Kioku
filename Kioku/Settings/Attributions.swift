@@ -58,6 +58,18 @@ nonisolated enum Attributions {
             sourceURL: "https://github.com/ku-nlp/KWDLC"
         ),
         Dataset(
+            name: "fastText Japanese Word Vectors",
+            description: "Pretrained word vectors (cc.ja.300), cut to the 50,000 commonest dictionary words; they let furigana judge which reading fits the words around a kanji.",
+            license: "Facebook AI Research — CC BY-SA 3.0",
+            sourceURL: "https://fasttext.cc/docs/en/crawl-vectors.html"
+        ),
+        Dataset(
+            name: "NDL Bibliography Furigana",
+            description: "Readings marked on National Diet Library book titles; counted (no titles kept) to teach furigana the readings Tatoeba shows too rarely.",
+            license: "National Diet Library — CC BY 4.0",
+            sourceURL: "https://github.com/ndl-lab/huriganacorpus-ndlbib"
+        ),
+        Dataset(
             name: "Jiten Frequency List",
             description: "Word-frequency rankings from anime, drama, film, novels and visual novels, for difficulty grading and ranking.",
             license: "Jiten — CC BY-SA 4.0",

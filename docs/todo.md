@@ -129,3 +129,45 @@ it changed modern sentences at every classical step weight tried, 2 to 8 (よ|�
 it. A fix needs a different signal: for instance admitting the form only right after a verb's 連用形/未然形
 in the lattice, never as a bare edge. The omissions are in deinflection-grammar.json omitted, each with the
 measurement. Also still split at weight 3, and worth rechecking with any such change: 散りぬる, 消えぬれば, 来にけり.
+
+## Word embeddings: follow-ups
+
+The reading model is a per-kanji logistic regression on fastText vectors (scripts/calibration/reading_model.py,
+Kioku/Read/Furigana/ReadingContext.swift; offline harness in scripts/segmentation-eval/cv/). The 50,000 vectors
+are in the dictionary (`word_vectors`). These are the ideas not yet built, in rough order of payoff. Measure each
+with the cv harness before shipping (10-fold sign test, not held2k moves of a few tokens).
+
+- **Reading failures after the swap.** 等 など→とう (twice), 人 ひと→にん, 力 ちから→りょく, 位 くらい→い, 気味
+  ぎみ→きみ. The neighbour's grammatical form decides these and the averaged embedding loses it. Try features for
+  the neighbour's surface ending (last one or two kana); one-hot classes added +0.12 pt offline, this is the same
+  signal without the segmenter's class names.
+- **Apple and phrase votes are fixed at +2.** Fitted for the old score scale. Either retune them or add them as
+  features to the regression so the data sets their weight (the "no overfitting" worry: check on held-out folds).
+- **NDL furigana: built into the pipeline, full build run 2026-11-17 (25 min, 374 modelled readings), not committed.**
+  `generate_db.py` streams the 14 NDL shards (`import_ndl_tokens`, scripts/calibration/ndl_corpus.py), trains the
+  reading model on Tatoeba plus 662k NDL tokens with a source column; `--skip-ndl` omits it. Gates on that dictionary:
+  named cases 104/104; held2k 1196 correct (95.15%, +1 vs without NDL); fresh 4022 (97.06%, −7 vs 4029); lyrics 2 of
+  319 lines worse (詩人の様に, 幻の様に: よう → さま), none better. On the 26 notes copied from the phone (847 lines, segcli's own
+  segmentation): 12 readings change, 7 better (鳴り止まぬ 止 と→や, 告げる風 ふう→かぜ, 時を超え じ→とき ×3, 何よりも なん→なに,
+  の様燃え さま→よう), 1 neutral (明日 あす→あした), 4 worse (の様に よう→さま ×2, 街家 いえ→か ×2). Still to decide: whether the −7
+  on fresh and the 様 pair are worth it.
+- **Smaller or own vectors.** 100-dimension vectors cut the size 3×; vectors trained on our own segmented text
+  would drop the CC BY-SA licence. fastText's `.bin` (subword, covers unknown words) is the heavy option: much
+  larger to fetch and to ship. Only worth it if the licence or size matters.
+- **Rare kanji share strength.** Features crossed with reading type so kanji with few examples borrow from the
+  rest. Speculative.
+- **Word-sense choice in the lookup sheet.** Tatoeba's index marks the JMdict sense (`[01]`) on tokens, a free
+  label. Rank a word's senses by the sentence the same way. First check whether the top gloss is still wrong
+  often (not verified; the lemma tagging may have fixed the common cases).
+- **Lemma choice for ambiguous surfaces.** 入り as noun vs 入る: let context vote, deterministically.
+- **Example sentences.** Rank the lookup sheet's Tatoeba examples by similarity of their bag to the note's context.
+- **Multiple-choice distractors.** Kioku/Learn/MultipleChoice/DistractorSelector.swift picks them; nearest
+  neighbours by vector would replace DistractorRefinement and AppleIntelligenceDistractorClient. Read the selector
+  first.
+- **Review progression.** Use vector distance so near-synonyms are neither shown back to back nor left unpaired.
+- **Register classifier** (RegisterClassifier.swift, ReadingRegisters.swift, import_reading_registers). Kept; it
+  gives KWDLC 90.64 → 93.12% on web text. Try the note's bag vector as its input instead of character bigrams,
+  and keep it only if it is at least as good on short notes.
+- **Pitch accent for homographs.** `pitch_accent` is keyed by word and kana, not by sense, so one spelling with
+  one reading cannot carry two accents. Only matters if such pairs turn out to exist in the data; check first.
+- **Not doing:** "similar notes", topic grouping and semantic search over notes (declined).

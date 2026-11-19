@@ -1,10 +1,10 @@
 import Foundation
 import SQLite3
 
-// The usage tables Resources/generate_db.py counts from Tatoeba into the dictionary
-// (import_usage_tables): the segmenter's class-pair transition costs (segmenter_transitions) and
-// furigana's reading counts by neighbouring class (reading_contexts). A dictionary built before them
-// has neither; the segmenter then runs without transition costs and furigana keeps frequency order.
+// The usage tables Resources/generate_db.py fits from Tatoeba into the dictionary (import_usage_tables):
+// the segmenter's class-pair transition costs (segmenter_transitions) and furigana's reading model
+// (reading_contexts, word_vectors). A dictionary built before them has neither; the segmenter then
+// runs without transition costs and furigana keeps frequency order.
 extension DictionaryStore {
     // Every class pair's PMI, in nats. Empty without the table.
     nonisolated func fetchSegmenterTransitions() throws -> [SegmenterTransitionRow] {
@@ -32,36 +32,49 @@ extension DictionaryStore {
         }
     }
 
-    // Every kanji run and reading with its count and the "class=count" lists either side, and, from
-    // a dictionary that has them, the "class<TAB>lemma=count" word lists either side (empty strings
-    // otherwise). Empty without the table.
+    // Every counted kanji-run reading with its count and, where the build fitted a model for the kanji,
+    // the model's bias and weights (ReadingContextTable). Empty without the table or from a dictionary
+    // that predates the model (its columns).
     nonisolated func fetchReadingContexts() throws -> [ReadingContextRow] {
         try withSerializedDatabaseAccess {
-            guard tableExists("reading_contexts") else { return [] }
-            let hasNeighbourWords = try readingContextsHaveNeighbourWords()
+            guard tableExists("reading_contexts"), try tableHasColumn("reading_contexts", "weights") else { return [] }
             var statement: OpaquePointer?
             defer { sqlite3_finalize(statement) }
-            let wordColumns = hasNeighbourWords ? ", previous_words, next_words" : ""
-            try prepare(sql: "SELECT kanji, reading, count, previous, next\(wordColumns) FROM reading_contexts", statement: &statement)
-            // A text column, or "" when the dictionary predates it.
-            func text(_ column: Int32) -> String {
-                guard hasNeighbourWords, let value = sqlite3_column_text(statement, column) else { return "" }
-                return String(cString: value)
-            }
+            try prepare(sql: "SELECT kanji, reading, count, bias, weights FROM reading_contexts", statement: &statement)
             var rows: [ReadingContextRow] = []
             var stepCode = sqlite3_step(statement)
             while stepCode == SQLITE_ROW {
-                if let kanji = sqlite3_column_text(statement, 0), let reading = sqlite3_column_text(statement, 1),
-                   let previous = sqlite3_column_text(statement, 3), let next = sqlite3_column_text(statement, 4) {
+                if let kanji = sqlite3_column_text(statement, 0), let reading = sqlite3_column_text(statement, 1) {
                     rows.append(ReadingContextRow(
                         kanji: String(cString: kanji),
                         reading: String(cString: reading),
                         count: Int(sqlite3_column_int64(statement, 2)),
-                        previous: String(cString: previous),
-                        next: String(cString: next),
-                        previousWords: text(5),
-                        nextWords: text(6)
+                        bias: Float(sqlite3_column_double(statement, 3)),
+                        weights: blob(statement, 4)
                     ))
+                }
+                stepCode = sqlite3_step(statement)
+            }
+            guard stepCode == SQLITE_DONE else {
+                throw DictionarySQLiteError.step(message: errorMessage()).logged()
+            }
+            return rows
+        }
+    }
+
+    // Every word with its inverse document frequency and quantised vector (WordVectorTable). Empty
+    // without the table.
+    nonisolated func fetchWordVectors() throws -> [WordVectorRow] {
+        try withSerializedDatabaseAccess {
+            guard tableExists("word_vectors") else { return [] }
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            try prepare(sql: "SELECT word, idf, vector FROM word_vectors", statement: &statement)
+            var rows: [WordVectorRow] = []
+            var stepCode = sqlite3_step(statement)
+            while stepCode == SQLITE_ROW {
+                if let word = sqlite3_column_text(statement, 0), let vector = blob(statement, 2) {
+                    rows.append(WordVectorRow(word: String(cString: word), inverseDocumentFrequency: sqlite3_column_double(statement, 1), vector: vector))
                 }
                 stepCode = sqlite3_step(statement)
             }
@@ -74,22 +87,28 @@ extension DictionaryStore {
 }
 
 extension DictionaryStore {
-    // True when reading_contexts carries the neighbour words. Caller must already hold the queue.
-    nonisolated fileprivate func readingContextsHaveNeighbourWords() throws -> Bool {
+    // True when `table` has a column named `column`. Caller must already hold the queue.
+    nonisolated fileprivate func tableHasColumn(_ table: String, _ column: String) throws -> Bool {
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
-        try prepare(sql: "PRAGMA table_info(reading_contexts)", statement: &statement)
+        try prepare(sql: "PRAGMA table_info(\(table))", statement: &statement)
         var found = false
         var stepCode = sqlite3_step(statement)
         while stepCode == SQLITE_ROW {
             // Column 1 of table_info is the column's name.
-            if let name = sqlite3_column_text(statement, 1), String(cString: name) == "next_words" { found = true }
+            if let name = sqlite3_column_text(statement, 1), String(cString: name) == column { found = true }
             stepCode = sqlite3_step(statement)
         }
         guard stepCode == SQLITE_DONE else {
             throw DictionarySQLiteError.step(message: errorMessage()).logged()
         }
         return found
+    }
+
+    // The bytes of a BLOB column, or nil when it is NULL.
+    nonisolated fileprivate func blob(_ statement: OpaquePointer?, _ column: Int32) -> Data? {
+        guard let bytes = sqlite3_column_blob(statement, column) else { return nil }
+        return Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, column)))
     }
 }
 
@@ -101,15 +120,20 @@ nonisolated struct SegmenterTransitionRow: Sendable {
     let pmi: Double
 }
 
-// One reading_contexts row: a kanji run's reading, how often the counts saw it, the classes seen before
-// and after it as "name=count name=count" lists, and the same neighbours' words as
-// "class<TAB>lemma=count" lists (ReadingNeighbour.wordKey), empty from a dictionary built before them.
+// One reading_contexts row: a kanji run's reading, how often the counts saw it, and, for a kanji with a
+// model, its bias and its ReadingContext.featureCount little-endian Float32 weights.
 nonisolated struct ReadingContextRow: Sendable {
     let kanji: String
     let reading: String
     let count: Int
-    let previous: String
-    let next: String
-    var previousWords = ""
-    var nextWords = ""
+    let bias: Float
+    let weights: Data?
+}
+
+// One word_vectors row: a word, its inverse document frequency in the counted sentences and its
+// WordVectorTable.dimensions quantised components.
+nonisolated struct WordVectorRow: Sendable {
+    let word: String
+    let inverseDocumentFrequency: Double
+    let vector: Data
 }

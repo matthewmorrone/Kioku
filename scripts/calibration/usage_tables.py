@@ -9,19 +9,15 @@ calls build() near the end of a dictionary build and writes the result into the 
       class's ending, "v5:て" → "v5") wherever that level has MIN_EVIDENCE observed or expected
       pairs; SegmenterTransitionTable backs off through the same levels in the same order. Counted
       from the training half (even sentence ids) minus train2k, which is kept for fitting.
-  reading_contexts (kanji, reading, count, previous, next, previous_words, next_words)
-      Which reading a kanji run takes next to which classes and words: one row per run and reading,
-      with "class=count" lists for the gold token before and after it, and "class<TAB>lemma=count"
-      lists of the same tokens' lemmas (Segmenter.preferredLemma, from segcli) where the class is not
-      the word itself. A conjugated token carries its
-      dictionary form's reading (瞬いていた is marked 瞬く(またたく)), so its kanji run is read by
-      cropping that reading to the stem, as the app's FuriganaResolver.inflectedStemReading does:
-      瞬いていた counts 瞬 → またた. Words whose stem itself changes when they inflect (JMdict vk
-      and adj-ix: 来て is き, not 来る's く; 良かった is よ, not いい's い) are left out, as is any
-      token whose kanji or leading kana don't match its headword's, unless the token is another
-      kanji spelling the dictionary reads the same way (体(からだ) written 身体 counts 身体 →
-      からだ). Counted from every sentence no
-      eval set uses. ReadingContextTable reads it.
+  reading_contexts, word_vectors
+      Which reading a kanji run takes from the words around it. reading_model.py fits them from the same
+      counted sentences (every sentence no eval set uses) and from pretrained word vectors; see there.
+      A conjugated token carries its dictionary form's reading (瞬いていた is marked 瞬く(またたく)), so its
+      kanji run is read by cropping that reading to the stem, as the app's FuriganaResolver.inflectedStemReading
+      does: 瞬いていた counts 瞬 → またた. Words whose stem itself changes when they inflect (JMdict vk and
+      adj-ix: 来て is き, not 来る's く; 良かった is よ, not いい's い) are left out, as is any token whose kanji
+      or leading kana don't match its headword's, unless the token is another kanji spelling the dictionary
+      reads the same way (体(からだ) written 身体 counts 身体 → からだ).
 
 Tatoeba's index tokenizes each sentence into JMdict headwords and marks a reading where a headword
 has several (方(かた)), so it gives both word boundaries and readings. Word classes are named by the
@@ -233,73 +229,9 @@ def respelled_headword(surface, headword, reading, spellings):
     return candidate if (candidate, to_hiragana(reading)) in spellings else None
 
 
-# The neighbour slots reading_rows counts, as steps from the token: the words either side. The ones
-# beyond them were measured and left out (ReadingContextTable).
-NEIGHBOUR_STEPS = (-1, 1)
-
-
-def reading_rows(records, class_lines, irregular, spellings=frozenset()):
-    """(kanji, reading, count, previous classes, next classes, previous words, next words) rows, one
-    per kanji run and reading. Classes are "class=count" lists; words "class<TAB>lemma=count" lists,
-    only for neighbours whose class is not the word itself.
-    `irregular` holds the headwords whose stem changes when they inflect (see surface_run);
-    `spellings` the dictionary's (spelling, hiragana reading) pairs (see respelled_headword)."""
-    occurrences = collections.Counter()
-    # Per neighbour slot (previous, next): class counts and word counts by key.
-    classes = [collections.defaultdict(collections.Counter) for _ in NEIGHBOUR_STEPS]
-    words = [collections.defaultdict(collections.Counter) for _ in NEIGHBOUR_STEPS]
-    for record, line in zip(records, class_lines):
-        token_by_span = {(a, b): (name, lemma) for a, b, name, lemma in parse_tokens(line)}
-        spans = [(a, b) for a, b, *_ in record['g']]
-
-        def neighbour(i, step):
-            """(class, lemma) of the gold token `step` places from token i: BOUNDARY, with no lemma,
-            across a gap between tokens or past either end."""
-            j = i
-            for _ in range(abs(step)):
-                k = j + (1 if step > 0 else -1)
-                if not 0 <= k < len(spans) or (spans[k][0] != spans[j][1] if step > 0 else spans[k][1] != spans[j][0]):
-                    return BOUNDARY, None
-                j = k
-            return token_by_span.get(spans[j], (BOUNDARY, None))
-        for i, (a, b, headword, reading, *_) in enumerate(record['g']):
-            # Empty, or an entry-number pointer (#1392580) rather than a reading.
-            if not reading or reading.startswith('#'):
-                continue
-            surface = record['s'][a:b]
-            headword = respelled_headword(surface, headword, reading, spellings) or headword
-            if surface == headword:
-                runs = list(KANJI.finditer(headword))
-                kanji = runs[0].group() if len(runs) == 1 else None
-            else:
-                kanji = surface_run(surface, headword, irregular)
-            if kanji is None:
-                continue
-            run = run_reading(headword, reading)
-            if run is None:
-                continue
-            key = (kanji, run)
-            occurrences[key] += 1
-            for slot, step in enumerate(NEIGHBOUR_STEPS):
-                name, lemma = neighbour(i, step)
-                classes[slot][key][name] += 1
-                if lemma:
-                    words[slot][key][name + '\t' + lemma] += 1
-
-    def listed(counter):
-        """A counter as "key=count key=count", in key order."""
-        return ' '.join(f'{name}={n}' for name, n in sorted(counter.items()))
-    return [(kanji, reading, occurrences[(kanji, reading)],
-             *(listed(classes[slot][(kanji, reading)]) for slot in range(len(NEIGHBOUR_STEPS))),
-             *(listed(words[slot][(kanji, reading)]) for slot in range(len(NEIGHBOUR_STEPS))))
-            for kanji, reading in sorted(occurrences)]
-
-
-def build(index_lines, sentences, data_dir, classify, irregular, spellings=frozenset()):
-    """Both tables' rows. `classify(lexical words, records)` returns one `segcli count` line per record;
-    `irregular` is the headwords whose stem changes when they inflect (JMdict vk and adj-ix);
-    `spellings` the dictionary's (spelling, hiragana reading) pairs, for tokens written in another
-    kanji spelling than their headword's."""
+def build(index_lines, sentences, data_dir, classify):
+    """The transition rows, and the counted sentences with their `segcli count` lines for reading_model.
+    `classify(lexical words, records)` returns one `segcli count` line per record."""
     gold = list(gold_sentences(index_lines, sentences))
     counted, for_transitions = corpora(gold, data_dir)
     lexical = lexical_words([r for r, t in zip(counted, for_transitions) if t])
@@ -307,6 +239,5 @@ def build(index_lines, sentences, data_dir, classify, irregular, spellings=froze
     if len(class_lines) != len(counted):
         raise RuntimeError(f'segcli count returned {len(class_lines)} lines for {len(counted)} sentences')
     transitions = transition_rows([line for line, t in zip(class_lines, for_transitions) if t])
-    readings = reading_rows(counted, class_lines, irregular, spellings)
     return {'sentences': len(counted), 'transition_sentences': sum(for_transitions),
-            'transitions': transitions, 'readings': readings}
+            'transitions': transitions, 'records': counted, 'class_lines': class_lines, 'lexical': lexical}

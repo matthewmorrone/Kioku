@@ -12,3 +12,10 @@
 wordfreq==3.1.1
 mecab-python3==1.0.12
 ipadic==1.0.0
+#
+# numpy + scikit-learn fit the furigana reading model (scripts/calibration/reading_model.py).
+numpy==2.4.6
+scikit-learn==1.8.0
+#
+# pyarrow reads the NDL bibliography furigana shards (scripts/calibration/ndl_corpus.py).
+pyarrow==26.0.1
