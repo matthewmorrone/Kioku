@@ -76,7 +76,8 @@ if ProcessInfo.processInfo.environment["STRATEGY"] == "local" {
     UserDefaults.standard.set(SegmentationStrategy.localLongestMatch.rawValue, forKey: SegmenterSettings.strategyKey)
 }
 UserDefaults.standard.removeObject(forKey: SegmentationDemotions.storageKey)
-let separator = String(UnicodeScalar(0x1E)!)
+// Segment boundaries in `run`/`rescore` output; the scoring scripts read 0x1E, so only override it to read the output by eye (SEG_SEPARATOR="|").
+let separator = ProcessInfo.processInfo.environment["SEG_SEPARATOR"] ?? String(UnicodeScalar(0x1E)!)
 let mode = CommandLine.arguments[1]
 
 if mode == "lemmas" {
