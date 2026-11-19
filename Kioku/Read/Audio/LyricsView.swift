@@ -59,8 +59,6 @@ struct LyricsView: View {
     // True while the video fills the screen with only the active line over it (no lyrics panel).
     var isVideoMode = false
     var onToggleVideoMode: () -> Void = {}
-    // True when the video's length differs from the audio's, so it can't stay in step with the lyrics.
-    var videoLengthMismatch = false
     // Where the video layout's line card sits, as a vertical shift from the bottom (negative is up),
     // and the shift of a drag in progress.
     @State var videoCardOffset: CGFloat = 0

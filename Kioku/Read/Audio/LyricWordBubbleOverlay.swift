@@ -103,7 +103,7 @@ struct LyricWordBubbleOverlay: View {
 
     // A bubble body's size for its text: padded and capped at `maxWidth`, wrapping between words onto
     // as many lines as it takes, and never narrower than its longest word so no word is broken.
-    private static func size(_ markdown: String, maxWidth: CGFloat) -> CGSize {
+    static func size(_ markdown: String, maxWidth: CGFloat) -> CGSize {
         let text = String(displayText(markdown).characters)
         let attributes: [NSAttributedString.Key: Any] = [.font: glossFont]
         let textWidth = ceil((text as NSString).size(withAttributes: attributes).width)
@@ -167,6 +167,12 @@ struct LyricWordBubbleOverlay: View {
         // so nothing is popped to make room for a later word. Only when the line can't hold them
         // all does the layout fall back to the first-in, first-out queue of the words shown so far.
         let glossed = bubbles.filter { $0.gloss != nil }
+        // First choice: one joint plan that spreads each row's bubbles together, so a bubble gives
+        // way in whichever direction the whole row needs rather than every bubble after the first
+        // being pushed along the line.
+        if let joint = jointLayout(bubbles, size: cardSize, roomAbove: roomAbove, roomBelow: roomBelow, belowInset: belowInset, aboveOnly: aboveOnly) {
+            return joint.filter { shown?.contains($0.id) ?? true }
+        }
         let planned = greedyLayout(bubbles, considering: glossed, size: cardSize, roomAbove: roomAbove, roomBelow: roomBelow, belowInset: belowInset, aboveOnly: aboveOnly)
         if planned.dropped == false {
             return planned.slots.filter { shown?.contains($0.id) ?? true }
