@@ -99,7 +99,7 @@ struct LyricWordBubbleOverlay: View {
 
     // A bubble body's size for its text: padded and capped at `maxWidth`, wrapping between words onto
     // as many lines as it takes, and never narrower than its longest word so no word is broken.
-    private static func size(_ markdown: String, maxWidth: CGFloat) -> CGSize {
+    static func size(_ markdown: String, maxWidth: CGFloat) -> CGSize {
         let text = String(displayText(markdown).characters)
         let attributes: [NSAttributedString.Key: Any] = [.font: glossFont]
         let textWidth = ceil((text as NSString).size(withAttributes: attributes).width)
@@ -158,12 +158,32 @@ struct LyricWordBubbleOverlay: View {
     // queue goes first in, first out. Replaying the same shown words gives the same places, so a
     // bubble never moves while it's up.
     static func stackedLayout(_ bubbles: [PlacedLyricWordBubble], shown: Set<Int>? = nil, size cardSize: CGSize, roomAbove: CGFloat = rowOverflow, roomBelow: CGFloat = rowOverflow, belowInset: CGFloat = 0) -> [Slot] {
+        // Plan ahead: lay out every word's bubble first, as though all were up. When they all fit,
+        // each bubble's place is fixed for the whole line and `shown` only decides which are drawn,
+        // so nothing is popped to make room for a later word. Only when the line can't hold them
+        // all does the layout fall back to the first-in, first-out queue of the words shown so far.
+        let glossed = bubbles.filter { $0.gloss != nil }
+        // First choice: one joint plan that spreads each row's bubbles together, so a bubble gives
+        // way in whichever direction the whole row needs rather than every bubble after the first
+        // being pushed along the line.
+        if let joint = jointLayout(bubbles, size: cardSize, roomAbove: roomAbove, roomBelow: roomBelow, belowInset: belowInset) {
+            return joint.filter { shown?.contains($0.id) ?? true }
+        }
+        let planned = greedyLayout(bubbles, considering: glossed, size: cardSize, roomAbove: roomAbove, roomBelow: roomBelow, belowInset: belowInset)
+        if planned.dropped == false {
+            return planned.slots.filter { shown?.contains($0.id) ?? true }
+        }
+        let sofar = glossed.filter { shown?.contains($0.id) ?? true }
+        return greedyLayout(bubbles, considering: sofar, size: cardSize, roomAbove: roomAbove, roomBelow: roomBelow, belowInset: belowInset).slots
+    }
+
+    // Places `all` (a subset of the line's `bubbles`, in word order) in rows, reporting whether any
+    // bubble had to be popped or skipped for lack of room. The line's own geometry still comes from
+    // every bubble, so a bubble's side and row don't depend on which others are considered.
+    private static func greedyLayout(_ bubbles: [PlacedLyricWordBubble], considering all: [PlacedLyricWordBubble], size cardSize: CGSize, roomAbove: CGFloat, roomBelow: CGFloat, belowInset: CGFloat) -> (slots: [Slot], dropped: Bool) {
         let width = cardSize.width
-        guard width > 0 else { return [] }
-        // The line's geometry (and whether it wraps) comes from every word, so a bubble's side and
-        // row don't change as the line's other words appear.
-        let all = bubbles.filter { $0.gloss != nil && (shown?.contains($0.id) ?? true) }
-        guard all.isEmpty == false else { return [] }
+        guard width > 0, all.isEmpty == false else { return ([], false) }
+        var dropped = false
         let lineTop = bubbles.map(\.anchor.minY).min() ?? 0
         let lineBottom = bubbles.map(\.anchor.maxY).max() ?? 0
         // The room each side leaves past the line. A row is as tall as its own tallest bubble (plus
@@ -247,7 +267,10 @@ struct LyricWordBubbleOverlay: View {
             // skipped, not drawn clipped.
             func fits(_ isAbove: Bool) -> Bool { accepts([[slot(at: x, above: isAbove)]], isAbove: isAbove) }
             let sides = preferredSides.filter(fits)
-            guard sides.isEmpty == false else { continue }
+            guard sides.isEmpty == false else {
+                dropped = true
+                continue
+            }
             var target: (isAbove: Bool, row: Int)?
             var placedX = x
             while target == nil {
@@ -280,13 +303,17 @@ struct LyricWordBubbleOverlay: View {
                         }
                     }
                     guard let oldest else { break }
+                    dropped = true
                     if oldest.isAbove { above[oldest.row].remove(at: oldest.index) } else { below[oldest.row].remove(at: oldest.index) }
                     // A row the pop emptied takes no room.
                     above.removeAll { $0.isEmpty }
                     below.removeAll { $0.isEmpty }
                 }
             }
-            guard let (isAbove, row) = target else { continue }
+            guard let (isAbove, row) = target else {
+                dropped = true
+                continue
+            }
             let placedSlot = slot(at: placedX, above: isAbove)
             if isAbove {
                 if row < above.count { above[row].append(placedSlot) } else { above.append([placedSlot]) }
@@ -295,6 +322,6 @@ struct LyricWordBubbleOverlay: View {
             }
         }
         let result = placedSlots(above, isAbove: true) + placedSlots(below, isAbove: false)
-        return result.sorted { $0.id < $1.id }
+        return (result.sorted { $0.id < $1.id }, dropped)
     }
 }
