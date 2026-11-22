@@ -132,13 +132,16 @@ held2k 1195 vs 1196 correct (95.07% vs 95.15%), fresh5k 4029 vs 4031 (97.22% vs 
 lyrics: 3 readings changed in 319 lines (前の ぜん→まえ, アン風 かぜ→ふう, 開いた ひら→あ); named cases 104 / 104. Weights stored
 for 255 readings (0.9 MB) and 50,000 int8 word vectors (15 MB). Regularisation C = 10 (3–30 within 0.1 point).
 
-NDL furigana (2026-11-17, `scripts/calibration/ndl_corpus.py`, `generate_db.py --skip-ndl` omits it): the National Diet Library's
-bibliography titles, a reading marked on every kanji run, as extra training tokens: up to 400 titles per (kanji, reading) Tatoeba
-also lists, 111,759 titles and 661,371 tokens, segmented by segcli. A source column (1 for NDL) lets them teach the shared weights
-while the bias stays Tatoeba's; the stored weights drop the column. Offline (`cv/lr_ndl.py`, 10 folds on Tatoeba): without the column
-NDL hurts (96.45% against 97.70% Tatoeba-only); with it, 97.65%, readings seen fewer than 5 times +46 of 261 tokens, readings seen
-20+ times −74. Models for 584 readings instead of 255. Lyrics read per line showed 2 of 319 worse (様 → さま), but only because short lines classify as web; read as one note (`WHOLE=1`) none are.
-Shipped for the readings and kanji Tatoeba cannot model; for text Tatoeba already covers it is a wash.
+Kana-written tokens (2026-11-22, `reading_model.kana_token`): Tatoeba writes ように as 様に{ように}; those 94,793 tokens
+(22,830 where Tatoeba's kanji-written data shows the same reading) were skipped. They now join the fit with a source column (1 for
+them), so the shared weights learn their contexts while the bias stays the kanji-written tokens'. Kanji-written Tatoeba barely holds の|様|に
+(1 of its 36 様), so the Tatoeba folds cannot show the gain (+1 token, p=1); scored on held-out kana-written contexts with the column at 0:
+様 81.4% → 97.0%, all kanji with kana tokens 57.8% → 81.9% (`cv/lr_kana.py`, `HELD=kana`). End to end: the four lyric `の様に` lines read よう from the
+model's own context, held2k 1196, fresh 4028, named cases 104/104.
+
+NDL bibliography furigana (Furigana-NDLBIB, 662k tokens, CC BY 4.0) were tried as extra training tokens and removed (2026-11-22, last present in
+commit 6a8a2316 and 1e2d8997): 6.5 k seconds and a 6.8 GB download per build for 50 more modelled kanji, no held-out gain (held2k 1196 both ways, fresh 4022
+against 4028 without), and they pull 様 back to さま on の|様|に (their 767 様 titles hold none with の before it).
 
 Registers (2026-10-13, ReadingRegisters): Tatoeba is everyday text, so web and business writing (方 かた, その後 ご,
 等 とう) was read in its register. The dictionary now carries reading counts from KWDLC's training documents and a

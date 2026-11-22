@@ -169,21 +169,20 @@ def feature_rows(tokens, vectors, idf, unseen_idf):
     return out
 
 
-def reading_rows(tokens, vectors, idf, unseen_idf, extra_tokens=()):
+def reading_rows(tokens, vectors, idf, unseen_idf, kana_tokens=()):
     """(kanji, reading, count, bias, weights blob or None) for every counted reading, and a model (float32
     FEATURES weights and a bias per reading) for each kanji with 2+ readings and MIN_TRAIN tokens. Only logit
     differences between a kanji's readings matter, so a two-reading kanji stores zeros for its first.
 
-    `extra_tokens` (NDL titles, ndl_corpus.py; Tatoeba's kana-written tokens, `training_tokens(kana=True)`) join the
-    fit with one source column each, 1 for that source's tokens and 0 for `tokens` (a token's source is its `src`,
-    'ndl' when absent). A column carries its source's own reading frequencies, so the shared weights learn from the
-    contexts while the bias stays `tokens`'s: the stored weights drop the columns, which are 0 wherever the app
-    scores. Counts stay `tokens`'s, a kanji needs two readings among `tokens` to get a model, and a kana-written
-    token only counts when `tokens` shows that kanji read that way (a bare-kanji headword over a longer kana
-    surface, 様 / ような, would otherwise be a wrong reading)."""
+    `kana_tokens` (`training_tokens(kana=True)`: Tatoeba's kana-written spellings, 様に written ように) join the fit
+    with a source column, 1 for them and 0 for `tokens`. The column carries their own reading frequencies, so the
+    shared weights learn from their contexts while the bias stays `tokens`'s: the stored weights drop it, as it is
+    0 wherever the app scores. Counts stay `tokens`'s, a kanji needs two readings among `tokens` to get a model,
+    and a kana token only counts when `tokens` shows that kanji read that way (a bare-kanji headword over a
+    longer kana surface, 様 / ような, would otherwise be a wrong reading)."""
     counts = collections.Counter((t['k'], t['r']) for t in tokens)
-    extra_tokens = [t for t in extra_tokens if t.get('src', 'ndl') != 'kana' or (t['k'], t['r']) in counts]
-    both = list(tokens) + list(extra_tokens)
+    kana_tokens = [t for t in kana_tokens if (t['k'], t['r']) in counts]
+    both = list(tokens) + kana_tokens
     by_kanji = collections.defaultdict(list)
     for n, t in enumerate(both):
         by_kanji[t['k']].append(n)
@@ -191,16 +190,13 @@ def reading_rows(tokens, vectors, idf, unseen_idf, extra_tokens=()):
     for t in tokens:
         own_readings[t['k']].add(t['r'])
     X = feature_rows(both, vectors, idf, unseen_idf)
-    sources = sorted({t.get('src', 'ndl') for t in extra_tokens})
-    source = np.zeros((len(both), len(sources)), dtype=np.float32)
-    for n, t in enumerate(extra_tokens):
-        source[len(tokens) + n, sources.index(t.get('src', 'ndl'))] = 1
+    source = (np.arange(len(both)) >= len(tokens)).astype(np.float32)[:, None]
     models = {}
     for kanji, indices in by_kanji.items():
         labels = [both[i]['r'] for i in indices]
         if len(indices) < MIN_TRAIN or len(own_readings[kanji]) < 2 or len(set(labels)) < 2:
             continue
-        rows = np.hstack([X[indices], source[indices]]) if extra_tokens else X[indices]
+        rows = np.hstack([X[indices], source[indices]]) if kana_tokens else X[indices]
         clf = LogisticRegression(C=REGULARISATION, max_iter=200).fit(rows, labels)
         coef = clf.coef_[:, :FEATURES]
         if len(clf.classes_) == 2:

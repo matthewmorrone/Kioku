@@ -55,8 +55,6 @@ RADKFILE_PATH = None
 KRADFILE_PATH = None
 KANJIVG_PATH = None
 OUTPUT_DB = RESOURCES_DIR / "dictionary.sqlite"
-# Set by --skip-ndl: the reading model trains on Tatoeba alone, for quick rebuilds that need no 6.8 GB of NDL shards.
-SKIP_NDL = False
 
 # Sort key written for surfaces with no frequency signal, so unranked rows sort last.
 # MUST match the app's DictionaryStore.FrequencySQL.unrankedSort — the two encode the
@@ -241,11 +239,6 @@ def check_build_tools():
         import numpy, sklearn  # noqa: F401
     except ImportError:
         problems.append("numpy and scikit-learn, which fit the furigana reading model (pip install -r requirements.txt)")
-    try:
-        import pyarrow  # noqa: F401
-    except ImportError:
-        if not SKIP_NDL:
-            problems.append("pyarrow, which reads the NDL furigana shards (pip install -r requirements.txt, or build with --skip-ndl)")
     if shutil.which("mecab") is None:
         problems.append("the mecab CLI with mecab-ipadic (brew install mecab mecab-ipadic)")
     if shutil.which("swiftc") is None:
@@ -1704,10 +1697,9 @@ def import_usage_tables(conn):
     vectors_entry = load_manifest()["fasttext-ja-vectors"]
     with open_source_member(vectors_entry["fetch"], fetch_archive(vectors_entry)) as raw:
         vectors = reading_model.read_vectors(io.TextIOWrapper(raw, encoding="utf-8"), accepted)
-    ndl_tokens = [] if SKIP_NDL else import_ndl_tokens(tokens, tables["lexical"], segment, classify)
     # Tatoeba's kana-written spellings of kanji words (様に written ように) as further contexts for the same readings.
     kana_tokens = list(reading_model.training_tokens(tables["records"], tables["class_lines"], irregular, spellings, kana=True))
-    readings = reading_model.reading_rows(tokens, vectors, idf, unseen_idf, list(ndl_tokens) + kana_tokens)
+    readings = reading_model.reading_rows(tokens, vectors, idf, unseen_idf, kana_tokens)
     conn.execute("BEGIN")
     conn.execute("""
         CREATE TABLE segmenter_transitions (
@@ -1729,27 +1721,7 @@ def import_usage_tables(conn):
                      reading_model.word_vector_rows(vectors, idf, unseen_idf))
     print(f"  Done: {len(tables['transitions'])} transition pairs from {tables['transition_sentences']} sentences; "
           f"{len(readings)} reading rows ({sum(1 for r in readings if r[4])} with a model) from {tables['sentences']}; "
-          f"{len(vectors)} word vectors, {len(ndl_tokens)} NDL tokens")
-
-
-# The NDL bibliography furigana as extra reading-model training tokens (scripts/calibration/ndl_corpus.py):
-# streams the manifest's pinned shards one at a time, keeps up to 400 titles per (kanji, reading) Tatoeba
-# also lists, segments and classes them with the same segcli as the Tatoeba tokens. Tatoeba's `tokens`
-# say which kanji runs are ambiguous. Records the shards' combined digest as the source's provenance.
-def import_ndl_tokens(tokens, lexical, segment, classify):
-    import ndl_corpus
-    entry = load_manifest()["ndl-furigana"]
-    shards = entry["shards"]
-    urls = [shards["urlTemplate"].format(n=n, count=shards["count"]) for n in range(shards["count"])]
-    started = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    with tempfile.TemporaryDirectory(dir=WORK_DIR) as scratch:
-        rows, digest, size = ndl_corpus.sample_titles(ndl_corpus.ambiguous_readings(tokens), urls,
-                                                lambda url, dest: _download(url, dest), scratch)
-    SOURCES_USED[entry["name"]] = dict(sha256=digest, fetched_at=started, url=shards["urlTemplate"], bytes=size,
-                                       archive=f"{shards['count']} Arrow shards", pinned=True,
-                                       upstream_version=f"dataset revision {shards['revision']}")
-    print(f"  NDL: {len(rows)} titles sampled; segmenting")
-    return ndl_corpus.training_tokens(rows, segment, classify, lexical)
+          f"{len(vectors)} word vectors, {len(kana_tokens)} kana-written tokens")
 
 
 # Writes phrase_readings (phrase, kanji, reading): how a kanji reads inside JMdict's set phrases, so
@@ -3249,10 +3221,9 @@ def materialize_canonical_entry_ids(conn):
 
 
 def main():
-    global OUTPUT_DB, SKIP_NDL
+    global OUTPUT_DB
     parser = argparse.ArgumentParser(description="Builds dictionary.sqlite from the upstream sources in data-manifest.json.")
     parser.add_argument("--output", type=Path, help="write the database here instead of Resources/dictionary.sqlite")
-    parser.add_argument("--skip-ndl", action="store_true", help="train the furigana reading model on Tatoeba alone: skips the NDL furigana shards (6.8 GB, ~30 min of segmentation)")
     parser.add_argument("--sources-only", action="store_true", help="fetch and verify every source, then exit")
     parser.add_argument("--emit-derived", type=Path, metavar="DIR", help="write the derived TSVs (pitch-accent, sentence-pairs, jlpt-vocab) to DIR, then exit")
     parser.add_argument("--refresh-kanji-etymology", action="store_true", help="rewrite Resources/kanji-etymology.json from the Wiktionary dump, then exit")
@@ -3263,7 +3234,6 @@ def main():
         return
     if args.output:
         OUTPUT_DB = args.output.resolve()
-    SKIP_NDL = args.skip_ndl
 
     start = time.time()
     if not (args.sources_only or args.emit_derived):

@@ -460,24 +460,6 @@
       }
     },
     {
-      "name": "ndl-furigana",
-      "description": "Furigana for National Diet Library bibliography titles (ndl-lab/huriganacorpus-ndlbib, republished as the Calvin-Xu/Furigana-NDLBIB dataset): ~16 million titles with a reading marked on every kanji run. Tatoeba shows most ambiguous kanji runs' rarer readings too few times to model; book titles show them often. Extra training tokens for the reading model, never shown to the user.",
-      "license": "CC BY 4.0 (National Diet Library, ndl-lab/huriganacorpus-ndlbib); the Hugging Face dataset card says MIT",
-      "type": "source-archive",
-      "path": null,
-      "required": false,
-      "derived": false,
-      "url": "https://huggingface.co/datasets/Calvin-Xu/Furigana-NDLBIB",
-      "sha256": null,
-      "provenance": "14 Arrow shards at a pinned dataset revision, streamed one at a time by import_ndl_tokens in generate_db.py (never all on disk). Up to 400 titles per (kanji, reading) are sampled uniformly over the whole set, for the readings Tatoeba also lists for a kanji run it reads two or more ways; those titles are segmented by segcli and become reading-model training tokens with a source flag, so they teach the shared weights while the bias stays Tatoeba's (reading_model.reading_rows). No title is shipped. build_sources records a digest of the shards' own sha256 values. generate_db.py --skip-ndl omits it.",
-      "feedsDictionary": true,
-      "shards": {
-        "urlTemplate": "https://huggingface.co/datasets/Calvin-Xu/Furigana-NDLBIB/resolve/9cf75663498ecdb95968cbe566fa6b7dd3b3cd02/data-{n:05d}-of-{count:05d}.arrow",
-        "count": 14,
-        "revision": "9cf75663498ecdb95968cbe566fa6b7dd3b3cd02"
-      }
-    },
-    {
       "name": "jlpt-vocab-source",
       "description": "Pinned CSV mirror of Jonathan Waller's JLPT vocabulary lists — the raw input the jlpt-vocab table is derived from.",
       "license": "CC BY (Jonathan Waller's lists, tanos.co.uk: 'use anything here however you like, but credit my site'); the Bluskyo/JLPT_Vocabulary CSV mirror is MIT",

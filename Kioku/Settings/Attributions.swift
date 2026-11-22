@@ -64,12 +64,6 @@ nonisolated enum Attributions {
             sourceURL: "https://fasttext.cc/docs/en/crawl-vectors.html"
         ),
         Dataset(
-            name: "NDL Bibliography Furigana",
-            description: "Readings marked on National Diet Library book titles; counted (no titles kept) to teach furigana the readings Tatoeba shows too rarely.",
-            license: "National Diet Library — CC BY 4.0",
-            sourceURL: "https://github.com/ndl-lab/huriganacorpus-ndlbib"
-        ),
-        Dataset(
             name: "Jiten Frequency List",
             description: "Word-frequency rankings from anime, drama, film, novels and visual novels, for difficulty grading and ranking.",
             license: "Jiten — CC BY-SA 4.0",

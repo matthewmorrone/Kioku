@@ -145,16 +145,10 @@ with the cv harness before shipping (10-fold sign test, not held2k moves of a fe
   `APPLE_VOTE` / `PHRASE_VOTE`; cli/build.sh patches them in): 2 stays. train2k correct at 0/1/2/3/4/6: 1146 / 1148 /
   1151 / 1150 / 1145 / 1142; held2k at 0/2/3/4/6: 1191 / 1196 / 1193 / 1192 / 1183. Raising it to rescue short-note
   様 costs accuracy. The phrase vote is untested; either retune it the same way or add both as regression features.
-- **NDL furigana: built into the pipeline, full build run 2026-11-17 (25 min, 374 modelled readings), not committed.**
-  `generate_db.py` streams the 14 NDL shards (`import_ndl_tokens`, scripts/calibration/ndl_corpus.py), trains the
-  reading model on Tatoeba plus 662k NDL tokens with a source column; `--skip-ndl` omits it. Gates on that dictionary:
-  named cases 104/104; held2k 1196 correct (95.15%, +1 vs without NDL); fresh 4022 (97.06%, −7 vs 4029). The per-line
-  runs showed 詩人の様に, 幻の様に: よう → さま and 街家 いえ → か, but segcli classifies each line's register on its own and these
-  short lyric lines read as "web" (KWDLC's counts add +2.84 for さま over よう); the app classifies a whole note once, and the
-  lyrics as one note (`WHOLE=1`) read everyday: all four 様 → よう, 家 → いえ. Gate lyrics and notes with `WHOLE=1` per note, not per
-  line. On the 26 notes copied from the phone (847 lines, per line), 12 readings change: 7 better (鳴り止まぬ 止 と→や, 告げる風
-  ふう→かぜ, 時を超え じ→とき ×3, 何よりも なん→なに, の様燃え さま→よう), 1 neutral (明日 あす→あした), 4 per-line artefacts as above.
-  Not yet re-run per note. Still to decide: whether the −7 on fresh is worth it.
+- **Readings for rarer kanji.** NDL furigana would have given about 50 more kanji a model (173 against 123) but cost
+  accuracy on 様 and nothing measurable on held-out text; removed (see scripts/segmentation-eval/README.md, last
+  present in commit 1e2d8997). Another source of labelled readings that holds the contexts Tatoeba lacks would do it:
+  any corpus with readings marked in running text of the right register.
 - **Smaller or own vectors.** 100-dimension vectors cut the size 3×; vectors trained on our own segmented text
   would drop the CC BY-SA licence. fastText's `.bin` (subword, covers unknown words) is the heavy option: much
   larger to fetch and to ship. Only worth it if the licence or size matters.
@@ -173,9 +167,9 @@ with the cv harness before shipping (10-fold sign test, not held2k moves of a fe
   usable, 2,659 of them 様 read よう) as extra training contexts, each source with its own flag column so the prior
   stays the kanji-written tokens'. Kanji-written Tatoeba cannot show the gain (1 of its 36 様 has の before it): the
   fold test is neutral (+1 token, p=1). Scored on held-out kana-written contexts with the flag at 0 it is the
-  difference: 様 81.4% → 97.0%, all kanji with kana tokens 57.8% → 81.9%. In the build (`--skip-ndl`) the lyric
+  difference: 様 81.4% → 97.0%, all kanji with kana tokens 57.8% → 81.9%. In the build the lyric
   `の様に` lines read よう from the model's own context (さま −2.0 to −3.0 against −0.3 to −1.4 before), held2k 1196,
-  fresh 4028 (−1 vs 4029 without NDL or kana), named cases 104/104. Not yet measured with NDL on, nor by Apple vote 0.
+  fresh 4028 (−1 vs 4029 before), named cases 104/104. With NDL on the same lines flipped back to さま, which is why NDL is gone. Not yet measured with Apple vote 0.
   A fourth, null (`cv/role_lr.py`): the human route. One regression shared by all kanji predicts a coarse role
   (suffix, noun, verb, adjective, adverb, function word) from the neighbouring words' embeddings and classes; each
   reading is scored by how well its JMdict role fits. Only 45,622 of 107,527 tokens have a single role, and 2,336 are
