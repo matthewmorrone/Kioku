@@ -42,12 +42,14 @@ def main(index_path, db_path, segcli, out):
     counted = [counted[i] for i in order]
     lines = classify(segcli, db_path, lexical_path, counted)
     tokens = list(training_tokens(counted, lines, irregular, spellings))
+    kana = list(training_tokens(counted, lines, irregular, spellings, kana=True))
     # Inverse document frequency of every window word over the counted sentences: weights content words up.
     df = collections.Counter()
     for record, line in zip(counted, lines):
         df.update({lemma or record['s'][a:b] for a, b, name, lemma in u.parse_tokens(line)})
     idf = {w: math.log(len(counted) / (n + 1)) for w, n in df.items()}
-    pickle.dump(dict(tokens=tokens, idf=idf, sentences=len(counted)), open(os.path.join(out, 'tokens.pkl'), 'wb'))
+    pickle.dump(dict(tokens=tokens, kana=kana, idf=idf, sentences=len(counted)), open(os.path.join(out, 'tokens.pkl'), 'wb'))
+    print(f'{len(kana)} kana-written tokens')
     print(f'{len(counted)} sentences, {len(tokens)} counted readings, '
           f'{sum(t["num_before"] for t in tokens)} with a numeral gap before, '
           f'{sum(t["gap_before"] for t in tokens)} with any gap before')

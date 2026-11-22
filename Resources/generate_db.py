@@ -244,7 +244,8 @@ def check_build_tools():
     try:
         import pyarrow  # noqa: F401
     except ImportError:
-        problems.append("pyarrow, which reads the NDL furigana shards (pip install -r requirements.txt, or build with --skip-ndl)")
+        if not SKIP_NDL:
+            problems.append("pyarrow, which reads the NDL furigana shards (pip install -r requirements.txt, or build with --skip-ndl)")
     if shutil.which("mecab") is None:
         problems.append("the mecab CLI with mecab-ipadic (brew install mecab mecab-ipadic)")
     if shutil.which("swiftc") is None:
@@ -1704,7 +1705,9 @@ def import_usage_tables(conn):
     with open_source_member(vectors_entry["fetch"], fetch_archive(vectors_entry)) as raw:
         vectors = reading_model.read_vectors(io.TextIOWrapper(raw, encoding="utf-8"), accepted)
     ndl_tokens = [] if SKIP_NDL else import_ndl_tokens(tokens, tables["lexical"], segment, classify)
-    readings = reading_model.reading_rows(tokens, vectors, idf, unseen_idf, ndl_tokens)
+    # Tatoeba's kana-written spellings of kanji words (様に written ように) as further contexts for the same readings.
+    kana_tokens = list(reading_model.training_tokens(tables["records"], tables["class_lines"], irregular, spellings, kana=True))
+    readings = reading_model.reading_rows(tokens, vectors, idf, unseen_idf, list(ndl_tokens) + kana_tokens)
     conn.execute("BEGIN")
     conn.execute("""
         CREATE TABLE segmenter_transitions (

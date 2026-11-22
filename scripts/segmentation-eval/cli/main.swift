@@ -361,6 +361,41 @@ if mode == "explain" {
     exit(0)
 }
 
+if mode == "kanacost" {
+    // segcli kanacost < jsonl of {"s": sentence, "a": scalar offset of a kanji run, "n": its length, "c": [candidate readings]}
+    // — per record, one tab-separated Viterbi path cost (centi-nats) per candidate, for the window of KANA_WINDOW
+    // scalars either side of the run with the run replaced by that candidate's kana. Tests whether a reading that
+    // spells a natural kana chunk (の+よう+に) costs less than one that does not (の+さま+に).
+    guard let table = segmenter.transitionTable else { fatalError("no transition table") }
+    let window = 12
+    // The whole path's cost: every edge's node cost plus the class transitions into each edge and the end,
+    // as `explain` totals it.
+    func pathCost(_ path: [LatticeEdge]) -> Int {
+        var total = 0
+        var previous: LatticeEdge?
+        for edge in path + [nil] as [LatticeEdge?] {
+            total += table.cost(from: table.classIDs(for: previous), to: table.classIDs(for: edge))
+            if let edge { total += SegmenterScoring.edgeCost(edge) }
+            previous = edge
+        }
+        return total
+    }
+    while let line = readLine() {
+        guard let data = line.data(using: .utf8), let record = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let sentence = record["s"] as? String, let start = record["a"] as? Int, let length = record["n"] as? Int,
+              let candidates = record["c"] as? [String] else { print(""); continue }
+        let scalars = Array(sentence.unicodeScalars)
+        let before = String(String.UnicodeScalarView(scalars[max(0, start - window)..<start]))
+        let after = String(String.UnicodeScalarView(scalars[(start + length)..<min(scalars.count, start + length + window)]))
+        let costs = candidates.map { reading -> String in
+            let text = before + reading + after
+            return String(pathCost(segmenter.viterbiSelect(from: segmenter.buildLattice(for: text), in: text).path))
+        }
+        print(costs.joined(separator: "\t"))
+    }
+    exit(0)
+}
+
 if mode == "oracle" {
     // segcli oracle < gold.jsonl — for each sentence with a cut-through: the chosen path vs the cheapest
     // path that cuts through NO gold token. One TSV row each:

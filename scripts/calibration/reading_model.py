@@ -43,10 +43,15 @@ def numeral_flags(record, i):
     return any(c in NUMERALS for c in before), any(c in NUMERALS for c in after), bool(before), bool(after)
 
 
-def training_tokens(records, class_lines, irregular, spellings):
+def training_tokens(records, class_lines, irregular, spellings, kana=False):
     """One dict per countable gold reading, as usage_tables counted them: sentence id, kanji run, hiragana
     reading, the classes and lemmas either side, numeral/gap flags, and `window`, the (offset, word) of the
-    tokens within WINDOW places. `class_lines` are `segcli count` output, one per record."""
+    tokens within WINDOW places. `class_lines` are `segcli count` output, one per record.
+
+    With `kana`, yields instead the tokens Tatoeba writes in kana whose headword has one kanji run (様に written
+    ように): the run's reading is the surface minus the headword's own kana, so each is a labelled context for a
+    reading the kanji spelling leaves ambiguous. A kana the headword carries (the に) becomes the neighbour on that
+    side, as the segmenter would split it off the kanji."""
     for record, line in zip(records, class_lines):
         parsed = {(a, b): (name, lemma) for a, b, name, lemma in u.parse_tokens(line)}
         spans = [(a, b) for a, b, *_ in record['g']]
@@ -62,6 +67,9 @@ def training_tokens(records, class_lines, irregular, spellings):
             joined = spans[j][0] == spans[i][1] if step > 0 else spans[j][1] == spans[i][0]
             return words[j] if joined else (u.BOUNDARY, None)
         for i, (a, b, headword, reading, *_) in enumerate(record['g']):
+            if kana:
+                yield from kana_token(record, i, words, window_words, neighbour)
+                continue
             if not reading or reading.startswith('#'):
                 continue
             surface = surfaces[i]
@@ -76,9 +84,37 @@ def training_tokens(records, class_lines, irregular, spellings):
                 continue
             (prev_class, prev_lemma), (next_class, next_lemma) = neighbour(i, -1), neighbour(i, 1)
             num_before, num_after, gap_before, gap_after = numeral_flags(record, i)
-            yield dict(sid=int(record['id']), k=kanji, r=run, cls=(prev_class, next_class), words=(prev_lemma, next_lemma),
+            yield dict(sid=int(record['id']), span=(a, b), k=kanji, r=run, cls=(prev_class, next_class), words=(prev_lemma, next_lemma),
                        num_before=num_before, num_after=num_after, gap_before=gap_before, gap_after=gap_after,
                        window=[(o, window_words[i + o]) for o in range(-WINDOW, WINDOW + 1) if o and 0 <= i + o < len(spans)])
+
+
+def kana_token(record, i, words, window_words, neighbour):
+    """The token for gold entry i when it is a kana-written spelling of a one-run kanji headword, else nothing.
+    Its previous / next words are the headword's own leading / trailing kana, or the adjacent token past them."""
+    a, b, headword, reading, *_ = record['g'][i]
+    surface = record['s'][a:b]
+    runs = list(u.KANJI.finditer(headword))
+    if reading or u.KANJI.search(surface) or len(runs) != 1:
+        return
+    run = u.run_reading(headword, surface)
+    if not run:
+        return
+    prefix, suffix = headword[:runs[0].start()], headword[runs[0].end():]
+    sides = []
+    for step, glued in ((-1, prefix), (1, suffix)):
+        sides.append((f'w:{glued}', glued) if glued else neighbour(i, step))
+    num_before, num_after, gap_before, gap_after = numeral_flags(record, i)
+    window = []
+    for step, glued in ((-1, prefix), (1, suffix)):
+        extra = [glued] if glued else []
+        beyond = [window_words[j] for j in (range(i + step, -1, step) if step < 0 else range(i + step, len(window_words)))]
+        for o, w in enumerate(extra + beyond, 1):
+            if o <= WINDOW:
+                window.append((step * o, w))
+    yield dict(sid=int(record['id']), span=(a, b), k=runs[0].group(), r=run, cls=(sides[0][0], sides[1][0]),
+               words=(sides[0][1], sides[1][1]), num_before=num_before, num_after=num_after, gap_before=gap_before,
+               gap_after=gap_after, window=sorted(window), src='kana')
 
 
 def inverse_document_frequency(records, class_lines):
@@ -138,11 +174,15 @@ def reading_rows(tokens, vectors, idf, unseen_idf, extra_tokens=()):
     FEATURES weights and a bias per reading) for each kanji with 2+ readings and MIN_TRAIN tokens. Only logit
     differences between a kanji's readings matter, so a two-reading kanji stores zeros for its first.
 
-    `extra_tokens` (NDL titles, ndl_corpus.py) join the fit with a source column, 1 for them and 0 for `tokens`.
-    The column carries the extra source's own reading frequencies, so the shared weights learn from its contexts
-    while the bias stays `tokens`'s: the stored weights drop the column, which is 0 wherever the app scores.
-    Counts stay `tokens`'s, and a kanji needs two readings among `tokens` to get a model."""
+    `extra_tokens` (NDL titles, ndl_corpus.py; Tatoeba's kana-written tokens, `training_tokens(kana=True)`) join the
+    fit with one source column each, 1 for that source's tokens and 0 for `tokens` (a token's source is its `src`,
+    'ndl' when absent). A column carries its source's own reading frequencies, so the shared weights learn from the
+    contexts while the bias stays `tokens`'s: the stored weights drop the columns, which are 0 wherever the app
+    scores. Counts stay `tokens`'s, a kanji needs two readings among `tokens` to get a model, and a kana-written
+    token only counts when `tokens` shows that kanji read that way (a bare-kanji headword over a longer kana
+    surface, 様 / ような, would otherwise be a wrong reading)."""
     counts = collections.Counter((t['k'], t['r']) for t in tokens)
+    extra_tokens = [t for t in extra_tokens if t.get('src', 'ndl') != 'kana' or (t['k'], t['r']) in counts]
     both = list(tokens) + list(extra_tokens)
     by_kanji = collections.defaultdict(list)
     for n, t in enumerate(both):
@@ -151,7 +191,10 @@ def reading_rows(tokens, vectors, idf, unseen_idf, extra_tokens=()):
     for t in tokens:
         own_readings[t['k']].add(t['r'])
     X = feature_rows(both, vectors, idf, unseen_idf)
-    source = (np.arange(len(both)) >= len(tokens)).astype(np.float32)[:, None]
+    sources = sorted({t.get('src', 'ndl') for t in extra_tokens})
+    source = np.zeros((len(both), len(sources)), dtype=np.float32)
+    for n, t in enumerate(extra_tokens):
+        source[len(tokens) + n, sources.index(t.get('src', 'ndl'))] = 1
     models = {}
     for kanji, indices in by_kanji.items():
         labels = [both[i]['r'] for i in indices]

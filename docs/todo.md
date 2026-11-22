@@ -141,21 +141,46 @@ with the cv harness before shipping (10-fold sign test, not held2k moves of a fe
   ぎみ→きみ. The neighbour's grammatical form decides these and the averaged embedding loses it. Try features for
   the neighbour's surface ending (last one or two kana); one-hot classes added +0.12 pt offline, this is the same
   signal without the segmenter's class names.
-- **Apple and phrase votes are fixed at +2.** Fitted for the old score scale. Either retune them or add them as
-  features to the regression so the data sets their weight (the "no overfitting" worry: check on held-out folds).
+- **Phrase vote is fixed at +2.** The Apple vote was retuned 2026-11-21 against the embedding model (segcli reads
+  `APPLE_VOTE` / `PHRASE_VOTE`; cli/build.sh patches them in): 2 stays. train2k correct at 0/1/2/3/4/6: 1146 / 1148 /
+  1151 / 1150 / 1145 / 1142; held2k at 0/2/3/4/6: 1191 / 1196 / 1193 / 1192 / 1183. Raising it to rescue short-note
+  様 costs accuracy. The phrase vote is untested; either retune it the same way or add both as regression features.
 - **NDL furigana: built into the pipeline, full build run 2026-11-17 (25 min, 374 modelled readings), not committed.**
   `generate_db.py` streams the 14 NDL shards (`import_ndl_tokens`, scripts/calibration/ndl_corpus.py), trains the
   reading model on Tatoeba plus 662k NDL tokens with a source column; `--skip-ndl` omits it. Gates on that dictionary:
-  named cases 104/104; held2k 1196 correct (95.15%, +1 vs without NDL); fresh 4022 (97.06%, −7 vs 4029); lyrics 2 of
-  319 lines worse (詩人の様に, 幻の様に: よう → さま), none better. On the 26 notes copied from the phone (847 lines, segcli's own
-  segmentation): 12 readings change, 7 better (鳴り止まぬ 止 と→や, 告げる風 ふう→かぜ, 時を超え じ→とき ×3, 何よりも なん→なに,
-  の様燃え さま→よう), 1 neutral (明日 あす→あした), 4 worse (の様に よう→さま ×2, 街家 いえ→か ×2). Still to decide: whether the −7
-  on fresh and the 様 pair are worth it.
+  named cases 104/104; held2k 1196 correct (95.15%, +1 vs without NDL); fresh 4022 (97.06%, −7 vs 4029). The per-line
+  runs showed 詩人の様に, 幻の様に: よう → さま and 街家 いえ → か, but segcli classifies each line's register on its own and these
+  short lyric lines read as "web" (KWDLC's counts add +2.84 for さま over よう); the app classifies a whole note once, and the
+  lyrics as one note (`WHOLE=1`) read everyday: all four 様 → よう, 家 → いえ. Gate lyrics and notes with `WHOLE=1` per note, not per
+  line. On the 26 notes copied from the phone (847 lines, per line), 12 readings change: 7 better (鳴り止まぬ 止 と→や, 告げる風
+  ふう→かぜ, 時を超え じ→とき ×3, 何よりも なん→なに, の様燃え さま→よう), 1 neutral (明日 あす→あした), 4 per-line artefacts as above.
+  Not yet re-run per note. Still to decide: whether the −7 on fresh is worth it.
 - **Smaller or own vectors.** 100-dimension vectors cut the size 3×; vectors trained on our own segmented text
   would drop the CC BY-SA licence. fastText's `.bin` (subword, covers unknown words) is the heavy option: much
   larger to fetch and to ship. Only worth it if the licence or size matters.
 - **Rare kanji share strength.** Features crossed with reading type so kanji with few examples borrow from the
-  rest. Speculative.
+  rest. One version tried (2026-11-21, `cv/role.py`): each reading's JMdict part of speech scored against the
+  neighbours' classes with the segmenter's own transition PMI, added to the regression's log-probability. Null: +8
+  tokens at weight 0.25 (p=0.37), worse from 1.0 up (−26 at 1.0, −243 at 2.0). 様 is already 31/35 in Tatoeba's
+  folds (88.6%), and NDL holds no 様 with の before it, so the lyric よう/さま misses are a domain gap in the
+  training text (the Apple vote covers them), not a missing feature. A second version, also null (`cv/kana.py`,
+  `segcli kanacost`): the kana of each candidate substituted into a ±12 character window and priced by the
+  segmenter's own Viterbi cost, subtracted from the regression's log-probability. On 10,026 held-out tokens the
+  best weight (0.25, deltas clipped at 4 nats) gained 9 tokens net (p=0.35); from 0.5 up it lost (−90 at 0.5
+  unclipped, −467 at 1.0). Path costs of different strings aren't comparable (length and word frequency
+  dominate). It got the four 様 lines I tried by hand right, which the Tatoeba folds do not reproduce.
+  A third (`cv/lr_kana.py`, `reading_model.kana_token`): Tatoeba's kana-written tokens (様に written ように: 22,830
+  usable, 2,659 of them 様 read よう) as extra training contexts, each source with its own flag column so the prior
+  stays the kanji-written tokens'. Kanji-written Tatoeba cannot show the gain (1 of its 36 様 has の before it): the
+  fold test is neutral (+1 token, p=1). Scored on held-out kana-written contexts with the flag at 0 it is the
+  difference: 様 81.4% → 97.0%, all kanji with kana tokens 57.8% → 81.9%. In the build (`--skip-ndl`) the lyric
+  `の様に` lines read よう from the model's own context (さま −2.0 to −3.0 against −0.3 to −1.4 before), held2k 1196,
+  fresh 4028 (−1 vs 4029 without NDL or kana), named cases 104/104. Not yet measured with NDL on, nor by Apple vote 0.
+  A fourth, null (`cv/role_lr.py`): the human route. One regression shared by all kanji predicts a coarse role
+  (suffix, noun, verb, adjective, adverb, function word) from the neighbouring words' embeddings and classes; each
+  reading is scored by how well its JMdict role fits. Only 45,622 of 107,527 tokens have a single role, and 2,336 are
+  suffixes. Weight 0.25: −3 tokens (p=0.82); from 1.0 up it lost (−83 at 1.0, −416 at 2.0). 様 is unchanged at
+  31/35 at every weight.
 - **Word-sense choice in the lookup sheet.** Tatoeba's index marks the JMdict sense (`[01]`) on tokens, a free
   label. Rank a word's senses by the sentence the same way. First check whether the top gloss is still wrong
   often (not verified; the lemma tagging may have fixed the common cases).

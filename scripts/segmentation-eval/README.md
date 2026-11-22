@@ -137,7 +137,7 @@ bibliography titles, a reading marked on every kanji run, as extra training toke
 also lists, 111,759 titles and 661,371 tokens, segmented by segcli. A source column (1 for NDL) lets them teach the shared weights
 while the bias stays Tatoeba's; the stored weights drop the column. Offline (`cv/lr_ndl.py`, 10 folds on Tatoeba): without the column
 NDL hurts (96.45% against 97.70% Tatoeba-only); with it, 97.65%, readings seen fewer than 5 times +46 of 261 tokens, readings seen
-20+ times −74. Models for 584 readings instead of 255. Lyrics: 2 of 319 lines worse (詩人の様に, 幻の様に: よう → さま), none better.
+20+ times −74. Models for 584 readings instead of 255. Lyrics read per line showed 2 of 319 worse (様 → さま), but only because short lines classify as web; read as one note (`WHOLE=1`) none are.
 Shipped for the readings and kanji Tatoeba cannot model; for text Tatoeba already covers it is a wash.
 
 Registers (2026-10-13, ReadingRegisters): Tatoeba is everyday text, so web and business writing (方 かた, その後 ご,

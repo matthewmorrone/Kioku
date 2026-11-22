@@ -15,6 +15,10 @@ sed -e 's/private func absorbingBoundCharacters/func absorbingBoundCharacters/' 
 sed -e 's/^import UIKit$/import AppKit\
 typealias UIFont = NSFont/' \
   $SRC/Read/Furigana/FuriganaAttributedString.swift > $WORK/build/FuriganaAttributedString.swift
+# The two reading votes read APPLE_VOTE / PHRASE_VOTE so a sweep needs one build, not one per value.
+sed -e 's|static let appleVote = 2.0|static let appleVote = Double(ProcessInfo.processInfo.environment["APPLE_VOTE"] ?? "") ?? 2.0|' \
+  -e 's|static let phraseVote = 2.0|static let phraseVote = Double(ProcessInfo.processInfo.environment["PHRASE_VOTE"] ?? "") ?? 2.0|' \
+  $SRC/Read/Furigana/ReadingContextTable.swift > $WORK/build/ReadingContextTable.swift
 cp $HERE/main.swift $WORK/build/main.swift
 sed -i '' "s|URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path|\"$ROOT\"|" $WORK/build/main.swift
 FILES=()
@@ -22,6 +26,7 @@ for f in $(cat $HERE/kioku-sources.txt); do
   case $f in
     Dictionary/Segmenter/Segmenter.swift) FILES+=($WORK/build/Segmenter.swift) ;;
     Read/Furigana/FuriganaAttributedString.swift) FILES+=($WORK/build/FuriganaAttributedString.swift) ;;
+    Read/Furigana/ReadingContextTable.swift) FILES+=($WORK/build/ReadingContextTable.swift) ;;
     *) FILES+=($SRC/$f) ;;
   esac
 done

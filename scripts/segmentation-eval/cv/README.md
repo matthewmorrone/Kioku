@@ -21,3 +21,13 @@ Tokens beside a numeral Tatoeba's index dropped (三人 → BOUNDARY 人) are re
 
 Pretrained vectors: fastText `cc.ja.300` (Facebook, CC BY-SA 3.0), fetched to a temporary folder and deleted
 after `vectors.py` cut it down.
+
+```
+role.py     <work> <vectors.npz> <dictionary.sqlite> [C]         # ~1.5 min: reading's JMdict role vs neighbour classes (null)
+```
+
+```
+kana.py     prepare|analyze ...                                  # ~5 min: kana-substituted path cost (segcli kanacost) as a term (null)
+role_lr.py  <work> <vectors.npz> <dictionary.sqlite> [C]              # ~12 min: pooled learned role (suffix/noun/verb...) as a term (null)
+lr_kana.py  <work> <vectors.npz> [C] [W,W]                         # ~5 min: kana-written Tatoeba tokens as extra training; HELD=kana scores kana contexts at flag 0 (tokens.py must have run with kana)
+```
