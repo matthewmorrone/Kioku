@@ -175,6 +175,13 @@ with the cv harness before shipping (10-fold sign test, not held2k moves of a fe
   reading is scored by how well its JMdict role fits. Only 45,622 of 107,527 tokens have a single role, and 2,336 are
   suffixes. Weight 0.25: −3 tokens (p=0.82); from 1.0 up it lost (−83 at 1.0, −416 at 2.0). 様 is unchanged at
   31/35 at every weight.
+- **何 reads なに where it should be なん** (何ですか, 何なんだ). Tatoeba labels kanji-written 何 before ですか なに 102
+  times against なん once, and before だ なに 16 against 1; the kana-written なんですか (16) and なんて/なんと
+  (177/107) say なん. The labels are the corpus's dictionary-form default, so the model follows them. Raising the
+  kana tokens' weight (`lr_kana.py ... 1,2,4,8`, 2026-11-23) does not fix it and costs accuracy: with the flag
+  column, w=8 loses 28 tokens overall (p=0.008), w=2 and 4 are neutral; without the flag every weight loses. The
+  held-out kanji-written tokens carry the same labels, so that test cannot show a gain for 何. An independent source
+  of readings for 何 is needed, not tuning. Also 大ごちそう reads だい (おお standard); not looked into.
 - **Word-sense choice in the lookup sheet.** Tatoeba's index marks the JMdict sense (`[01]`) on tokens, a free
   label. Rank a word's senses by the sentence the same way. First check whether the top gloss is still wrong
   often (not verified; the lemma tagging may have fixed the common cases).
