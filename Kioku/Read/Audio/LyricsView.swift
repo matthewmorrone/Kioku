@@ -56,6 +56,7 @@ struct LyricsView: View {
     var youTubeVideoID: String? = nil
     var onAddYouTube: () -> Void = {}
     var onSearchYouTube: () -> Void = {}
+    var onRemoveYouTube: () -> Void = {}
     // True while the video fills the screen with only the active line over it (no lyrics panel).
     var isVideoMode = false
     var onToggleVideoMode: () -> Void = {}

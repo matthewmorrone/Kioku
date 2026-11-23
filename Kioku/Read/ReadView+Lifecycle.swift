@@ -390,6 +390,7 @@ extension ReadView {
                     youTubeVideoID: audioPlayback.youTubeVideoID,
                     onAddYouTube: { subtitleImport.isShowingYouTubePrompt = true },
                     onSearchYouTube: { subtitleImport.isShowingYouTubeSearch = true },
+                    onRemoveYouTube: { removeYouTubeVideo() },
                     isVideoMode: audioPlayback.isVideoMode,
                     onToggleVideoMode: { audioPlayback.isVideoMode.toggle() },
                     onRemoveAudio: { resetCurrentSubtitleAttachment() },

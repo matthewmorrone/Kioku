@@ -115,6 +115,14 @@ extension ReadView {
         subtitleImport.isCancellingAlignment = false
     }
 
+    // Detaches the note's video, leaving its audio and lyrics as they are, and leaves video mode.
+    @MainActor
+    func removeYouTubeVideo() {
+        guard let noteID = document.activeNoteID else { return }
+        audioPlayback.isVideoMode = false
+        setYouTubeVideo(nil, noteID: noteID)
+    }
+
     // Records (or clears) the note's video in the store and in the open lyrics view.
     @MainActor
     private func setYouTubeVideo(_ videoID: String?, noteID: UUID) {

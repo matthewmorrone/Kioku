@@ -119,6 +119,9 @@ extension LyricsView {
                     Button("Replace Audio…", systemImage: "arrow.triangle.2.circlepath") { onReplaceAudio() }
                     Button("YouTube Link…", systemImage: "play.rectangle") { onAddYouTube() }
                     Button("Search YouTube…", systemImage: "magnifyingglass") { onSearchYouTube() }
+                    if youTubeVideoID != nil {
+                        Button("Remove Video", systemImage: "play.slash") { onRemoveYouTube() }
+                    }
                     Button("Remove Audio", systemImage: "trash", role: .destructive) {
                         isShowingRemoveAudioConfirm = true
                     }
