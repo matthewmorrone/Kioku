@@ -129,3 +129,64 @@ it changed modern sentences at every classical step weight tried, 2 to 8 (よ|�
 it. A fix needs a different signal: for instance admitting the form only right after a verb's 連用形/未然形
 in the lattice, never as a bare edge. The omissions are in deinflection-grammar.json omitted, each with the
 measurement. Also still split at weight 3, and worth rechecking with any such change: 散りぬる, 消えぬれば, 来にけり.
+
+## Word embeddings: follow-ups
+
+The reading model is a per-kanji logistic regression on fastText vectors (scripts/calibration/reading_model.py,
+Kioku/Read/Furigana/ReadingContext.swift; offline harness in scripts/segmentation-eval/cv/). The 50,000 vectors
+are in the dictionary (`word_vectors`). These are the ideas not yet built, in rough order of payoff. Measure each
+with the cv harness before shipping (10-fold sign test, not held2k moves of a few tokens).
+
+- **Reading failures after the swap.** 等 など→とう (twice), 人 ひと→にん, 力 ちから→りょく, 位 くらい→い, 気味
+  ぎみ→きみ. The neighbour's grammatical form decides these and the averaged embedding loses it. Try features for
+  the neighbour's surface ending (last one or two kana); one-hot classes added +0.12 pt offline, this is the same
+  signal without the segmenter's class names.
+- **Phrase vote is fixed at +2.** The Apple vote was retuned 2026-11-21 against the embedding model (segcli reads
+  `APPLE_VOTE` / `PHRASE_VOTE`; cli/build.sh patches them in): 2 stays. train2k correct at 0/1/2/3/4/6: 1146 / 1148 /
+  1151 / 1150 / 1145 / 1142; held2k at 0/2/3/4/6: 1191 / 1196 / 1193 / 1192 / 1183. Raising it to rescue short-note
+  様 costs accuracy. The phrase vote is untested; either retune it the same way or add both as regression features.
+- **Readings for rarer kanji.** NDL furigana would have given about 50 more kanji a model (173 against 123) but cost
+  accuracy on 様 and nothing measurable on held-out text; removed (see scripts/segmentation-eval/README.md, last
+  present in commit 1e2d8997). Another source of labelled readings that holds the contexts Tatoeba lacks would do it:
+  any corpus with readings marked in running text of the right register.
+- **Smaller or own vectors.** 100-dimension vectors cut the size 3×; vectors trained on our own segmented text
+  would drop the CC BY-SA licence. fastText's `.bin` (subword, covers unknown words) is the heavy option: much
+  larger to fetch and to ship. Only worth it if the licence or size matters.
+- **Rare kanji share strength.** Features crossed with reading type so kanji with few examples borrow from the
+  rest. One version tried (2026-11-21, `cv/role.py`): each reading's JMdict part of speech scored against the
+  neighbours' classes with the segmenter's own transition PMI, added to the regression's log-probability. Null: +8
+  tokens at weight 0.25 (p=0.37), worse from 1.0 up (−26 at 1.0, −243 at 2.0). 様 is already 31/35 in Tatoeba's
+  folds (88.6%), and NDL holds no 様 with の before it, so the lyric よう/さま misses are a domain gap in the
+  training text (the Apple vote covers them), not a missing feature. A second version, also null (`cv/kana.py`,
+  `segcli kanacost`): the kana of each candidate substituted into a ±12 character window and priced by the
+  segmenter's own Viterbi cost, subtracted from the regression's log-probability. On 10,026 held-out tokens the
+  best weight (0.25, deltas clipped at 4 nats) gained 9 tokens net (p=0.35); from 0.5 up it lost (−90 at 0.5
+  unclipped, −467 at 1.0). Path costs of different strings aren't comparable (length and word frequency
+  dominate). It got the four 様 lines I tried by hand right, which the Tatoeba folds do not reproduce.
+  A third (`cv/lr_kana.py`, `reading_model.kana_token`): Tatoeba's kana-written tokens (様に written ように: 22,830
+  usable, 2,659 of them 様 read よう) as extra training contexts, each source with its own flag column so the prior
+  stays the kanji-written tokens'. Kanji-written Tatoeba cannot show the gain (1 of its 36 様 has の before it): the
+  fold test is neutral (+1 token, p=1). Scored on held-out kana-written contexts with the flag at 0 it is the
+  difference: 様 81.4% → 97.0%, all kanji with kana tokens 57.8% → 81.9%. In the build the lyric
+  `の様に` lines read よう from the model's own context (さま −2.0 to −3.0 against −0.3 to −1.4 before), held2k 1196,
+  fresh 4028 (−1 vs 4029 before), named cases 104/104. With NDL on the same lines flipped back to さま, which is why NDL is gone. Not yet measured with Apple vote 0.
+  A fourth, null (`cv/role_lr.py`): the human route. One regression shared by all kanji predicts a coarse role
+  (suffix, noun, verb, adjective, adverb, function word) from the neighbouring words' embeddings and classes; each
+  reading is scored by how well its JMdict role fits. Only 45,622 of 107,527 tokens have a single role, and 2,336 are
+  suffixes. Weight 0.25: −3 tokens (p=0.82); from 1.0 up it lost (−83 at 1.0, −416 at 2.0). 様 is unchanged at
+  31/35 at every weight.
+- **Word-sense choice in the lookup sheet.** Tatoeba's index marks the JMdict sense (`[01]`) on tokens, a free
+  label. Rank a word's senses by the sentence the same way. First check whether the top gloss is still wrong
+  often (not verified; the lemma tagging may have fixed the common cases).
+- **Lemma choice for ambiguous surfaces.** 入り as noun vs 入る: let context vote, deterministically.
+- **Example sentences.** Rank the lookup sheet's Tatoeba examples by similarity of their bag to the note's context.
+- **Multiple-choice distractors.** Kioku/Learn/MultipleChoice/DistractorSelector.swift picks them; nearest
+  neighbours by vector would replace DistractorRefinement and AppleIntelligenceDistractorClient. Read the selector
+  first.
+- **Review progression.** Use vector distance so near-synonyms are neither shown back to back nor left unpaired.
+- **Register classifier** (RegisterClassifier.swift, ReadingRegisters.swift, import_reading_registers). Kept; it
+  gives KWDLC 90.64 → 93.12% on web text. Try the note's bag vector as its input instead of character bigrams,
+  and keep it only if it is at least as good on short notes.
+- **Pitch accent for homographs.** `pitch_accent` is keyed by word and kana, not by sense, so one spelling with
+  one reading cannot carry two accents. Only matters if such pairs turn out to exist in the data; check first.
+- **Not doing:** "similar notes", topic grouping and semantic search over notes (declined).

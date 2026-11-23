@@ -5,9 +5,9 @@ import Foundation
 //   1. phrases: a reading that makes the words around it spell a dictionary expression holding
 //      another content word decides (PhraseReadingEvidence: 態をみろ read ざま is ざまをみろ, 笑う門には福来たる
 //      reads 門 かど), since the dictionary then names the reading outright;
-//   2. usage: Tatoeba's reading counts (ReadingContextTable) score each reading between the
-//      words either side (方 after a verb → かた, 時 after a number → じ); a note that reads like
-//      web pages adds the web counts (ReadingRegisters);
+//   2. usage: the reading model (ReadingContextTable), fitted on Tatoeba's readings and word vectors,
+//      scores each reading from the words around the run (方 after a verb → かた, 時 after a number
+//      → じ); a note that reads like web pages adds the web counts (ReadingRegisters);
 //   3. Apple's tokenizer (AppleTokenReadings) adds a fixed vote to the reading it gives, which tips
 //      close calls (後 → ご in 説明会後) but not clear ones (私 stays わたし);
 //   4. the dictionary: its frequency order breaks ties, and decides alone when no other source has a say.
@@ -48,13 +48,32 @@ nonisolated extension FuriganaResolver {
         // The note's register (everyday or web), told once for the whole text.
         let registers = (segmenter as? Segmenter)?.readingRegisters
         let register = registers?.classifier.register(of: sourceText)
-        // The edge at `position` as the counts name it (ReadingNeighbour): text the dictionary doesn't
+        // The edge at `position` as the model names it (ReadingNeighbour): text the dictionary doesn't
         // cover and the ends of the text are BOUNDARY.
         func neighbour(at position: Int) -> ReadingNeighbour {
             guard edges.indices.contains(position), edges[position].isDictionaryMatch, let transitionTable else { return .boundary }
             let edge = edges[position]
             let name = TransitionClass.name(surface: edge.surface, partOfSpeech: edge.partOfSpeech, lexical: transitionTable.lexical)
-            return ReadingNeighbour(className: name, lemma: ReadingNeighbour.lemma(of: edge.surface, className: name, segmenter: segmenter))
+            return ReadingNeighbour(surface: edge.surface, className: name, segmenter: segmenter)
+        }
+        // Every edge's neighbour once: each run's window reads up to ten of them.
+        let neighbourByEdge = table == nil ? [] : edges.indices.map { neighbour(at: $0) }
+        // The words of the dictionary-matched edges within the window either side of edge `index`, which
+        // the model's bag sums; text the dictionary doesn't cover is skipped, as Tatoeba's gaps are.
+        func nearbyWords(of index: Int) -> [String] {
+            var words: [String] = []
+            for direction in [-1, 1] {
+                var position = index + direction
+                var taken = 0
+                while edges.indices.contains(position), taken < ReadingContext.window {
+                    if let word = neighbourByEdge[position].word {
+                        words.append(word)
+                        taken += 1
+                    }
+                    position += direction
+                }
+            }
+            return words
         }
         // Where the note's segments meet, in UTF-16 offsets: a phrase must start and end on one.
         // Where its content words start: a phrase must hold one besides the run's own word.
@@ -79,23 +98,27 @@ nonisolated extension FuriganaResolver {
             // Apple's reading counts only when the dictionary lists it for this word.
             let apple = appleReadings[run.location].flatMap { $0.length == run.length && candidates.contains($0.reading) ? $0.reading : nil }
             let kanji = nsText.substring(with: run)
-            let neighbours = [neighbour(at: index - 1), neighbour(at: index + 1)]
-            let previous = neighbours[0].className
-            let next = neighbours[1].className
+            let previousNeighbour = neighbourByEdge.indices.contains(index - 1) ? neighbourByEdge[index - 1] : .boundary
+            let nextNeighbour = neighbourByEdge.indices.contains(index + 1) ? neighbourByEdge[index + 1] : .boundary
+            let previous = previousNeighbour.className
+            let next = nextNeighbour.className
             let phrase = (segmenter as? Segmenter).map {
                 PhraseReadingEvidence.readings(
                     spellingPhrasesAround: run, in: nsText, candidates: candidates, wordBoundaries: wordBoundaries,
                     contentWordStarts: contentWordStarts, runWord: NSRange(edge.start..<edge.end, in: sourceText), segmenter: $0
                 )
             } ?? []
-            let scores = transitionTable == nil ? nil : table?.scores(
+            let scores = transitionTable == nil ? nil : table.flatMap { table in table.scores(
                 kanji: kanji,
                 candidates: candidates,
-                neighbours: neighbours,
+                context: ReadingContext(
+                    previous: previousNeighbour.word, next: nextNeighbour.word,
+                    nearby: nearbyWords(of: index), vectors: table.vectors
+                ),
                 appleReading: apple,
                 phraseReadings: phrase,
                 addedCounts: registers?.addedCounts(kanji: kanji, register: register) ?? [:]
-            )
+            ) }
             let counted = scores.flatMap { ReadingContextTable.best(of: $0) }
             // The one reading that spells a phrase decides; several spelling one leave it to the counts.
             let phraseReading = phrase.count == 1 ? phrase.first : nil

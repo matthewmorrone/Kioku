@@ -226,8 +226,8 @@ def materialize_source(entry):
 
 
 # Fails fast, before any long phase, when the tools the build depends on are missing. wordfreq
-# feeds the frequency columns, the mecab CLI the headword decompositions and swiftc the usage tables
-# (import_usage_tables); silently skipping any of them ships a degraded dictionary (see
+# feeds the frequency columns, the mecab CLI the headword decompositions, swiftc the usage tables and
+# numpy + scikit-learn the furigana reading model (import_usage_tables); silently skipping any of them ships a degraded dictionary (see
 # import_wordfreq and import_entry_decomposition).
 def check_build_tools():
     problems = []
@@ -235,6 +235,10 @@ def check_build_tools():
         import wordfreq  # noqa: F401
     except ImportError:
         problems.append("wordfreq (pip install -r requirements.txt)")
+    try:
+        import numpy, sklearn  # noqa: F401
+    except ImportError:
+        problems.append("numpy and scikit-learn, which fit the furigana reading model (pip install -r requirements.txt)")
     if shutil.which("mecab") is None:
         problems.append("the mecab CLI with mecab-ipadic (brew install mecab mecab-ipadic)")
     if shutil.which("swiftc") is None:
@@ -1635,16 +1639,16 @@ def import_reading_registers(conn):
           f"register grams {len(kept)} of {len(vocabulary)} kept")
 
 
-# Writes the segmenter's transition costs and furigana's reading counts (segmenter_transitions,
-# reading_contexts), counted from Tatoeba's Japanese indices by scripts/calibration/usage_tables.py.
+# Writes the segmenter's transition costs and furigana's reading model (segmenter_transitions,
+# reading_contexts, word_vectors), counted and fitted from Tatoeba's Japanese indices and fastText's
+# Japanese word vectors by scripts/calibration/usage_tables.py and reading_model.py.
 # The word classes come from the app's own code run against this database: segcli is compiled from
 # the app's sources and classes every gold token, so the build commits what it has so far first.
 # Needs everything the segmenter loads (entries, ranks, deinflection rules, names) and sentence_pairs.
 def import_usage_tables(conn):
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("usage_tables", USAGE_TABLES_PATH)
-    usage_tables = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(usage_tables)
+    sys.path.insert(0, str(USAGE_TABLES_PATH.parent))
+    import reading_model
+    import usage_tables
     entry = load_manifest()["tatoeba-jpn-indices"]
     archive = fetch_archive(entry)
     sentences = {str(ja_id): japanese for ja_id, japanese in conn.execute("SELECT DISTINCT ja_id, japanese FROM sentence_pairs")}
@@ -1654,6 +1658,14 @@ def import_usage_tables(conn):
     with open(build_log, "w") as log:
         if subprocess.run(["zsh", str(SEGCLI_BUILD_PATH)], env=env, stdout=log, stderr=subprocess.STDOUT).returncode != 0:
             raise RuntimeError(f"segcli failed to build; see {build_log}")
+
+    # Segments titles with the shipped segmenter (`segcli run`), one output line per title.
+    def segment(titles):
+        proc = subprocess.run([str(SEGCLI_PATH), "run"], input="\n".join(titles) + "\n", capture_output=True,
+                              text=True, env=env)
+        if proc.returncode != 0:
+            raise RuntimeError(f"segcli run failed: {proc.stderr[-2000:]}")
+        return proc.stdout.split("\n")[:-1]
 
     # Classes every gold token through `segcli count`, one output line per record.
     def classify(lexical, records):
@@ -1676,8 +1688,18 @@ def import_usage_tables(conn):
     spellings = {(surface, usage_tables.to_hiragana(reading))
                  for surface, reading in conn.execute("SELECT surface, reading FROM surface_readings")}
     with open_source_member(entry["fetch"], archive) as raw:
-        tables = usage_tables.build(io.TextIOWrapper(raw, encoding="utf-8-sig"), sentences, EVAL_DATA_DIR, classify,
-                                    irregular, spellings)
+        tables = usage_tables.build(io.TextIOWrapper(raw, encoding="utf-8-sig"), sentences, EVAL_DATA_DIR, classify)
+    # The reading model: logistic regressions over the words around each ambiguous kanji run, on word
+    # vectors cut to the dictionary's spellings (see reading_model.py).
+    tokens = list(reading_model.training_tokens(tables["records"], tables["class_lines"], irregular, spellings))
+    idf, unseen_idf = reading_model.inverse_document_frequency(tables["records"], tables["class_lines"])
+    accepted = {text for (text,) in conn.execute("SELECT text FROM kanji UNION SELECT text FROM kana_forms")}
+    vectors_entry = load_manifest()["fasttext-ja-vectors"]
+    with open_source_member(vectors_entry["fetch"], fetch_archive(vectors_entry)) as raw:
+        vectors = reading_model.read_vectors(io.TextIOWrapper(raw, encoding="utf-8"), accepted)
+    # Tatoeba's kana-written spellings of kanji words (様に written ように) as further contexts for the same readings.
+    kana_tokens = list(reading_model.training_tokens(tables["records"], tables["class_lines"], irregular, spellings, kana=True))
+    readings = reading_model.reading_rows(tokens, vectors, idf, unseen_idf, kana_tokens)
     conn.execute("BEGIN")
     conn.execute("""
         CREATE TABLE segmenter_transitions (
@@ -1687,12 +1709,19 @@ def import_usage_tables(conn):
     conn.execute("""
         CREATE TABLE reading_contexts (
             kanji TEXT NOT NULL, reading TEXT NOT NULL, count INTEGER NOT NULL,
-            previous TEXT NOT NULL, next TEXT NOT NULL, previous_words TEXT NOT NULL, next_words TEXT NOT NULL,
+            bias REAL NOT NULL, weights BLOB,
             PRIMARY KEY (kanji, reading)
         ) WITHOUT ROWID""")
-    conn.executemany("INSERT INTO reading_contexts VALUES (?, ?, ?, ?, ?, ?, ?)", tables["readings"])
+    conn.executemany("INSERT INTO reading_contexts VALUES (?, ?, ?, ?, ?)", readings)
+    conn.execute("""
+        CREATE TABLE word_vectors (
+            word TEXT PRIMARY KEY, idf REAL NOT NULL, vector BLOB NOT NULL
+        ) WITHOUT ROWID""")
+    conn.executemany("INSERT INTO word_vectors VALUES (?, ?, ?)",
+                     reading_model.word_vector_rows(vectors, idf, unseen_idf))
     print(f"  Done: {len(tables['transitions'])} transition pairs from {tables['transition_sentences']} sentences; "
-          f"{len(tables['readings'])} reading rows from {tables['sentences']}")
+          f"{len(readings)} reading rows ({sum(1 for r in readings if r[4])} with a model) from {tables['sentences']}; "
+          f"{len(vectors)} word vectors, {len(kana_tokens)} kana-written tokens")
 
 
 # Writes phrase_readings (phrase, kanji, reading): how a kanji reads inside JMdict's set phrases, so

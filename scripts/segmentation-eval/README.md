@@ -36,7 +36,6 @@ files the CLI compiles — add whatever the compiler reports missing.
 | `count <lexical.txt>` | transition class of every gold token, from the app's own classifier (input to the table generator) |
 | `explain` | stdin `text<TAB>seg\|seg\|…` → node cost, score, steps, class and transition for the chosen path **and** the wanted one, or which wanted edge is missing from the lattice. Use this before theorising about any single failure. |
 | `readings` | stdin lines → every contextual reading decision furigana makes: the kanji run, its neighbours' classes, Apple's reading, and each candidate's score parts (prior, previous, next, apple). Run this first on a wrong reading. |
-| `readings-json` | the same decisions with their raw counts, one JSON object per line: input to `simulate_readings.py`, which replays them under a scoring change (`--cap`, `--apple`, `--smoothing`) in seconds instead of a rebuild per setting. It matches the app exactly on train2k, held2k and fresh5k. |
 | `lemmas` | what each surface resolves to, with scores (input to the deinflection audit) |
 | `defaults` | stdin surfaces → `surface<TAB>default reading<TAB>leading candidate<TAB>its readings` for each surface whose default reading (`ReadingVariants.orderedReadings.first`, what the sheet shows with no furigana override) is not one of the leading lookup candidate's readings. 6000 common words: 13 hits, 超え and 越し the real ones. |
 | `lexicon` | stdin surfaces → `surface<TAB>lemma=…<TAB>candidates=…`: the lookup sheet's lemma line (Lexicon.inflectionInfo) and its list of possibilities (Lexicon.lookupCandidates), from the app's real Lexicon |
@@ -110,8 +109,8 @@ comparing any shorter verb stretch broke お目にかかれて (かれる/かる
 
 Readings (`segcli furigana` + `score_readings.py`, 2026-10-15): held2k 95.03%, fresh5k 97.30%. Frequency
 order alone was 91.09% / 94.79%; the rest is the context pass (FuriganaResolver+ContextualReadings), one score
-over three sources: Tatoeba's reading counts (the dictionary's `reading_contexts` table, see "Regenerating the
-transition table"; 94.50% / 96.97% on their own), a 2.0 vote for Apple's tokenizer's
+over three sources: the reading model (the dictionary's `reading_contexts` and `word_vectors` tables, see
+"Reading model" below), a 2.0 vote for Apple's tokenizer's
 reading (fitted on train2k: 0 → 94.17%, 2 → 94.57%; on its own Apple was 94.03% / 95.90%, and it reads 私 as
 わたくし every time, which the counts outvote), and dictionary frequency order to break ties. A kanji the counts never
 saw takes Apple's reading when the dictionary lists it. The after-の rule (JMdict の-expressions) was dropped as
@@ -124,12 +123,32 @@ every lemma a surface can be (甘く as 甘い, 入り as 入る). The counts ta
 under their stem (瞬いていた → 瞬 またた; JMdict vk and adj-ix left out, their stem changes): +5% counts, held2k
 1224 vs 1223 correct, fresh5k and train2k unchanged, so classSmoothing and appleVote were not refitted.
 
+Reading model (2026-11-16; replaced the class-and-neighbour-word counts): per kanji run Tatoeba reads 2+ ways, one logistic
+regression over fastText `cc.ja.300` embeddings (CC BY-SA 3.0) of the word before, the word after and the words within five
+places (`scripts/calibration/reading_model.py`; features in `ReadingContext.swift`). Cross-validated offline on the 107k
+counted readings (`cv/`, gold segmentation, no Apple vote or phrases): +0.5 points overall and +0.6 on kanji whose readings
+differ in meaning over the counts it replaced, 9 of 10 folds, block-bootstrap CI above zero. End to end it is level with them:
+held2k 1195 vs 1196 correct (95.07% vs 95.15%), fresh5k 4029 vs 4031 (97.22% vs 97.27%), 13 and 16 tokens changed each way;
+lyrics: 3 readings changed in 319 lines (前の ぜん→まえ, アン風 かぜ→ふう, 開いた ひら→あ); named cases 104 / 104. Weights stored
+for 255 readings (0.9 MB) and 50,000 int8 word vectors (15 MB). Regularisation C = 10 (3–30 within 0.1 point).
+
+Kana-written tokens (2026-11-22, `reading_model.kana_token`): Tatoeba writes ように as 様に{ように}; those 94,793 tokens
+(22,830 where Tatoeba's kanji-written data shows the same reading) were skipped. They now join the fit with a source column (1 for
+them), so the shared weights learn their contexts while the bias stays the kanji-written tokens'. Kanji-written Tatoeba barely holds の|様|に
+(1 of its 36 様), so the Tatoeba folds cannot show the gain (+1 token, p=1); scored on held-out kana-written contexts with the column at 0:
+様 81.4% → 97.0%, all kanji with kana tokens 57.8% → 81.9% (`cv/lr_kana.py`, `HELD=kana`). End to end: the four lyric `の様に` lines read よう from the
+model's own context, held2k 1196, fresh 4028, named cases 104/104.
+
+NDL bibliography furigana (Furigana-NDLBIB, 662k tokens, CC BY 4.0) were tried as extra training tokens and removed (2026-11-22, last present in
+commit 6a8a2316 and 1e2d8997): 6.5 k seconds and a 6.8 GB download per build for 50 more modelled kanji, no held-out gain (held2k 1196 both ways, fresh 4022
+against 4028 without), and they pull 様 back to さま on の|様|に (their 767 様 titles hold none with の before it).
+
 Registers (2026-10-13, ReadingRegisters): Tatoeba is everyday text, so web and business writing (方 かた, その後 ご,
 等 とう) was read in its register. The dictionary now carries reading counts from KWDLC's training documents and a
 character-bigram naive Bayes classifier over Tatoeba vs KWDLC (`import_reading_registers` in
 `Resources/generate_db.py`). A note that beats everyday by at least 0.3 nats per gram
-(RegisterClassifier.minimumMargin) adds the web counts ×4 to Tatoeba's in P(reading | kanji); the class terms stay
-Tatoeba's; any other note is untouched. Weight fitted on held-out data only (KWDLC's split_for_pas dev documents,
+(RegisterClassifier.minimumMargin) adds the web counts ×4 to Tatoeba's in P(reading | kanji), shifting the model's prior by what they add; any other note
+is untouched. Weight fitted on held-out data only (KWDLC's split_for_pas dev documents,
 train2k): the largest that left train2k level (0.5–8: KWDLC dev +1.2 → +1.6 points, train2k −2 at 8). The margin
 keeps song lyrics everyday (the 12 songs of the alignment reference set, whole lyrics per song, scored −0.27 to +0.26; KWDLC test pages median
 +0.47). Same dictionary with vs without the tables (scripts/benchmark, several readings): KWDLC test 90.64 → 93.12%
@@ -194,13 +213,14 @@ lyric score. ラララ and に|ついてく, both listed here previously, are fi
 
 ## Regenerating the transition table
 
-The transition table (`segmenter_transitions`) and furigana's reading counts (`reading_contexts`) are
-dictionary tables, recounted at every dictionary build: `import_usage_tables` in `Resources/generate_db.py`
+The transition table (`segmenter_transitions`) and furigana's reading model (`reading_contexts`, `word_vectors`) are
+dictionary tables, refitted at every dictionary build (the build fetches fastText's 1.3 GB vector file and needs
+numpy + scikit-learn, see requirements.txt): `import_usage_tables` in `Resources/generate_db.py`
 compiles segcli from the app's sources, classes every gold token of Tatoeba's indices against the database
-being built (`segcli count`), and turns the counts into rows (`scripts/calibration/usage_tables.py`).
+being built (`segcli count`), and turns the counts into rows (`scripts/calibration/usage_tables.py`, then `reading_model.py` fits the readings).
 Class names come from the app's own `TransitionClass`, so counting and running cannot diverge, and a change
 to deinflection rules, POS bits or edge pricing takes effect in the tables at the next dictionary build.
-Transitions count the training half minus train2k; reading counts add the held-out sentences no eval set
+Transitions count the training half minus train2k; the reading model adds the held-out sentences no eval set
 uses. To measure a code change against fresh tables, build a dictionary and point segcli at it:
 
 ```bash

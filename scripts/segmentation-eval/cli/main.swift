@@ -362,6 +362,41 @@ if mode == "explain" {
     exit(0)
 }
 
+if mode == "kanacost" {
+    // segcli kanacost < jsonl of {"s": sentence, "a": scalar offset of a kanji run, "n": its length, "c": [candidate readings]}
+    // — per record, one tab-separated Viterbi path cost (centi-nats) per candidate, for the window of KANA_WINDOW
+    // scalars either side of the run with the run replaced by that candidate's kana. Tests whether a reading that
+    // spells a natural kana chunk (の+よう+に) costs less than one that does not (の+さま+に).
+    guard let table = segmenter.transitionTable else { fatalError("no transition table") }
+    let window = 12
+    // The whole path's cost: every edge's node cost plus the class transitions into each edge and the end,
+    // as `explain` totals it.
+    func pathCost(_ path: [LatticeEdge]) -> Int {
+        var total = 0
+        var previous: LatticeEdge?
+        for edge in path + [nil] as [LatticeEdge?] {
+            total += table.cost(from: table.classIDs(for: previous), to: table.classIDs(for: edge))
+            if let edge { total += SegmenterScoring.edgeCost(edge) }
+            previous = edge
+        }
+        return total
+    }
+    while let line = readLine() {
+        guard let data = line.data(using: .utf8), let record = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let sentence = record["s"] as? String, let start = record["a"] as? Int, let length = record["n"] as? Int,
+              let candidates = record["c"] as? [String] else { print(""); continue }
+        let scalars = Array(sentence.unicodeScalars)
+        let before = String(String.UnicodeScalarView(scalars[max(0, start - window)..<start]))
+        let after = String(String.UnicodeScalarView(scalars[(start + length)..<min(scalars.count, start + length + window)]))
+        let costs = candidates.map { reading -> String in
+            let text = before + reading + after
+            return String(pathCost(segmenter.viterbiSelect(from: segmenter.buildLattice(for: text), in: text).path))
+        }
+        print(costs.joined(separator: "\t"))
+    }
+    exit(0)
+}
+
 if mode == "oracle" {
     // segcli oracle < gold.jsonl — for each sentence with a cut-through: the chosen path vs the cheapest
     // path that cuts through NO gold token. One TSV row each:
@@ -417,8 +452,8 @@ if mode == "furigana" {
 
 if mode == "readings" {
     // segcli readings < lines → every contextual reading decision furigana makes: the kanji run, its
-    // neighbours' classes, Apple's reading, each candidate's score parts (prior, previous, next,
-    // apple), and the reading chosen.
+    // neighbours' classes, Apple's reading, each candidate's score parts (prior, context, apple,
+    // phrase), and the reading chosen.
     let readingData = SurfaceReadingDataMap(try store.fetchSurfaceReadingData())
     let resolver = FuriganaResolver(segmenter: segmenter)
     // WHOLE=1 reads all of stdin as one text, as the Read view resolves a whole note at once
@@ -441,43 +476,10 @@ if mode == "readings" {
         ) {
             print("\(choice.kanji)@\(choice.location)  prev \(choice.previous)  next \(choice.next)  apple \(choice.apple ?? "-")  phrase \(choice.phrase.sorted().joined(separator: ","))  → \(choice.chosen ?? choice.current)")
             for score in choice.scores {
-                print(String(format: "    %@ ×%d  prior %.2f  prev %.2f  next %.2f  apple %.1f  phrase %.1f  total %.2f",
-                             score.reading, score.count, score.prior, score.previous, score.next, score.apple, score.phrase, score.total))
+                print(String(format: "    %@ ×%d  prior %.2f  context %.2f  apple %.1f  phrase %.1f  total %.2f",
+                             score.reading, score.count, score.prior, score.context, score.apple, score.phrase, score.total))
             }
         }
-    }
-    exit(0)
-}
-
-if mode == "readings-json" {
-    // segcli readings-json < lines → per line, the furigana `build` gives plus every contextual
-    // reading decision with its raw counts (one JSON object per line), so scoring changes can be
-    // simulated offline (scripts/segmentation-eval/simulate_readings.py) without a rebuild each.
-    let readingData = SurfaceReadingDataMap(try store.fetchSurfaceReadingData())
-    let resolver = FuriganaResolver(segmenter: segmenter)
-    while let line = readLine() {
-        let edges = segmenter.longestMatchEdges(for: line)
-        let furigana = resolver.build(for: line, edges: edges, surfaceReadingData: readingData)
-        let decisions: [[String: Any]] = resolver.contextualReadingChoices(
-            furigana: furigana.byLocation, lengths: furigana.lengthByLocation, edges: edges,
-            sourceText: line, surfaceReadingData: readingData
-        ).map { choice in
-            [
-                "location": choice.location, "length": furigana.lengthByLocation[choice.location] ?? 0,
-                "kanji": choice.kanji, "previous": choice.previous, "next": choice.next,
-                "apple": choice.apple ?? NSNull(), "fallback": choice.chosen ?? choice.current,
-                "phrase": choice.phrase.sorted(),
-                "candidates": choice.scores.map { score -> [String: Any] in
-                    ["reading": score.reading, "n": score.count, "added": score.addedCount, "total": score.kanjiTotal,
-                     "k": score.candidateCount, "classes": score.classCount,
-                     "prevSeen": score.previousSeen, "nextSeen": score.nextSeen,
-                     "previousTerm": score.previous, "nextTerm": score.next]
-                },
-            ]
-        }
-        let furiganaRows = furigana.byLocation.keys.sorted().map { [$0, furigana.lengthByLocation[$0] ?? 0, furigana.byLocation[$0] ?? ""] as [Any] }
-        let object: [String: Any] = ["furigana": furiganaRows, "decisions": decisions]
-        print(String(data: try JSONSerialization.data(withJSONObject: object), encoding: .utf8)!)
     }
     exit(0)
 }

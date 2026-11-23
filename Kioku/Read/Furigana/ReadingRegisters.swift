@@ -3,13 +3,13 @@ import Foundation
 // Reading counts for kinds of text Tatoeba's everyday sentences don't cover, and which of them a note
 // gets. Web writing reads 方 かた, その後 ご, 等 とう. The classifier (RegisterClassifier) names a
 // note's register once; a web note then adds the web counts, scaled by their weight, to Tatoeba's
-// reading counts (ReadingContextTable.choose). An everyday note gets Tatoeba's alone, exactly as
+// reading counts (ReadingContextTable.scores). An everyday note gets Tatoeba's alone, exactly as
 // before. Built from the dictionary's register tables (Resources/generate_db.py,
 // import_reading_registers); nil for a dictionary without them.
 nonisolated final class ReadingRegisters: Sendable {
     // How much a register's counts weigh beside Tatoeba's. Fitted on held-out data only (KWDLC's dev
     // documents, Tatoeba's train2k): the largest weight that left train2k level. 0.5–8: KWDLC dev +1.2 →
-    // +1.6 points, train2k −2 at 8. Above 1 because the class terms stay Tatoeba's.
+    // +1.6 points, train2k −2 at 8. Above 1 because the model's context terms stay Tatoeba's.
     static let weights: [String: Double] = ["web": 4]
 
     let classifier: RegisterClassifier
