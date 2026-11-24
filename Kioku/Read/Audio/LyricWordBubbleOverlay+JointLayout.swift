@@ -72,7 +72,7 @@ extension LyricWordBubbleOverlay {
             guard feasible else { continue }
             // Tails may pass behind nearer bubbles when everything is above (they are drawn
             // farthest first); otherwise none may cross.
-            if aboveOnly == false, hasCrossing(slots) { continue }
+            if aboveOnly ? hasTailOverBody(slots) : hasCrossing(slots) { continue }
             // Each extra row costs about a bubble's height of clutter.
             let usedRows = Set(slots.map { $0.frame.minY.rounded() }).count
             let cost = drift + CGFloat(usedRows) * 24

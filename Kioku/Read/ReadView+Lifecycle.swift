@@ -144,6 +144,8 @@ extension ReadView {
                     document.lastLoadedTextSnapshot = nil
                     return
                 }
+                // The saved alignment's copy of the edited line follows the edit.
+                syncCueText(from: oldText, to: newText)
                 // Re-resolves cue highlight ranges only when the line count changes, since cue-to-line
                 // mapping is stable for in-line edits but shifts whenever lines are added or removed.
                 if audioPlayback.audioAttachmentCues.isEmpty == false {

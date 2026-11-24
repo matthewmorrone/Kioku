@@ -59,8 +59,14 @@ struct YouTubeFollowerView: View {
                 // Fit mode sizes the surface to exactly the video's shape, so the page's own black
                 // letterbox bars don't exist and the blurred copy behind shows above and below.
                 let width = fits ? min(geo.size.width, geo.size.height * 16.0 / 9.0) : max(geo.size.width, geo.size.height * 16.0 / 9.0)
+                let frameHeight = fits ? width * 9.0 / 16.0 : max(geo.size.height, width * 9.0 / 16.0)
+                let crop = cropFit(bars: isAmbient ? .none : player.bars, frame: CGSize(width: width, height: frameHeight), container: geo.size, fits: fits)
                 YouTubePlayerView(controller: player)
-                    .frame(width: width, height: fits ? width * 9.0 / 16.0 : max(geo.size.height, width * 9.0 / 16.0))
+                    .frame(width: width, height: frameHeight)
+                    .scaleEffect(crop.scale)
+                    .offset(x: crop.offset.width, y: crop.offset.height)
+                    .frame(width: crop.window.width, height: crop.window.height)
+                    .clipped()
                     .position(x: geo.size.width / 2, y: geo.size.height / 2)
             }
         }
@@ -82,6 +88,27 @@ struct YouTubeFollowerView: View {
             syncVideo()
         }
         .onDisappear { player.teardown() }
+    }
+
+    // How to zoom the player past the video's own black borders: the scale, the shift that recentres
+    // the picture, and the window it is shown through. Fill mode covers the container with the
+    // picture; fit mode shows the whole picture at its own shape inside the container.
+    private func cropFit(bars: YouTubeVideoBars, frame: CGSize, container: CGSize, fits: Bool) -> (scale: CGFloat, offset: CGSize, window: CGSize) {
+        guard bars.isNone == false else { return (1, .zero, fits ? frame : container) }
+        let content = bars.content
+        let contentSize = CGSize(width: frame.width * content.width, height: frame.height * content.height)
+        let window: CGSize
+        if fits {
+            let ratio = min(container.width / contentSize.width, container.height / contentSize.height)
+            window = CGSize(width: contentSize.width * ratio, height: contentSize.height * ratio)
+        } else {
+            window = container
+        }
+        let scale = max(window.width / contentSize.width, window.height / contentSize.height)
+        // The picture's centre sits off the frame's centre by this much; shifting back by it (scaled) recentres it.
+        let shiftX = (content.midX - 0.5) * frame.width * scale
+        let shiftY = (content.midY - 0.5) * frame.height * scale
+        return (scale, CGSize(width: -shiftX, height: -shiftY), window)
     }
 
     // Asks the video follower to re-check itself against the audio.

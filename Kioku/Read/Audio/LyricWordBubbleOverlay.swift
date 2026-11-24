@@ -59,7 +59,7 @@ struct LyricWordBubbleOverlay: View {
             )
             ZStack(alignment: .topLeading) {
                 // Farthest row first, so a bubble nearer the line sits in front of the tails running behind it.
-                ForEach(aboveOnly ? slots.reversed() : slots, id: \.id) { slot in
+                ForEach(aboveOnly ? slots.sorted { $0.frame.minY < $1.frame.minY } : slots, id: \.id) { slot in
                     bubble(slot, in: proxy.size)
                 }
                 if let translation {
@@ -154,6 +154,29 @@ struct LyricWordBubbleOverlay: View {
         return false
     }
 
+    // Whether any bubble's tail would be drawn over another bubble's body when every bubble is above
+    // the line and they are drawn farthest first: a tail only covers bodies drawn before it, which
+    // are the bubbles in its own row (or farther), since a nearer bubble's tail runs away from them.
+    // Tails passing behind a nearer bubble are hidden by it and are fine.
+    static func hasTailOverBody(_ slots: [Slot]) -> Bool {
+        // Whether segment a–b properly crosses segment c–d (each end on opposite sides of the other).
+        func cross(_ a: CGPoint, _ b: CGPoint, _ c: CGPoint, _ d: CGPoint) -> Bool {
+            // Which side of p–q the point r lies on (the sign of the cross product).
+            func turn(_ p: CGPoint, _ q: CGPoint, _ r: CGPoint) -> CGFloat { (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x) }
+            return turn(a, b, c) * turn(a, b, d) < 0 && turn(c, d, a) * turn(c, d, b) < 0
+        }
+        for owner in slots {
+            guard let root = PointerBubbleShape.tailRoot(body: owner.frame, tip: owner.tip, cornerRadius: cornerRadius) else { continue }
+            for other in slots where other.id != owner.id && other.frame.maxY <= owner.frame.maxY + 1 {
+                let body = other.frame.insetBy(dx: 1, dy: 1)
+                if body.contains(owner.tip) || body.contains(root.edge) { return true }
+                let corners = [CGPoint(x: body.minX, y: body.minY), CGPoint(x: body.maxX, y: body.minY), CGPoint(x: body.maxX, y: body.maxY), CGPoint(x: body.minX, y: body.maxY)]
+                for edge in 0..<4 where cross(root.edge, owner.tip, corners[edge], corners[(edge + 1) % 4]) { return true }
+            }
+        }
+        return false
+    }
+
     // The layout: meanings in rows above and below
     // the line, each centred on its word, its tail reaching the word. `bubbles` are the ones shown
     // so far; they're placed in the order they appeared (word order), each taking the nearest row
@@ -218,7 +241,8 @@ struct LyricWordBubbleOverlay: View {
         func accepts(_ rows: [[Slot]], isAbove: Bool) -> Bool {
             // With everything above, rows must stack even where a farther tail passes behind a nearer
             // bubble (drawn farthest first below), rather than dropping the bubble.
-            rowsFit(rows, space: isAbove ? spaceAbove : spaceBelow) && (aboveOnly || hasCrossing(placedSlots(rows, isAbove: isAbove)) == false)
+            rowsFit(rows, space: isAbove ? spaceAbove : spaceBelow)
+                && (aboveOnly ? hasTailOverBody(placedSlots(rows, isAbove: isAbove)) : hasCrossing(placedSlots(rows, isAbove: isAbove))) == false
         }
         // `rows` with `slot` added to `row` (a new last row when `row` is past the end).
         func adding(_ slot: Slot, toRow row: Int, of rows: [[Slot]]) -> [[Slot]] {

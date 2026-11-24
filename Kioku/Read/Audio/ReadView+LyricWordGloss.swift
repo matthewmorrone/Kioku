@@ -9,8 +9,14 @@ extension ReadView {
     // likeliest word's meaning alone — "you / beyond" is more than a bubble should say. Nil for
     // words with no entry. A negative form's meaning is negated.
     func lyricWordGloss(at location: Int, surface: String) -> String? {
-        guard let entry = lyricBubbleEntry(at: location, surface: surface),
-              let lemmaGloss = bubbleGloss(from: entry.senses.first(where: { $0.glosses.isEmpty == false })?.glosses ?? []) else { return nil }
+        guard let entry = lyricBubbleEntry(at: location, surface: surface) else { return nil }
+        // A word written in kana alone speaks for its "usually written in kana" senses when the
+        // entry has any: いっぱい is "full" and "a lot" (tagged uk), not 一杯's first sense, "one cup".
+        let senses = entry.senses.filter { $0.glosses.isEmpty == false }
+        let usuallyKana = ScriptClassifier.isKanaText(surface)
+            ? senses.first { ($0.misc ?? "").split(whereSeparator: { ", ".contains($0) }).contains("uk") }
+            : nil
+        guard let lemmaGloss = bubbleGloss(from: (usuallyKana ?? senses.first)?.glosses ?? []) else { return nil }
         let gloss = inflectedLyricGloss(lemmaGloss, surface: surface, entry: entry)
         return gloss
     }
@@ -22,7 +28,9 @@ extension ReadView {
     // ("standing on tiptoe and stretching one's back to make oneself taller") gives way to the
     // shortest gloss of the same sense ("stretching oneself").
     private func bubbleGloss(from glosses: [String]) -> String? {
-        guard let first = glosses.first else { return nil }
+        // A gloss of bare numerals ("1, 2, 3" for ワン・ツー・スリー) says nothing a bubble can use, and
+        // would shorten to "1"; the first gloss with letters in it is the meaning.
+        guard let first = glosses.first(where: { $0.contains(where: \.isLetter) }) ?? glosses.first else { return nil }
         guard first.count > Self.maxBubbleGlossLength else { return first }
         return glosses.min(by: { $0.count < $1.count }) ?? first
     }

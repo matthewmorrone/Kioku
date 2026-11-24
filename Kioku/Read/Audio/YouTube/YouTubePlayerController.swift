@@ -11,6 +11,8 @@ import WebKit
 final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessageHandler {
     // How far (seconds) the video may sit from the audio before it is seeked back.
     private static let driftTolerance = 0.45
+    // The looser limit for a video of a different length, whose position only roughly tracks the song.
+    private static let mismatchTolerance = 3.0
     // The IFrame API's state code while a video is playing.
     private static let playingState = 1
     // The IFrame API's state code when the video has played to its end.
@@ -19,15 +21,14 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
     let webView: WKWebView
     // False until the IFrame player is ready; nothing is sent to the page before then.
     @Published private(set) var isReady = false
-    // True when the video's length differs from the audio's, so its timestamps can't be trusted.
-    private var lengthMismatch = false
+    // The speed last sent to the player, so it is only resent when it changes.
+    private var playbackRate = 1.0
     // The IFrame API's error code (101/150 = embedding disabled for this video), or nil.
     @Published private(set) var errorCode: Int?
+    // The black borders baked into the video's picture, once found; the follower zooms past them.
+    @Published private(set) var bars = YouTubeVideoBars.none
 
     private let videoID: String
-    // The stretch looped while the video can't follow the song (see YouTubeClipFinder), once found.
-    private var loopClip: YouTubeClip?
-    private var isFindingClip = false
     private var videoSeconds: Double = 0
     private var videoDuration: Double = 0
     private var videoState = -1
@@ -47,7 +48,13 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
         webView.isOpaque = false
         webView.backgroundColor = .black
         webView.scrollView.isScrollEnabled = false
+        // Nothing touches the page, so YouTube's hover and tap overlays (title, share, more videos) never appear.
+        webView.isUserInteractionEnabled = false
         webView.loadHTMLString(Self.pageHTML(videoID: videoID), baseURL: URL(string: Self.embedOrigin))
+        Task { [weak self] in
+            let found = await YouTubeBarFinder.shared.bars(for: videoID)
+            self?.bars = found
+        }
     }
 
     // Detaches the script handler, which the web view's content controller otherwise retains.
@@ -63,22 +70,22 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
         guard isReady else { return }
         let (audioPlaying, audioSeconds, audioDuration) = audioState()
 
-        // A video whose length differs from the song's is a different cut (or an ad), so its
-        // timestamps don't line up with the audio's. It then just plays and pauses with the song,
-        // looping at its end, instead of being seeked to positions that mean something else.
+        // A video whose length differs from the song's is a different cut, so its timestamps don't
+        // line up with the audio's. Instead the whole video is spread across the whole song: the
+        // video's position follows the song's in proportion, at the nearest playback speed the
+        // player offers, with a seek whenever it strays. It only has to look right, so the
+        // tolerance is loose.
         let isSameLength = videoDuration <= 0 || audioDuration <= 0 || abs(videoDuration - audioDuration) <= 3
-        if lengthMismatch == isSameLength {
-            lengthMismatch = !isSameLength
-            if lengthMismatch { findLoopClip() }
+        let ratio = isSameLength ? 1 : videoDuration / audioDuration
+        let rate = isSameLength ? 1 : Self.nearestPlaybackRate(to: ratio)
+        if rate != playbackRate {
+            playbackRate = rate
+            run("player.setPlaybackRate(\(rate))")
         }
-        // A video that can't follow the song loops its best-looking stretch instead of playing through.
-        if isSameLength == false, let clip = loopClip, videoSeconds >= clip.end || videoSeconds < clip.start - 1 {
-            run("player.seekTo(\(clip.start), true)")
-            videoSeconds = clip.start
-        }
-        if isSameLength, abs(videoSeconds - audioSeconds) > Self.driftTolerance {
-            run("player.seekTo(\(audioSeconds), true)")
-            videoSeconds = audioSeconds
+        let target = audioSeconds * ratio
+        if abs(videoSeconds - target) > (isSameLength ? Self.driftTolerance : Self.mismatchTolerance) {
+            run("player.seekTo(\(target), true)")
+            videoSeconds = target
         }
         let videoPlaying = videoState == Self.playingState
         if audioPlaying, videoPlaying == false {
@@ -88,17 +95,9 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
         }
     }
 
-    // Looks for the video's best stretch to loop; once, and only while the video is mismatched. Until
-    // it's found the video just plays through as before.
-    private func findLoopClip() {
-        guard loopClip == nil, isFindingClip == false else { return }
-        isFindingClip = true
-        let id = videoID
-        Task { @MainActor in
-            loopClip = await YouTubeClipFinder.shared.clip(for: id)
-            isFindingClip = false
-            sync()
-        }
+    // The playback speed the IFrame player offers (quarter steps from 0.25 to 2) closest to `ratio`.
+    private static func nearestPlaybackRate(to ratio: Double) -> Double {
+        min(2, max(0.25, (ratio * 4).rounded() / 4))
     }
 
     // Receives the page's reports: ready, state changes, errors and the periodic position.
@@ -152,20 +151,22 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
         """
         <!doctype html><html><head>
         <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-        <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p{width:100%;height:100%}</style>
+        <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p{width:100%;height:100%;pointer-events:none}body::after{content:'';position:fixed;inset:0}</style>
         </head><body><div id="p"></div>
         <script src="https://www.youtube.com/iframe_api"></script>
         <script>
         var player;
         function post(o){window.webkit.messageHandlers.yt.postMessage(o)}
+        // Videos with caption tracks load their captions module when playback starts, whatever cc_load_policy says, so it is switched off again at every state change and on a timer.
+        function noCaptions(){try{player.setOption('captions','track',{});player.unloadModule('captions');player.unloadModule('cc')}catch(e){}}
         function onYouTubeIframeAPIReady(){
           player=new YT.Player('p',{videoId:'\(videoID)',
-            playerVars:{playsinline:1,controls:0,cc_load_policy:0,rel:0,modestbranding:1,disablekb:1,fs:0,origin:'\(embedOrigin)'},
+            playerVars:{playsinline:1,controls:0,iv_load_policy:3,cc_load_policy:0,rel:0,modestbranding:1,disablekb:1,fs:0,origin:'\(embedOrigin)'},
             events:{
-              onReady:function(){player.mute();try{player.unloadModule('captions');player.unloadModule('cc')}catch(e){};post({t:'ready'})},
-              onStateChange:function(e){post({t:'state',v:e.data})},
+              onReady:function(){player.mute();noCaptions();post({t:'ready'})},
+              onStateChange:function(e){noCaptions();post({t:'state',v:e.data})},
               onError:function(e){post({t:'error',v:e.data})}}})}
-        setInterval(function(){if(player&&player.getCurrentTime){post({t:'time',v:player.getCurrentTime(),d:player.getDuration()})}},500);
+        setInterval(function(){if(player&&player.getCurrentTime){noCaptions();post({t:'time',v:player.getCurrentTime(),d:player.getDuration()})}},500);
         </script></body></html>
         """
     }
