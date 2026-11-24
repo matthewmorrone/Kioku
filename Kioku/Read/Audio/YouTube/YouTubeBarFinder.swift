@@ -37,8 +37,17 @@ actor YouTubeBarFinder {
         }
         // Letterbox and pillarbox bars come in pairs, so a bar found on one side stands for the other
         // too (a stray bright edge column in the preview frames can hide one of the pair).
-        let vertical = max(edge(\.top), edge(\.bottom))
-        let horizontal = max(edge(\.left), edge(\.right))
+        // A video that isn't 16:9 is shown with bars the player adds itself, which the preview frames
+        // (cut to the picture) don't contain; its shape gives them exactly. Bars painted into the
+        // picture then sit inside what is left.
+        let aspect = Double(frames.images[0].width) / Double(frames.images[0].height)
+        let frameAspect = 16.0 / 9.0
+        let shapeHorizontal = aspect < frameAspect * 0.98 ? (1 - aspect / frameAspect) / 2 : 0
+        let shapeVertical = aspect > frameAspect * 1.02 ? (1 - frameAspect / aspect) / 2 : 0
+        let paintedVertical = max(edge(\.top), edge(\.bottom))
+        let paintedHorizontal = max(edge(\.left), edge(\.right))
+        let vertical = shapeVertical + paintedVertical * (1 - 2 * shapeVertical)
+        let horizontal = shapeHorizontal + paintedHorizontal * (1 - 2 * shapeHorizontal)
         let bars = YouTubeVideoBars(top: vertical, bottom: vertical, left: horizontal, right: horizontal)
         AppLog.info(.audioPlayback, "youtube \(videoID) black bars top \(bars.top) bottom \(bars.bottom) left \(bars.left) right \(bars.right)")
         return bars

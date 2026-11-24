@@ -70,7 +70,8 @@ extension LyricsView {
             .frame(width: 36, height: 5)
             .frame(maxWidth: .infinity, minHeight: 22)
             .contentShape(Rectangle())
-            .gesture(
+            // High priority so the card's own line-jump drag (on the parent) never also fires and seeks the song.
+            .highPriorityGesture(
                 // Measured in the stable parent space: the card moves as it is dragged, which would otherwise
                 // feed back into the translation and make it shake.
                 DragGesture(minimumDistance: 0, coordinateSpace: .named("lyricClip"))

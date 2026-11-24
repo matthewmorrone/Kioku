@@ -48,6 +48,9 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
         webView.isOpaque = false
         webView.backgroundColor = .black
         webView.scrollView.isScrollEnabled = false
+        // The page fills the whole web view. Left automatic, the web view reserves the status bar and
+        // tab bar areas it overlaps when the video fills the screen, and black shows through there.
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
         // Nothing touches the page, so YouTube's hover and tap overlays (title, share, more videos) never appear.
         webView.isUserInteractionEnabled = false
         webView.loadHTMLString(Self.pageHTML(videoID: videoID), baseURL: URL(string: Self.embedOrigin))
