@@ -3,26 +3,26 @@ import SwiftUI
 // The word bubbles' joint planner: lays out every bubble of a line at once. Within a row it finds
 // the positions closest to each word that keep the bubbles apart (an isotonic fit), so the row
 // spreads evenly about its words instead of the first bubble sitting over the first word and the
-// rest being pushed along. Words are dealt across 1…n rows (alternating sides) and the
-// arrangement with the least total drift and fewest rows that fits wins.
+// rest being pushed along. Words are dealt across 1…n rows (alternating sides unless everything
+// goes above) and the arrangement with the least total drift and fewest rows that fits wins.
 extension LyricWordBubbleOverlay {
     // The planned slots for every glossed bubble, or nil when no arrangement fits the room (the
     // caller then falls back to the first-in, first-out queue).
-    static func jointLayout(_ bubbles: [PlacedLyricWordBubble], size cardSize: CGSize, roomAbove: CGFloat, roomBelow: CGFloat, belowInset: CGFloat) -> [Slot]? {
+    static func jointLayout(_ bubbles: [PlacedLyricWordBubble], size cardSize: CGSize, roomAbove: CGFloat, roomBelow: CGFloat, belowInset: CGFloat, aboveOnly: Bool) -> [Slot]? {
         let width = cardSize.width
         let glossed = bubbles.filter { $0.gloss != nil }.sorted { $0.anchor.midX < $1.anchor.midX }
         guard width > 0, glossed.isEmpty == false else { return nil }
         let lineTop = bubbles.map(\.anchor.minY).min() ?? 0
         let lineBottom = bubbles.map(\.anchor.maxY).max() ?? 0
         let spaceAbove = lineTop + roomAbove
-        let spaceBelow = cardSize.height + roomBelow - lineBottom - belowInset
+        let spaceBelow = aboveOnly ? -CGFloat.greatestFiniteMagnitude : cardSize.height + roomBelow - lineBottom - belowInset
         let isWrapped = Self.isWrapped(bubbles)
         let midline = (lineTop + lineBottom) / 2
 
-        // Which side each bubble takes: alternating (a wrapped line's upper words above).
+        // Which side each bubble takes: all above, or alternating (a wrapped line's upper words above).
         var sideIsAbove: [Int: Bool] = [:]
         for (index, bubble) in glossed.enumerated() {
-            sideIsAbove[bubble.id] = isWrapped ? bubble.anchor.midY < midline : index % 2 == 0
+            sideIsAbove[bubble.id] = aboveOnly ? true : (isWrapped ? bubble.anchor.midY < midline : index % 2 == 0)
         }
         let sizes = Dictionary(uniqueKeysWithValues: glossed.map { ($0.id, size($0.gloss ?? "", maxWidth: min(width, maxGlossWidth))) })
 
@@ -70,8 +70,9 @@ extension LyricWordBubbleOverlay {
                 }
             }
             guard feasible else { continue }
-            // No tail may cross another tail or a bubble.
-            if hasCrossing(slots) { continue }
+            // Tails may pass behind nearer bubbles when everything is above (they are drawn
+            // farthest first); otherwise none may cross.
+            if aboveOnly ? hasTailOverBody(slots) : hasCrossing(slots) { continue }
             // Each extra row costs about a bubble's height of clutter.
             let usedRows = Set(slots.map { $0.frame.minY.rounded() }).count
             let cost = drift + CGFloat(usedRows) * 24

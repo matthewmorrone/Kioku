@@ -32,6 +32,64 @@ extension ReadView {
             } message: {
                 Text(lyricAlignment.errorMessage)
             }
+            .confirmationDialog("Add Audio", isPresented: $subtitleImport.isShowingLyricSourceChoice, titleVisibility: .visible) {
+                Button("Audio File…") { subtitleImport.isShowingLyricMediaPicker = true }
+                Button("YouTube Link…") { subtitleImport.isShowingYouTubePrompt = true }
+                Button("Search YouTube…") { subtitleImport.isShowingYouTubeSearch = true }
+            }
+            .sheet(isPresented: $subtitleImport.isShowingYouTubeSearch) {
+                YouTubeSearchSheet(
+                    query: titleEdit.customTitle.isEmpty ? titleEdit.fallbackTitle : titleEdit.customTitle,
+                    referenceSeconds: audioPlayback.activeAudioAttachmentID == nil ? nil : audioPlayback.audioController.duration,
+                    onSelect: { videoID in
+                        subtitleImport.isShowingYouTubeSearch = false
+                        Task { await addYouTubeVideo(from: videoID) }
+                    },
+                    onCancel: { subtitleImport.isShowingYouTubeSearch = false }
+                )
+            }
+            .alert("YouTube Link", isPresented: $subtitleImport.isShowingYouTubePrompt) {
+                TextField("youtube.com/watch?v=…", text: $subtitleImport.youTubeLinkText)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                Button("Add") {
+                    let link = subtitleImport.youTubeLinkText
+                    subtitleImport.youTubeLinkText = ""
+                    Task { await addYouTubeVideo(from: link) }
+                }
+                Button("Cancel", role: .cancel) { subtitleImport.youTubeLinkText = "" }
+            } message: {
+                Text(audioPlayback.activeAudioAttachmentID == nil
+                    ? "Kioku fetches the video's audio to line up the lyrics, and plays the video along."
+                    : "The video plays beside the lyrics, following this note's audio.")
+            }
+            .alert("Replace the Audio?", isPresented: $subtitleImport.isShowingYouTubeReplaceChoice) {
+                Button("Replace Audio") {
+                    let link = subtitleImport.youTubeReplaceLink
+                    Task { await addYouTubeVideo(from: link, replaceAudio: true) }
+                }
+                Button("Keep Audio") {
+                    let link = subtitleImport.youTubeReplaceLink
+                    Task { await addYouTubeVideo(from: link, replaceAudio: false) }
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("Replacing downloads the video's audio and re-aligns the lyrics to it, so the video stays in step. Keeping plays the video along with this note's current audio.")
+            }
+            .alert("Use YouTube's Lyrics?", isPresented: $subtitleImport.isShowingYouTubeCaptionOffer) {
+                Button("Use Text") {
+                    let link = subtitleImport.youTubeCaptionLink
+                    Task { await addYouTubeVideo(from: link, useCaptions: true) }
+                }
+                Button("Skip Text") {
+                    let link = subtitleImport.youTubeCaptionLink
+                    Task { await addYouTubeVideo(from: link, useCaptions: false) }
+                }
+                Button("Cancel", role: .cancel) { subtitleImport.youTubeCaptionOffer = nil }
+            } message: {
+                Text("This video has Japanese captions written by its uploader. Use them as this note's text? Skip Text transcribes the audio instead.")
+            }
             .alert("This Sounds Like Singing", isPresented: $subtitleImport.isShowingSungAudioRecommendation) {
                 Button("Transcribe Anyway") { transcribePendingSungAudio() }
                 Button("Cancel", role: .cancel) { discardPendingSungAudio() }
@@ -86,6 +144,8 @@ extension ReadView {
                     document.lastLoadedTextSnapshot = nil
                     return
                 }
+                // The saved alignment's copy of the edited line follows the edit.
+                syncCueText(from: oldText, to: newText)
                 // Re-resolves cue highlight ranges only when the line count changes, since cue-to-line
                 // mapping is stable for in-line edits but shifts whenever lines are added or removed.
                 if audioPlayback.audioAttachmentCues.isEmpty == false {
@@ -143,6 +203,15 @@ extension ReadView {
                 guard let url else { return }
                 pendingAudioImportURL = nil
                 Task { await prepareAudioImport(at: url) }
+            }
+            .onChange(of: pendingYouTubeVideoID) { _, videoID in
+                guard let videoID else { return }
+                pendingYouTubeVideoID = nil
+                // Yield once so the freshly selected note is loaded before the video attaches to it.
+                Task {
+                    await Task.yield()
+                    await addYouTubeVideo(from: videoID)
+                }
             }
             // Keeps the reset button's differsFromDefault current; a newer key cancels the older run.
             .task(id: defaultComparisonKey) {
@@ -258,14 +327,19 @@ extension ReadView {
     var presentedReadView: some View {
         NavigationStack {
             titleView
+                .opacity(readContentOpacity)
+                .containerBackground(for: .navigation) { Color.clear }
             VStack(spacing: 10) {
                 editorView
                     .tourTarget(.readText)
                 toolbarButtons
             }
+            .opacity(readContentOpacity)
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 12)
+        // Drawn outside the padding so the video reaches the screen's edges rather than stopping at the margins.
+        .background { readBackdrop }
         .toolbar(.visible, for: .tabBar)
         .background {
             AudioCueHighlightObserver(
@@ -315,6 +389,12 @@ extension ReadView {
                     onReAlign: { Task { await realignWholeNote() } },
                     onReAlignWithoutStem: { Task { await realignWholeNote(usesMixEmissions: true) } },
                     onReplaceAudio: { subtitleImport.isShowingLyricMediaPicker = true },
+                    youTubeVideoID: audioPlayback.youTubeVideoID,
+                    onAddYouTube: { subtitleImport.isShowingYouTubePrompt = true },
+                    onSearchYouTube: { subtitleImport.isShowingYouTubeSearch = true },
+                    onRemoveYouTube: { removeYouTubeVideo() },
+                    isVideoMode: audioPlayback.isVideoMode,
+                    onToggleVideoMode: { audioPlayback.isVideoMode.toggle() },
                     onRemoveAudio: { resetCurrentSubtitleAttachment() },
                     isReAligning: lyricAlignment.isAligning,
                     reAlignMessage: lyricAlignment.progressMessage,

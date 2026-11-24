@@ -44,20 +44,32 @@ extension LyricsView {
     private func breakdownWordBubbles(_ placement: SongBreakdownPlacement, in cueRange: NSRange) -> [LyricWordBubble]? {
         guard let line = placement.line(overlapping: cueRange) else { return nil }
         let filter = meaningFilter
+        // One bubble per segment the card shows, whatever the breakdown's own word boundaries are:
+        // the breakdown splitting a segment in two, or running two segments together, must not
+        // make two bubbles on one segment or one bubble over two.
+        let segments = segmentationRanges.map { NSRange($0, in: noteText) }
+            .filter { $0.length > 0 && NSIntersectionRange($0, cueRange).length > 0 }
         var bubbles: [LyricWordBubble] = []
         var covered: [NSRange] = []
-        for placed in line.words {
-            guard NSIntersectionRange(placed.range, cueRange).length > 0 else { continue }
-            covered.append(placed.range)
-            let gloss = Self.shortGloss(placed.word.definition)
+        for segment in segments {
+            // The breakdown word that overlaps this segment most, taken only when this segment is
+            // also that word's best match (so a word spanning two segments serves one of them).
+            let words = line.words.filter { NSIntersectionRange($0.range, segment).length > 0 }
+            guard let placed = words.max(by: { NSIntersectionRange($0.range, segment).length < NSIntersectionRange($1.range, segment).length }),
+                  segments.max(by: { NSIntersectionRange($0, placed.range).length < NSIntersectionRange($1, placed.range).length }) == segment
+            else { continue }
+            covered.append(segment)
             if filter.allows(breakdownWord: placed.word) {
-                bubbles.append(LyricWordBubble(noteRange: placed.range, gloss: gloss))
+                if let gloss = Self.bubbleText(for: placed.word.definition) {
+                    bubbles.append(LyricWordBubble(noteRange: segment, gloss: gloss))
+                }
             } else if let word = LyricWordMeaningFilter.singleWordMeaning(in: placed.word.definition),
                       filter.allows(breakdownWord: placed.word, gloss: word) {
                 // A particle hidden by the toggle that still has a one-word meaning.
-                bubbles.append(LyricWordBubble(noteRange: placed.range, gloss: word))
+                bubbles.append(LyricWordBubble(noteRange: segment, gloss: word))
             }
         }
+        // Segments the breakdown didn't place take their dictionary meaning.
         bubbles += dictionaryWordBubbles(in: cueRange, excluding: covered)
         bubbles.sort { $0.noteRange.location < $1.noteRange.location }
         return bubbles.isEmpty ? nil : bubbles
@@ -76,7 +88,7 @@ extension LyricsView {
             let surface = String(noteText[range])
             guard let gloss = dictionaryGloss(nsRange.location, surface) else { return nil }
             if filter.allows(dictionaryWord: surface, at: nsRange.location) {
-                return LyricWordBubble(noteRange: nsRange, gloss: Self.shortGloss(gloss))
+                return Self.bubbleText(for: gloss).map { LyricWordBubble(noteRange: nsRange, gloss: $0) }
             }
             // A particle hidden by the toggle that still has a one-word meaning.
             guard let word = LyricWordMeaningFilter.singleWordMeaning(in: gloss),
@@ -88,14 +100,30 @@ extension LyricsView {
     // Which words get a bubble: the shared lyric-word filter, from this card's toggles and the
     // Read view's particle and loanword checks.
     private var meaningFilter: LyricWordMeaningFilter {
+        // TEMPORARY: the Particles, Katakana, Vocalizations and English Words filters are bypassed
+        // while the inconsistency in which bubbles appear is tracked down. Particles whose meaning
+        // only names a grammar role are still left out (see bubbleText).
         LyricWordMeaningFilter(
-            showsParticles: showsParticleBubbles,
-            showsKatakana: showsKatakanaBubbles,
-            showsVocalizations: showsVocalizationBubbles,
-            showsLoanwords: showsLoanwordBubbles,
+            showsParticles: true,
+            showsKatakana: true,
+            showsVocalizations: true,
+            showsLoanwords: true,
             isParticle: isParticle,
             isLoanword: isLoanword
         )
+    }
+
+    // What a word's bubble says for its dictionary or breakdown meaning. A meaning that only names a
+    // grammar role ("indicates the subject of a sentence", "nominalizes verbs") says nothing about
+    // the word, so it gets no bubble, unless the meaning has a one-word alternative; the possessive
+    // role reads as "of". Any other meaning is shortened (shortGloss). Nil when there is nothing to say.
+    static func bubbleText(for definition: String) -> String? {
+        switch LyricBubbleRules.verdict(for: definition) {
+        case .replace(let text): return text
+        case .hide: return LyricWordMeaningFilter.singleWordMeaning(in: definition)
+        case .keep: break
+        }
+        return shortGloss(definition)
     }
 
     // A meaning short enough for a bubble: its first sense, up to the first semicolon or comma —
@@ -104,7 +132,13 @@ extension LyricsView {
     // French 'lumière')" says "light") — and only the first of its " or " alternatives ("surpassing or
     // crossing" says "surpassing"). Nil when nothing is left.
     static func shortGloss(_ text: String) -> String? {
-        guard let sense = text.split(whereSeparator: { ";,".contains($0) }).first.map(String.init) else { return nil }
+        guard let firstSense = text.split(separator: ";").first else { return nil }
+        // A run of single plain words ("one, two, three") is one meaning and stays whole; otherwise
+        // the first comma-separated part is the meaning and the rest elaborates it.
+        let parts = firstSense.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { $0.isEmpty == false }
+        guard let head = parts.first else { return nil }
+        let isWordList = parts.count > 1 && parts.allSatisfy { $0.contains(where: \.isWhitespace) == false && $0.contains(where: { "()（）".contains($0) }) == false }
+        let sense = isWordList ? parts.joined(separator: ", ") : head
         let first = sense.components(separatedBy: " or ").first ?? sense
         var gloss = ""
         var depth = 0
@@ -176,7 +210,8 @@ extension LyricsView {
     func settleWordBubbles(on line: Int, isMoving: Bool) async {
         settledBubbleLine = nil
         guard isMoving == false else { return }
-        var waitMs = 350
+        // TEMPORARY: no settle delay.
+        var waitMs = 0
         if line == activeIndex, line < cues.count {
             waitMs = min(waitMs, max(0, LyricWordTiming.deadlineMs(for: cues[line]) - controller.currentTimeMs))
         }

@@ -52,6 +52,20 @@ struct LyricsView: View {
     // The top bar's Replace Audio action: opens ReadView's audio/srt/TextGrid picker, whose import
     // replaces this note's attachment.
     var onReplaceAudio: () -> Void = {}
+    // The YouTube video played muted above the lyrics, and the top bar's action to set one.
+    var youTubeVideoID: String? = nil
+    var onAddYouTube: () -> Void = {}
+    var onSearchYouTube: () -> Void = {}
+    var onRemoveYouTube: () -> Void = {}
+    // True while the video fills the screen with only the active line over it (no lyrics panel).
+    var isVideoMode = false
+    var onToggleVideoMode: () -> Void = {}
+    // Where the video layout's line card sits, as a vertical shift from the bottom (negative is up),
+    // and the shift of a drag in progress.
+    @State var videoCardOffset: CGFloat = 0
+    @State var videoCardDragOffset: CGFloat = 0
+    // Mirrors the video's fit/fill setting (YouTubeFollowerView) for the video layout's toggle.
+    @AppStorage(YouTubeFollowerView.fitsScreenKey) var videoFitsScreen = false
     // The top bar's Remove Audio action: deletes the note's audio and its cues (after the bar's
     // confirmation), which also closes this view.
     var onRemoveAudio: () -> Void = {}
@@ -227,7 +241,7 @@ struct LyricsView: View {
     }
 
     @State private var dragStartIndex: Int = 0
-    @State private var dragDisplayIndex: Int? = nil
+    @State var dragDisplayIndex: Int? = nil
     @State private var isDragging: Bool = false
     @State private var dragOverscrolledToStart: Bool = false
     // Not private: $isScrubbing is passed to LyricsScrubber in the LyricsView+Controls extension.
@@ -287,14 +301,22 @@ struct LyricsView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                Color.black.opacity(0.5)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture { onDismiss() }
+                // The note's YouTube video plays full-screen under a darker veil; the veil keeps the
+                // lyrics readable and still catches the tap that dismisses the view.
+                if isVideoMode, youTubeVideoID != nil {
+                    videoOverlay(geo: geo)
+                } else {
+                    // With a video, the Read view's backdrop already supplies the video and its
+                    // veil; this layer only catches the tap that dismisses the view.
+                    (youTubeVideoID == nil ? Color.black.opacity(0.5) : Color.clear)
+                        .ignoresSafeArea()
+                        .contentShape(Rectangle())
+                        .onTapGesture { onDismiss() }
 
-                panel(geo: geo)
-                    .contentShape(Rectangle())
-                    .onTapGesture { }
+                    panel(geo: geo)
+                        .contentShape(Rectangle())
+                        .onTapGesture { }
+                }
             }
             .contentShape(Rectangle())
             .allowsHitTesting(true)
@@ -349,196 +371,7 @@ struct LyricsView: View {
                     controller.seek(toMs: cues[max(0, activeIndex - 1)].startMs)
                 }
 
-                // Active cue renderer — fed ONLY the active cue's substring (with furigana
-                // and clipped segmentation rebased to cue-local UTF-16 coords). The font is
-                // scaled down when the cue is too wide for the card to keep it on a single
-                // line, mirroring the inactive-cue scaling behavior.
-                let unmaskedCueInput = activeCueRenderInput(for: displayIndex)
-                // Use the same noteText probe activeCueRenderInput uses so the override rebase
-                // lines up with the rendered cue position. If we used 0 here while the renderer
-                // found the cue at noteText offset N, the observer's override (in real noteText
-                // coords) wouldn't overlap with the cue's synthetic [0, length) and rebase
-                // would return nil — no band visible.
-                let cueOriginInNote: Int = {
-                    if displayIndex < highlightRanges.count, let r = highlightRanges[displayIndex] {
-                        return r.location
-                    }
-                    let cueText = displayIndex < cues.count ? cues[displayIndex].text : ""
-                    if cueText.isEmpty == false {
-                        let probe = (noteText as NSString).range(of: cueText)
-                        if probe.location != NSNotFound { return probe.location }
-                    }
-                    return 0
-                }()
-                // Sing's reveal option masks the words it's listening for.
-                let cueInput = singMasked(unmaskedCueInput, origin: cueOriginInNote)
-                // Width budget: the panel's width minus the card's horizontal padding.
-                // (Focus-card style adds 8pt each side; other styles 0pt — but inset 8pt of
-                // safety margin so glyph edges don't kiss the card.)
-                let activeCueAvailableWidth = panelWidth - 16
-                let activeCueLayout = activeCueFit(text: cueInput.text, availableWidth: activeCueAvailableWidth)
-                let activeCueScale = activeCueLayout.scale
-                let activeRendererHeight = activeCueRendererHeight(lineCount: activeCueLayout.lineCount, scale: activeCueScale)
-                let scaledTextSize = TypographySettings.defaultTextSize * Double(activeCueScale)
-                let untimedLocations: Set<Int> = []
-                // Computed once and reused below (playback band, dim cutoff, accent range) instead
-                // of calling activeCardHighlightRange three times with the same arguments — while
-                // Sing mode is active it does real per-call work (filtering the cue's checkpoints).
-                let activeHighlightRange = activeCardHighlightRange(cueIndex: displayIndex, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count)
-                VStack(spacing: 0) {
-                    // Non-speech (♪) cues render as a duration-scaled, pulsing note row
-                    // (LyricsView+MusicalInterlude.swift) instead of going through the CoreText
-                    // renderer — there's no furigana/segmentation to speak of for a single glyph,
-                    // and the pulse needs independent per-note animation state the renderer
-                    // doesn't support. Pulses only while this cue is the one actually playing
-                    // (not just scrolled into view by a drag).
-                    if displayIndex < cues.count && isNonSpeechCue(at: displayIndex) {
-                        interludeNotesRow(
-                            durationMs: cues[displayIndex].endMs - cues[displayIndex].startMs,
-                            isActive: controller.isPlaying && displayIndex == activeIndex,
-                            fontSize: scaledTextSize
-                        )
-                        .frame(maxWidth: .infinity)
-                        .frame(height: rendererHeight)
-                    } else {
-                        KiokuCoreTextRendererView(
-                            text: cueInput.text,
-                            segmentationRanges: cueInput.segmentationRanges,
-                            furiganaBySegmentLocation: cueInput.furiganaBySegmentLocation,
-                            furiganaLengthBySegmentLocation: cueInput.furiganaLengthBySegmentLocation,
-                            isFuriganaVisible: isFuriganaVisible,
-                            isVisualEnhancementsEnabled: true,
-                            // Sing verdicts are drawn through Saved Highlight, which wins over alternation.
-                            isColorAlternationEnabled: isSegmentationVisible,
-                            textSize: Binding(get: { scaledTextSize }, set: { _ in }),
-                            lineSpacing: 0,
-                            kerning: 0,
-                            furiganaGap: CGFloat(TypographySettings.defaultFuriganaGap),
-                            evenSegmentColor: readingColors.evenSegment,
-                            oddSegmentColor: readingColors.oddSegment,
-                            // Always on: the fit above measures plain text, but ruby spacing makes
-                            // real lines wider, so a line it judged to fit can still overflow — it
-                            // wraps instead of running off the card.
-                            isLineWrappingEnabled: true,
-                            // Honor the Read-view ruby-spacing toggle so wide furigana doesn't
-                            // crash into adjacent kanji in the active-cue card. Packed-layout
-                            // requirements (word-level segments) are satisfied here because the
-                            // segments come from the same noteText segmentation the Read view uses.
-                            isRubySpacingEnabled: isRubySpacingEnabled,
-                            selectedHighlightRange: nil,
-                            playbackHighlightRange: activeHighlightRange,
-                            selectionHighlightColor: .clear,
-                            playbackHighlightColor: Self.activeWordHighlightColor,
-                            // The played-portion band is gated on alignment-coverage: when
-                            // forced-alignment checkpoints don't reach near the cue end, we pass
-                            // nil (renderer shows no band at all) rather than freezing the band's
-                            // trailing edge mid-line. The active-word pill still moves — only the
-                            // "already sung" band disappears for low-coverage cues. See
-                            // `cueHasReliableDimCoverage` for the 90%-of-cueLen threshold and its
-                            // rationale.
-                            unplayedDimmingLocation: cueHasReliableDimCoverage(forCueAtIndex: displayIndex, cueLength: cueInput.text.utf16.count)
-                                ? activeHighlightRange.map { $0.location + $0.length }
-                                : nil,
-                            unplayedDimmingColor: Self.playedLineHighlightColor,
-                            unknownSegmentLocations: untimedLocations,
-                            isHighlightUnknownEnabled: false,
-                            unknownSegmentColor: .tertiaryLabel,
-                            // While Sing results are showing, the Saved Highlight slots carry its
-                            // verdicts instead: heard words green, missed words red.
-                            isSavedHighlightEnabled: isShowingSingResults || isSavedHighlightEnabled,
-                            savedSegmentLocations: isShowingSingResults ? [] : rebaseIntoCue(savedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
-                            savedHighlightColor: readingColors.saved,
-                            savedLearnedSegmentLocations: rebaseIntoCue(isShowingSingResults ? singColoredLocations.heard : savedLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
-                            savedLearnedHighlightColor: isShowingSingResults ? Self.singHeardColor : readingColors.savedLearned,
-                            savedNotLearnedSegmentLocations: rebaseIntoCue(isShowingSingResults ? singColoredLocations.missed : savedNotLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
-                            savedNotLearnedHighlightColor: isShowingSingResults ? Self.singMissedColor : readingColors.savedNotLearned,
-                            // Overrides the highlighted range's glyph color so it never has to
-                            // compete with whatever semantic token color (red vocab, blue, etc.)
-                            // it already had — see activeWordForegroundColor's doc comment above.
-                            accentTextRange: activeHighlightRange,
-                            accentTextColor: Self.activeWordForegroundColor,
-                            debugFlags: KiokuDebugOverlayView.Flags(),
-                            illegalMergeLocation: nil,
-                            onSegmentTapped: { localLocation, rect, _ in
-                                // In the karaoke card a plain tap opens the dictionary lookup sheet —
-                                // mirrors the Read tab so the tap-to-define mental model holds across
-                                // both views. Word-level seek-to-tap moves to the long-press menu;
-                                // cue-level seek (tap an inactive cue) and the scrubber are unchanged.
-                                let globalLocation = localLocation.map { $0 + cueOriginInNote }
-                                onSegmentTapped(globalLocation, rect, nil)
-                            },
-                            isScrollEnabled: false,
-                            textAlignment: .center,
-                            reportedRanges: showsBubbles
-                                ? wordBubbleRanges(forCueAt: displayIndex, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count)
-                                : [],
-                            onRangeRects: { wordBubbleRects = $0 },
-                            onContentHeight: { activeCueContentHeight = $0 }
-                        )
-                        .frame(maxWidth: .infinity)
-                        // The renderer reports its real wrapped height; the estimate is only a
-                        // floor so short lines keep a steady card.
-                        .frame(height: max(activeRendererHeight, activeCueContentHeight))
-                        .clipped()
-                        // Word meanings over the line as it's sung, in rows above and
-                        // below it (LyricsView+WordBubbles).
-                        .overlay {
-                            if showsBubbles, settledBubbleLine == displayIndex {
-                                LyricWordBubbleOverlay(
-                                    bubbles: placedWordBubbles(
-                                        forCueAt: displayIndex,
-                                        cueOriginInNote: cueOriginInNote,
-                                        cueLength: cueInput.text.utf16.count
-                                    ),
-                                    clipHeight: lyricClipHeight,
-                                    translation: isTranslationVisible ? displayedTranslation(for: displayIndex) : nil,
-                                    belowInset: isTranslationVisible && displayedTranslation(for: displayIndex) != nil ? translationHeight + 6 : 0
-                                )
-                                .id(displayIndex)
-                            }
-                        }
-                        .task(id: BubbleSettleKey(line: displayIndex, isMoving: isDragging || isScrubbing)) {
-                            await settleWordBubbles(on: displayIndex, isMoving: isDragging || isScrubbing)
-                        }
-                    }
-                    // The line's English translation under the card (LyricsView+BreakdownGist).
-                    if isTranslationVisible, let translation = displayedTranslation(for: displayIndex) {
-                        LyricTranslationText(text: translation)
-                            .frame(maxWidth: .infinity)
-                            .background(GeometryReader { proxy in
-                                Color.clear.onAppear { translationHeight = proxy.size.height }
-                                    .onChange(of: proxy.size.height) { _, height in translationHeight = height }
-                            })
-                            // While the bubble overlay is up it draws this line itself, in front of the
-                            // bubbles' tails; this copy only holds the space.
-                            .opacity(bubbleOverlayDrawsTranslation(at: displayIndex) ? 0 : 1)
-                    }
-                    if displayIndex < cues.count && hasMismatch(at: displayIndex) {
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(Color.orange)
-                                .frame(width: 5, height: 5)
-                            Text("Subtitle: \(cues[displayIndex].text)")
-                                .scaledFont(size: 11)
-                                .foregroundStyle(.orange)
-                                .lineLimit(1)
-                        }
-                    }
-                }
-                .padding(.vertical, 8)
-                // Above the lyric rows below, which word bubbles running past the card overlap.
-                .zIndex(1)
-                .translationTask(translationTrigger) { session in
-                    // Batch-translate all untranslated cues up front so translations are ready during playback.
-                    await translateAllCues(session: session)
-                }
-                .onAppear {
-                    // Apple's translation service is device-only; starting it on a simulator
-                    // presents a blocking unsupported-feature sheet, even for a hidden lyrics view.
-                    #if !targetEnvironment(simulator)
-                    translationTrigger = translationConfig
-                    #endif
-                }
+                activeCard(displayIndex: displayIndex, panelWidth: panelWidth)
 
                 ScrollView {
                     VStack(alignment: .center, spacing: 0) {
@@ -577,59 +410,7 @@ struct LyricsView: View {
             controls
         }
         .frame(width: panelWidth, height: panelHeight)
-        .gesture(
-            DragGesture(minimumDistance: 8)
-                .onChanged { value in
-                    guard cues.isEmpty == false else { return }
-                    // Lock the axis on the first qualifying movement: a mostly-horizontal drag
-                    // fine-scrubs the playhead (granular), a mostly-vertical drag jumps lines
-                    // (coarse). Held for the rest of the gesture so the mode can't flip.
-                    if dragAxis == nil {
-                        // Favor vertical line-nav (the established gesture). Only commit to
-                        // horizontal fine-scrub when the drag is CLEARLY horizontal, so a
-                        // slightly-diagonal line drag isn't stolen into a scrub (which would
-                        // move the playhead and make the line appear to rebound).
-                        let w = abs(value.translation.width)
-                        let h = abs(value.translation.height)
-                        if w > h * 1.5 {
-                            dragAxis = .horizontal
-                            fineScrubBaseMs = controller.currentTimeMs
-                        } else {
-                            dragAxis = .vertical
-                            isDragging = true
-                            dragStartIndex = activeIndex
-                        }
-                    }
-
-                    if dragAxis == .horizontal {
-                        // Map cumulative horizontal travel onto an absolute seek from where the
-                        // scrub began. Drag right → later in the song, left → earlier.
-                        let base = fineScrubBaseMs ?? controller.currentTimeMs
-                        let delta = Int(value.translation.width * fineScrubMsPerPoint)
-                        controller.seek(toMs: max(0, min(durationMs, base + delta)))
-                    } else {
-                        let steps = Int(-value.translation.height / rendererHeight)
-                        let raw = dragStartIndex + steps
-                        dragOverscrolledToStart = raw < 0
-                        dragDisplayIndex = min(cues.count - 1, max(0, raw))
-                    }
-                }
-                .onEnded { _ in
-                    // Horizontal scrub already seeked live; nothing to commit on release.
-                    if dragAxis == .vertical {
-                        if dragOverscrolledToStart {
-                            controller.seek(toMs: 0)
-                        } else if let target = dragDisplayIndex {
-                            controller.seek(toMs: cues[target].startMs)
-                        }
-                    }
-                    isDragging = false
-                    dragDisplayIndex = nil
-                    dragOverscrolledToStart = false
-                    dragAxis = nil
-                    fineScrubBaseMs = nil
-                }
-        )
+        .gesture(lyricDragGesture(rendererHeight: rendererHeight))
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(color: .black.opacity(0.4), radius: 24, x: 0, y: 8)
@@ -642,6 +423,261 @@ struct LyricsView: View {
         }
         .sheet(isPresented: $isShowingSingSummary) { singSummarySheet }
         .sheet(isPresented: $isShowingSingOptions) { singOptionsSheet }
+    }
+
+    // The active line's card: its renderer with furigana and the playback highlight, word bubbles,
+    // the translation line and the subtitle-mismatch note. Shared by the lyrics panel and the video
+    // overlay so both show the line identically.
+    @ViewBuilder
+    func activeCard(displayIndex: Int, panelWidth: CGFloat, bubblesAboveOnly: Bool = false) -> some View {
+        let rendererHeight = activeCueRendererHeight
+        // Active cue renderer — fed ONLY the active cue's substring (with furigana
+        // and clipped segmentation rebased to cue-local UTF-16 coords). The font is
+        // scaled down when the cue is too wide for the card to keep it on a single
+        // line, mirroring the inactive-cue scaling behavior.
+        let unmaskedCueInput = activeCueRenderInput(for: displayIndex)
+        // Use the same noteText probe activeCueRenderInput uses so the override rebase
+        // lines up with the rendered cue position. If we used 0 here while the renderer
+        // found the cue at noteText offset N, the observer's override (in real noteText
+        // coords) wouldn't overlap with the cue's synthetic [0, length) and rebase
+        // would return nil — no band visible.
+        let cueOriginInNote: Int = {
+            if displayIndex < highlightRanges.count, let r = highlightRanges[displayIndex] {
+                return r.location
+            }
+            let cueText = displayIndex < cues.count ? cues[displayIndex].text : ""
+            if cueText.isEmpty == false {
+                let probe = (noteText as NSString).range(of: cueText)
+                if probe.location != NSNotFound { return probe.location }
+            }
+            return 0
+        }()
+        // Sing's reveal option masks the words it's listening for.
+        let cueInput = singMasked(unmaskedCueInput, origin: cueOriginInNote)
+        // Width budget: the panel's width minus the card's horizontal padding.
+        // (Focus-card style adds 8pt each side; other styles 0pt — but inset 8pt of
+        // safety margin so glyph edges don't kiss the card.)
+        let activeCueAvailableWidth = panelWidth - 16
+        let activeCueLayout = activeCueFit(text: cueInput.text, availableWidth: activeCueAvailableWidth)
+        let activeCueScale = activeCueLayout.scale
+        let activeRendererHeight = activeCueRendererHeight(lineCount: activeCueLayout.lineCount, scale: activeCueScale)
+        let scaledTextSize = TypographySettings.defaultTextSize * Double(activeCueScale)
+        let untimedLocations: Set<Int> = []
+        // Computed once and reused below (playback band, dim cutoff, accent range) instead
+        // of calling activeCardHighlightRange three times with the same arguments — while
+        // Sing mode is active it does real per-call work (filtering the cue's checkpoints).
+        let activeHighlightRange = activeCardHighlightRange(cueIndex: displayIndex, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count)
+        VStack(spacing: 0) {
+            // Non-speech (♪) cues render as a duration-scaled, pulsing note row
+            // (LyricsView+MusicalInterlude.swift) instead of going through the CoreText
+            // renderer — there's no furigana/segmentation to speak of for a single glyph,
+            // and the pulse needs independent per-note animation state the renderer
+            // doesn't support. Pulses only while this cue is the one actually playing
+            // (not just scrolled into view by a drag).
+            if displayIndex < cues.count && isNonSpeechCue(at: displayIndex) {
+                interludeNotesRow(
+                    durationMs: cues[displayIndex].endMs - cues[displayIndex].startMs,
+                    isActive: controller.isPlaying && displayIndex == activeIndex,
+                    fontSize: scaledTextSize
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: rendererHeight)
+            } else {
+                KiokuCoreTextRendererView(
+                    text: cueInput.text,
+                    segmentationRanges: cueInput.segmentationRanges,
+                    furiganaBySegmentLocation: cueInput.furiganaBySegmentLocation,
+                    furiganaLengthBySegmentLocation: cueInput.furiganaLengthBySegmentLocation,
+                    isFuriganaVisible: isFuriganaVisible,
+                    isVisualEnhancementsEnabled: true,
+                    // Sing verdicts are drawn through Saved Highlight, which wins over alternation.
+                    isColorAlternationEnabled: isSegmentationVisible,
+                    textSize: Binding(get: { scaledTextSize }, set: { _ in }),
+                    lineSpacing: 0,
+                    kerning: 0,
+                    furiganaGap: CGFloat(TypographySettings.defaultFuriganaGap),
+                    evenSegmentColor: readingColors.evenSegment,
+                    oddSegmentColor: readingColors.oddSegment,
+                    // Always on: the fit above measures plain text, but ruby spacing makes
+                    // real lines wider, so a line it judged to fit can still overflow — it
+                    // wraps instead of running off the card.
+                    isLineWrappingEnabled: true,
+                    // Honor the Read-view ruby-spacing toggle so wide furigana doesn't
+                    // crash into adjacent kanji in the active-cue card. Packed-layout
+                    // requirements (word-level segments) are satisfied here because the
+                    // segments come from the same noteText segmentation the Read view uses.
+                    isRubySpacingEnabled: isRubySpacingEnabled,
+                    selectedHighlightRange: nil,
+                    playbackHighlightRange: activeHighlightRange,
+                    selectionHighlightColor: .clear,
+                    playbackHighlightColor: Self.activeWordHighlightColor,
+                    // The played-portion band is gated on alignment-coverage: when
+                    // forced-alignment checkpoints don't reach near the cue end, we pass
+                    // nil (renderer shows no band at all) rather than freezing the band's
+                    // trailing edge mid-line. The active-word pill still moves — only the
+                    // "already sung" band disappears for low-coverage cues. See
+                    // `cueHasReliableDimCoverage` for the 90%-of-cueLen threshold and its
+                    // rationale.
+                    unplayedDimmingLocation: cueHasReliableDimCoverage(forCueAtIndex: displayIndex, cueLength: cueInput.text.utf16.count)
+                        ? activeHighlightRange.map { $0.location + $0.length }
+                        : nil,
+                    unplayedDimmingColor: Self.playedLineHighlightColor,
+                    unknownSegmentLocations: untimedLocations,
+                    isHighlightUnknownEnabled: false,
+                    unknownSegmentColor: .tertiaryLabel,
+                    // While Sing results are showing, the Saved Highlight slots carry its
+                    // verdicts instead: heard words green, missed words red.
+                    isSavedHighlightEnabled: isShowingSingResults || isSavedHighlightEnabled,
+                    savedSegmentLocations: isShowingSingResults ? [] : rebaseIntoCue(savedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                    savedHighlightColor: readingColors.saved,
+                    savedLearnedSegmentLocations: rebaseIntoCue(isShowingSingResults ? singColoredLocations.heard : savedLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                    savedLearnedHighlightColor: isShowingSingResults ? Self.singHeardColor : readingColors.savedLearned,
+                    savedNotLearnedSegmentLocations: rebaseIntoCue(isShowingSingResults ? singColoredLocations.missed : savedNotLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                    savedNotLearnedHighlightColor: isShowingSingResults ? Self.singMissedColor : readingColors.savedNotLearned,
+                    // Overrides the highlighted range's glyph color so it never has to
+                    // compete with whatever semantic token color (red vocab, blue, etc.)
+                    // it already had — see activeWordForegroundColor's doc comment above.
+                    accentTextRange: activeHighlightRange,
+                    accentTextColor: Self.activeWordForegroundColor,
+                    debugFlags: KiokuDebugOverlayView.Flags(),
+                    illegalMergeLocation: nil,
+                    onSegmentTapped: { localLocation, rect, _ in
+                        // In the karaoke card a plain tap opens the dictionary lookup sheet —
+                        // mirrors the Read tab so the tap-to-define mental model holds across
+                        // both views. Word-level seek-to-tap moves to the long-press menu;
+                        // cue-level seek (tap an inactive cue) and the scrubber are unchanged.
+                        let globalLocation = localLocation.map { $0 + cueOriginInNote }
+                        onSegmentTapped(globalLocation, rect, nil)
+                    },
+                    isScrollEnabled: false,
+                    textAlignment: .center,
+                    reportedRanges: showsBubbles
+                        ? wordBubbleRanges(forCueAt: displayIndex, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count)
+                        : [],
+                    onRangeRects: { wordBubbleRects = $0 },
+                    onContentHeight: { activeCueContentHeight = $0 }
+                )
+                .frame(maxWidth: .infinity)
+                // The renderer reports its real wrapped height; the estimate is only a
+                // floor so short lines keep a steady card.
+                .frame(height: max(activeRendererHeight, activeCueContentHeight))
+                .clipped()
+                // Word meanings over the line as it's sung, in rows above and
+                // below it (LyricsView+WordBubbles).
+                .overlay {
+                    if showsBubbles, settledBubbleLine == displayIndex {
+                        LyricWordBubbleOverlay(
+                            bubbles: placedWordBubbles(
+                                forCueAt: displayIndex,
+                                cueOriginInNote: cueOriginInNote,
+                                cueLength: cueInput.text.utf16.count
+                            ),
+                            clipHeight: lyricClipHeight,
+                            translation: isTranslationVisible ? displayedTranslation(for: displayIndex) : nil,
+                            belowInset: isTranslationVisible && displayedTranslation(for: displayIndex) != nil ? translationHeight + 6 : 0,
+                            aboveOnly: bubblesAboveOnly
+                        )
+                        .id(displayIndex)
+                    }
+                }
+                .task(id: BubbleSettleKey(line: displayIndex, isMoving: isDragging || isScrubbing)) {
+                    await settleWordBubbles(on: displayIndex, isMoving: isDragging || isScrubbing)
+                }
+            }
+            // The line's English translation under the card (LyricsView+BreakdownGist).
+            if isTranslationVisible, let translation = displayedTranslation(for: displayIndex) {
+                LyricTranslationText(text: translation)
+                    .frame(maxWidth: .infinity)
+                    .background(GeometryReader { proxy in
+                        Color.clear.onAppear { translationHeight = proxy.size.height }
+                            .onChange(of: proxy.size.height) { _, height in translationHeight = height }
+                    })
+                    // While the bubble overlay is up it draws this line itself, in front of the
+                    // bubbles' tails; this copy only holds the space.
+                    .opacity(bubbleOverlayDrawsTranslation(at: displayIndex) ? 0 : 1)
+            }
+            if displayIndex < cues.count && hasMismatch(at: displayIndex) {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 5, height: 5)
+                    Text("Subtitle: \(cues[displayIndex].text)")
+                        .scaledFont(size: 11)
+                        .foregroundStyle(.orange)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        // Above the lyric rows below, which word bubbles running past the card overlap.
+        .zIndex(1)
+        .translationTask(translationTrigger) { session in
+            // Batch-translate all untranslated cues up front so translations are ready during playback.
+            await translateAllCues(session: session)
+        }
+        .onAppear {
+            // Apple's translation service is device-only; starting it on a simulator
+            // presents a blocking unsupported-feature sheet, even for a hidden lyrics view.
+            #if !targetEnvironment(simulator)
+            translationTrigger = translationConfig
+            #endif
+        }
+    }
+
+    // The drag that moves through the song: mostly-vertical jumps lines, mostly-horizontal
+    // fine-scrubs the playhead. Shared by the lyrics panel and the video overlay.
+    func lyricDragGesture(rendererHeight: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in
+                guard cues.isEmpty == false else { return }
+                // Lock the axis on the first qualifying movement: a mostly-horizontal drag
+                // fine-scrubs the playhead (granular), a mostly-vertical drag jumps lines
+                // (coarse). Held for the rest of the gesture so the mode can't flip.
+                if dragAxis == nil {
+                    // Favor vertical line-nav (the established gesture). Only commit to
+                    // horizontal fine-scrub when the drag is CLEARLY horizontal, so a
+                    // slightly-diagonal line drag isn't stolen into a scrub (which would
+                    // move the playhead and make the line appear to rebound).
+                    let w = abs(value.translation.width)
+                    let h = abs(value.translation.height)
+                    if w > h * 1.5 {
+                        dragAxis = .horizontal
+                        fineScrubBaseMs = controller.currentTimeMs
+                    } else {
+                        dragAxis = .vertical
+                        isDragging = true
+                        dragStartIndex = activeIndex
+                    }
+                }
+    
+                if dragAxis == .horizontal {
+                    // Map cumulative horizontal travel onto an absolute seek from where the
+                    // scrub began. Drag right → later in the song, left → earlier.
+                    let base = fineScrubBaseMs ?? controller.currentTimeMs
+                    let delta = Int(value.translation.width * fineScrubMsPerPoint)
+                    controller.seek(toMs: max(0, min(durationMs, base + delta)))
+                } else {
+                    let steps = Int(-value.translation.height / rendererHeight)
+                    let raw = dragStartIndex + steps
+                    dragOverscrolledToStart = raw < 0
+                    dragDisplayIndex = min(cues.count - 1, max(0, raw))
+                }
+            }
+            .onEnded { _ in
+                // Horizontal scrub already seeked live; nothing to commit on release.
+                if dragAxis == .vertical {
+                    if dragOverscrolledToStart {
+                        controller.seek(toMs: 0)
+                    } else if let target = dragDisplayIndex {
+                        controller.seek(toMs: cues[target].startMs)
+                    }
+                }
+                isDragging = false
+                dragDisplayIndex = nil
+                dragOverscrolledToStart = false
+                dragAxis = nil
+                fineScrubBaseMs = nil
+            }
     }
 
     // Returns the cue's raw SRT text — what the singer actually sang at that timecode.

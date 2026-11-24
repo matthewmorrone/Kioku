@@ -194,15 +194,16 @@ nonisolated enum SongListenScript {
     // A line's words with the "= line N" fall-through SongLineCard also draws on, filtered by
     // the visibility options — the one list both the card shows and listen-along speaks.
     static func effectiveWords(for line: SongLine, linesByIndex: [Int: SongLine], visibility: SongWordVisibility) -> [SongWord] {
-        let words: [SongWord]
-        if line.words.isEmpty == false {
-            words = line.words
-        } else if let reference = line.reference {
-            words = referencedLine(for: reference, linesByIndex: linesByIndex)?.words ?? []
-        } else {
-            words = []
-        }
-        return words.filter(visibility.shows)
+        resolvedWords(for: line, linesByIndex: linesByIndex).filter(visibility.shows)
+    }
+
+    // A line's own words, or — for a repeat the model left empty ("= line N", "Parallel to line N") —
+    // the words of the line it points back to. The one place a repeat's words are resolved, shared by
+    // the listen script and the placement of a breakdown on its note.
+    static func resolvedWords(for line: SongLine, linesByIndex: [Int: SongLine]) -> [SongWord] {
+        if line.words.isEmpty == false { return line.words }
+        guard let reference = line.reference else { return [] }
+        return referencedLine(for: reference, linesByIndex: linesByIndex)?.words ?? []
     }
 
     // The line a step belongs to.

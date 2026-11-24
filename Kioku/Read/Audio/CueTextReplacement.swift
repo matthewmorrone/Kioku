@@ -6,6 +6,23 @@ import Foundation
 // stay put, the ones inside it merge into one covering the new text (at the earliest of their
 // times), and the ones after it shift by the change in length.
 nonisolated enum CueTextReplacement {
+    // The one contiguous edit that turns `old` into `new`, found by trimming their common prefix and
+    // suffix: the UTF-16 range of `old` that was replaced and what replaced it. Nil when the texts are
+    // equal.
+    static func singleEdit(from old: String, to new: String) -> (range: NSRange, replacement: String)? {
+        let oldText = old as NSString
+        let newText = new as NSString
+        let shortest = min(oldText.length, newText.length)
+        var prefix = 0
+        while prefix < shortest, oldText.character(at: prefix) == newText.character(at: prefix) { prefix += 1 }
+        var suffix = 0
+        while suffix < shortest - prefix, oldText.character(at: oldText.length - 1 - suffix) == newText.character(at: newText.length - 1 - suffix) { suffix += 1 }
+        let range = NSRange(location: prefix, length: oldText.length - prefix - suffix)
+        let replacement = newText.substring(with: NSRange(location: prefix, length: newText.length - prefix - suffix))
+        guard range.length > 0 || replacement.isEmpty == false else { return nil }
+        return (range, replacement)
+    }
+
     // `cue` with the UTF-16 `range` of its text replaced by `replacement`; nil if the range doesn't
     // fit the cue's text.
     static func replacing(_ range: NSRange, with replacement: String, in cue: SubtitleCue) -> SubtitleCue? {

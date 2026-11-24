@@ -21,6 +21,11 @@ extension NotesView {
                     Label("Import Audio…", systemImage: "waveform")
                 }
             }
+            Button {
+                isShowingYouTubeSearch = true
+            } label: {
+                Label("New from YouTube…", systemImage: "play.rectangle")
+            }
             Section {
                 Button {
                     presentCameraOCRIfAvailable()

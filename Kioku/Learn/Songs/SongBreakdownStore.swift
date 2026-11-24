@@ -225,7 +225,7 @@ final class SongBreakdownStore: ObservableObject {
     // `providerLabel` is supplied by the caller so the loading view can show "via Claude"
     // / "via OpenAI" / "stub mode" using the same lookup it would have used inline. It is
     // a UI-only label and has no effect on dispatch.
-    func startGeneration(forNoteID id: UUID, lyrics: String, userNote: String = "", segmentation: String = "", providerLabel: String) {
+    func startGeneration(forNoteID id: UUID, lyrics: String, userNote: String = "", segmentation: String = "", repairing plan: SongBreakdownRepairPlan? = nil, providerLabel: String) {
         if generationTasksByNoteID[id] != nil { return }
         generationStateByNoteID[id] = .running(startedAt: Date(), providerLabel: providerLabel, partialLines: [])
         let task = Task { @MainActor [weak self] in
@@ -236,10 +236,12 @@ final class SongBreakdownStore: ObservableObject {
                     lyrics: lyrics,
                     userNote: userNote,
                     segmentation: segmentation,
-                    onPartialLines: self.makePartialLinesHandler(forNoteID: id)
+                    // A repair writes only a few lines, so streaming them would replace the whole
+                    // breakdown on screen with just those; the existing one stays up until it lands.
+                    onPartialLines: plan == nil ? self.makePartialLinesHandler(forNoteID: id) : nil
                 )
                 try Task.checkCancellation()
-                self.setBreakdown(breakdown)
+                self.setBreakdown(plan.map { SongBreakdownRepair.merge(plan: $0, generated: breakdown) } ?? breakdown)
                 self.generationStateByNoteID.removeValue(forKey: id)
             } catch is CancellationError {
                 self.generationStateByNoteID.removeValue(forKey: id)
@@ -263,6 +265,30 @@ final class SongBreakdownStore: ObservableObject {
             lyrics: note.content,
             userNote: SongBreakdownUserNote.note(forNoteID: note.id),
             segmentation: segmentation,
+            providerLabel: providerLabel
+        )
+    }
+
+    // Brings a stale breakdown up to date: lines whose text is unchanged are kept, and only the
+    // new or edited ones are generated (SongBreakdownRepair). Does nothing without a breakdown.
+    func startRepair(forNote note: Note, noteReadings: NoteReadingSnapshot? = nil, providerLabel: String) {
+        guard let existing = breakdown(forNoteID: note.id) else { return }
+        let plan = SongBreakdownRepair.plan(for: existing, noteText: note.content)
+        let segmentation = noteReadings.flatMap { $0.isUsable(for: note.content) ? SongBreakdownSegmentation.section(from: $0) : nil } ?? ""
+        let saved = SongBreakdownUserNote.note(forNoteID: note.id)
+        let instruction = plan.changedIndices.isEmpty ? "" : SongBreakdownRepair.instruction(for: plan)
+        if plan.changedIndices.isEmpty {
+            // Only deletions or reordering: nothing to write, the reused lines are the breakdown.
+            let current = SongBreakdown(noteID: note.id, sourceTextHash: SongBreakdownService.sha256(note.content), generatedAt: Date(), provider: existing.provider, lines: [])
+            setBreakdown(SongBreakdownRepair.merge(plan: plan, generated: current))
+            return
+        }
+        startGeneration(
+            forNoteID: note.id,
+            lyrics: note.content,
+            userNote: [saved, instruction].filter { $0.isEmpty == false }.joined(separator: "\n\n"),
+            segmentation: segmentation,
+            repairing: plan,
             providerLabel: providerLabel
         )
     }

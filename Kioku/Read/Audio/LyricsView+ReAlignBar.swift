@@ -117,6 +117,11 @@ extension LyricsView {
                 if isReAligning == false {
                     Divider()
                     Button("Replace Audio…", systemImage: "arrow.triangle.2.circlepath") { onReplaceAudio() }
+                    Button("YouTube Link…", systemImage: "play.rectangle") { onAddYouTube() }
+                    Button("Search YouTube…", systemImage: "magnifyingglass") { onSearchYouTube() }
+                    if youTubeVideoID != nil {
+                        Button("Remove Video", systemImage: "play.slash") { onRemoveYouTube() }
+                    }
                     Button("Remove Audio", systemImage: "trash", role: .destructive) {
                         isShowingRemoveAudioConfirm = true
                     }
@@ -127,6 +132,16 @@ extension LyricsView {
             .accessibilityLabel("More")
             .confirmationDialog("Remove this note's audio?", isPresented: $isShowingRemoveAudioConfirm, titleVisibility: .visible) {
                 Button("Remove Audio", role: .destructive) { onRemoveAudio() }
+            }
+
+            if youTubeVideoID != nil {
+                Button {
+                    onToggleVideoMode()
+                } label: {
+                    barIcon(isVideoMode ? "text.alignleft" : "play.rectangle", tint: isVideoMode ? .accentColor : .secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isVideoMode ? "Show Lyrics" : "Show Video")
             }
 
             Button {

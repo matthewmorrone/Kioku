@@ -34,7 +34,7 @@ struct SongBreakdownPlacement {
                 line: line,
                 range: range,
                 gist: gist,
-                words: Self.placeWords(line.words, in: range, of: note)
+                words: Self.placeWords(SongListenScript.resolvedWords(for: line, linesByIndex: linesByIndex), in: range, of: note)
             ))
         }
         lines = placed

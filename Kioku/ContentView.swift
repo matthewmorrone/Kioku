@@ -46,6 +46,7 @@ struct ContentView: View {
     @State private var pendingReadScrollTarget: ReadNoteTarget?
     // Audio file picked by the Notes tab's Import Audio, handed to ReadView to transcribe.
     @State private var pendingReadAudioImportURL: URL?
+    @State private var pendingReadYouTubeVideoID: String?
     // Note that ReadView should start playing (lyrics view open) once it's the active note — set
     // by the "Sing with Kioku" Siri action, cleared by ReadView when consumed.
     @State private var pendingReadAutoplayNoteID: UUID?
@@ -68,6 +69,7 @@ struct ContentView: View {
                 shouldActivateEditModeOnLoad: $shouldActivateReadEditMode,
                 pendingScrollTarget: $pendingReadScrollTarget,
                 pendingAudioImportURL: $pendingReadAudioImportURL,
+                pendingYouTubeVideoID: $pendingReadYouTubeVideoID,
                 pendingAutoplayNoteID: $pendingReadAutoplayNoteID,
                 segmenter: readResources.segmenter,
                 dictionaryStore: readResources.dictionaryStore,
@@ -94,7 +96,8 @@ struct ContentView: View {
                 onUpdateSelectedNote: handleNoteUpdated,
                 onOCRImportedNote: handleOCRImported,
                 onOCRImportedNotes: handleOCRBatchImported,
-                onAudioImported: handleAudioImported
+                onAudioImported: handleAudioImported,
+                onYouTubeVideoPicked: handleYouTubeVideoPicked
             )
             .tag(ContentTab.notes)
             .tabItem {
@@ -455,6 +458,16 @@ struct ContentView: View {
     // Notes tab's Import Audio: switch to Read, which transcribes the file into a new note there.
     private func handleAudioImported(_ url: URL) {
         pendingReadAudioImportURL = url
+        selectedTab = .read
+    }
+
+    // Notes tab's New from YouTube: open a fresh note in Read and hand it the picked video, which
+    // Read then attaches (offering the video's captions as the note's text).
+    private func handleYouTubeVideoPicked(_ videoID: String) {
+        let newNote = Note()
+        selectedReadNote = newNote
+        lastActiveNoteID = newNote.id.uuidString
+        pendingReadYouTubeVideoID = videoID
         selectedTab = .read
     }
 

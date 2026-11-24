@@ -474,7 +474,7 @@ struct SongStepperView: View {
 
     // Banner shown when the cached breakdown's hash disagrees with the current note hash.
     // We never auto-invalidate — the breakdown remains usable so a typo fix doesn't
-    // throw away an expensive LLM run — but the user is told and offered Regenerate.
+    // throw away an expensive LLM run — but the user is told and offered Repair or Regenerate.
     private var staleBanner: some View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -487,11 +487,20 @@ struct SongStepperView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
+            // Repair writes only the new or edited lines and keeps the rest; Regenerate redoes the song.
+            Button("Repair") {
+                songBreakdownStore.clearGenerationError(forNoteID: note.id)
+                songBreakdownStore.startRepair(forNote: note, noteReadings: noteReadings, providerLabel: SongBreakdownStore.loadingProviderLabel())
+            }
+            .font(.footnote.weight(.semibold))
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .disabled(isRunning)
             Button("Regenerate") {
                 isRegenerateConfirmationPresented = true
             }
             .font(.footnote.weight(.semibold))
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.bordered)
             .controlSize(.small)
             .disabled(isRunning)
         }
