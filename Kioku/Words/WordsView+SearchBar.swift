@@ -234,45 +234,33 @@ extension WordsView {
             // saved/history lists. One slot, two meanings — both use the funnel idiom and
             // flip to the filled variant when their respective filters are active.
             if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-                dictionarySearchFilterMenu
-            } else {
-                // One icon per list (star = Saved, clock = History; the shown one is tinted) and the
-                // funnel for the note/list filter sheet.
-                HStack(spacing: 12) {
-                    wordsListIcon(.saved, systemName: "star", label: "Saved")
-                    wordsListIcon(.history, systemName: "clock", label: "History")
-                    Button {
-                        isFilterSheetPresented = true
-                    } label: {
-                        Image(systemName: isFilterActive
-                            ? "line.3.horizontal.decrease.circle.fill"
-                            : "line.3.horizontal.decrease.circle")
-                            .scaledFont(size: 22)
-                            .foregroundStyle(isFilterActive ? Color.accentColor : Color.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Filter by Note or List")
+                // A phrase's segment list isn't sorted or filtered, so the menu has nothing to act on there.
+                if parsedSegments.isEmpty {
+                    dictionarySearchFilterMenu
                 }
+            } else {
+                let filterTint = isFilterActive ? Color.accentColor : Color.secondary
+                // Tap flips between Saved and History; long press opens the filter/sort sheet.
+                // Names the list you're looking at (star = Saved, clock = History); accent-tinted
+                // while a note/list filter is on.
+                Image(systemName: activeTab == .saved ? "star.fill" : "clock")
+                    .scaledFont(size: 20, weight: .medium)
+                    .foregroundStyle(filterTint)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    activeTab = activeTab == .saved ? .history : .saved
+                }
+                .onLongPressGesture {
+                    isFilterSheetPresented = true
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel("\(activeTab == .saved ? "Saved" : "History"), tap to switch, long press to filter by Note or List")
                 .tourTarget(.wordsFilter)
             }
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
         .padding(.bottom, 8)
-    }
-
-    // A Saved/History switch icon: filled and tinted while that list is the one shown.
-    private func wordsListIcon(_ tab: WordsTab, systemName: String, label: String) -> some View {
-        let isActive = activeTab == tab
-        return Button {
-            activeTab = tab
-        } label: {
-            Image(systemName: isActive ? "\(systemName).fill" : systemName)
-                .scaledFont(size: 20)
-                .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 }

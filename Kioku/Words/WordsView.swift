@@ -1,4 +1,5 @@
 import SwiftUI
+@preconcurrency import Translation
 
 // Tabs available in the Words screen.
 enum WordsTab { case saved, history }
@@ -73,6 +74,10 @@ struct WordsView: View {
     @EnvironmentObject var historyStore: HistoryStore
     // Supplies the clipboard's Japanese text for the search bar's paste button.
     @EnvironmentObject var clipboardCoordinator: ClipboardLookupCoordinator
+    // Translations shown under Japanese phrase rows in history (WordsView+PhraseTranslation).
+    @StateObject var phraseTranslations = PhraseTranslationCache()
+    // Drives .translationTask for those translations; nil until there is something to translate.
+    @State var phraseTranslationTrigger: TranslationSession.Configuration? = nil
 
     @State var selectedDetailWord: SavedWord?
     // Reading that was active in the lookup sheet when this word detail was opened, if available.
@@ -582,6 +587,11 @@ struct WordsView: View {
                 }
         }
         .overlay { searchEmptyOverlay }
+        .translationTask(phraseTranslationTrigger) { session in
+            await translatePhrases(session: session)
+        }
+        .onAppear { requestPhraseTranslations() }
+        .onChange(of: historyStore.entries.count) { _, _ in requestPhraseTranslations() }
         .overlay(alignment: .top) {
             if let searchError {
                 Text("Search failed: \(searchError)")

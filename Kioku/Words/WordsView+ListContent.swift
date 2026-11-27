@@ -624,9 +624,17 @@ extension WordsView {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Play phrase")
             }
-            Text(entry.surface)
-                .font(.body)
-                .lineLimit(2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.surface)
+                    .font(.body)
+                    .lineLimit(2)
+                if let translation = phraseTranslations.translations[entry.surface] {
+                    Text(translation)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
             Spacer(minLength: 0)
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)

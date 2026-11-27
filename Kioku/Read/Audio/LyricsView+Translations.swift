@@ -8,15 +8,9 @@ import SwiftUI
 // language) and batch-translates every cue up front so the user sees translations the moment
 // each line becomes active. Split out of LyricsView.swift so the main file focuses on layout.
 extension LyricsView {
+    // The shared Japanese translation setup (JapaneseTranslation).
     var translationConfig: TranslationSession.Configuration {
-        let target = Locale.preferredLanguages
-            .first(where: { !$0.hasPrefix("ja") })
-            .map { Locale.Language(identifier: $0) }
-            ?? Locale.Language(identifier: "en-US")
-        return TranslationSession.Configuration(
-            source: Locale.Language(identifier: "ja"),
-            target: target
-        )
+        JapaneseTranslation.configuration
     }
 
     // Batch-translates all cues that haven't been cached yet so translations are available during playback.
