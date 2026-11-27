@@ -439,7 +439,7 @@ extension SegmentLookupSheet {
     // Formats one dictionary sense as "pos — gloss1; gloss2" for compact inline display.
     func formatSense(_ sense: DictionaryEntrySense) -> String {
         var parts: [String] = []
-        if let pos = sense.pos, pos.isEmpty == false { parts.append(JMdictTagExpander.expand(pos)) }
+        if let pos = sense.pos, pos.isEmpty == false { parts.append(JMdictTagExpander.expandAll(pos)) }
         parts.append(sense.glosses.joined(separator: "; "))
         return parts.joined(separator: " — ")
     }

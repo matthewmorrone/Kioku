@@ -7,6 +7,8 @@ struct ParsedSegment: Identifiable {
     let id = UUID()
     let surface: String
     let entry: DictionaryEntry?
+    // The dictionary form when the surface is an inflection of it (死ねる → 死ぬ); nil otherwise.
+    var dictionaryForm: String? = nil
 }
 
 extension WordsView {
@@ -22,7 +24,23 @@ extension WordsView {
                 parsedSegmentRow(segment)
             }
         } header: {
-            Text("\(parsedSegments.count) Segment\(parsedSegments.count == 1 ? "" : "s")")
+            // The speaker reads the whole phrase as typed; each row's own speaker reads its segment.
+            HStack {
+                Text("\(parsedSegments.count) Segment\(parsedSegments.count == 1 ? "" : "s")")
+                Spacer()
+                Button {
+                    SpeechSynthesisHelper.shared.speak(
+                        searchText.trimmingCharacters(in: .whitespacesAndNewlines),
+                        languageCode: "ja-JP"
+                    )
+                } label: {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .foregroundStyle(japaneseTheme ? Color.white : Color.primary)
+                        .scaledFont(size: 15, weight: .semibold)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Play phrase")
+            }
         }
     }
 
@@ -35,6 +53,18 @@ extension WordsView {
     @ViewBuilder
     private func parsedSegmentRow(_ segment: ParsedSegment) -> some View {
         HStack(spacing: 12) {
+            // Leading speaker, as on word rows. Speaks the surface as written: an inflected
+            // segment's entry reading is its dictionary form's, not what the phrase says.
+            Button {
+                SpeechSynthesisHelper.shared.speak(segment.surface, languageCode: "ja-JP")
+            } label: {
+                Image(systemName: "speaker.wave.2.fill")
+                    .foregroundStyle(japaneseTheme ? Color.white : Color.primary)
+                    .scaledFont(size: 15, weight: .semibold)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Play pronunciation")
+
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(segment.surface)
@@ -86,10 +116,14 @@ extension WordsView {
         }
     }
 
-    // Reading shown next to the surface — only when the segment surface contains kanji.
+    // Shown next to the surface: the dictionary form for an inflected segment (its entry's reading
+    // would be the lemma's, not the surface's), else the reading when the surface contains kanji.
     // Pure-kana segments would be repeating themselves; suppressing the reading keeps rows
     // visually tight for sentence parses dominated by particles and inflections.
     private func parsedSegmentReading(for segment: ParsedSegment) -> String? {
+        if let dictionaryForm = segment.dictionaryForm {
+            return dictionaryForm
+        }
         guard ScriptClassifier.containsKanji(segment.surface),
               let entry = segment.entry,
               let reading = entry.kanaForms.first?.text,
@@ -106,7 +140,7 @@ extension WordsView {
               let sense = entry.senses.first else { return nil }
         var parts: [String] = []
         if let pos = sense.pos, pos.isEmpty == false {
-            parts.append("[\(JMdictTagExpander.expand(pos))]")
+            parts.append("[\(JMdictTagExpander.expandFirst(pos))]")
         }
         if let gloss = sense.glosses.first, gloss.isEmpty == false {
             parts.append(gloss)
@@ -170,20 +204,36 @@ extension WordsView {
     // Resolves each segment surface to its best dictionary hit. Runs off-main; safe to call
     // from a detached task. Returns segments in their original order.
     //
-    // Implementation:
-    //   1. Look up each unique surface's canonical entry id via the in-memory map
-    //      (O(1) per surface — populated at startup by populateCanonicalEntryIDMap).
+    // With a lexicon, each token takes the lookup sheet's own pick (Lexicon.lookupCandidates, which
+    // deinflects: 看取られて → 看取る, おります → 居る), or the candidate context prefers. Without one
+    // (lexicon still loading), surfaces resolve by exact spelling:
+    //   1. Look up each unique surface's canonical entry id via the in-memory map.
     //   2. Materialize all needed entries in ONE batched SQL call.
-    //   3. Build the per-token result by joining back to the materialized table.
-    //
-    // Falls back to dictionaryTop (per-token searchEntries fan-out) for surfaces missing
-    // from the canonical map, which happens before the prewarming pass finishes during
-    // the first few seconds after launch.
+    //   3. Fall back to dictionaryTop for surfaces missing from the map.
     nonisolated static func resolveParsedSegments(
         tokens: [String],
         store: DictionaryStore,
+        lexicon: Lexicon? = nil,
         contextEntryIDs: [Int64?] = []
     ) -> [ParsedSegment] {
+        if let lexicon {
+            return tokens.enumerated().map { position, surface in
+                let candidates = lexicon.lookupCandidates(surface: surface)
+                let contextID = position < contextEntryIDs.count ? contextEntryIDs[position] : nil
+                // Context's pick, else the spelling's canonical entry when it is a candidate (kana もの is
+                // the particle, not 物 — the rule lyric bubbles follow), else the sheet's first row.
+                let canonicalID = store.lookupFirstEntryID(surface: surface)
+                guard let chosen = candidates.first(where: { $0.entry.entryId == contextID })
+                    ?? candidates.first(where: { $0.entry.entryId == canonicalID })
+                    ?? candidates.first else {
+                    return ParsedSegment(surface: surface, entry: nil)
+                }
+                let isInflection = chosen.lemma != surface && chosen.entry.kanjiForms.contains(where: { $0.text == surface }) == false
+                    && chosen.entry.kanaForms.contains(where: { $0.text == surface }) == false
+                return ParsedSegment(surface: surface, entry: chosen.entry, dictionaryForm: isInflection ? chosen.headword : nil)
+            }
+        }
+
         // Collect each unique surface's canonical entry id (skip nils — those will fall
         // back to dictionaryTop below).
         var canonicalIDBySurface: [String: Int64] = [:]

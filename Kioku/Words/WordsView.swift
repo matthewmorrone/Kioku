@@ -71,6 +71,8 @@ struct WordsView: View {
     @EnvironmentObject var wordListsStore: WordListsStore
     @EnvironmentObject var notesStore: NotesStore
     @EnvironmentObject var historyStore: HistoryStore
+    // Supplies the clipboard's Japanese text for the search bar's paste button.
+    @EnvironmentObject var clipboardCoordinator: ClipboardLookupCoordinator
 
     @State var selectedDetailWord: SavedWord?
     // Reading that was active in the lookup sheet when this word detail was opened, if available.
@@ -476,6 +478,11 @@ struct WordsView: View {
             // the detail view.
             .onAppear {
                 consumePendingRoute(pendingRoute.wrappedValue)
+                clipboardCoordinator.refreshJapaneseClipboardText()
+            }
+            // A copy made inside the app (a row's Copy) changes the clipboard without a focus change.
+            .onReceive(NotificationCenter.default.publisher(for: UIPasteboard.changedNotification)) { _ in
+                clipboardCoordinator.refreshJapaneseClipboardText()
             }
             .onChange(of: pendingRoute.wrappedValue) { _, route in
                 consumePendingRoute(route)

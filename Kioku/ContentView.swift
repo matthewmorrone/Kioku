@@ -117,6 +117,7 @@ struct ContentView: View {
                 .environmentObject(savedKanjiStore)
                 .environmentObject(wordListsStore)
                 .environmentObject(historyStore)
+                .environmentObject(clipboardCoordinator)
             .tag(ContentTab.words)
             .tabItem {
                 Label("Words", systemImage: "text.page.badge.magnifyingglass")

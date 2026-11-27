@@ -15,6 +15,11 @@ import UIKit
 @MainActor
 final class ClipboardLookupCoordinator: ObservableObject {
     @Published private(set) var hasPendingClipboard = false
+    // The clipboard's Japanese text while it holds some (nil otherwise), for the Words search bar's
+    // paste button. Unlike the banner's pending text it is not consumed: it lasts until the clipboard changes.
+    @Published private(set) var japaneseClipboardText: String?
+    // The changeCount japaneseClipboardText was read at, so each clipboard change is read once.
+    private var readChangeCount = -1
     @AppStorage("clipboardLookup.lastSeenChangeCount") private var lastSeenChangeCount: Int = -1
 
     // The defaults instance used to read the auto-detect toggle. Injected so
@@ -35,32 +40,43 @@ final class ClipboardLookupCoordinator: ObservableObject {
     // banner because content access is required to apply the script filter — short-circuits
     // before any pasteboard access when the user has turned auto-detect off in Settings.
     func checkClipboard() {
-        guard autoDetectEnabled else { return }
-        let pasteboard = UIPasteboard.general
-        let currentChangeCount = pasteboard.changeCount
+        guard autoDetectEnabled else {
+            japaneseClipboardText = nil
+            return
+        }
+        refreshJapaneseClipboardText()
+        let currentChangeCount = UIPasteboard.general.changeCount
         guard currentChangeCount != lastSeenChangeCount else { return }
-        // Skip URL-only clipboards (probably shared links, not lookup targets) via the
-        // banner-free type probe — saves a content read for the common copy-a-link case.
-        guard pasteboard.hasStrings, pasteboard.hasURLs == false else {
-            lastSeenChangeCount = currentChangeCount
-            return
-        }
-        guard let raw = pasteboard.string else {
-            lastSeenChangeCount = currentChangeCount
-            return
-        }
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false, ScriptClassifier.containsJapanese(trimmed) else {
+        guard let text = japaneseClipboardText else {
             // Mark the change consumed so we don't re-read this clipboard on the next focus.
             AppLog.debug(.clipboardLookup, "checkClipboard: no Japanese content, skipping (changeCount=\(currentChangeCount))")
             lastSeenChangeCount = currentChangeCount
             return
         }
-        // Cap length so a pasted novel doesn't blow up the search field.
-        pendingClipboardText = String(trimmed.prefix(200))
+        pendingClipboardText = text
         hasPendingClipboard = true
         // Length only: clipboard contents are the user's private data and the debug log is a plain file.
-        AppLog.debug(.clipboardLookup, "checkClipboard: pending lookup — \(pendingClipboardText?.count ?? 0) chars")
+        AppLog.debug(.clipboardLookup, "checkClipboard: pending lookup — \(text.count) chars")
+    }
+
+    // Reads the clipboard once per change and keeps its Japanese text (nil when it has none). URL-only
+    // clipboards are skipped by the banner-free type probe — saves a content read for a copied link.
+    // The read is what fires iOS's "Pasted from" banner, so it never repeats for an unchanged clipboard.
+    func refreshJapaneseClipboardText() {
+        guard autoDetectEnabled else { return }
+        let pasteboard = UIPasteboard.general
+        let currentChangeCount = pasteboard.changeCount
+        guard currentChangeCount != readChangeCount else { return }
+        readChangeCount = currentChangeCount
+        guard pasteboard.hasStrings, pasteboard.hasURLs == false, let raw = pasteboard.string else {
+            japaneseClipboardText = nil
+            return
+        }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Cap length so a pasted novel doesn't blow up the search field.
+        japaneseClipboardText = trimmed.isEmpty == false && ScriptClassifier.containsJapanese(trimmed)
+            ? String(trimmed.prefix(200))
+            : nil
     }
 
     // Returns the cached clipboard text (read once during `checkClipboard`) and marks the

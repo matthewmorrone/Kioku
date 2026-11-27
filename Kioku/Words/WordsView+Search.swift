@@ -384,6 +384,7 @@ extension WordsView {
                         return WordsView.resolveParsedSegments(
                             tokens: tokens,
                             store: store,
+                            lexicon: capturedLexicon.value,
                             contextEntryIDs: contextIDs.count == tokens.count ? contextIDs : []
                         )
                     }.value
@@ -392,14 +393,12 @@ extension WordsView {
                     let sentences = await Task.detached(priority: .userInitiated) {
                         (try? store.searchSentences(query: trimmed, limit: 25)) ?? []
                     }.value
-                    let parseKanji = await Task.detached(priority: .userInitiated) {
-                        (try? store.searchKanji(query: trimmed, kanaQuery: nil, limit: 6)) ?? []
-                    }.value
                     if Task.isCancelled { return }
                     guard searchText.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed else { return }
                     parsedSegments = segments
                     searchResults = []
-                    kanjiSearchResults = parseKanji
+                    // A sentence's own kanji are not results: each one is a tap away in its segment's entry.
+                    kanjiSearchResults = []
                     sentenceResults = sentences
                     searchError = nil
                     isSearching = false

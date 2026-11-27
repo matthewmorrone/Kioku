@@ -167,6 +167,23 @@ extension WordsView {
             .accessibilityLabel("More actions")
             .tourTarget(.wordsMore)
 
+            // Pastes the clipboard into the field; shown only while the clipboard holds Japanese
+            // that isn't already the query.
+            if let clipboardText = clipboardCoordinator.japaneseClipboardText,
+               clipboardText != searchText.trimmingCharacters(in: .whitespacesAndNewlines) {
+                Button {
+                    searchText = clipboardText
+                    // The banner offering the same text has nothing left to do.
+                    clipboardCoordinator.dismiss()
+                } label: {
+                    Image(systemName: "doc.on.clipboard")
+                        .scaledFont(size: 20)
+                        .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Paste Japanese from clipboard")
+            }
+
             HStack(spacing: 8) {
                 // Tapping the leading magnifying glass yields focus, dismissing the
                 // keyboard — the natural "I'm done typing, scroll the results" gesture
@@ -219,34 +236,43 @@ extension WordsView {
             if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
                 dictionarySearchFilterMenu
             } else {
-                let filterTint = isFilterActive ? Color.accentColor : Color.secondary
-                // Tap flips between Saved and History; long press opens the filter/sort sheet.
-                HStack(spacing: 4) {
-                    // Names the list you're looking at, so Saved vs. History is visible on screen.
-                    Text(activeTab == .saved ? "Saved" : "History")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(filterTint)
-                    Image(systemName: isFilterActive
-                        ? "line.3.horizontal.decrease.circle.fill"
-                        : "line.3.horizontal.decrease.circle")
-                        .scaledFont(size: 22)
-                        .foregroundStyle(filterTint)
+                // One icon per list (star = Saved, clock = History; the shown one is tinted) and the
+                // funnel for the note/list filter sheet.
+                HStack(spacing: 12) {
+                    wordsListIcon(.saved, systemName: "star", label: "Saved")
+                    wordsListIcon(.history, systemName: "clock", label: "History")
+                    Button {
+                        isFilterSheetPresented = true
+                    } label: {
+                        Image(systemName: isFilterActive
+                            ? "line.3.horizontal.decrease.circle.fill"
+                            : "line.3.horizontal.decrease.circle")
+                            .scaledFont(size: 22)
+                            .foregroundStyle(isFilterActive ? Color.accentColor : Color.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Filter by Note or List")
                 }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    activeTab = activeTab == .saved ? .history : .saved
-                }
-                .onLongPressGesture {
-                    isFilterSheetPresented = true
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityAddTraits(.isButton)
-                .accessibilityLabel("\(activeTab == .saved ? "Saved" : "History"), tap to switch, long press to filter by Note or List")
                 .tourTarget(.wordsFilter)
             }
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
         .padding(.bottom, 8)
+    }
+
+    // A Saved/History switch icon: filled and tinted while that list is the one shown.
+    private func wordsListIcon(_ tab: WordsTab, systemName: String, label: String) -> some View {
+        let isActive = activeTab == tab
+        return Button {
+            activeTab = tab
+        } label: {
+            Image(systemName: isActive ? "\(systemName).fill" : systemName)
+                .scaledFont(size: 20)
+                .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 }

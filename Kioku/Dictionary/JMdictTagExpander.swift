@@ -13,6 +13,12 @@ enum JMdictTagExpander {
         joined.split(separator: ",").map { expand(String($0)) }.joined(separator: ", ")
     }
 
+    // The first tag of a comma-joined sense POS ("v5b,vt,vi" → "godan verb (ぶ)"), for one-line
+    // rows where the whole list would crowd out the gloss.
+    static func expandFirst(_ joined: String) -> String {
+        expand(String(joined.split(separator: ",").first ?? Substring(joined)))
+    }
+
     private static let tags: [String: String] = [
         // Part of speech
         "adj-f":    "pre-noun adjectival",

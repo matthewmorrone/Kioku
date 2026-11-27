@@ -38,7 +38,7 @@ struct DictionarySearchResultRow: View {
         guard let sense = entry.senses.first else { return entry.primarySearchGloss }
         var parts: [String] = []
         if let pos = sense.pos, pos.isEmpty == false {
-            parts.append("[\(JMdictTagExpander.expand(pos))]")
+            parts.append("[\(JMdictTagExpander.expandFirst(pos))]")
         }
         if entry.primarySearchGloss.isEmpty == false {
             let gloss = entry.primarySearchGloss

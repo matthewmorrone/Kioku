@@ -612,6 +612,18 @@ extension WordsView {
     @ViewBuilder
     private func queryHistoryRow(_ entry: HistoryEntry) -> some View {
         HStack(spacing: 12) {
+            // Leading speaker for a Japanese phrase, as on word rows; hidden in edit mode.
+            if editMode != .active, ScriptClassifier.containsJapanese(entry.surface) {
+                Button {
+                    SpeechSynthesisHelper.shared.speak(entry.surface, languageCode: "ja-JP")
+                } label: {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .foregroundStyle(japaneseTheme ? Color.white : Color.primary)
+                        .scaledFont(size: 15, weight: .semibold)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Play phrase")
+            }
             Text(entry.surface)
                 .font(.body)
                 .lineLimit(2)
